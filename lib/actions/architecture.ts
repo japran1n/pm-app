@@ -37,6 +37,8 @@ export {
 } from "./architecture/sections";
 export type { SetSectionClientVisibilityResult } from "./architecture/sections";
 
+export { getNodeDetailsForToggle } from "./architecture/node-details";
+
 export {
   createComponentFromSection,
   createComponent,

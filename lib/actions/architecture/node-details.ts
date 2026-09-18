@@ -1,0 +1,59 @@
+"use server";
+
+// Mission 20260918-architecture-enrichment, F09: thin server-action wrapper
+// around getArchitectureNodeDetails (lib/queries/architecture-details.ts) so
+// Client Component callers on the Architecture board can invoke the details
+// query without importing a server-only module directly. Auth chain mirrors
+// createSection/deleteSection in lib/actions/architecture/sections.ts:
+// resolve the current user, look up the project's owning workspace via the
+// admin client (never trust a client-supplied workspace id), and confirm
+// active membership before touching any data.
+import { createAdminClient } from "@/lib/supabase/admin";
+import { getCurrentUser } from "@/lib/auth/current-user";
+import { requireActiveMembership } from "@/lib/auth/require-membership";
+import { getArchitectureNodeDetails } from "@/lib/queries/architecture-details";
+
+import type { PortalQueryResult } from "@/lib/queries/portal";
+import type { ArchitectureNodeDetails } from "@/lib/architecture/types";
+
+export async function getNodeDetailsForToggle(
+  projectId: string,
+): Promise<PortalQueryResult<ArchitectureNodeDetails>> {
+  const { user } = await getCurrentUser();
+
+  if (!user) {
+    return { ok: false, error: "Unauthorized" };
+  }
+
+  const admin = createAdminClient();
+
+  const { data: projectRow, error: projectError } = await admin
+    .from("projects")
+    .select("id, workspace_id, deleted_at, workspaces(slug)")
+    .eq("id", projectId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (projectError || !projectRow) {
+    return { ok: false, error: "Not found." };
+  }
+
+  const membership = await requireActiveMembership(
+    admin,
+    projectRow.workspace_id,
+    user.id,
+  );
+
+  if (!membership.ok) {
+    return { ok: false, error: "Not found." };
+  }
+
+  // Discipline estimates are team-only commercial data -- never surfaced to
+  // a client-role member, same convention as the query module's own
+  // isolation guarantees.
+  if (membership.role === "client") {
+    return { ok: false, error: "Forbidden." };
+  }
+
+  return getArchitectureNodeDetails(projectId);
+}
