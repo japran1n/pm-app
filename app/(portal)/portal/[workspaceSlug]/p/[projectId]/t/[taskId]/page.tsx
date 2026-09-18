@@ -7,6 +7,12 @@ import { createClient } from "@/lib/supabase/server";
 import { PortalConversation } from "@/components/portal/conversation";
 import { PortalApprovalActions } from "@/components/portal/approval-actions";
 import { PortalTaskTitleAnnouncer } from "@/components/portal/portal-task-title-announcer";
+import { StatusPill } from "@/components/portal/status-pill";
+import {
+  resolveClientBucket,
+  CLIENT_BUCKET_LABELS,
+} from "@/components/portal/status-label";
+import { formatDayMonthUTC } from "@/lib/format";
 
 // C7: one shared task, with the conversation the client is part of.
 //
@@ -66,9 +72,31 @@ export default async function PortalTaskPage({
           <h1 className="text-2xl font-semibold tracking-tight">
             {task.title}
           </h1>
-          <p className="text-sm text-muted-foreground">
-            {task.status.replace(/_/g, " ")}
-            {task.dueDate ? ` · due ${task.dueDate}` : ""}
+          <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm text-muted-foreground">
+            <StatusPill
+              name={task.status}
+              category={task.category}
+              clientBucket={task.clientBucket}
+              labelOverride={
+                CLIENT_BUCKET_LABELS[
+                  resolveClientBucket(
+                    task.category,
+                    task.clientBucket,
+                    task.pendingClientApproval,
+                  )
+                ]
+              }
+            />
+            {task.dueDate ? (
+              <span>
+                · due{" "}
+                <span className="font-mono">
+                  {formatDayMonthUTC(task.dueDate)}
+                </span>
+              </span>
+            ) : (
+              ""
+            )}
           </p>
         </div>
 
