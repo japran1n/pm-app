@@ -397,16 +397,21 @@ function buildNodeData(
       return { text: true, ...common, xattr };
     case "Blockquote":
       return { text: true, ...common, xattr };
-    case "Link":
-      return {
+    case "Link": {
+      // Link block ("inline") has NO `text` key; inline text link ("")
+      // carries `text: true`. See ground-truth wf2.json.
+      const block = (td.block as string) ?? "";
+      const base: Record<string, unknown> = {
         link: td.link ?? { url: "#" },
-        block: (td.block as string) ?? "",
-        text: true,
+        block,
         button: td.button === true,
         eventIds: [],
         ...common,
         xattr,
       };
+      if (block !== "inline") base.text = true;
+      return base;
+    }
     case "List":
       return { unstyled: td.unstyled === true, ...common, xattr };
     case "ListItem":

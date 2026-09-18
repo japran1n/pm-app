@@ -639,12 +639,16 @@ describe("emitWebflow — ground-truth shape conformance (wf.json)", () => {
   });
 
   it("test_anchor_with_element_children_emits_Link_type_with_block_data", () => {
+    // Ground truth (wf2.json): a link block is type Link, data.block ===
+    // "inline" (there is no "block" value in real Webflow payloads), and the
+    // `text` key is OMITTED entirely — it is not present with any value.
     const html = '<a class="x" href="/about"><span>child</span></a>';
     const { payload } = emitWebflow(html, parseCss(""));
     const anchorNode = payload.payload.nodes.find((n) => !isTextNode(n) && (n as { tag?: string }).tag === "a");
     expect(anchorNode).toBeDefined();
     expect((anchorNode as { type?: string }).type).toBe("Link");
-    expect((anchorNode as { data?: { block?: string } }).data?.block).toBe("block");
+    expect((anchorNode as { data?: { block?: string } }).data?.block).toBe("inline");
+    expect(Object.keys((anchorNode as { data: Record<string, unknown> }).data)).not.toContain("text");
   });
 
   it("test_wf_json_payload_has_expandUserComponents_true", () => {

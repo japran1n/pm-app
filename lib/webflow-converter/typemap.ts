@@ -100,10 +100,12 @@ export function getWebflowType(
 
     case "a":
       // Webflow has no separate "LinkBlock" node type — every <a> is type
-      // "Link"; data.block ("" | "block") carries the inline-vs-block
-      // distinction. AS-082 / AS-083.
+      // "Link". data.block carries the inline-vs-block distinction: a link
+      // block is block: "inline" with NO `text` key; an inline text link is
+      // block: "" with `text: true`. (Ground-truth wf2.json — there is no
+      // "block" value in real Webflow payloads.) AS-082 / AS-083.
       return hasElementChildren
-        ? { type: "Link", tag: "a", data: { link: linkData(attrs), block: "block" } }
+        ? { type: "Link", tag: "a", data: { link: linkData(attrs), block: "inline" } }
         : { type: "Link", tag: "a", data: { link: linkData(attrs), block: "", text: true } };
 
     case "button":

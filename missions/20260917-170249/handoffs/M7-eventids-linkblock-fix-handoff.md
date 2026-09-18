@@ -20,10 +20,22 @@ lib/webflow-converter/convert.test.ts
 
 ## Commands run
 `npx tsc --noEmit` (0)
-`npx vitest run lib/webflow-converter/ components/webflow-tool/ lib/webflow-converter-client/ lib/actions/webflow-converter.test.ts` (0, 20 files / 562 tests passed)
-`npm run lint` (0)
+`npx vitest run lib/webflow-converter/ components/webflow-tool/ lib/webflow-converter-client/ lib/actions/webflow-converter.test.ts` (0, 20 files / 562 tests passed — re-verified after the wf2.json follow-up correction, same pass count)
+`npm run lint` (0, re-verified after follow-up)
 
 ## Decisions made
+- Follow-up correction (second ground-truth sample, `wf2.json`, containing
+  actual link blocks): the real Webflow `data.block` value for a link block
+  is `"inline"`, not `"block"` — there is no `"block"` value anywhere in
+  Webflow's real payloads. A link block's `data` also OMITS the `text` key
+  entirely (not `text: false`, not present at all); an inline text link keeps
+  `block: ""` and `text: true`. `button: false` and `eventIds: []` stay on
+  both forms. Fixed in `typemap.ts` (emits `block: "inline"` for
+  `hasElementChildren`) and `emit.ts`'s `Link` case in `buildNodeData` (only
+  sets `data.text = true` when `block !== "inline"`). Updated
+  `typemap.test.ts` (AS-083 test now expects `"inline"`) and `emit.test.ts`'s
+  regression test to assert `block === "inline"` and that `"text"` is not a
+  key on that node's `data`.
 - Superseded the previous (incorrect) fix recorded in this same handoff file:
   that attempt added `eventIds` to the *common* key set (every node type) and
   kept a separate `"LinkBlock"` node type. Re-inspecting the ground-truth
@@ -77,9 +89,10 @@ this task explicitly corrects.
   `link, block, text, button, eventIds, attr, devlink, displayName, xattr,
   search, visibility` — no node in the captured payload anywhere used the
   string `"LinkBlock"`.
-- If Designer paste still crashes after this fix, capture a fresh wf.json
-  with a *block*-mode link (a link wrapping element children, e.g. a card
-  linking a whole `<div>`) to confirm `data.block === "block"` is the only
-  distinguishing signal Webflow expects for that case — this fix assumes it
-  based on the shared `Link` type definition but the ground-truth sample only
-  contained inline links.
+- A second capture, `wf2.json`, later confirmed the block-mode Link node
+  directly: `data.block === "inline"` (not `"block"`) and `data` has no
+  `text` key at all when it's a link block; inline text links keep
+  `block: ""` + `text: true`. Both forms carry `button: false` and
+  `eventIds: []`. This is now implemented and tested — see
+  `test_anchor_with_element_children_emits_Link_type_with_block_data` in
+  `emit.test.ts` and the updated AS-083 test in `typemap.test.ts`.

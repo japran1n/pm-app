@@ -93,12 +93,12 @@ describe("getWebflowType", () => {
     expect(result.data?.link).toMatchObject({ url: "https://example.com", target: "_blank", mode: "external" });
   });
 
-  // AS-083: <a> with element children -> Link with data.block "block" (Webflow has no LinkBlock type)
+  // AS-083: <a> with element children -> Link with data.block "inline" (Webflow has no LinkBlock type)
   it("test_AS_083_a_with_element_children_converts_to_link_block", () => {
     const result = getWebflowType("a", { hasElementChildren: true, attrs: { href: "/about" } });
     expect(result.type).toBe("Link");
     expect(result.tag).toBe("a");
-    expect(result.data?.block).toBe("block");
+    expect(result.data?.block).toBe("inline");
     expect(result.data?.link).toMatchObject({ url: "/about" });
   });
 
