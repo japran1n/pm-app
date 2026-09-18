@@ -84,6 +84,11 @@ export function SitemapIoDialog({
   const [baseUrl, setBaseUrl] = useState("https://example.com");
   const [importText, setImportText] = useState("");
   const [isImporting, startImport] = useTransition();
+  const [briefPageSlug, setBriefPageSlug] = useState<string>("__all__");
+
+  const isBriefFormat = format === "brief-md" || format === "brief-json";
+  const briefOpts =
+    isBriefFormat && briefPageSlug !== "__all__" ? { pageSlug: briefPageSlug } : undefined;
 
   function serialise(): string {
     switch (format) {
@@ -96,9 +101,9 @@ export function SitemapIoDialog({
       case "json":
         return toJson(pages);
       case "brief-md":
-        return toCopyBriefMarkdown(pages, detailsData ?? new Map());
+        return toCopyBriefMarkdown(pages, detailsData ?? new Map(), briefOpts);
       case "brief-json":
-        return toCopyBriefJson(pages, detailsData ?? new Map());
+        return toCopyBriefJson(pages, detailsData ?? new Map(), briefOpts);
     }
   }
 
@@ -110,8 +115,13 @@ export function SitemapIoDialog({
     const anchor = document.createElement("a");
     anchor.href = url;
     const slug = (projectName || "site").toLowerCase().replace(/[^a-z0-9]+/g, "-");
-    const suffix = format === "brief-md" || format === "brief-json" ? "copy-brief" : "sitemap";
-    anchor.download = `${slug}-${suffix}.${spec.extension}`;
+    const isBrief = format === "brief-md" || format === "brief-json";
+    const pageSuffix =
+      isBrief && briefPageSlug !== "__all__"
+        ? `-${briefPageSlug.replace(/^\//, "").replace(/\//g, "-") || "home"}`
+        : "";
+    const suffix = isBrief ? "copy-brief" : "sitemap";
+    anchor.download = `${slug}-${suffix}${pageSuffix}.${spec.extension}`;
     anchor.click();
     URL.revokeObjectURL(url);
   }
@@ -199,6 +209,25 @@ export function SitemapIoDialog({
                   onChange={(event) => setBaseUrl(event.target.value)}
                   placeholder="https://example.com"
                 />
+              </div>
+            )}
+
+            {isBriefFormat && (
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="brief-page-scope">Page</Label>
+                <select
+                  id="brief-page-scope"
+                  value={briefPageSlug}
+                  onChange={(event) => setBriefPageSlug(event.target.value)}
+                  className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs outline-none focus-visible:border-border-control-hover"
+                >
+                  <option value="__all__">All pages</option>
+                  {pages.map((page) => (
+                    <option key={page.id} value={page.pageSlug}>
+                      {page.title} ({page.pageSlug})
+                    </option>
+                  ))}
+                </select>
               </div>
             )}
 
