@@ -13,11 +13,9 @@ describe('webflow-properties: whitelist of Webflow clipboard style-type props', 
     }
   });
 
-  it('test_M7_unknown_longhands_are_not_supported', () => {
+  it('test_M7_unknown_props_are_not_supported', () => {
     for (const prop of [
-      'grid-template-columns', 'grid-template-rows', 'grid-template-areas',
-      'text-decoration-color', 'text-decoration-thickness', 'text-decoration-style',
-      'row-gap', 'column-gap', 'aspect-ratio', 'mask-image',
+      'background-attachment', 'background-position', 'background-size', 'not-a-real-prop',
     ]) {
       expect(isWebflowSupportedProp(prop)).toBe(false);
     }
@@ -31,12 +29,12 @@ describe('webflow-properties: whitelist of Webflow clipboard style-type props', 
   it('test_M7_partition_splits_supported_from_unsupported', () => {
     const { supported, unsupported } = partitionByWebflowSupport({
       color: 'red',
-      'grid-template-columns': '1fr 1fr',
+      'background-position': 'center',
       'padding-top': '4px',
-      'text-decoration-color': 'blue',
+      'background-attachment': 'fixed',
     });
     expect(supported).toEqual({ color: 'red', 'padding-top': '4px' });
-    expect(unsupported).toEqual({ 'grid-template-columns': '1fr 1fr', 'text-decoration-color': 'blue' });
+    expect(unsupported).toEqual({ 'background-position': 'center', 'background-attachment': 'fixed' });
   });
 
   it('test_M7_partition_of_all-supported_decls_leaves_unsupported_empty', () => {
@@ -49,19 +47,23 @@ describe('webflow-properties: whitelist of Webflow clipboard style-type props', 
     expect(WEBFLOW_SUPPORTED_PROPS.size).toBeGreaterThan(50);
   });
 
-  it('test_M7_text-decoration_is_removed_from_whitelist', () => {
-    // text-decoration has no style-type entry in Webflow's buildStyleBlock
-    // lookup table; routed to the CSS embed instead of styleLess.
-    expect(isWebflowSupportedProp('text-decoration')).toBe(false);
+  it('test_M7_text-decoration_is_in_whitelist', () => {
+    // text-decoration has a style-type entry in Webflow's buildStyleBlock
+    // lookup table; it belongs in styleLess, not the CSS embed.
+    expect(isWebflowSupportedProp('text-decoration')).toBe(true);
     const { supported, unsupported } = partitionByWebflowSupport({ 'text-decoration': 'none', color: 'red' });
-    expect(supported).toEqual({ color: 'red' });
-    expect(unsupported).toEqual({ 'text-decoration': 'none' });
+    expect(supported).toEqual({ 'text-decoration': 'none', color: 'red' });
+    expect(unsupported).toEqual({});
   });
 });
 
 describe('webflow-properties: isWebflowSupportedValue() — value-level validation', () => {
-  it('test_M7_display_inline-flex_is_unsupported', () => {
-    expect(isWebflowSupportedValue('display', 'inline-flex')).toBe(false);
+  it('test_M7_display_inline-flex_is_supported', () => {
+    expect(isWebflowSupportedValue('display', 'inline-flex')).toBe(true);
+  });
+
+  it('test_M7_display_table_is_unsupported', () => {
+    expect(isWebflowSupportedValue('display', 'table')).toBe(false);
   });
 
   it('test_M7_display_flex_is_supported', () => {
@@ -69,31 +71,35 @@ describe('webflow-properties: isWebflowSupportedValue() — value-level validati
   });
 
   it('test_M7_display_other_safe_values_are_supported', () => {
-    for (const v of ['block', 'inline-block', 'inline', 'grid', 'none']) {
+    for (const v of ['block', 'inline-block', 'inline', 'grid', 'inline-grid', 'none']) {
       expect(isWebflowSupportedValue('display', v)).toBe(true);
     }
   });
 
-  it('test_M7_margin-top_auto_is_unsupported', () => {
-    expect(isWebflowSupportedValue('margin-top', 'auto')).toBe(false);
+  it('test_M7_margin-top_auto_is_supported_no_restriction', () => {
+    expect(isWebflowSupportedValue('margin-top', 'auto')).toBe(true);
   });
 
   it('test_M7_margin-top_unit_value_is_supported', () => {
     expect(isWebflowSupportedValue('margin-top', '1rem')).toBe(true);
   });
 
-  it('test_M7_flex-basis_auto_is_unsupported', () => {
-    expect(isWebflowSupportedValue('flex-basis', 'auto')).toBe(false);
+  it('test_M7_flex-basis_auto_is_supported', () => {
+    expect(isWebflowSupportedValue('flex-basis', 'auto')).toBe(true);
   });
 
   it('test_M7_flex-basis_zero_is_supported', () => {
-    // 0 is a valid unit value without an explicit unit.
     expect(isWebflowSupportedValue('flex-basis', '0')).toBe(true);
   });
 
-  it('test_M7_unit-only_props_reject_auto', () => {
+  it('test_M7_flex-basis_100px_is_unsupported', () => {
+    // Only "auto", "0%", "0" are in the Webflow flex-basis style-type set.
+    expect(isWebflowSupportedValue('flex-basis', '100px')).toBe(false);
+  });
+
+  it('test_M7_unrestricted_props_accept_any_value_including_auto', () => {
     for (const prop of ['width', 'height', 'min-width', 'max-width', 'min-height', 'max-height', 'top', 'right', 'bottom', 'left', 'padding-left']) {
-      expect(isWebflowSupportedValue(prop, 'auto')).toBe(false);
+      expect(isWebflowSupportedValue(prop, 'auto')).toBe(true);
       expect(isWebflowSupportedValue(prop, '10px')).toBe(true);
     }
   });
@@ -102,8 +108,18 @@ describe('webflow-properties: isWebflowSupportedValue() — value-level validati
     expect(isWebflowSupportedValue('align-items', 'center')).toBe(true);
   });
 
+  it('test_M7_text-decoration_none_is_supported', () => {
+    expect(isWebflowSupportedValue('text-decoration', 'none')).toBe(true);
+  });
+
+  it('test_M7_text-decoration_blink_is_unsupported', () => {
+    expect(isWebflowSupportedValue('text-decoration', 'blink')).toBe(false);
+  });
+
   it('test_M7_unrelated_property_values_pass_through', () => {
     expect(isWebflowSupportedValue('color', 'red')).toBe(true);
     expect(isWebflowSupportedValue('opacity', '0.5')).toBe(true);
+    expect(isWebflowSupportedValue('flex-grow', '1')).toBe(true);
+    expect(isWebflowSupportedValue('flex-shrink', '0')).toBe(true);
   });
 });

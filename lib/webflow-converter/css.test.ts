@@ -296,19 +296,24 @@ describe("F014 parseCss", () => {
   });
 
   it("AS-076: other background-* longhand properties on the same class are unaffected by the presence of background-image", () => {
+    // background-position / background-size / background-repeat /
+    // background-attachment have no Webflow style-type entry (only the
+    // -x/-y split forms of position do), so this exercises whitelisted
+    // background-* longhands instead: background-color, background-clip,
+    // background-origin.
     const result = parseCss(`
       .hero {
         background-image: url("/img/hero.jpg");
         background-color: red;
-        background-position: center;
-        background-size: cover;
+        background-clip: padding-box;
+        background-origin: border-box;
       }
     `);
     const hero = result.classes.get("hero")!;
     expect(hero.base["background-image"]).toBe('url("/img/hero.jpg")');
     expect(hero.base["background-color"]).toBe("red");
-    expect(hero.base["background-position"]).toBe("center");
-    expect(hero.base["background-size"]).toBe("cover");
+    expect(hero.base["background-clip"]).toBe("padding-box");
+    expect(hero.base["background-origin"]).toBe("border-box");
   });
 
   it("AS-048: an unmappable @media query (e.g. print) is reported as a warning and skipped", () => {

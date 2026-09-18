@@ -1486,10 +1486,10 @@ describe('AS-058/AS-059/AS-060/AS-061/AS-063: empty values are warned-and-droppe
 describe('M7: styleLess property names Webflow\'s clipboard style engine actually recognizes', () => {
   // Root cause of "Error: Invalid style type: undefined at buildStyleBlock"
   // on paste: styleLess contained property names Webflow's buildStyleBlock
-  // has no style-type entry for (the text-decoration-* CSS3/4 longhands, and
-  // the grid-template-* longhands). This suite locks in that these property
-  // names never reach styleLess verbatim, while `text-decoration` itself
-  // (which Webflow DOES recognize) still survives.
+  // has no style-type entry for (e.g. the shorthand `background` longhands
+  // background-position/-size/-repeat/-attachment). This suite locks in
+  // that these property names never reach styleLess verbatim, while
+  // `text-decoration` itself (which Webflow DOES recognize) still survives.
 
   it('test_M7_text_decoration_shorthand_passes_through_verbatim', () => {
     const result = expandDeclaration('text-decoration', 'underline');
@@ -1510,11 +1510,11 @@ describe('M7: styleLess property names Webflow\'s clipboard style engine actuall
   // embed is now decided once, centrally, by the WEBFLOW_SUPPORTED_PROPS
   // whitelist (webflow-properties.ts) applied in css.ts — see
   // css.test.ts / section-embeds.test.ts for that behavior.
-  it('test_M7_text_decoration_color_thickness_style_longhands_pass_through_expandDeclaration_unfiltered', () => {
+  it('test_M7_background_position_size_repeat_longhands_pass_through_expandDeclaration_unfiltered', () => {
     for (const [prop, value] of [
-      ['text-decoration-color', 'red'],
-      ['text-decoration-thickness', '2px'],
-      ['text-decoration-style', 'dashed'],
+      ['background-position', 'center'],
+      ['background-size', 'cover'],
+      ['background-repeat', 'no-repeat'],
     ] as const) {
       const result = expandDeclaration(prop, value);
       expect(result.decls).toEqual({ [prop]: value });
@@ -1523,22 +1523,10 @@ describe('M7: styleLess property names Webflow\'s clipboard style engine actuall
     }
   });
 
-  it('test_M7_grid_template_columns_repeat_function_passes_through_expandDeclaration_unfiltered', () => {
-    const result = expandDeclaration('grid-template-columns', 'repeat(3, 1fr)');
-    expect(result.decls).toEqual({ 'grid-template-columns': 'repeat(3, 1fr)' });
+  it('test_M7_background_attachment_passes_through_expandDeclaration_unfiltered', () => {
+    const result = expandDeclaration('background-attachment', 'fixed');
+    expect(result.decls).toEqual({ 'background-attachment': 'fixed' });
     expect(result.warning).toBeUndefined();
-    expect(isWebflowSupportedProp('grid-template-columns')).toBe(false);
-  });
-
-  it('test_M7_grid_template_rows_and_areas_also_pass_through_expandDeclaration_unfiltered', () => {
-    for (const [prop, value] of [
-      ['grid-template-rows', 'repeat(2, auto)'],
-      ['grid-template-areas', '"a b" "c d"'],
-    ] as const) {
-      const result = expandDeclaration(prop, value);
-      expect(result.decls).toEqual({ [prop]: value });
-      expect(result.warning).toBeUndefined();
-      expect(isWebflowSupportedProp(prop)).toBe(false);
-    }
+    expect(isWebflowSupportedProp('background-attachment')).toBe(false);
   });
 });
