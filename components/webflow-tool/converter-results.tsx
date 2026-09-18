@@ -9,6 +9,7 @@
 
 import * as React from "react"
 
+import { Button } from "@/components/ui/button"
 import type { ConvertActionResult } from "@/lib/actions/webflow-converter"
 import { writeToClipboard } from "@/lib/webflow-converter-client/clipboard"
 
@@ -55,12 +56,12 @@ export function ConverterResults({ result }: ConverterResultsProps) {
       {hasWarnings ? (
         <div
           data-testid="converter-warnings"
-          className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3"
+          className="rounded-md border border-warning/30 bg-warning/10 p-3"
         >
-          <p className="text-xs font-medium uppercase tracking-wide text-amber-600 dark:text-amber-400">
+          <p className="text-xs font-medium uppercase tracking-wide text-warning">
             Warnings
           </p>
-          <ul className="mt-1 max-h-40 list-inside list-disc overflow-y-auto text-sm text-amber-700 dark:text-amber-300">
+          <ul className="mt-1 max-h-40 list-inside list-disc overflow-y-auto text-sm text-foreground">
             {warnings.map((warning, index) => (
               <li key={index}>{warning}</li>
             ))}
@@ -78,21 +79,23 @@ export function ConverterResults({ result }: ConverterResultsProps) {
           </label>
           <pre
             id="converter-custom-code-pre"
-            className="max-h-64 overflow-auto rounded-md border bg-muted/50 p-3 text-xs"
+            className="max-h-64 overflow-x-auto overflow-y-auto rounded-md border bg-muted/50 p-3 text-xs"
           >
             {customCode}
           </pre>
-          <button
+          <Button
             type="button"
+            variant="secondary"
+            size="sm"
             onClick={handleCopyCustomCode}
-            className="self-start rounded-md border px-3 py-1.5 text-sm font-medium"
+            className="self-start"
           >
             {copyStatus === "success"
               ? "Copied!"
               : copyStatus === "error"
                 ? "Copy failed"
                 : "Copy custom code"}
-          </button>
+          </Button>
         </div>
       ) : null}
     </div>
