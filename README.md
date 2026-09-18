@@ -18,6 +18,10 @@ dashboard with charts (tasks by status/priority).
    and `ALLOW_USERNAME_LOGIN=true`.
 3. `npm run dev` — app on http://localhost:3000.
 4. Demo data: `npm run seed:demo` (or `seed:full-demo`).
+   > ⚠️ **Warning:** `seed:demo` and `seed:full-demo` delete all existing
+   > data. Only run against a local Supabase instance (`localhost`). The
+   > script will refuse to run against a hosted project unless
+   > `ALLOW_DESTRUCTIVE_SEED_ON_HOSTED=<project-ref>` is explicitly set.
 5. Tests: `npm test` requires a **local** Supabase stack — install the
    Supabase CLI, run `supabase start`, and point the `.env` Supabase vars
    at the local stack (the same way `.github/workflows/ci.yml` does).

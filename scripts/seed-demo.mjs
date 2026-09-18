@@ -17,6 +17,9 @@
 // the app.
 
 import { createClient } from "@supabase/supabase-js";
+import { assertSafeSeedTarget } from "./lib/assert-safe-seed-target.mjs";
+
+assertSafeSeedTarget("seed:demo");
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
