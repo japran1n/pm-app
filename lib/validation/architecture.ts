@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { workCategorySchema } from "./time-entries";
 
 // Mission 20260910-182104, F010: validation for the architecture board's
 // create/update actions (lib/actions/architecture.ts). Standing decision 1
@@ -58,3 +59,51 @@ export type CreateSectionInput = z.infer<typeof createSectionSchema>;
 export const updatePageSchema = createPageSchema.partial();
 
 export type UpdatePageInput = z.infer<typeof updatePageSchema>;
+
+// --- Architecture enrichment (mission 20260918) ---
+
+export { workCategorySchema };
+
+export const estimateMinutesSchema = z.number().int().min(1, "Estimate must be at least 1 minute");
+
+export const setDisciplineEstimateSchema = z.object({
+  taskId: z.string().uuid(),
+  discipline: workCategorySchema,
+  input: z.string().min(1).max(50),
+  note: z.string().max(500).optional(),
+});
+
+export const disciplineEstimateEntrySchema = z.object({
+  discipline: workCategorySchema,
+  input: z.string().min(1).max(50),
+  note: z.string().max(500).optional(),
+});
+
+export const setDisciplineEstimatesBulkSchema = z.object({
+  taskId: z.string().uuid(),
+  entries: z.array(disciplineEstimateEntrySchema).min(1).max(5),
+});
+
+export const clearDisciplineEstimateSchema = z.object({
+  taskId: z.string().uuid(),
+  discipline: workCategorySchema,
+});
+
+export const copyStatusSchema = z.enum(["not_started", "brief_ready", "drafted", "in_review", "approved"]);
+
+export const setNodeMetaSchema = z.object({
+  taskId: z.string().uuid(),
+  patch: z.object({
+    intent: z.string().max(1000).optional(),
+    audience: z.string().max(500).optional(),
+    primaryCta: z.string().max(200).optional(),
+    tone: z.string().max(200).optional(),
+    keywords: z.array(z.string().max(50)).max(30).optional(),
+    copyStatus: copyStatusSchema.optional(),
+  }),
+});
+
+export const setNodeMetaClientVisibilitySchema = z.object({
+  taskId: z.string().uuid(),
+  visible: z.boolean(),
+});
