@@ -69,7 +69,7 @@ export function convert(html: string, css: string): ConvertResult {
       return result;
     }),
   );
-  const emitResult = emitWebflow(html ?? "", cssResult);
+  const emitResult = emitWebflow(html ?? "", cssResult, scriptsResult.scripts);
 
   const warnings = new Set([...emitResult.warnings, ...scriptsResult.warnings, ...stylesResult.warnings]);
 

@@ -40,6 +40,14 @@ const OUTLINE_STYLES = new Set([...BORDER_STYLES, 'auto']);
 export interface ExpandResult {
   decls: Record<string, string>;
   warning?: string;
+  /**
+   * Property/value pairs dropped specifically because Webflow's clipboard
+   * style engine has no style-type entry for them (as opposed to being
+   * dropped for malformed/unparseable input). Callers (css.ts) route these
+   * into a per-class "unsupported" bucket instead of a plain warning, so
+   * they can be re-surfaced as a CSS embed instead of silently lost.
+   */
+  unsupported?: Record<string, string>;
 }
 
 /** Split a value on top-level whitespace, keeping var()/rgb()/calc() intact. */
@@ -590,6 +598,7 @@ export function expandDeclaration(prop: string, value: string): ExpandResult {
       return {
         decls: {},
         warning: `"${p}: ${v}" dropped — Webflow only supports the "text-decoration" property, not this longhand`,
+        unsupported: { [p]: v },
       };
 
     case 'grid-template-columns':
@@ -598,6 +607,7 @@ export function expandDeclaration(prop: string, value: string): ExpandResult {
       return {
         decls: {},
         warning: `"${p}" is not supported — Webflow's clipboard style engine rejects pasted CSS Grid template properties (configure grid in the Designer UI instead)`,
+        unsupported: { [p]: v },
       };
 
     default: {
@@ -606,7 +616,11 @@ export function expandDeclaration(prop: string, value: string): ExpandResult {
         return { decls: { [p]: v } };
       }
       if (UNSUPPORTED_GRID_LONGHANDS.has(p)) {
-        return { decls: {}, warning: `"${p}" is not supported — write it in the Designer's grid UI instead` };
+        return {
+          decls: {},
+          warning: `"${p}" is not supported — write it in the Designer's grid UI instead`,
+          unsupported: { [p]: v },
+        };
       }
       const bare = stripVendorPrefix(p);
       const inVocab = bare in shorthandProperties;

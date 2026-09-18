@@ -84,6 +84,13 @@ export interface ParsedClass {
    * null for a standalone (non-combo) class.
    */
   comboOf: string[] | null;
+  /**
+   * Property/value pairs Webflow's clipboard style engine cannot represent
+   * at all (dropped from `base`/`variants` for this reason specifically).
+   * Consumed by emit.ts to build a per-section CSS embed instead of being
+   * silently lost.
+   */
+  unsupported: Record<string, string>;
 }
 
 export interface ParseCssResult {
@@ -120,7 +127,7 @@ export function parseCss(cssText: string): ParseCssResult {
   // Combo key: the full chain joined by "|", e.g. "a|b" or "a|b|c".
   const ensure = (mapKey: string, name: string, comboOf: string[] | null): ParsedClass => {
     if (!classes.has(mapKey)) {
-      classes.set(mapKey, { name, base: {}, variants: {}, comboOf });
+      classes.set(mapKey, { name, base: {}, variants: {}, comboOf, unsupported: {} });
       order.push(mapKey);
     }
     const rec = classes.get(mapKey)!;
@@ -183,8 +190,14 @@ export function parseCss(cssText: string): ParseCssResult {
         for (const child of node.nodes ?? []) {
           if (child.type === "decl") {
             try {
-              const { decls, warning } = expandDeclaration(child.prop, child.value);
-              if (warning) warnings.push(`.${chain.join(".")}: ${warning}`);
+              const { decls, warning, unsupported } = expandDeclaration(child.prop, child.value);
+              if (unsupported) {
+                // Handled via a CSS embed (emit.ts) instead of a warning —
+                // the declaration isn't lost, just relocated.
+                Object.assign(rec.unsupported, unsupported);
+              } else if (warning) {
+                warnings.push(`.${chain.join(".")}: ${warning}`);
+              }
               if (child.important) {
                 warnings.push(`.${chain.join(".")}: "!important" on ${child.prop} was dropped`);
               }
@@ -255,6 +268,7 @@ export function mergeCssResults(results: ParseCssResult[]): ParseCssResult {
           comboOf: existing.comboOf ?? incoming.comboOf,
           base: { ...existing.base, ...incoming.base },
           variants: mergeVariants(existing.variants, incoming.variants),
+          unsupported: { ...existing.unsupported, ...incoming.unsupported },
         });
       }
     }

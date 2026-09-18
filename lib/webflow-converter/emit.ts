@@ -372,12 +372,112 @@ function collectClasses(nodes: WebflowNode[]): Set<string> {
   return found;
 }
 
+/** Selector text for one parsed class's chain, e.g. ["a","b"] -> ".a.b". */
+function selectorFor(rec: ParsedClass): string {
+  const chain = rec.comboOf && rec.comboOf.length > 0 ? [...rec.comboOf, rec.name] : [rec.name];
+  return "." + chain.join(".");
+}
+
+/** True when every class in `chain` is present together on at least one of `classLists`. */
+function chainIsUsed(chain: string[], classLists: string[][]): boolean {
+  if (chain.length === 1) {
+    return classLists.some((classes) => classes.includes(chain[0]));
+  }
+  return classLists.some((classes) => chain.every((c) => classes.includes(c)));
+}
+
+/** Recursively collects the class list of every node in a subtree (each node's own list, not flattened). */
+function collectClassLists(nodes: WebflowChild[], out: string[][]): void {
+  for (const node of nodes) {
+    if (isTextNode(node)) continue;
+    out.push(node.classes);
+    if (node.children.length > 0) collectClassLists(node.children, out);
+  }
+}
+
+/** Serializes a class's unsupported property/value pairs as one CSS rule body, sorted for determinism. */
+function ruleBody(decls: Record<string, string>): string {
+  return Object.keys(decls)
+    .sort()
+    .map((prop) => `${prop}: ${decls[prop]};`)
+    .join(" ");
+}
+
+/**
+ * Builds the CSS embed `<style>` block text for one section's subtree: one
+ * rule per class (in cssMap.order) that has unsupported declarations and is
+ * actually used somewhere in the subtree. Returns "" when nothing applies.
+ */
+function buildCssEmbedHtml(cssMap: ParseCssResult, classLists: string[][]): string {
+  const rules: string[] = [];
+  for (const key of cssMap.order) {
+    const rec = cssMap.classes.get(key)!;
+    if (!rec.unsupported || Object.keys(rec.unsupported).length === 0) continue;
+    const chain = rec.comboOf && rec.comboOf.length > 0 ? [...rec.comboOf, rec.name] : [rec.name];
+    if (!chainIsUsed(chain, classLists)) continue;
+    rules.push(`${selectorFor(rec)} { ${ruleBody(rec.unsupported)} }`);
+  }
+  if (rules.length === 0) return "";
+  return `<style>\n${rules.join("\n")}\n</style>`;
+}
+
+/** Builds one Embed (Custom Code) WebflowNode with the given raw HTML payload. */
+function buildEmbedNode(html: string): WebflowNode {
+  return {
+    _id: makeId(),
+    type: "HtmlEmbed",
+    tag: "div",
+    classes: ["is-hidden"],
+    children: [],
+    data: { html },
+    v: 1,
+  };
+}
+
+/**
+ * Walks the node tree and, for every `<section>` element, injects a CSS
+ * embed (first child, containing any CSS this section's classes need that
+ * Webflow's clipboard engine can't represent natively) and a JS embed (last
+ * child, only when script content exists) as `is-hidden` Embed nodes.
+ * Mutates `nodes` in place. Returns true when at least one embed was added
+ * (the caller uses this to decide whether to add the `is-hidden` style
+ * stub).
+ */
+function injectSectionEmbeds(nodes: WebflowChild[], cssMap: ParseCssResult, scriptHtml: string): boolean {
+  let injected = false;
+  for (const node of nodes) {
+    if (isTextNode(node)) continue;
+    if (node.children.length > 0) {
+      injected = injectSectionEmbeds(node.children, cssMap, scriptHtml) || injected;
+    }
+    if (node.tag === "section") {
+      const classLists: string[][] = [];
+      collectClassLists([node], classLists);
+      const cssHtml = buildCssEmbedHtml(cssMap, classLists);
+      if (cssHtml) {
+        node.children.unshift(buildEmbedNode(cssHtml));
+        injected = true;
+      }
+      if (scriptHtml) {
+        node.children.push(buildEmbedNode(scriptHtml));
+        injected = true;
+      }
+    }
+  }
+  return injected;
+}
+
 /**
  * Converts an HTML fragment plus a css.ts parseCss() result into Webflow's
  * XscpData clipboard payload. Never throws for expected-bad input — parse
  * or mapping problems surface as warnings on the returned result.
+ *
+ * `scripts` (optional) are inline JS code strings (e.g. from
+ * js-extract.ts's extractScripts()) that get wrapped in a `<script>` tag and
+ * injected as a JS embed into every `<section>` element, in addition to
+ * being available via the caller's own customCode surface.
  */
-export function emitWebflow(html: string, cssMap: ParseCssResult): EmitResult {
+export function emitWebflow(html: string, cssMap: ParseCssResult, scripts: string[] = []): EmitResult {
   const warnings: string[] = [...cssMap.warnings];
   const ctx: WalkContext = { warnings };
 
@@ -393,6 +493,28 @@ export function emitWebflow(html: string, cssMap: ParseCssResult): EmitResult {
   }
 
   const styles = buildStyles(cssMap, warnings);
+
+  // Only inline JS code belongs inside a <script> embed — external
+  // <script src> tags come through this array as their own outerHTML
+  // markup (js-extract.ts), which isn't valid content for a wrapped
+  // `<script>...</script>` block.
+  const inlineScripts = scripts.filter((s) => s.trim() !== "" && !s.trim().startsWith("<"));
+  const scriptHtml = inlineScripts.length > 0 ? `<script>${inlineScripts.join("\n")}</script>` : "";
+
+  const embedsInjected = injectSectionEmbeds(nodes, cssMap, scriptHtml);
+  if (embedsInjected && !styles.some((s) => s.name === "is-hidden")) {
+    styles.push({
+      _id: makeId(),
+      name: "is-hidden",
+      fake: false,
+      comb: "",
+      namespace: "",
+      categories: [],
+      styleLess: "display: none;",
+      variants: {},
+      children: [],
+    });
+  }
 
   // AS-114: every class referenced on a node must resolve to a style
   // definition. Classes with no matching CSS rule (ubiquitous in pasted
@@ -437,3 +559,5 @@ export function emitWebflowFromSource(html: string, cssText: string): EmitResult
   const cssMap = parseCss(cssText);
   return emitWebflow(html, cssMap);
 }
+
+export { buildEmbedNode };
