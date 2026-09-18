@@ -37,7 +37,7 @@ export const WEBFLOW_SUPPORTED_PROPS = new Set([
   // Typography
   "font-size", "font-weight", "font-family", "font-style", "font-variant",
   "line-height", "letter-spacing",
-  "text-align", "text-transform", "text-decoration",
+  "text-align", "text-transform",
   "color",
   "white-space", "word-break", "overflow-wrap",
 
@@ -81,6 +81,48 @@ export const WEBFLOW_SUPPORTED_PROPS = new Set([
 /** True when Webflow's clipboard style engine has a style-type entry for this property. */
 export function isWebflowSupportedProp(prop: string): boolean {
   return WEBFLOW_SUPPORTED_PROPS.has(prop.toLowerCase().trim());
+}
+
+/** Values Webflow's Designer accepts for the `display` property. */
+const WEBFLOW_DISPLAY_VALUES = new Set(["flex", "block", "inline-block", "inline", "grid", "none"]);
+
+/** Values Webflow's Designer accepts for align-items / align-content / align-self. */
+const WEBFLOW_ALIGN_VALUES = new Set(["center", "flex-start", "flex-end", "stretch", "normal", "baseline"]);
+
+/**
+ * Dimensional/unit-type properties whose "style type" in Webflow's clipboard
+ * engine only accepts concrete unit values — `auto` is not representable and
+ * crashes buildStyleBlock with "Invalid style type: undefined".
+ */
+const WEBFLOW_UNIT_ONLY_PROPS = new Set([
+  "margin-top", "margin-right", "margin-bottom", "margin-left",
+  "padding-top", "padding-right", "padding-bottom", "padding-left",
+  "flex-basis",
+  "width", "height", "min-width", "max-width", "min-height", "max-height",
+  "top", "right", "bottom", "left",
+]);
+
+/**
+ * True when Webflow's clipboard style engine can represent this specific
+ * property/value combination. Some property-value combinations are invalid
+ * even though the property itself is whitelisted — e.g. `display:
+ * inline-flex`, `align-items: baseline`... `margin-top: auto`. Callers must
+ * check this in addition to `isWebflowSupportedProp`.
+ */
+export function isWebflowSupportedValue(prop: string, value: string): boolean {
+  const p = prop.toLowerCase().trim();
+  const v = value.toLowerCase().trim();
+
+  if (p === "display") {
+    return WEBFLOW_DISPLAY_VALUES.has(v);
+  }
+  if (p === "align-items" || p === "align-content" || p === "align-self") {
+    return WEBFLOW_ALIGN_VALUES.has(v);
+  }
+  if (WEBFLOW_UNIT_ONLY_PROPS.has(p)) {
+    return v !== "auto";
+  }
+  return true;
 }
 
 /** Splits a decls map into the subset Webflow's clipboard engine accepts vs. everything else. */

@@ -314,7 +314,11 @@ describe("convert", () => {
     // Payload has correct type envelope
     expect(result.payload?.type).toBe("@webflow/XscpData");
 
-    // Node count: section > div > (h1 + a + ul > li) = 6 nodes total.
+    // Node count: section > div > (h1 + a + ul > li) = 6 nodes total, plus
+    // one HtmlEmbed node for the CSS embed: `.container`'s `margin: 0 auto`
+    // expands to margin-right/left: auto, which Webflow's clipboard style
+    // engine cannot represent (M7 value validator) and is routed to a CSS
+    // embed instead of styleLess.
     const flattenNodes = (nodes: WebflowNode[]): WebflowNode[] =>
       nodes.flatMap((n) => [
         n,
@@ -322,7 +326,7 @@ describe("convert", () => {
       ]);
     const topLevelNodes = result.payload?.payload.nodes ?? [];
     const allNodes = flattenNodes(topLevelNodes);
-    expect(allNodes.length).toBe(6);
+    expect(allNodes.length).toBe(7);
 
     // Style count: 8 classes defined (hero, container, hero-title, btn,
     // btn--primary combo, list, list__item — plus the pseudo-state variant

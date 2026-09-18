@@ -144,7 +144,7 @@ export function resolveVarFallback(value: string): string | null {
 import postcss from "postcss";
 import { expandDeclaration } from "./longhand";
 import { mapBreakpoint, variantKey as computeVariantKey } from "./breakpoints";
-import { partitionByWebflowSupport } from "./webflow-properties";
+import { partitionByWebflowSupport, isWebflowSupportedValue } from "./webflow-properties";
 
 /** One parsed CSS class's declarations, keyed by variant. */
 export interface ParsedClass {
@@ -292,15 +292,22 @@ export function parseCss(cssText: string): ParseCssResult {
               // var() intact) rather than the fallback.
               const resolvedSupported: Record<string, string> = {};
               const varUnsupported: Record<string, string> = {};
+              const valueUnsupported: Record<string, string> = {};
               for (const [prop, val] of Object.entries(supported)) {
                 const resolved = resolveVarFallback(val);
                 if (resolved === null) {
                   varUnsupported[prop] = val;
+                } else if (!isWebflowSupportedValue(prop, resolved)) {
+                  // M7: property is whitelisted but this specific value isn't
+                  // representable in Webflow's style-type table (e.g.
+                  // `display: inline-flex`, `margin-top: auto`) — route to
+                  // the CSS embed, preserving the resolved (var-free) value.
+                  valueUnsupported[prop] = resolved;
                 } else {
                   resolvedSupported[prop] = resolved;
                 }
               }
-              const allUnsupported = { ...unsupported, ...notWhitelisted, ...varUnsupported };
+              const allUnsupported = { ...unsupported, ...notWhitelisted, ...varUnsupported, ...valueUnsupported };
               if (Object.keys(allUnsupported).length > 0) {
                 // Handled via a CSS embed (emit.ts) instead of a warning —
                 // the declaration isn't lost, just relocated.
