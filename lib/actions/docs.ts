@@ -313,7 +313,15 @@ export async function deleteDoc(docId: string): Promise<{ error?: string }> {
     .eq("id", docId)
     .maybeSingle();
 
-  const { error } = await supabase.from("docs").delete().eq("id", docId);
+  // P1-4: soft delete — matches the tasks/projects `deleted_at` convention
+  // (20261127030000_docs_soft_delete.sql) instead of a permanent hard
+  // DELETE, so an accidentally deleted doc is recoverable rather than gone
+  // for good. `archived_by` mirrors `projects.archived_by` / `tasks.
+  // deleted_by`: the acting user, set atomically in the same update.
+  const { error } = await supabase
+    .from("docs")
+    .update({ deleted_at: new Date().toISOString(), archived_by: user.id })
+    .eq("id", docId);
 
   if (error) {
     logger.error("deleteDoc: delete failed", { error: error });
