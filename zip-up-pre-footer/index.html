@@ -1,0 +1,186 @@
+<section class="section_pre-footer is-dark background-color-alternate">
+  <style>
+    .pre-footer_component {
+      display: flex;
+      flex-direction: column;
+      gap: 5rem;
+    }
+
+    .pre-footer_content {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.75rem;
+      max-width: 34.25rem;
+    }
+
+    .pre-footer_label {
+      font-family: "Montserrat", sans-serif;
+      font-weight: 400;
+      font-size: 0.75rem;
+      line-height: 1;
+      text-transform: uppercase;
+      margin: 0;
+    }
+
+    .pre-footer_heading {
+      font-family: "Montserrat", sans-serif;
+      font-weight: 400;
+      font-size: 2rem;
+      line-height: 0.96;
+      margin: 0;
+    }
+
+    .pre-footer_list {
+      display: flex;
+      align-items: center;
+      gap: 1.25rem;
+    }
+
+    .pre-footer_item {
+      position: relative;
+      display: flex;
+      flex: 1;
+      align-items: flex-end;
+      height: 20.625rem;
+      padding: 1.5rem;
+      overflow: hidden;
+    }
+
+    .pre-footer_item.is-first {
+      align-items: flex-start;
+      justify-content: flex-end;
+      flex-direction: column;
+    }
+
+    .pre-footer_background {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      z-index: -2;
+    }
+
+    .pre-footer_overlay {
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+    }
+
+    .pre-footer_item.is-first .pre-footer_overlay {
+      background: linear-gradient(to bottom, rgba(0, 0, 0, 0) 60.758%, rgba(0, 0, 0, 0.5) 83.333%);
+    }
+
+    .pre-footer_item.is-second .pre-footer_overlay {
+      background: linear-gradient(to bottom, rgba(0, 0, 0, 0) 65.152%, rgba(0, 0, 0, 0.4) 77.576%);
+    }
+
+    .pre-footer_item.is-third .pre-footer_overlay {
+      background: linear-gradient(to bottom, rgba(0, 0, 0, 0) 64.091%, rgba(0, 0, 0, 0.3) 80.909%);
+    }
+
+    .pre-footer_item-content {
+      display: flex;
+      align-items: center;
+      gap: 3.25rem;
+    }
+
+    .pre-footer_item-title {
+      font-family: "Wix Madefor Display", sans-serif;
+      font-weight: 500;
+      font-size: 1.25rem;
+      line-height: 1.3;
+      margin: 0;
+      white-space: nowrap;
+    }
+
+    .pre-footer_item.is-second .pre-footer_item-title,
+    .pre-footer_item.is-third .pre-footer_item-title {
+      flex: 1 0 0;
+      white-space: normal;
+    }
+
+    .pre-footer_icon-wrapper {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 0.5rem;
+      height: 1rem;
+    }
+
+    .pre-footer_icon {
+      width: 1rem;
+      height: 0.5rem;
+      transform: rotate(90deg);
+    }
+
+    @media screen and (max-width: 991px) {
+      .pre-footer_list {
+        flex-wrap: wrap;
+      }
+
+      .pre-footer_item {
+        flex: 1 1 100%;
+      }
+    }
+
+    @media screen and (max-width: 767px) {
+      .pre-footer_heading {
+        font-size: 1.75rem;
+      }
+    }
+
+    @media screen and (max-width: 478px) {
+      .pre-footer_list {
+        flex-direction: column;
+      }
+
+      .pre-footer_item {
+        height: 16.25rem;
+      }
+    }
+  </style>
+
+  <div class="padding-global padding-section-medium">
+    <div class="container-large">
+      <div class="pre-footer_component">
+
+        <div class="pre-footer_content">
+          <p class="pre-footer_label">Zip-Up at your service</p>
+          <h2 class="pre-footer_heading">A network of support at the ready and on the road</h2>
+        </div>
+
+        <div class="pre-footer_list">
+
+          <div class="pre-footer_item is-first">
+            <img src="financing-guarantees.webp" alt="" class="pre-footer_background" />
+            <div class="pre-footer_overlay"></div>
+            <div class="pre-footer_item-content">
+              <p class="pre-footer_item-title">Financing &amp; Guarantees</p>
+              <div class="pre-footer_icon-wrapper">
+                <svg class="pre-footer_icon" viewBox="0 0 16 8" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M0 0L8 8L16 0H0Z" fill="currentColor" />
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <div class="pre-footer_item is-second">
+            <img src="support.webp" alt="" class="pre-footer_background" />
+            <div class="pre-footer_overlay"></div>
+            <p class="pre-footer_item-title">Support</p>
+          </div>
+
+          <div class="pre-footer_item is-third">
+            <img src="documents.webp" alt="" class="pre-footer_background" />
+            <div class="pre-footer_overlay"></div>
+            <p class="pre-footer_item-title">Documents</p>
+          </div>
+
+        </div>
+
+      </div>
+    </div>
+  </div>
+</section>
