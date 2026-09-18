@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   DndContext,
@@ -70,8 +70,10 @@ export function ArchitectureBoard({
   // F18: per-page estimate rollups, only computed when the caller has
   // toggled "show details" on and fetched the detail data -- avoids the
   // work entirely in the default (no details) view.
-  const rollups =
-    showDetails && detailsData ? computeRollups(pages, detailsData) : null;
+  const rollups = useMemo(
+    () => (showDetails && detailsData ? computeRollups(pages, detailsData) : null),
+    [showDetails, detailsData, pages],
+  );
   // Local, client-side-only mirror of every page's section id order, keyed
   // by page id -- optimistically updated on drop, rolled back to the
   // pre-drop snapshot if the persisting Server Action (reorderSections or
@@ -371,6 +373,7 @@ export function ArchitectureBoard({
                 onComponentClick={handleComponentClick}
                 showDetails={showDetails}
                 rollup={rollups?.get(page.id)}
+                detailsData={detailsData}
               />
             ))}
             <div className="shrink-0 w-52">

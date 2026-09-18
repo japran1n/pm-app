@@ -30,6 +30,7 @@ import {
 
 import { SortableSectionCard } from "@/components/architecture/sortable-section-card";
 import type { BoardComponent, BoardSection } from "@/lib/queries/architecture";
+import type { DisciplineEstimate } from "@/lib/architecture/types";
 
 export function SortableSectionList({
   pageId,
@@ -37,12 +38,16 @@ export function SortableSectionList({
   sectionsById,
   components = [],
   onComponentClick,
+  showDetails,
+  estimatesBySection,
 }: {
   pageId: string;
   orderedSectionIds: string[];
   sectionsById: Map<string, BoardSection>;
   components?: BoardComponent[];
   onComponentClick?: (componentId: string) => void;
+  showDetails?: boolean;
+  estimatesBySection?: Map<string, DisciplineEstimate[]>;
 }) {
   const { setNodeRef } = useDroppable({ id: pageId });
 
@@ -66,6 +71,8 @@ export function SortableSectionList({
             section={section}
             components={components}
             onComponentClick={onComponentClick}
+            showDetails={showDetails}
+            estimates={estimatesBySection?.get(section.id)}
           />
         ))}
       </div>

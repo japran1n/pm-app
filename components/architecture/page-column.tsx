@@ -11,7 +11,7 @@ import { SortableSectionList } from "@/components/architecture/sortable-section-
 import { DeletePageButton } from "@/components/architecture/delete-page-button";
 import { AddSectionButton } from "@/components/architecture/add-section-button";
 import { PageClientVisibilityToggle } from "@/components/architecture/page-client-visibility-toggle";
-import type { EstimateRollup } from "@/lib/architecture/types";
+import type { ArchitectureNodeDetails, EstimateRollup } from "@/lib/architecture/types";
 
 // Mission 20260910-182104, F006 (AS-019, AS-020, AS-021): a single page
 // column on the Architecture board. One column per page (AS-019), showing
@@ -46,6 +46,7 @@ export function PageColumn({
   onComponentClick,
   showDetails,
   rollup,
+  detailsData,
 }: {
   page: BoardPage;
   orderedSectionIds: string[];
@@ -54,6 +55,7 @@ export function PageColumn({
   onComponentClick?: (componentId: string) => void;
   showDetails?: boolean;
   rollup?: EstimateRollup;
+  detailsData?: ArchitectureNodeDetails | null;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: page.id, data: { type: "page" } });
@@ -98,6 +100,17 @@ export function PageColumn({
           sectionsById={sectionsById}
           components={components}
           onComponentClick={onComponentClick}
+          showDetails={showDetails}
+          estimatesBySection={
+            showDetails && detailsData
+              ? new Map(
+                  orderedSectionIds.map((id) => [
+                    id,
+                    detailsData.get(id)?.estimates ?? [],
+                  ]),
+                )
+              : undefined
+          }
         />
       </div>
     </div>

@@ -52,7 +52,11 @@ import { useComponentHover } from "@/lib/architecture/use-component-hover";
 import { SitemapIoDialog } from "@/components/architecture/sitemap-io-dialog";
 import { EstimateChip } from "@/components/architecture/estimate-chip";
 import { computeRollups } from "@/lib/architecture/estimate-rollup";
-import type { ArchitectureNodeDetails, EstimateRollup } from "@/lib/architecture/types";
+import type {
+  ArchitectureNodeDetails,
+  DisciplineEstimate,
+  EstimateRollup,
+} from "@/lib/architecture/types";
 
 type NodeActions = {
   onAddChild: (parentSlug: string) => void;
@@ -66,6 +70,9 @@ type SitemapNodeData = {
   node: LaidOutNode;
   actions: NodeActions;
   components: BoardComponent[];
+  showDetails?: boolean;
+  estimates?: DisciplineEstimate[];
+  detailsData?: ArchitectureNodeDetails | null;
 };
 
 // Colour carries the node's nature at a glance, reusing the design
@@ -79,7 +86,7 @@ function nodeAccent(node: LaidOutNode): string {
 }
 
 function SitemapNode({ data }: NodeProps) {
-  const { node, actions, components } = data as unknown as SitemapNodeData;
+  const { node, actions, components, showDetails, detailsData } = data as SitemapNodeData;
   const page = node.page;
   const isFolder = page === null;
   const accent = nodeAccent(node);
@@ -158,6 +165,8 @@ function SitemapNode({ data }: NodeProps) {
                 section={section}
                 components={components}
                 onComponentClick={actions.onComponentClick}
+                showDetails={showDetails}
+                estimates={detailsData?.get(section.id)?.estimates}
               />
             ))}
             <AddSectionButton pageTaskId={page.id} />
