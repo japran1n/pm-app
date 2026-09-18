@@ -367,14 +367,39 @@ function expandFlex(value: string): Record<string, string> {
 }
 
 // Properties Webflow accepts natively — must NEVER be warn-and-dropped
+//
+// text-decoration-line/-color/-thickness/-style were previously listed here
+// and passed straight into styleLess verbatim. Webflow's clipboard style
+// engine (buildStyleBlock) has no "style type" entry for these CSS3/4
+// longhands — it only recognizes the `text-decoration` shorthand as a single
+// style type. Emitting the longhand property name crashes the Designer with
+// "Error: Invalid style type: undefined at buildStyleBlock" on paste. They
+// are handled explicitly in expandDeclaration() instead (folded into
+// `text-decoration`, or dropped with a warning when they can't be
+// represented that way) — see the dedicated cases below.
 export const PASS_THROUGH = new Set([
   'background-position', 'background-size', 'background-repeat',
   'background-origin', 'background-clip', 'background-attachment',
   'background-color', 'background-image',
-  'text-decoration-line', 'text-decoration-color',
-  'text-decoration-thickness', 'text-decoration-style',
   'white-space',
+  // Unlike its CSS3/4 longhands, `text-decoration` itself IS a real Webflow
+  // style type and is safe to emit verbatim (it is technically a shorthand
+  // per css-shorthand-properties, but Webflow's own style panel treats it as
+  // a single value, e.g. "underline" / "line-through" / "none").
+  'text-decoration',
 ])
+
+// grid-template-columns/-rows/-areas are longhands (not caught by the
+// `grid`/`grid-template` shorthand guard below) that were previously passed
+// through verbatim, including function values like `repeat(3, 1fr)`.
+// Webflow's clipboard style engine does not have a style-type entry for
+// these grid-template longhands (CSS Grid in Webflow is configured through
+// the Designer's own grid UI, not arbitrary pasted styleLess) — emitting them
+// crashes buildStyleBlock the same way the text-decoration longhands did.
+// Drop them with a warning instead of crashing the paste.
+const UNSUPPORTED_GRID_LONGHANDS = new Set([
+  'grid-template-columns', 'grid-template-rows', 'grid-template-areas',
+]);
 
 // Real shorthands not in css-shorthand-properties
 const EXTRA_SHORTHANDS = new Set([
@@ -547,10 +572,41 @@ export function expandDeclaration(prop: string, value: string): ExpandResult {
     case 'grid-area':
       return { decls: {}, warning: `shorthand '${p}' is not supported — write longhands instead` };
 
+    // Webflow's clipboard style engine only recognizes `text-decoration` as
+    // one style type — it does not know the CSS3/4 longhands. Passing the
+    // longhand property name through verbatim crashes the Designer on paste
+    // ("Invalid style type: undefined at buildStyleBlock"). Fold the `-line`
+    // longhand into `text-decoration` (its value vocabulary — underline,
+    // line-through, none, etc. — is exactly what `text-decoration` itself
+    // accepts as a shorthand), and drop the color/thickness/style longhands
+    // with a warning since Webflow's single `text-decoration` property has
+    // no slot to carry them.
+    case 'text-decoration-line':
+      return { decls: { 'text-decoration': v } };
+
+    case 'text-decoration-color':
+    case 'text-decoration-thickness':
+    case 'text-decoration-style':
+      return {
+        decls: {},
+        warning: `"${p}: ${v}" dropped — Webflow only supports the "text-decoration" property, not this longhand`,
+      };
+
+    case 'grid-template-columns':
+    case 'grid-template-rows':
+    case 'grid-template-areas':
+      return {
+        decls: {},
+        warning: `"${p}" is not supported — Webflow's clipboard style engine rejects pasted CSS Grid template properties (configure grid in the Designer UI instead)`,
+      };
+
     default: {
       // Check pass-through first — these are always emitted verbatim
       if (PASS_THROUGH.has(p)) {
         return { decls: { [p]: v } };
+      }
+      if (UNSUPPORTED_GRID_LONGHANDS.has(p)) {
+        return { decls: {}, warning: `"${p}" is not supported — write it in the Designer's grid UI instead` };
       }
       const bare = stripVendorPrefix(p);
       const inVocab = bare in shorthandProperties;

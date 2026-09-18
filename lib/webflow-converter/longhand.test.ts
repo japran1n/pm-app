@@ -1481,3 +1481,55 @@ describe('AS-058/AS-059/AS-060/AS-061/AS-063: empty values are warned-and-droppe
     expect(result.warning).toMatch(/empty value skipped/);
   });
 });
+
+describe('M7: styleLess property names Webflow\'s clipboard style engine actually recognizes', () => {
+  // Root cause of "Error: Invalid style type: undefined at buildStyleBlock"
+  // on paste: styleLess contained property names Webflow's buildStyleBlock
+  // has no style-type entry for (the text-decoration-* CSS3/4 longhands, and
+  // the grid-template-* longhands). This suite locks in that these property
+  // names never reach styleLess verbatim, while `text-decoration` itself
+  // (which Webflow DOES recognize) still survives.
+
+  it('test_M7_text_decoration_shorthand_passes_through_verbatim', () => {
+    const result = expandDeclaration('text-decoration', 'underline');
+    expect(result.decls).toEqual({ 'text-decoration': 'underline' });
+    expect(result.warning).toBeUndefined();
+  });
+
+  it('test_M7_text_decoration_line_folds_into_text_decoration_not_emitted_as_its_own_key', () => {
+    const result = expandDeclaration('text-decoration-line', 'none');
+    expect(result.decls).toEqual({ 'text-decoration': 'none' });
+    expect(Object.keys(result.decls)).not.toContain('text-decoration-line');
+  });
+
+  it('test_M7_text_decoration_color_thickness_style_longhands_are_dropped_with_warning', () => {
+    for (const [prop, value] of [
+      ['text-decoration-color', 'red'],
+      ['text-decoration-thickness', '2px'],
+      ['text-decoration-style', 'dashed'],
+    ] as const) {
+      const result = expandDeclaration(prop, value);
+      expect(result.decls).toEqual({});
+      expect(result.warning).toBeTruthy();
+      expect(Object.keys(result.decls)).not.toContain(prop);
+    }
+  });
+
+  it('test_M7_grid_template_columns_repeat_function_is_dropped_with_warning_not_emitted_verbatim', () => {
+    const result = expandDeclaration('grid-template-columns', 'repeat(3, 1fr)');
+    expect(result.decls).toEqual({});
+    expect(result.warning).toBeTruthy();
+    expect(Object.keys(result.decls)).not.toContain('grid-template-columns');
+  });
+
+  it('test_M7_grid_template_rows_and_areas_are_also_dropped_with_warning', () => {
+    for (const [prop, value] of [
+      ['grid-template-rows', 'repeat(2, auto)'],
+      ['grid-template-areas', '"a b" "c d"'],
+    ] as const) {
+      const result = expandDeclaration(prop, value);
+      expect(result.decls).toEqual({});
+      expect(result.warning).toBeTruthy();
+    }
+  });
+});
