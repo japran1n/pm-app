@@ -13,6 +13,16 @@ import { z } from "zod";
 // specified for this feature) — documented here as the deliberate choice.
 export const MAX_ATTACHMENT_SIZE_BYTES = 4 * 1024 * 1024; // 4MB
 
+// P2-37: portal deliverables are design artefacts (zip exports, Figma
+// handoff packages, etc.) and need a higher size ceiling than task
+// attachments. 20MB is a reasonable limit for design files while staying
+// well under Supabase Storage's own upload limits. The Server Action that
+// handles portal deliverables (`deliverPortalDeliverable`) uses its own
+// bodySizeLimit in next.config.ts (already set to accommodate this) and
+// never goes through `uploadAttachmentForUser` — so this constant is the
+// only gate for deliverables, not a shared one.
+export const MAX_DELIVERABLE_SIZE_BYTES = 20 * 1024 * 1024; // 20MB
+
 // AS-113: allowed MIME types. Covers the three categories called out in
 // this feature's task: images, PDFs, and common office documents.
 // Deliberately a closed allowlist (not a denylist) so an unanticipated
@@ -38,6 +48,24 @@ export const ALLOWED_ATTACHMENT_MIME_TYPES = [
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   "application/vnd.ms-powerpoint",
   "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+] as const;
+
+// P2-37: portal deliverable MIME allowlist. Extends the task attachment
+// allowlist with archive and generic binary formats that design-handoff
+// workflows produce. SVG is deliberately excluded: ARCH-010 bans
+// `image/svg+xml` from all Storage uploads (stored XSS on the Storage
+// origin if the signed URL is opened directly). `application/octet-stream`
+// is the catch-all for Figma export packages and similar tools that emit
+// a generic binary content-type regardless of the container format.
+export const PORTAL_DELIVERABLE_ALLOWED_TYPES = [
+  ...ALLOWED_ATTACHMENT_MIME_TYPES,
+  // Archive formats
+  "application/zip",
+  "application/x-zip-compressed",
+  "application/x-rar-compressed",
+  "application/vnd.rar",
+  // Generic binary (Figma exports and similar design-tool outputs)
+  "application/octet-stream",
 ] as const;
 
 export const uploadAttachmentSchema = z.object({

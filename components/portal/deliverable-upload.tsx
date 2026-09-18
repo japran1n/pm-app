@@ -28,7 +28,7 @@ import { Loader2, Paperclip } from "lucide-react";
 import { toast } from "sonner";
 
 import { deliverPortalDeliverable } from "@/lib/actions/portal-deliverables";
-import { validateAttachmentFile } from "@/lib/tasks/validate-attachment-file";
+import { validateDeliverableFile } from "@/lib/tasks/validate-attachment-file";
 import { Button } from "@/components/ui/button";
 import { AttachmentDropzone } from "@/components/task/attachment-dropzone";
 import { cn } from "@/lib/utils";
@@ -48,7 +48,7 @@ export function DeliverableUpload({
   const [isDragActive, setIsDragActive] = useState(false);
 
   function sendFile(file: File) {
-    const validation = validateAttachmentFile(file);
+    const validation = validateDeliverableFile(file);
     if (!validation.ok) {
       toast.error(validation.reason);
       return;
