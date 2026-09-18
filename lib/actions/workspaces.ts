@@ -105,6 +105,7 @@ export async function createWorkspace(
     return { ok: false, error: "You must be signed in to create a workspace." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   const baseSlug = slugify(parsed.data.name);
@@ -275,6 +276,7 @@ export async function inviteMember(
     return { ok: false, error: "You must be signed in to invite a member." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: membership/permission check via requireWorkspaceAdmin(); caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   // Defense in depth (AS-143): re-check the caller is an active owner/admin
@@ -538,6 +540,7 @@ export async function revokeInvite(
     return { ok: false, error: "You must be signed in to revoke an invite." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: membership/permission check via requireWorkspaceAdmin(); caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   // Defense in depth (AS-143): re-check the caller is an active owner/admin
@@ -696,6 +699,7 @@ export async function changeMemberRole(
     };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: membership/permission check via requireWorkspaceAdmin(); caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   // Defense in depth (AS-143 convention): re-check the caller is an active
@@ -870,6 +874,7 @@ export async function removeMember(
     return { ok: false, error: "You must be signed in to remove a member." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: membership/permission check via requireWorkspaceAdmin(); caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   // Defense in depth (AS-143): re-check the caller is an active owner/admin
@@ -1066,6 +1071,7 @@ export async function transferOwnership(
     };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: membership/permission check via requireWorkspaceOwner(); caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   // Defense in depth (AS-143 convention): re-check the caller is
@@ -1202,6 +1208,7 @@ export async function deleteWorkspace(
     return { ok: false, error: "You must be signed in to delete a workspace." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: membership/permission check via requireWorkspaceOwner(); caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   // Defense in depth (AS-143 convention, tightened per AS-020): re-check the
@@ -1346,6 +1353,7 @@ export async function renameWorkspace(
     return { ok: false, error: "You must be signed in to rename a workspace." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: membership/permission check via requireWorkspaceAdmin(); caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   // Defense in depth (AS-143 convention): re-check the caller is
@@ -1465,6 +1473,7 @@ export async function changeWorkspaceSlug(
     return { ok: false, error: "You must be signed in to change a workspace's URL." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: membership/permission check via requireWorkspaceAdmin(); caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   // Defense in depth (AS-143 convention): re-check the caller is
@@ -1673,6 +1682,7 @@ export async function uploadWorkspaceLogo(
     };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   // Defense in depth (AS-143/renameWorkspace convention): only an

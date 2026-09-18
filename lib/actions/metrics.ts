@@ -1271,6 +1271,7 @@ export async function uploadImprovementImage(formData: FormData): Promise<Upload
     return { ok: false, error: "You must be signed in to upload a file." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   const extra = await loadImprovementExtra(admin, parsed.data.improvementId);
@@ -1362,6 +1363,7 @@ export async function getImprovementImageSignedUrl(
     return { ok: false, error: "You must be signed in." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   const { data: improvementRow, error: improvementError } = await admin

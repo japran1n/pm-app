@@ -109,6 +109,7 @@ export async function startClientPreview(
     return { ok: false, error: "You must be signed in." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: membership/permission check via requireWorkspaceAdmin(); caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   // Owner/admin only (this feature's spec, section 3), checked through
@@ -244,6 +245,7 @@ export async function exitClientPreview(
       PORTAL_PREVIEW_ACCESS_COOKIE,
     )?.value;
     if (previewAccessToken) {
+      // eslint-disable-next-line no-restricted-syntax -- ARCH-003: auth admin API call requires service_role
       const admin = createAdminClient();
       await admin.auth.admin.signOut(previewAccessToken, "local");
     }

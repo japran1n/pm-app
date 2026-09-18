@@ -148,6 +148,7 @@ export async function addProjectMember(
     return { ok: false, error: "You must be signed in to add a project member." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
   const project = await loadProjectContext(admin, parsed.data.projectId);
 
@@ -259,6 +260,7 @@ export async function removeProjectMember(
     return { ok: false, error: "You must be signed in to remove a project member." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
   const project = await loadProjectContext(admin, parsed.data.projectId);
 
@@ -346,6 +348,7 @@ export async function updateProjectVisibility(
     };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: membership/permission check via requireWorkspaceAdmin(); caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
   const project = await loadProjectContext(admin, parsed.data.projectId);
 

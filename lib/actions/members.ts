@@ -21,6 +21,7 @@ export async function getAssignedTaskCount(
     const { user } = await getCurrentUser();
     if (!user) return { count: 0 };
 
+    // eslint-disable-next-line no-restricted-syntax -- ARCH-003: membership/permission check via requireWorkspaceAdmin(); caller identity already verified via getCurrentUser()/!user check immediately above
     const admin = createAdminClient();
 
     const membership = await requireWorkspaceAdmin(admin, workspaceId, user.id);

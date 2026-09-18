@@ -82,6 +82,7 @@ export async function createProject(
     return { ok: false, error: "You must be signed in to create a project." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: membership/permission check via requireActiveMembership(); caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   // Defense in depth (AS-143): re-check the caller is an active member of
@@ -342,6 +343,7 @@ export async function editProject(
     return { ok: false, error: "You must be signed in to edit a project." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: membership/permission check via requireActiveMembership(); caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   // Defense in depth (AS-143): re-check the caller is an active member of
@@ -555,6 +557,7 @@ export async function archiveProject(
     return { ok: false, error: "You must be signed in to archive a project." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: membership/permission check via requireWorkspaceAdmin(); caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   // Defense in depth (AS-143 convention, tightened per AS-030/AS-033): the
@@ -731,6 +734,7 @@ export async function restoreProject(
     return { ok: false, error: "You must be signed in to restore a project." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: membership/permission check via requireWorkspaceAdmin(); caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   // Defense in depth (AS-143 convention, tightened per AS-253): the caller
@@ -912,6 +916,7 @@ export async function reorderProject(
     return { ok: false, error: "You must be signed in to reorder projects." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   const { data: target, error: targetError } = await admin

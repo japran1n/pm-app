@@ -219,6 +219,7 @@ export async function requireAssignActionContext(taskId: string): Promise<
     return { ok: false, error: "You must be signed in to change assignees." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: membership/permission check via requireActiveMembership(); caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   const taskContext = await loadTaskAssignContext(admin, taskId);

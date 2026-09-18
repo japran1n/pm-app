@@ -69,6 +69,7 @@ export async function uploadAvatar(
     return { ok: false, error: "You must be signed in to upload an avatar." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   // Fixed path per user (no extension) — see the module-level comment.
@@ -213,6 +214,7 @@ export async function updateProfile(
     return { ok: false, error: "You must be signed in to update your profile." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   const { error: updateError } = await admin

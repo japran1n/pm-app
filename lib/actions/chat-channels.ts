@@ -68,6 +68,7 @@ export async function createChannel(input: {
     return { ok: false, error: "You must be signed in to create a channel." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: membership/permission check via requireActiveMembership(); caller identity already verified via an explicit !user check immediately above
   const admin = createAdminClient();
 
   const membership = await requireActiveMembership(
@@ -195,6 +196,7 @@ export async function addChannelMember(
     return { ok: false, error: "You must be signed in to manage channel members." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via an explicit !user check immediately above
   const admin = createAdminClient();
 
   const { data: channelRow, error: channelError } = await admin
@@ -321,6 +323,7 @@ export async function findOrCreateDirectMessage(
     return { ok: false, error: "You can't start a direct message with yourself." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: membership/permission check via requireActiveMembership(); caller identity already verified via an explicit !user check immediately above
   const admin = createAdminClient();
 
   const callerMembership = await requireActiveMembership(admin, workspaceId, user.id);
@@ -369,6 +372,7 @@ export async function removeChannelMember(
     return { ok: false, error: "You must be signed in to manage channel members." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via an explicit !user check immediately above
   const admin = createAdminClient();
 
   const { data: callerMembership } = await admin

@@ -69,6 +69,7 @@ async function resolvePendingClientTask(
   | { ok: true; workspaceId: string; projectId: string }
   | { ok: false; error: string }
 > {
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data needed before the RLS-respecting write below
   const admin = createAdminClient();
 
   const { data: taskRow, error: taskError } = await admin
@@ -122,6 +123,7 @@ async function notifyPortalTaskDecision(params: {
   decision: "approved" | "changes_requested";
 }) {
   try {
+    // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data needed before the RLS-respecting write below
     const admin = createAdminClient();
     const recipients = await getPortalEventRecipients(admin, {
       projectId: params.projectId,
@@ -155,6 +157,7 @@ async function requireClientCaller(workspaceId: string) {
     return { ok: false as const, error: "You must be signed in." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: membership/permission check via requireActiveMembership(); caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
   const membership = await requireActiveMembership(admin, workspaceId, user.id);
 

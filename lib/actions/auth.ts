@@ -60,6 +60,7 @@ export async function signInWithMagicLink(
   // lookup result: both "pending invite found" and "no invite" return the
   // same `{ ok: true }`, so this can't be used to enumerate which emails
   // have an account or a pending invite.
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: pre-authentication invite lookup for an anonymous sign-in caller; workspace_members has no SELECT policy for an unauthenticated caller, so RLS cannot be used here and there is no signed-in user yet to check
   const admin = createAdminClient();
   const { data: pendingInvite } = await admin
     .from("workspace_members")

@@ -202,6 +202,7 @@ export function withAuthz<
     // (let alone allowed to fail) until AFTER the signed-in check passed.
     // A signed-out caller against a nonexistent/foreign workspace still
     // gets `notSignedInError`, byte-for-byte the same as before (AS-082).
+    // eslint-disable-next-line no-restricted-syntax -- ARCH-003: this is the withAuthz seam itself constructing ctx.admin from scratch; there is no earlier auth check to defer to because this call site IS where ctx.admin originates for every other action in this codebase
     const admin = createAdminClient();
 
     const [{ supabase, user }, resolved] = await Promise.all([

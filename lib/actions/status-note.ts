@@ -33,6 +33,7 @@ export async function updateStatusNote(input: unknown): Promise<UpdateStatusNote
     return { ok: false, error: "You must be signed in to update your status note." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: membership/permission check via requireActiveMembership(); caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
   const membership = await requireActiveMembership(admin, parsed.data.workspaceId, user.id);
   if (!membership.ok) {

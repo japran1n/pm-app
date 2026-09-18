@@ -39,6 +39,14 @@ const eslintConfig = defineConfig([
   // `withAuthz` wrapper (lib/actions/authz.ts) — never a raw
   // `supabase.auth.getUser()` per action, which costs one uncached Auth
   // round trip per call.
+  //
+  // ARCH-003: server actions must obtain the admin Supabase client from the
+  // withAuthz pipeline's ctx.admin (which is constructed after auth checks
+  // pass in lib/actions/authz.ts), not by calling createAdminClient()
+  // directly. A bare createAdminClient() call in an action gives admin-level
+  // DB access before any authorization check and bypasses the withAuthz
+  // audit trail. Exceptions must be justified inline with
+  // // eslint-disable-next-line no-restricted-syntax -- ARCH-003: <reason>
   {
     files: ["lib/actions/**/*.ts"],
     rules: {
@@ -49,6 +57,11 @@ const eslintConfig = defineConfig([
             'CallExpression[callee.property.name="getUser"][callee.object.property.name="auth"]',
           message:
             "Do not call supabase.auth.getUser() directly in lib/actions. Use getCurrentUser() from @/lib/auth/current-user (request-cached) or wrap the action with withAuthz from @/lib/actions/authz.",
+        },
+        {
+          selector: "CallExpression[callee.name='createAdminClient']",
+          message:
+            "ARCH-003: Obtain the admin client from withAuthz ctx.admin (lib/actions/authz.ts) — it is constructed only after authorization checks pass. If this call site is already guarded by an explicit auth check, add: // eslint-disable-next-line no-restricted-syntax -- ARCH-003: <reason>",
         },
       ],
     },
