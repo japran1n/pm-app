@@ -91,3 +91,48 @@ describe("M7 section embeds — JS embed", () => {
     expect(hasEmbed).toBe(false);
   });
 });
+
+describe("M7 section embeds — whitelist-driven property routing", () => {
+  it("test_M7_non_whitelisted_property_on_base_rule_is_routed_to_css_embed_not_styleLess", () => {
+    // aspect-ratio has no Webflow style-type entry, unlike the whitelisted
+    // properties alongside it in the same rule.
+    const css = `.box { color: red; aspect-ratio: 16 / 9; }`;
+    const { payload } = emitWebflow('<section class="box"></section>', parseCss(css));
+    const style = payload.payload.styles.find((s) => s.name === "box")!;
+    expect(style.styleLess).toBe("color: red;");
+    expect(style.styleLess).not.toContain("aspect-ratio");
+    const embed = payload.payload.nodes[0].children[0];
+    const html = "data" in embed ? (embed.data.html as string) : "";
+    expect(html).toContain("aspect-ratio: 16 / 9;");
+  });
+
+  it("test_M7_non_whitelisted_property_inside_a_medium_media_query_is_reconstructed_as_at_media_in_the_embed", () => {
+    const css = `.box { color: red; } @media (max-width: 991px) { .box { aspect-ratio: 1 / 1; } }`;
+    const { payload } = emitWebflow('<section class="box"></section>', parseCss(css));
+    const style = payload.payload.styles.find((s) => s.name === "box")!;
+    // The whitelisted medium-breakpoint declaration would still land in the
+    // medium variant slot if present; here only the unsupported prop exists,
+    // so there should be nothing (or nothing containing aspect-ratio) there.
+    expect(style.variants.medium?.styleLess ?? "").not.toContain("aspect-ratio");
+    const embed = payload.payload.nodes[0].children[0];
+    const html = "data" in embed ? (embed.data.html as string) : "";
+    expect(html).toContain("@media screen and (max-width: 991px)");
+    expect(html).toContain("aspect-ratio: 1 / 1;");
+  });
+
+  it("test_M7_non_whitelisted_property_inside_a_small_media_query_uses_the_767px_breakpoint", () => {
+    const css = `@media (max-width: 767px) { .box { aspect-ratio: 4 / 3; } }`;
+    const { payload } = emitWebflow('<section class="box"></section>', parseCss(css));
+    const embed = payload.payload.nodes[0].children[0];
+    const html = "data" in embed ? (embed.data.html as string) : "";
+    expect(html).toContain("@media screen and (max-width: 767px)");
+    expect(html).toContain("aspect-ratio: 4 / 3;");
+  });
+
+  it("test_M7_whitelisted_medium_property_still_lands_in_the_medium_variant_styleLess", () => {
+    const css = `@media (max-width: 991px) { .box { color: blue; } }`;
+    const { payload } = emitWebflow('<section class="box"></section>', parseCss(css));
+    const style = payload.payload.styles.find((s) => s.name === "box")!;
+    expect(style.variants.medium?.styleLess).toBe("color: blue;");
+  });
+});

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { expandDeclaration, isShorthand, isWidth, PASS_THROUGH, splitTop } from './longhand';
+import { isWebflowSupportedProp } from './webflow-properties';
 // css-shorthand-properties ships no type declarations.
 const cssShorthandPropsRequire: {
   shorthandProperties?: Record<string, unknown>;
@@ -1502,34 +1503,42 @@ describe('M7: styleLess property names Webflow\'s clipboard style engine actuall
     expect(Object.keys(result.decls)).not.toContain('text-decoration-line');
   });
 
-  it('test_M7_text_decoration_color_thickness_style_longhands_are_dropped_with_warning', () => {
+  // M7: whitelist approach. expandDeclaration's job is only to expand
+  // shorthands to real longhand property names — it no longer special-cases
+  // individual properties Webflow's clipboard engine can't represent.
+  // Whether a longhand survives into styleLess or gets routed to the CSS
+  // embed is now decided once, centrally, by the WEBFLOW_SUPPORTED_PROPS
+  // whitelist (webflow-properties.ts) applied in css.ts — see
+  // css.test.ts / section-embeds.test.ts for that behavior.
+  it('test_M7_text_decoration_color_thickness_style_longhands_pass_through_expandDeclaration_unfiltered', () => {
     for (const [prop, value] of [
       ['text-decoration-color', 'red'],
       ['text-decoration-thickness', '2px'],
       ['text-decoration-style', 'dashed'],
     ] as const) {
       const result = expandDeclaration(prop, value);
-      expect(result.decls).toEqual({});
-      expect(result.warning).toBeTruthy();
-      expect(Object.keys(result.decls)).not.toContain(prop);
+      expect(result.decls).toEqual({ [prop]: value });
+      expect(result.warning).toBeUndefined();
+      expect(isWebflowSupportedProp(prop)).toBe(false);
     }
   });
 
-  it('test_M7_grid_template_columns_repeat_function_is_dropped_with_warning_not_emitted_verbatim', () => {
+  it('test_M7_grid_template_columns_repeat_function_passes_through_expandDeclaration_unfiltered', () => {
     const result = expandDeclaration('grid-template-columns', 'repeat(3, 1fr)');
-    expect(result.decls).toEqual({});
-    expect(result.warning).toBeTruthy();
-    expect(Object.keys(result.decls)).not.toContain('grid-template-columns');
+    expect(result.decls).toEqual({ 'grid-template-columns': 'repeat(3, 1fr)' });
+    expect(result.warning).toBeUndefined();
+    expect(isWebflowSupportedProp('grid-template-columns')).toBe(false);
   });
 
-  it('test_M7_grid_template_rows_and_areas_are_also_dropped_with_warning', () => {
+  it('test_M7_grid_template_rows_and_areas_also_pass_through_expandDeclaration_unfiltered', () => {
     for (const [prop, value] of [
       ['grid-template-rows', 'repeat(2, auto)'],
       ['grid-template-areas', '"a b" "c d"'],
     ] as const) {
       const result = expandDeclaration(prop, value);
-      expect(result.decls).toEqual({});
-      expect(result.warning).toBeTruthy();
+      expect(result.decls).toEqual({ [prop]: value });
+      expect(result.warning).toBeUndefined();
+      expect(isWebflowSupportedProp(prop)).toBe(false);
     }
   });
 });

@@ -397,18 +397,6 @@ export const PASS_THROUGH = new Set([
   'text-decoration',
 ])
 
-// grid-template-columns/-rows/-areas are longhands (not caught by the
-// `grid`/`grid-template` shorthand guard below) that were previously passed
-// through verbatim, including function values like `repeat(3, 1fr)`.
-// Webflow's clipboard style engine does not have a style-type entry for
-// these grid-template longhands (CSS Grid in Webflow is configured through
-// the Designer's own grid UI, not arbitrary pasted styleLess) — emitting them
-// crashes buildStyleBlock the same way the text-decoration longhands did.
-// Drop them with a warning instead of crashing the paste.
-const UNSUPPORTED_GRID_LONGHANDS = new Set([
-  'grid-template-columns', 'grid-template-rows', 'grid-template-areas',
-]);
-
 // Real shorthands not in css-shorthand-properties
 const EXTRA_SHORTHANDS = new Set([
   'overscroll-behavior',
@@ -602,35 +590,19 @@ export function expandDeclaration(prop: string, value: string): ExpandResult {
     case 'text-decoration-line':
       return { decls: { 'text-decoration': v } };
 
-    case 'text-decoration-color':
-    case 'text-decoration-thickness':
-    case 'text-decoration-style':
-      return {
-        decls: {},
-        warning: `"${p}: ${v}" dropped — Webflow only supports the "text-decoration" property, not this longhand`,
-        unsupported: { [p]: v },
-      };
-
-    case 'grid-template-columns':
-    case 'grid-template-rows':
-    case 'grid-template-areas':
-      return {
-        decls: {},
-        warning: `"${p}" is not supported — Webflow's clipboard style engine rejects pasted CSS Grid template properties (configure grid in the Designer UI instead)`,
-        unsupported: { [p]: v },
-      };
+    // text-decoration-color/-thickness/-style, and the grid-template-*
+    // longhands, are no longer special-cased with their own warning here.
+    // Whichever properties Webflow's clipboard style engine doesn't have a
+    // style-type entry for is now decided once, centrally, by the
+    // WEBFLOW_SUPPORTED_PROPS whitelist in css.ts — that's what actually
+    // decides styleLess vs. CSS-embed placement. Emitting them here as plain
+    // decls (falling through to `default`) keeps this function's only job
+    // as "expand shorthands to real longhand property names."
 
     default: {
       // Check pass-through first — these are always emitted verbatim
       if (PASS_THROUGH.has(p)) {
         return { decls: { [p]: v } };
-      }
-      if (UNSUPPORTED_GRID_LONGHANDS.has(p)) {
-        return {
-          decls: {},
-          warning: `"${p}" is not supported — write it in the Designer's grid UI instead`,
-          unsupported: { [p]: v },
-        };
       }
       const bare = stripVendorPrefix(p);
       const inVocab = bare in shorthandProperties;

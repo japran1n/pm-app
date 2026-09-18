@@ -69,6 +69,7 @@ export { STATE_ALIASES };
 import postcss from "postcss";
 import { expandDeclaration } from "./longhand";
 import { mapBreakpoint, variantKey as computeVariantKey } from "./breakpoints";
+import { partitionByWebflowSupport } from "./webflow-properties";
 
 /** One parsed CSS class's declarations, keyed by variant. */
 export interface ParsedClass {
@@ -86,11 +87,20 @@ export interface ParsedClass {
   comboOf: string[] | null;
   /**
    * Property/value pairs Webflow's clipboard style engine cannot represent
-   * at all (dropped from `base`/`variants` for this reason specifically).
-   * Consumed by emit.ts to build a per-section CSS embed instead of being
-   * silently lost.
+   * at all (dropped from `base` for this reason specifically — i.e. not in
+   * the WEBFLOW_SUPPORTED_PROPS whitelist, or explicitly flagged unsupported
+   * by expandDeclaration). Consumed by emit.ts to build a per-section CSS
+   * embed instead of being silently lost.
    */
   unsupported: Record<string, string>;
+  /**
+   * Same as `unsupported`, but for declarations that came from a variant
+   * (breakpoint and/or pseudo-state) bucket rather than the base rule, keyed
+   * by the same variant key used in `variants`. emit.ts reconstructs the
+   * appropriate `@media` wrapper (for breakpoint-prefixed keys) around these
+   * when building the CSS embed.
+   */
+  unsupportedVariants: Record<string, Record<string, string>>;
 }
 
 export interface ParseCssResult {
@@ -127,7 +137,7 @@ export function parseCss(cssText: string): ParseCssResult {
   // Combo key: the full chain joined by "|", e.g. "a|b" or "a|b|c".
   const ensure = (mapKey: string, name: string, comboOf: string[] | null): ParsedClass => {
     if (!classes.has(mapKey)) {
-      classes.set(mapKey, { name, base: {}, variants: {}, comboOf, unsupported: {} });
+      classes.set(mapKey, { name, base: {}, variants: {}, comboOf, unsupported: {}, unsupportedVariants: {} });
       order.push(mapKey);
     }
     const rec = classes.get(mapKey)!;
@@ -191,17 +201,33 @@ export function parseCss(cssText: string): ParseCssResult {
           if (child.type === "decl") {
             try {
               const { decls, warning, unsupported } = expandDeclaration(child.prop, child.value);
-              if (unsupported) {
+              // Whitelist filter: even properties expandDeclaration treats as
+              // fine to emit verbatim may not be in Webflow's clipboard
+              // style-type vocabulary. Route anything outside the whitelist
+              // into the same "unsupported" bucket used for explicitly
+              // flagged properties (e.g. grid-template-*) instead of writing
+              // it into styleLess, where it would crash buildStyleBlock.
+              const { supported, unsupported: notWhitelisted } = partitionByWebflowSupport(decls);
+              const allUnsupported = { ...unsupported, ...notWhitelisted };
+              if (Object.keys(allUnsupported).length > 0) {
                 // Handled via a CSS embed (emit.ts) instead of a warning —
                 // the declaration isn't lost, just relocated.
-                Object.assign(rec.unsupported, unsupported);
-              } else if (warning) {
+                if (variantKey === null) {
+                  Object.assign(rec.unsupported, allUnsupported);
+                } else {
+                  rec.unsupportedVariants[variantKey] = {
+                    ...rec.unsupportedVariants[variantKey],
+                    ...allUnsupported,
+                  };
+                }
+              }
+              if (warning) {
                 warnings.push(`.${chain.join(".")}: ${warning}`);
               }
               if (child.important) {
                 warnings.push(`.${chain.join(".")}: "!important" on ${child.prop} was dropped`);
               }
-              Object.assign(bucket, decls);
+              Object.assign(bucket, supported);
             } catch (err: unknown) {
               const msg = err instanceof Error ? err.message : String(err);
               warnings.push(`unexpected error expanding '${child.prop}': ${msg}`);
@@ -269,6 +295,7 @@ export function mergeCssResults(results: ParseCssResult[]): ParseCssResult {
           base: { ...existing.base, ...incoming.base },
           variants: mergeVariants(existing.variants, incoming.variants),
           unsupported: { ...existing.unsupported, ...incoming.unsupported },
+          unsupportedVariants: mergeVariants(existing.unsupportedVariants, incoming.unsupportedVariants),
         });
       }
     }

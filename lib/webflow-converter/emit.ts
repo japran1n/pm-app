@@ -108,6 +108,42 @@ const PSEUDO_STATE_TO_WEBFLOW: Record<string, string> = {
 
 const BREAKPOINT_VARIANT_KEYS = new Set(["medium", "small", "tiny", "large", "xl", "xxl"]);
 
+// Webflow's shrinking (max-width) breakpoints, reconstructed as real
+// @media queries for the CSS embed. Matches breakpoints.ts's BREAKPOINTS.maxWidth.
+const MEDIA_QUERIES: Record<string, string> = {
+  medium: "@media screen and (max-width: 991px)",
+  small: "@media screen and (max-width: 767px)",
+  tiny: "@media screen and (max-width: 479px)",
+};
+
+// Reverse of css.ts's parseSelector() STATE_ALIASES — maps a variant's state
+// suffix (already normalized to Webflow's naming) back to the CSS pseudo
+// selector text to reconstruct in the CSS embed.
+const REVERSE_STATE_ALIAS: Record<string, string> = {
+  hover: ":hover",
+  pressed: ":active",
+  focus: ":focus",
+  "focus-visible": ":focus-visible",
+  visited: ":visited",
+  placeholder: "::placeholder",
+  before: "::before",
+  after: "::after",
+};
+
+/** Splits a css.ts variant key (e.g. "medium_hover", "main_hover", "medium") into its breakpoint and state parts. */
+function parseVariantKey(variantKey: string): { breakpoint: string | null; state: string | null } {
+  const underscoreIdx = variantKey.indexOf("_");
+  if (underscoreIdx === -1) {
+    return BREAKPOINT_VARIANT_KEYS.has(variantKey)
+      ? { breakpoint: variantKey, state: null }
+      : { breakpoint: null, state: variantKey };
+  }
+  const prefix = variantKey.slice(0, underscoreIdx);
+  const rest = variantKey.slice(underscoreIdx + 1);
+  if (BREAKPOINT_VARIANT_KEYS.has(prefix)) return { breakpoint: prefix, state: rest };
+  return { breakpoint: null, state: variantKey === `main_${rest}` ? rest : variantKey };
+}
+
 let idCounter = 0;
 
 /** Generates a unique Webflow-style node id, preferring crypto.randomUUID(). */
@@ -410,13 +446,42 @@ function ruleBody(decls: Record<string, string>): string {
  */
 function buildCssEmbedHtml(cssMap: ParseCssResult, classLists: string[][]): string {
   const rules: string[] = [];
+  // @media block bodies, keyed by the reconstructed media query text, so
+  // multiple classes/states sharing a breakpoint land in one @media block.
+  const mediaBlocks = new Map<string, string[]>();
+
   for (const key of cssMap.order) {
     const rec = cssMap.classes.get(key)!;
-    if (!rec.unsupported || Object.keys(rec.unsupported).length === 0) continue;
     const chain = rec.comboOf && rec.comboOf.length > 0 ? [...rec.comboOf, rec.name] : [rec.name];
     if (!chainIsUsed(chain, classLists)) continue;
-    rules.push(`${selectorFor(rec)} { ${ruleBody(rec.unsupported)} }`);
+
+    if (rec.unsupported && Object.keys(rec.unsupported).length > 0) {
+      rules.push(`${selectorFor(rec)} { ${ruleBody(rec.unsupported)} }`);
+    }
+
+    for (const [variantKey, decls] of Object.entries(rec.unsupportedVariants ?? {})) {
+      if (!decls || Object.keys(decls).length === 0) continue;
+      const { breakpoint, state } = parseVariantKey(variantKey);
+      const pseudo = state ? (REVERSE_STATE_ALIAS[state] ?? "") : "";
+      const rule = `${selectorFor(rec)}${pseudo} { ${ruleBody(decls)} }`;
+      if (breakpoint && MEDIA_QUERIES[breakpoint]) {
+        const media = MEDIA_QUERIES[breakpoint];
+        const block = mediaBlocks.get(media) ?? [];
+        block.push(rule);
+        mediaBlocks.set(media, block);
+      } else {
+        // No reconstructable @media (e.g. a bare pseudo-state variant, or a
+        // min-width breakpoint not covered by MEDIA_QUERIES) — emit as a
+        // plain rule.
+        rules.push(rule);
+      }
+    }
   }
+
+  for (const [media, blockRules] of mediaBlocks) {
+    rules.push(`${media} {\n${blockRules.join("\n")}\n}`);
+  }
+
   if (rules.length === 0) return "";
   return `<style>\n${rules.join("\n")}\n</style>`;
 }
