@@ -17,7 +17,7 @@
   },
   "devDependencies": {
     "@crxjs/vite-plugin": "^2.7.1",
-    "@eslint/js": "^9",
+    "@eslint/js": "^10",
     "@playwright/test": "^1.62.1",
     "@types/chrome": "^0.1.11",
     "@types/pngjs": "^6.0.5",
