@@ -112,6 +112,7 @@ export function convert(html: string, css: string): ConvertResult {
   const validation = validatePayload({
     ...emitResult.payload.payload,
     type: emitResult.payload.type,
+    meta: emitResult.payload.meta,
   } as XscpPayload);
 
   if (!validation.valid) {

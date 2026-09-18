@@ -538,6 +538,30 @@ describe("emitWebflow — AS-111 XscpData envelope", () => {
   });
 });
 
+describe("emitWebflow — paste crash regression: root-level meta object", () => {
+  it("test_paste_crash_envelope_has_root_level_meta_with_all_eight_keys_and_payload_has_no_meta_key", () => {
+    const { payload } = emitWebflow('<div class="card"></div>', parseCss(""));
+
+    // `meta` must be a SIBLING of `payload`, at the envelope root — a
+    // missing root-level `meta` is the confirmed root cause of the Webflow
+    // Designer paste crash (`TypeError: Cannot convert undefined or null to
+    // object at Object.hasOwn ... at pasteAttempted`).
+    expect(payload.meta).toEqual({
+      droppedLinks: 0,
+      dynBindRemovedCount: 0,
+      dynListBindRemovedCount: 0,
+      paginationRemovedCount: 0,
+      universalBindingsRemovedCount: 0,
+      unlinkedSymbolCount: 0,
+      codeComponentsRemovedCount: 0,
+      richTextComponentsStripped: false,
+    });
+
+    // `payload.payload` must NOT contain a nested `meta` key.
+    expect("meta" in payload.payload).toBe(false);
+  });
+});
+
 describe("emitWebflow — AS-114 stub styles for classes with no CSS rule", () => {
   it("test_AS_114_class_with_no_css_rule_gets_stub_style_alongside_styled_class", () => {
     const cssMap = parseCss(".wrapper { color: red; }");

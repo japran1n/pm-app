@@ -84,9 +84,42 @@ export interface XscpPayload {
   expandUserComponents: true;
 }
 
+/**
+ * Root-level clipboard metadata, a SIBLING of `payload` (not nested inside
+ * it) — see missions/20260917-170249 ground-truth wf.json. Every real
+ * Designer-produced clipboard capture carries this object; a missing `meta`
+ * is the confirmed root cause of the paste crash
+ * (`TypeError: Cannot convert undefined or null to object at Object.hasOwn
+ * ... at pasteAttempted`). We do not emit `sourceSiteId` — it identifies a
+ * specific Webflow site and is not ours to produce.
+ */
+export interface XscpMeta {
+  droppedLinks: number;
+  dynBindRemovedCount: number;
+  dynListBindRemovedCount: number;
+  paginationRemovedCount: number;
+  universalBindingsRemovedCount: number;
+  unlinkedSymbolCount: number;
+  codeComponentsRemovedCount: number;
+  richTextComponentsStripped: boolean;
+}
+
+/** The fixed `meta` values this converter emits — see XscpMeta doc comment. */
+export const DEFAULT_XSCP_META: XscpMeta = {
+  droppedLinks: 0,
+  dynBindRemovedCount: 0,
+  dynListBindRemovedCount: 0,
+  paginationRemovedCount: 0,
+  universalBindingsRemovedCount: 0,
+  unlinkedSymbolCount: 0,
+  codeComponentsRemovedCount: 0,
+  richTextComponentsStripped: false,
+};
+
 export interface XscpData {
   type: "@webflow/XscpData";
   payload: XscpPayload;
+  meta: XscpMeta;
 }
 
 export interface EmitResult {
@@ -819,6 +852,7 @@ export function emitWebflow(html: string, cssMap: ParseCssResult, scripts: strin
         ix2: { interactions: [], events: [], actionLists: [] },
         expandUserComponents: true,
       },
+      meta: { ...DEFAULT_XSCP_META },
     },
     warnings,
   };

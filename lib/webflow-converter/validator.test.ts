@@ -57,9 +57,23 @@ function makePayload(overrides: Partial<XscpPayload> = {}): XscpPayload {
   };
 }
 
-/** Attaches the `type` discriminator every valid payload must carry (AS-111). */
+/** The root-level `meta` object every valid payload must carry (crash regression). */
+function validMeta(): Record<string, unknown> {
+  return {
+    droppedLinks: 0,
+    dynBindRemovedCount: 0,
+    dynListBindRemovedCount: 0,
+    paginationRemovedCount: 0,
+    universalBindingsRemovedCount: 0,
+    unlinkedSymbolCount: 0,
+    codeComponentsRemovedCount: 0,
+    richTextComponentsStripped: false,
+  };
+}
+
+/** Attaches the `type` discriminator and root-level `meta` every valid payload must carry (AS-111). */
 function withType(payload: XscpPayload): XscpPayload {
-  return { ...payload, type: WEBFLOW_TYPE } as XscpPayload;
+  return { ...payload, type: WEBFLOW_TYPE, meta: validMeta() } as XscpPayload;
 }
 
 describe("validatePayload", () => {
@@ -381,6 +395,51 @@ describe("validatePayload", () => {
         makePayload({
           nodes: [makeNode({ classes: ["base", "combo"] })],
           styles: [base, combo],
+        })
+      );
+
+      const result = validatePayload(payload);
+
+      expect(result.valid).toBe(true);
+      expect(result.errors).toEqual([]);
+    });
+  });
+
+  describe("crash regression: root-level meta object (paste crash root cause)", () => {
+    it("rejects a payload with no meta object at all", () => {
+      const payload = {
+        ...makePayload({ nodes: [makeNode()], styles: [makeStyle()] }),
+        type: WEBFLOW_TYPE,
+      } as XscpPayload;
+
+      const result = validatePayload(payload);
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.some((e) => e.toLowerCase().includes("meta"))).toBe(true);
+    });
+
+    it("rejects a payload whose meta object is missing one or more required keys, naming them", () => {
+      const meta = validMeta();
+      delete (meta as Record<string, unknown>).droppedLinks;
+      delete (meta as Record<string, unknown>).richTextComponentsStripped;
+      const payload = {
+        ...makePayload({ nodes: [makeNode()], styles: [makeStyle()] }),
+        type: WEBFLOW_TYPE,
+        meta,
+      } as XscpPayload;
+
+      const result = validatePayload(payload);
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.some((e) => e.includes("droppedLinks"))).toBe(true);
+      expect(result.errors.some((e) => e.includes("richTextComponentsStripped"))).toBe(true);
+    });
+
+    it("accepts a payload whose meta object carries all eight required keys", () => {
+      const payload = withType(
+        makePayload({
+          nodes: [makeNode()],
+          styles: [makeStyle()],
         })
       );
 

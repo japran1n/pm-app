@@ -656,7 +656,23 @@ describe("convert", () => {
       expect(teamText.styleLess).toContain("var(--team-text-secondary, #d6d6d6)");
 
       // The payload must also pass the validator end to end.
-      expect(validatePayload({ ...payload, type: result.payload!.type } as never).valid).toBe(true);
+      expect(
+        validatePayload({ ...payload, type: result.payload!.type, meta: result.payload!.meta } as never).valid
+      ).toBe(true);
+
+      // 6. meta is a root-level sibling of payload, never nested inside it
+      // (paste crash regression — see emit.test.ts / validator.test.ts).
+      expect(result.payload!.meta).toEqual({
+        droppedLinks: 0,
+        dynBindRemovedCount: 0,
+        dynListBindRemovedCount: 0,
+        paginationRemovedCount: 0,
+        universalBindingsRemovedCount: 0,
+        unlinkedSymbolCount: 0,
+        codeComponentsRemovedCount: 0,
+        richTextComponentsStripped: false,
+      });
+      expect("meta" in payload).toBe(false);
     });
   });
 });

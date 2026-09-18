@@ -9,7 +9,7 @@
 // node's `children` holds child `_id` strings, and `classes` holds style
 // `_id`s, not class names.
 
-import type { WebflowChild, WebflowNode, WebflowStyle, XscpPayload } from "./emit";
+import type { WebflowChild, WebflowNode, WebflowStyle, XscpMeta, XscpPayload } from "./emit";
 
 /** Known Webflow node types this converter (and Webflow itself) recognizes. */
 const KNOWN_TYPES = new Set([
@@ -52,6 +52,24 @@ const EXPECTED_TYPE = "@webflow/XscpData";
 
 /** The `data` keys every element node must carry (item 5 of the ground-truth spec). */
 const COMMON_DATA_KEYS = ["devlink", "displayName", "attr", "xattr", "search", "visibility"] as const;
+
+/**
+ * Required root-level `meta` keys (a SIBLING of `payload`, not nested inside
+ * it). A missing `meta` object is the confirmed root cause of the Designer
+ * paste crash (`TypeError: Cannot convert undefined or null to object at
+ * Object.hasOwn ... at pasteAttempted`) — this is the check that would have
+ * caught it.
+ */
+const EXPECTED_META_KEYS = [
+  "droppedLinks",
+  "dynBindRemovedCount",
+  "dynListBindRemovedCount",
+  "paginationRemovedCount",
+  "universalBindingsRemovedCount",
+  "unlinkedSymbolCount",
+  "codeComponentsRemovedCount",
+  "richTextComponentsStripped",
+] as const;
 
 export interface ValidationResult {
   valid: boolean;
@@ -283,9 +301,34 @@ function validateStyles(
 }
 
 /**
+ * Validates the root-level `meta` object (a SIBLING of `payload`, per
+ * ground-truth wf.json — never nested inside `payload`). Pushes one error
+ * naming every missing key when `meta` is absent or incomplete — this is the
+ * check that would have caught the paste crash at its source.
+ */
+function validateMeta(meta: unknown, errors: string[]): void {
+  if (!meta || typeof meta !== "object") {
+    errors.push(
+      `payload is missing a root-level "meta" object (sibling of "payload") — Webflow's paste handler crashes without it`
+    );
+    return;
+  }
+  const missing = EXPECTED_META_KEYS.filter((key) => !(key in (meta as Record<string, unknown>)));
+  if (missing.length > 0) {
+    errors.push(`payload.meta is missing required key(s): ${missing.join(", ")}`);
+  }
+}
+
+/**
  * Validates a Webflow XscpData clipboard payload before it is placed on the
  * clipboard. Never throws for expected-bad input — every problem surfaces as
  * an error or warning entry on the returned result.
+ *
+ * `meta` is duck-typed the same way `type` is (see EXPECTED_TYPE doc
+ * comment): `XscpPayload` itself does not declare a `meta` field — it lives
+ * at the root of the full `XscpData` envelope, a sibling of `payload` — but
+ * this validator still enforces its presence for any caller that passes it
+ * alongside the flattened payload fields (see convert.ts's call site).
  *
  * AS-119: errors always BLOCK the copy. Callers must check `valid` and must
  * not offer any way to copy when `valid` is false.
@@ -301,6 +344,8 @@ export function validatePayload(payload: XscpPayload): ValidationResult {
   if ((payload as { type?: unknown }).type !== EXPECTED_TYPE) {
     errors.push(`payload.type must equal "${EXPECTED_TYPE}"`);
   }
+
+  validateMeta((payload as { meta?: XscpMeta }).meta, errors);
 
   const styleIds = validateStyles(payload.styles, errors, warnings);
   if (!Array.isArray(payload.styles)) {
