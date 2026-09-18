@@ -102,7 +102,7 @@ jobs:
         run: npx tsc --noEmit
 
       - name: Lint
-        run: npx eslint .
+        run: npx eslint . --max-warnings=0
 
       # W6: CI no longer points at the shared production Supabase project
       # (see missions/20260828-hardening/plan.md "W6" and
@@ -260,6 +260,15 @@ jobs:
         run: |
           npx playwright install --with-deps
           npx playwright test
+
+      - name: Upload Playwright traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces-${{ github.run_number }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Stop local Supabase stack
         if: always()

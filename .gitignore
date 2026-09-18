@@ -3,6 +3,12 @@
 .env*
 !.env.example
 
+# --- MCP LOCAL CONFIG ---
+# .mcp.json (committed) is a sanitized, read-only, no-project-ref template.
+# .mcp.local.json holds the real project_ref plus write/migration tools for
+# local development and must never be committed.
+.mcp.local.json
+
 # --- VERIFICATION SCRIPTS ---
 # Connection verification scripts are temporary; they're deleted on PASS.
 # Keep them out of git even before deletion.

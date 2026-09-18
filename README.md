@@ -136,6 +136,24 @@ cp .env.example .env
 
 Then fill in `.env` with the values described below.
 
+## Local MCP config
+
+`.mcp.json` (committed) is a sanitized template: no project ref, and only
+read-only Supabase tools (`docs`, `database`, `debugging`). It intentionally
+omits write/destructive tools like `apply_migration` and never carries the
+real project ref, so cloning this repo does not hand out production write
+access.
+
+For local development with your own project ref and write/migration tools,
+copy it to `.mcp.local.json` (already gitignored) and fill in your project
+ref and desired feature set:
+
+```
+cp .mcp.json .mcp.local.json
+# then edit .mcp.local.json: set project_ref=<your-project-ref> and add
+# "development" (or other write-capable features) to the `features` list
+```
+
 ## How to run the app
 
 ```
