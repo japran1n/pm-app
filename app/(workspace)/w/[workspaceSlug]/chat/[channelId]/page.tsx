@@ -53,22 +53,24 @@ export default async function ChatChannelPage({
     notFound();
   }
 
-  const [messages, members, replyCounts, readReceiptsByUser] = await Promise.all([
+  // P2-14: wave 1 — messages, members, read receipts; getReplyCounts now
+  // takes message ids (not channelId), so it moves to wave 2 alongside
+  // reactions and attachments, all of which need the message ids first.
+  const [messages, members, readReceiptsByUser] = await Promise.all([
     getChannelMessages(channelId),
     getChannelMembers(channelId),
-    getReplyCounts(channelId),
     getChannelReadReceipts(channelId),
   ]);
   const initialReadReceipts = Object.fromEntries(readReceiptsByUser);
 
-  // Faza A (docs/chat-slack-parity-plan.md, BUG-2/3/4/5): reactions and
-  // attachments for this page's own top-level messages, batched in one
-  // extra round-trip each (needs the message ids from above, so this
-  // can't join the first Promise.all). Converted to plain objects --
-  // Maps don't survive a Server->Client Component prop the way a plain
-  // object does, same convention getReplyCounts already established.
+  // Faza A (docs/chat-slack-parity-plan.md, BUG-2/3/4/5): reactions,
+  // attachments, and reply counts all need message ids from wave 1 --
+  // batch them together in wave 2. Converted to plain objects -- Maps
+  // don't survive a Server->Client Component prop the way a plain object
+  // does, same convention getReplyCounts already established.
   const messageIds = messages.map((m) => m.id);
-  const [reactionsByMessage, attachmentsByMessage] = await Promise.all([
+  const [replyCounts, reactionsByMessage, attachmentsByMessage] = await Promise.all([
+    getReplyCounts(messageIds),
     getMessageReactions(messageIds),
     getMessageAttachments(messageIds),
   ]);

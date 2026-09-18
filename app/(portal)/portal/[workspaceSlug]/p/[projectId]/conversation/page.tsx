@@ -148,11 +148,14 @@ export default async function PortalConversationPage({
     );
   }
 
-  const [messages, members, replyCounts] = await Promise.all([
+  // P2-14: wave 1 — messages and members; getReplyCounts now takes message
+  // ids (not channelId), so derive ids first, then call it in wave 2.
+  const [messages, members] = await Promise.all([
     getChannelMessages(channel.id),
     getChannelMembers(channel.id),
-    getReplyCounts(channel.id),
   ]);
+  const messageIds = messages.map((m) => m.id);
+  const replyCounts = await getReplyCounts(messageIds);
 
   // "Piši nam" (Paket E): resolve the ?mention=<userId> query param (the
   // team card's own link shape) against this channel's already-fetched
