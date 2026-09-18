@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { extractScripts, extractStyles } from "./js-extract";
+import { convert } from "./convert";
 
 describe("extractScripts (AS-101, AS-102, AS-103, AS-104, AS-105, AS-134)", () => {
   it("extracts inline script content", () => {
@@ -105,5 +106,40 @@ describe("extractStyles (AS-107, AS-108, AS-109, AS-110)", () => {
   it("returns empty result of the same shape for empty input", () => {
     const result = extractStyles("");
     expect(result).toEqual({ styles: [], warnings: [] });
+  });
+});
+
+describe("AS-134: GSAP CDN script is never injected into the Webflow clipboard payload", () => {
+  const GSAP_CDN =
+    "https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js";
+
+  it("test_AS134_gsap_cdn_blocked: a pasted GSAP CDN <script> tag never appears inside the JSON payload placed on the clipboard", () => {
+    const html = `<div class="box"></div><script src="${GSAP_CDN}"></script>`;
+    const css = ".box { color: red; }";
+
+    const result = convert(html, css);
+
+    // The conversion must complete successfully — a raw external <script>
+    // tag is not a fatal error condition (AS-101/AS-103 territory).
+    expect(result.errors).toEqual([]);
+    expect(result.payload).not.toBeNull();
+
+    // The clipboard payload (payload.payload — nodes + styles, exactly what
+    // gets JSON.stringify'd and written to the clipboard for pasting into
+    // Webflow's Designer) must never contain the CDN script tag or its raw
+    // URL. Webflow's XscpData format has no notion of a <script> element —
+    // injecting one directly into nodes/styles would corrupt the paste.
+    const payloadJson = JSON.stringify(result.payload);
+    expect(payloadJson).not.toContain(GSAP_CDN);
+    expect(payloadJson.toLowerCase()).not.toContain("<script");
+
+    // The current, documented behavior (per js-extract.ts's module comment:
+    // "no CDN auto-injection") is that the external script tag is instead
+    // carried, verbatim, in the separate `customCode.scripts` side-channel
+    // — not merged into the clipboard payload — alongside an advisory
+    // warning. Pin that so a regression that starts splicing scripts into
+    // the payload (or silently drops them entirely) is caught.
+    expect(result.customCode.scripts.some((s) => s.includes(GSAP_CDN))).toBe(true);
+    expect(result.warnings.some((w) => w.includes(GSAP_CDN))).toBe(true);
   });
 });

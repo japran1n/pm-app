@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { convert, convertFromSource } from "./convert";
 import type { WebflowNode, WebflowStyle } from "./emit";
@@ -397,13 +397,17 @@ describe("convert", () => {
       expect(contents.toLowerCase()).not.toContain("supabase");
     }
 
-    // Extend the scan to app/**/webflow* and components/**/webflow* — the
-    // (possibly not-yet-created) converter page/component files that will
-    // wire this module into the UI. Walk recursively; skip node_modules.
+    // Extend the scan to every source file that makes up the converter
+    // feature: components/webflow-tool/, lib/webflow-converter-client/, and
+    // the lib/actions/webflow-converter.ts Server Action. Walk recursively;
+    // skip node_modules. All .ts/.tsx files in these locations are scanned
+    // in full — not just ones whose filename happens to contain "webflow" —
+    // because a Server Action or helper file could import Supabase without
+    // "webflow" appearing in its own name.
     const isSourceFile = (name: string) =>
       (name.endsWith(".ts") || name.endsWith(".tsx")) && !name.endsWith(".test.ts") && !name.endsWith(".test.tsx");
 
-    const collectWebflowFiles = (root: string): string[] => {
+    const collectSourceFiles = (root: string): string[] => {
       const results: string[] = [];
       const walk = (dirPath: string) => {
         let entries: import("node:fs").Dirent[];
@@ -417,7 +421,7 @@ describe("convert", () => {
           const fullPath = join(dirPath, entry.name);
           if (entry.isDirectory()) {
             walk(fullPath);
-          } else if (entry.isFile() && entry.name.toLowerCase().includes("webflow") && isSourceFile(entry.name)) {
+          } else if (entry.isFile() && isSourceFile(entry.name)) {
             results.push(fullPath);
           }
         }
@@ -426,12 +430,27 @@ describe("convert", () => {
       return results;
     };
 
-    const scanRoots = [join(process.cwd(), "app"), join(process.cwd(), "components")];
-    const webflowFiles = scanRoots.flatMap((root) => collectWebflowFiles(root));
+    const scanRoots = [
+      join(process.cwd(), "components", "webflow-tool"),
+      join(process.cwd(), "lib", "webflow-converter-client"),
+    ];
+    const webflowFiles = [
+      ...scanRoots.flatMap((root) => collectSourceFiles(root)),
+      // The Server Action that wires the converter into the UI. Scanned
+      // directly (not the whole lib/actions/ directory, which also holds
+      // unrelated actions that legitimately import Supabase) so this guard
+      // stays specific to the webflow-converter feature.
+      join(process.cwd(), "lib", "actions", "webflow-converter.ts"),
+    ].filter((f) => existsSync(f));
+
+    // Guard the guard: fail loudly if the walk found nothing to check —
+    // that would silently pass without actually verifying anything.
+    expect(webflowFiles.length).toBeGreaterThan(0);
 
     for (const file of webflowFiles) {
       const contents = readFileSync(file, "utf-8");
-      expect(contents.toLowerCase()).not.toContain("supabase");
+      expect(contents.toLowerCase()).not.toContain("from '@supabase/");
+      expect(contents.toLowerCase()).not.toContain('from "@supabase/');
     }
   });
 

@@ -24,6 +24,18 @@ const KNOWN_TYPES = new Set([
 const CLASS_NAME_RE = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
 
 /**
+ * AS-132: Tailwind variant / arbitrary-value class names are common and
+ * valid (`md:w-1/2`, `hover:text-blue-500`, `w-[32px]`, `dark:hover:bg-red-500`)
+ * even though Webflow's own naming rule (`CLASS_NAME_RE`) rejects the `:`
+ * and `[]` characters they use. Any number of `variant:` prefixes are
+ * allowed, as long as the base utility segment after the last colon still
+ * starts with a letter — this still rejects genuinely malformed names like
+ * `1-bad-class` (no colon, starts with a digit), which must stay a hard
+ * error.
+ */
+const TAILWIND_VARIANT_RE = /^(?:[a-zA-Z0-9_-]+:)*[a-zA-Z][a-zA-Z0-9_.%/#-]*(?:\[[^\]]*\])?[a-zA-Z0-9_.%/#-]*$/;
+
+/**
  * Required `type` discriminator on a valid Webflow clipboard payload
  * (AS-111). Checked leniently via duck-typing: `XscpPayload` itself does not
  * declare a `type` field (see validator.test.ts and the handoff's
@@ -101,7 +113,11 @@ function walkNodes(
  * (the values node `classes` entries reference — see AS-114), or null if
  * `styles` was not a valid array.
  */
-function validateStyles(styles: WebflowStyle[] | null | undefined, errors: string[]): Set<string> | null {
+function validateStyles(
+  styles: WebflowStyle[] | null | undefined,
+  errors: string[],
+  warnings: string[]
+): Set<string> | null {
   if (!Array.isArray(styles)) return null;
 
   const styleNames = new Set<string>();
@@ -134,7 +150,18 @@ function validateStyles(styles: WebflowStyle[] | null | undefined, errors: strin
     if (typeof style.name !== "string" || style.name.trim() === "") {
       errors.push(`Style ${style._id ?? "(no id)"} has an empty class name`);
     } else if (!CLASS_NAME_RE.test(style.name)) {
-      errors.push(`Style class name "${style.name}" is not a valid Webflow class name`);
+      if (TAILWIND_VARIANT_RE.test(style.name)) {
+        // AS-132: Tailwind variant/arbitrary-value class names (e.g.
+        // `md:w-1/2`, `hover:text-blue-500`, `w-[32px]`) are valid, common
+        // Tailwind classes that Webflow's own naming rules don't support.
+        // Treat these as a warning + stub (same pattern as AS-114) instead
+        // of a hard error — they must never block the copy on their own.
+        warnings.push(
+          `Class name '${style.name}' contains characters not supported in Webflow (Tailwind variant) — converted as stub`
+        );
+      } else {
+        errors.push(`Style class name "${style.name}" is not a valid Webflow class name`);
+      }
     }
 
     if (style.styleLess !== undefined && style.styleLess !== null && typeof style.styleLess !== "string") {
@@ -176,7 +203,7 @@ export function validatePayload(payload: XscpPayload): ValidationResult {
     errors.push(`payload.type must equal "${EXPECTED_TYPE}"`);
   }
 
-  const styleNames = validateStyles(payload.styles, errors);
+  const styleNames = validateStyles(payload.styles, errors, warnings);
   if (!Array.isArray(payload.styles)) {
     errors.push("payload.styles must be an array");
   }
