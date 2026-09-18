@@ -15,7 +15,10 @@ import {
   diffTaskFields,
   writeTaskFieldChanges,
 } from "@/lib/activity/task-activity";
-import { computeFanoutRecipients } from "@/lib/notifications/fanout";
+import {
+  computeFanoutRecipients,
+  type FanoutRecipient,
+} from "@/lib/notifications/fanout";
 import { filterRecipientsByInAppPreference } from "@/lib/notifications/preferences";
 import { createNotification } from "@/lib/notifications/create-notification";
 import { isDoneStatus } from "@/lib/tasks/blocked-guard";
@@ -436,19 +439,36 @@ export async function bulkUpdateTasks(
       }
     }
 
+    // P2-30 perf fix: compute ALL recipients for every status-changed task
+    // first, then call filterRecipientsByInAppPreference ONCE with the full
+    // combined set — eliminates one DB round-trip per task (was N queries for
+    // N status-changed tasks; now always 1).
+    const statusRecipientsByTask = new Map<string, FanoutRecipient[]>();
     for (const taskId of statusChangedIds) {
-      const context = contexts.get(taskId);
-      if (!context) continue;
-      const computedRecipients = computeFanoutRecipients({
+      const computed = computeFanoutRecipients({
         type: "status_changed",
         actorId: user.id,
         watcherIds: watchersByTask.get(taskId) ?? [],
       });
-      const recipients = await filterRecipientsByInAppPreference(
-        admin,
-        computedRecipients ?? [],
-      );
-      for (const recipient of recipients ?? []) {
+      statusRecipientsByTask.set(taskId, computed ?? []);
+    }
+    const allStatusRecipients = Array.from(
+      statusRecipientsByTask.values(),
+    ).flat();
+    const filteredStatusRecipients = await filterRecipientsByInAppPreference(
+      admin,
+      allStatusRecipients,
+    );
+    const enabledStatusKeys = new Set(
+      filteredStatusRecipients.map((r) => `${r.userId}:${r.kind}`),
+    );
+
+    for (const taskId of statusChangedIds) {
+      const context = contexts.get(taskId);
+      if (!context) continue;
+      for (const recipient of statusRecipientsByTask.get(taskId) ?? []) {
+        if (!enabledStatusKeys.has(`${recipient.userId}:${recipient.kind}`))
+          continue;
         await createNotification(
           supabase,
           {
@@ -475,19 +495,36 @@ export async function bulkUpdateTasks(
       })
       .filter((row) => row.changed && row.assigneeId);
 
+    // P2-30 perf fix: same bulk-before-loop pattern for assignee changes —
+    // one preference query covers the entire batch regardless of how many
+    // tasks had their assignee changed.
+    const assigneeRecipientsByTask = new Map<string, FanoutRecipient[]>();
     for (const row of assigneeChangedRows) {
-      const context = contexts.get(row.id);
-      if (!context || !row.assigneeId) continue;
-      const computedRecipients = computeFanoutRecipients({
+      if (!row.assigneeId) continue;
+      const computed = computeFanoutRecipients({
         type: "assigned",
         actorId: user.id,
         assigneeIds: [row.assigneeId],
       });
-      const recipients = await filterRecipientsByInAppPreference(
-        admin,
-        computedRecipients ?? [],
-      );
-      for (const recipient of recipients ?? []) {
+      assigneeRecipientsByTask.set(row.id, computed ?? []);
+    }
+    const allAssigneeRecipients = Array.from(
+      assigneeRecipientsByTask.values(),
+    ).flat();
+    const filteredAssigneeRecipients = await filterRecipientsByInAppPreference(
+      admin,
+      allAssigneeRecipients,
+    );
+    const enabledAssigneeKeys = new Set(
+      filteredAssigneeRecipients.map((r) => `${r.userId}:${r.kind}`),
+    );
+
+    for (const row of assigneeChangedRows) {
+      const context = contexts.get(row.id);
+      if (!context || !row.assigneeId) continue;
+      for (const recipient of assigneeRecipientsByTask.get(row.id) ?? []) {
+        if (!enabledAssigneeKeys.has(`${recipient.userId}:${recipient.kind}`))
+          continue;
         await createNotification(
           supabase,
           {

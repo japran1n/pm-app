@@ -39,6 +39,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Check no secret key committed
+        run: node scripts/check-no-secret-key.mjs
+
       # Same reasoning as the `ci` job's own "Generate Next.js route types"
       # step: without this, tsc fails on `Cannot find name 'LayoutProps'`.
       - name: Generate Next.js route types

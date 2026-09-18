@@ -29,9 +29,11 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "4.5mb",
     },
   },
-  // Audit NX-001: baseline security headers. A full CSP is deferred until the
-  // inline theme script in app/layout.tsx carries a per-request nonce
-  // (audit NX-002) — shipping CSP before that would require 'unsafe-inline'.
+  // Audit NX-001: baseline security headers. The inline theme script obstacle
+  // (audit NX-002) is resolved — the script was extracted to /theme-init.js
+  // (public/theme-init.js, served as a static file). A full enforcing CSP with
+  // a per-request nonce is tracked as a separate PR; a Content-Security-Policy-
+  // Report-Only header with nonce support is set in middleware.ts.
   async headers() {
     return [
       {
