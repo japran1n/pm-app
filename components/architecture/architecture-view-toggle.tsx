@@ -8,6 +8,7 @@ import type { BoardComponent, BoardPage } from "@/lib/queries/architecture";
 import { ArchitectureBoard } from "@/components/architecture/board";
 import { getNodeDetailsForToggle } from "@/lib/actions/architecture";
 import type { ArchitectureNodeDetails } from "@/lib/architecture/types";
+import { EstimateSummary } from "@/components/architecture/estimate-summary";
 
 // NX-006: CanvasBoard is the only consumer of @xyflow/react — statically
 // importing it here pulled the whole flow-graph library into the shared
@@ -144,6 +145,13 @@ export function ArchitectureViewToggle({
           </button>
         </div>
       </div>
+
+      {showDetails && detailsData && (
+        <EstimateSummary
+          pages={pages}
+          detailsData={detailsData}
+        />
+      )}
 
       {view === "board" ? (
         <ArchitectureBoard
