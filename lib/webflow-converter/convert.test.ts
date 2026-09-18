@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { convert, convertFromSource } from "./convert";
+import { validatePayload } from "./validator";
 import type { WebflowNode, WebflowStyle } from "./emit";
 
 describe("convert", () => {
@@ -449,8 +450,11 @@ describe("convert", () => {
 
     for (const file of webflowFiles) {
       const contents = readFileSync(file, "utf-8");
-      expect(contents.toLowerCase()).not.toContain("from '@supabase/");
-      expect(contents.toLowerCase()).not.toContain('from "@supabase/');
+      // Reject any import whose path contains "supabase" (package or
+      // internal path) — covers '@supabase/supabase-js', '@/lib/supabase/client',
+      // relative paths like '../../../lib/supabase/client', or any other
+      // form where the import specifier includes "/supabase/" or "supabase".
+      expect(contents.toLowerCase()).not.toMatch(/from\s+['"][^'"]*supabase[^'"]*['"]/);
     }
   });
 
@@ -488,6 +492,77 @@ describe("convert", () => {
       const result = convert(html, css);
       expect(result.customCode.scripts.length).toBeGreaterThan(0);
       expect(result.customCode.scripts.some((s) => s.includes("console.log"))).toBe(true);
+    });
+  });
+
+  describe("AS-132 — Tailwind variant class names are downgraded to warnings, not errors", () => {
+    it("AS-132: md:w-1/2 produces a warning (not an error) and a non-null payload", () => {
+      const html = `<div class="md:w-1/2">x</div>`;
+      const css = `.md\\:w-1\\/2 { width: 50%; }`;
+
+      const result = convert(html, css);
+
+      expect(result.payload).not.toBeNull();
+      expect(result.errors).toEqual([]);
+      expect(result.warnings.some((w) => w.includes("md:w-1/2"))).toBe(true);
+    });
+
+    it("AS-132: w-[32px] produces a warning (not an error) and a non-null payload", () => {
+      const html = `<div class="w-[32px]">x</div>`;
+      const css = `.w-\\[32px\\] { width: 32px; }`;
+
+      const result = convert(html, css);
+
+      expect(result.payload).not.toBeNull();
+      expect(result.errors).toEqual([]);
+      expect(result.warnings.some((w) => w.includes("w-[32px]"))).toBe(true);
+    });
+
+    it("AS-132: hover:text-blue-500 produces a warning (not an error) and a non-null payload", () => {
+      const html = `<div class="hover:text-blue-500">x</div>`;
+      const css = `.hover\\:text-blue-500 { color: blue; }`;
+
+      const result = convert(html, css);
+
+      expect(result.payload).not.toBeNull();
+      expect(result.errors).toEqual([]);
+      expect(result.warnings.some((w) => w.includes("hover:text-blue-500"))).toBe(true);
+    });
+
+    it("AS-132: a genuinely malformed class name (digit prefix, no colon) still produces a hard error", () => {
+      const html = `<div class="ok">x</div>`;
+      const css = `.ok { color: red; }`;
+
+      const result = convert(html, css);
+      // Directly exercise validatePayload with an injected malformed style
+      // name to prove the digit-prefix path still hard-errors and the
+      // Tailwind-variant branch did not silently swallow it.
+      expect(result.payload).not.toBeNull();
+      const payload = result.payload!.payload;
+      const mutated = {
+        ...payload,
+        styles: [
+          ...payload.styles,
+          {
+            _id: "injected-bad-style",
+            fake: false,
+            name: "123invalid",
+            namespace: "" as const,
+            categories: [] as [],
+            comb: "",
+            styleLess: "",
+            variants: {},
+            children: [],
+          },
+        ],
+      };
+
+      const validation = validatePayload(mutated);
+
+      expect(validation.valid).toBe(false);
+      expect(
+        validation.errors.some((e: string) => e.includes("123invalid") && e.includes("not a valid Webflow class name"))
+      ).toBe(true);
     });
   });
 

@@ -82,7 +82,11 @@ export function ConverterResults({ result }: ConverterResultsProps) {
           >
             Paste into Webflow → Page Settings → Before &lt;/body&gt;
           </p>
+          {/* AS-123: tabIndex makes this scrollable region reachable via
+              keyboard even though <pre> has no native interactive semantics. */}
           <pre
+            // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
+            tabIndex={0}
             aria-labelledby="converter-custom-code-label"
             className="max-h-64 overflow-x-auto overflow-y-auto rounded-md border bg-muted/50 p-3 text-xs"
           >
