@@ -44,7 +44,7 @@ export function ConverterPreview({ html, css, js }: ConverterPreviewProps) {
       srcDoc={srcDoc}
       sandbox="allow-scripts"
       className={cn(
-        "h-full min-h-[400px] w-full rounded-md border bg-white",
+        "h-full min-h-[400px] w-full rounded-md border bg-background",
       )}
     />
   )

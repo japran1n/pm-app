@@ -40,7 +40,7 @@ export function ConverterVerify() {
         onPaste={handlePaste}
         role="textbox"
         aria-label="Paste here to verify clipboard"
-        className="min-h-[48px] cursor-text rounded-md border border-border bg-secondary/30 px-3 py-2 text-sm text-muted-foreground focus:outline-none"
+        className="min-h-[48px] cursor-text rounded-md border border-border bg-secondary/30 px-3 py-2 text-sm text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       >
         {!hasData && (
           <span className="select-none text-muted-foreground">

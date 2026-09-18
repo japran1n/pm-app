@@ -150,7 +150,9 @@ export function ConverterPage() {
             aria-busy={loading}
           >
             {loading ? "Converting…" : "Convert"}
-            <span className="text-xs opacity-70">⌘⏎</span>
+            <span className="text-xs opacity-70" aria-hidden="true">
+              ⌘⏎
+            </span>
           </Button>
           <Button
             type="button"

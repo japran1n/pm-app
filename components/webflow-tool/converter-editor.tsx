@@ -125,14 +125,22 @@ export function ConverterEditor({
       <div className="flex items-center justify-between">
         <TabsList variant="line">
           {TAB_CONFIG.map((tab) => (
-            <TabsTrigger key={tab.value} value={tab.value}>
+            <TabsTrigger
+              key={tab.value}
+              value={tab.value}
+              aria-label={
+                values[tab.value].length > 0
+                  ? `${tab.label} (has content)`
+                  : undefined
+              }
+            >
               <span className="inline-flex items-center gap-1.5">
                 {tab.label}
                 {values[tab.value].length > 0 ? (
                   <span
                     data-testid={`${tab.value}-dot-indicator`}
-                    className="h-1.5 w-1.5 rounded-full bg-blue-500"
-                    aria-label={`${tab.label} has content`}
+                    aria-hidden="true"
+                    className="h-1.5 w-1.5 rounded-full bg-primary"
                   />
                 ) : null}
               </span>

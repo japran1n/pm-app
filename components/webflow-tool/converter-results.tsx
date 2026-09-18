@@ -61,9 +61,14 @@ export function ConverterResults({ result }: ConverterResultsProps) {
           <p className="text-xs font-medium uppercase tracking-wide text-warning">
             Warnings
           </p>
-          <ul className="mt-1 max-h-40 list-inside list-disc overflow-y-auto text-sm text-foreground">
+          {/* AS-123: tabIndex makes this scrollable region reachable via
+              keyboard even though <ul> has no native interactive semantics. */}
+          {/* eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex */}
+          <ul tabIndex={0} className="mt-1 max-h-40 list-inside list-disc overflow-x-auto overflow-y-auto break-words text-sm text-foreground">
             {warnings.map((warning, index) => (
-              <li key={index}>{warning}</li>
+              <li key={index} className="break-words">
+                {warning}
+              </li>
             ))}
           </ul>
         </div>
@@ -71,14 +76,14 @@ export function ConverterResults({ result }: ConverterResultsProps) {
 
       {hasCustomCode ? (
         <div data-testid="converter-custom-code" className="flex flex-col gap-2">
-          <label
-            htmlFor="converter-custom-code-pre"
+          <p
+            id="converter-custom-code-label"
             className="text-xs font-medium uppercase tracking-wide text-muted-foreground"
           >
             Paste into Webflow → Page Settings → Before &lt;/body&gt;
-          </label>
+          </p>
           <pre
-            id="converter-custom-code-pre"
+            aria-labelledby="converter-custom-code-label"
             className="max-h-64 overflow-x-auto overflow-y-auto rounded-md border bg-muted/50 p-3 text-xs"
           >
             {customCode}
