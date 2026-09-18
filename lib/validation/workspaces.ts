@@ -95,6 +95,11 @@ export type ChangeMemberRoleInput = z.infer<typeof changeMemberRoleSchema>;
 export const removeMemberSchema = z.object({
   workspaceId: z.string().uuid("Invalid workspace."),
   targetMembershipId: z.string().uuid("Invalid member."),
+  // P2-25: optional reassign target — a uuid when the remover picks
+  // someone to inherit the removed member's tasks; absent/null means
+  // "just unassign". Validated as uuid so a bad value is caught before
+  // it reaches the RPC.
+  reassignTo: z.string().uuid("Invalid reassign target.").optional(),
 });
 
 export type RemoveMemberInput = z.infer<typeof removeMemberSchema>;

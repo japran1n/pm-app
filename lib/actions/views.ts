@@ -237,6 +237,7 @@ export async function createSavedView(input: {
     return { ok: false, error: "You must be signed in to save a view." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: membership/permission check via requireActiveMembership(); caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
   const membership = await requireActiveMembership(admin, parsed.data.workspaceId, user.id);
   if (!membership.ok) {
@@ -339,6 +340,7 @@ export async function updateSavedView(input: {
     return { ok: false, error: "You must be signed in to manage views." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
   const view = await loadViewForAuthz(admin, parsed.data.viewId);
   if (!view) {
@@ -469,6 +471,7 @@ export async function deleteSavedView(viewId: string): Promise<DeleteSavedViewRe
     return { ok: false, error: "You must be signed in to manage views." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
   const view = await loadViewForAuthz(admin, viewId);
   if (!view) {
@@ -507,6 +510,7 @@ export async function setDefaultSavedView(viewId: string): Promise<SavedViewActi
     return { ok: false, error: "You must be signed in to manage views." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
   const view = await loadViewForAuthz(admin, viewId);
   if (!view) {

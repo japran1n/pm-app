@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { ProfileForm } from "@/components/profile/profile-form";
 import { StatusNoteForm } from "@/components/profile/status-note-form";
 import { NotificationPreferencesForm } from "@/components/notifications/preferences-form";
@@ -28,10 +28,7 @@ export default async function ProfileSettingsPage({
   params: Promise<{ workspaceSlug: string }>;
 }) {
   const { workspaceSlug } = await params;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     redirect("/sign-in");

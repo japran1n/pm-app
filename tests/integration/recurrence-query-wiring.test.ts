@@ -224,7 +224,7 @@ describe.skipIf(!haveAdminCreds)(
 
     it("test_AS_317_getProjectListTasks_carries_recurrence_through_into_TaskCardTask", async () => {
       const { getProjectListTasks } = await import("@/lib/queries/tasks");
-      const rows = await getProjectListTasks(projectId);
+      const { tasks: rows } = await getProjectListTasks(projectId);
 
       const withRecurrence = rows.find((t) => t.id === taskWithRecurrenceId);
       expect(withRecurrence?.recurrence).toEqual({

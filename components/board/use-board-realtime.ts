@@ -36,6 +36,7 @@
 import { useEffect } from "react";
 
 import { createClient } from "@/lib/supabase/client";
+import { subscribeWhenAuthenticated } from "@/lib/realtime/subscribe-when-authenticated";
 import {
   subscribeToBoardRealtime,
   type BoardRealtimeEvent,
@@ -58,9 +59,9 @@ export function useBoardRealtime(
     if (!projectId) return;
 
     const supabase = createClient();
-    const unsubscribe = subscribeToBoardRealtime(supabase, projectId, onChange);
-
-    return unsubscribe;
+    return subscribeWhenAuthenticated(supabase, (client) =>
+      subscribeToBoardRealtime(client, projectId, onChange),
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 }

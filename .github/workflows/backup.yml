@@ -1,0 +1,76 @@
+name: Database Backup
+
+# P1-4: no automated backup of the real hosted Supabase project existed —
+# a schema or data problem anywhere between backups had no restore point.
+# Runs daily plus on-demand, dumping the hosted project (not the ephemeral
+# per-CI-run local stack ci.yml spins up) and retaining the result as a
+# workflow artifact.
+on:
+  schedule:
+    - cron: "0 2 * * *" # Daily at 02:00 UTC
+  workflow_dispatch:
+
+# Same rationale as ci.yml's own concurrency group: this workflow's `db
+# dump --linked` steps talk to the real hosted project (via the Management
+# API / direct Postgres connection), so overlapping runs (a scheduled run
+# landing mid-way through a manually triggered one, say) are serialised
+# rather than left to race each other.
+concurrency:
+  group: backup-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    name: Supabase DB Backup
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Version pinned to @v3, the same tag ci.yml already verified as
+      # current (see that workflow's "Setup Supabase CLI" step comment,
+      # verified against https://github.com/supabase/setup-cli 2026-08-28)
+      # — kept in sync rather than re-verified independently here.
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v3
+        with:
+          version: latest
+
+      # `db dump --linked`/`--data-only` both require the local CLI to be
+      # linked to the target hosted project first (confirmed via
+      # https://supabase.com/docs/reference/cli/supabase-link: "Some
+      # commands like db dump, db push, and db pull require your project
+      # to be linked first"). SUPABASE_DB_PASSWORD avoids an interactive
+      # password prompt in CI, per that same page's documented convention.
+      - name: Link Supabase project
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: supabase link --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
+
+      # Schema dump: `db dump --linked` with no --data-only/--role-only
+      # flag already excludes table data by default (confirmed via the
+      # same CLI reference page: "The default dump does not contain any
+      # data or custom roles" — there is no separate --schema-only flag in
+      # the current CLI).
+      - name: Dump schema
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: supabase db dump --linked -f schema-backup.sql
+
+      - name: Dump data
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: supabase db dump --linked --data-only -f data-backup.sql
+
+      - name: Upload backup artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-backup-${{ github.run_number }}-${{ github.run_attempt }}
+          path: |
+            schema-backup.sql
+            data-backup.sql
+          retention-days: 90
+          if-no-files-found: error

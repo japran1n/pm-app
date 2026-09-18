@@ -134,10 +134,20 @@ function docFoldersBaseQuery(supabase: Awaited<ReturnType<typeof createClient>>)
   );
 }
 
+// P1-4 (docs soft delete, 20261127030000_docs_soft_delete.sql): every
+// listing query built on this base excludes soft-deleted docs, same
+// explicit application-layer `.is("deleted_at", null)` convention every
+// other query file in lib/queries/ applies on top of the matching RLS
+// predicate (see e.g. lib/queries/tasks.ts) — RLS already filters this too,
+// this is defense in depth / consistency with that convention, not the
+// only enforcement layer.
 function docsBaseQuery(supabase: Awaited<ReturnType<typeof createClient>>) {
-  return supabase.from("docs").select(
-    "id, workspace_id, project_id, folder_id, title, content, position, created_by, updated_by, created_at, updated_at, client_visible, doc_kind, relevant_from",
-  );
+  return supabase
+    .from("docs")
+    .select(
+      "id, workspace_id, project_id, folder_id, title, content, position, created_by, updated_by, created_at, updated_at, client_visible, doc_kind, relevant_from",
+    )
+    .is("deleted_at", null);
 }
 
 type FolderQuery = ReturnType<typeof docFoldersBaseQuery>;
@@ -291,6 +301,7 @@ export async function getDocById(docId: string): Promise<Doc | null> {
       "id, workspace_id, project_id, folder_id, title, content, position, created_by, updated_by, created_at, updated_at, client_visible, doc_kind, relevant_from",
     )
     .eq("id", docId)
+    .is("deleted_at", null)
     .maybeSingle();
 
   if (error || !data) {

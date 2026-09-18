@@ -41,6 +41,20 @@ export function RouteError({
     // Intentional dev-visible log, never shown to the user (see file
     // header for why: no external error-reporting service is in scope).
     console.error(error);
+
+    // Client-side errors otherwise produce no server-side signal at all —
+    // POST this one to the logger so it shows up alongside server-side
+    // errors. Best-effort only: reporting failures must never break the
+    // error page itself.
+    fetch("/api/client-errors", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: error.message,
+        digest: error.digest,
+        url: typeof window !== "undefined" ? window.location.href : undefined,
+      }),
+    }).catch(() => {});
   }, [error]);
 
   return (
@@ -57,6 +71,11 @@ export function RouteError({
       <div className="flex flex-col gap-1">
         <p className="text-xl font-semibold">{title}</p>
         <p className="max-w-sm text-sm text-muted-foreground">{description}</p>
+        {error.digest && (
+          <p className="font-mono text-muted-foreground text-xs mt-2">
+            Error ID: {error.digest}
+          </p>
+        )}
       </div>
       <Button
         type="button"

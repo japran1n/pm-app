@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { CreateWorkspaceForm } from "@/components/onboarding/create-workspace-form";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { getDefaultWorkspaceSlug } from "@/lib/queries/workspaces";
 import { Logo } from "@/components/brand/logo";
 
@@ -18,16 +18,25 @@ import { Logo } from "@/components/brand/logo";
 // call sites can't drift. Only a user with zero active memberships sees
 // the form below.
 export default async function OnboardingPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
-  if (user) {
-    const slug = await getDefaultWorkspaceSlug(supabase, user.id);
-    if (slug) {
-      redirect(`/w/${slug}`);
+  // Auth guard: this page has no other membership/role check standing
+  // between it and the public internet, so a logged-out visitor hitting
+  // this URL directly must not see the (agency-only) create-workspace
+  // form.
+  if (!user) {
+    redirect("/sign-in");
+  }
+
+  const defaultWorkspace = await getDefaultWorkspaceSlug(supabase, user.id);
+  if (defaultWorkspace) {
+    // Same client-vs-agency split as the auth callback route: a portal
+    // client who already has an active (activated) membership belongs in
+    // their portal, not the agency "create your workspace" flow.
+    if (defaultWorkspace.role === "client") {
+      redirect(`/portal/${defaultWorkspace.slug}`);
     }
+    redirect(`/w/${defaultWorkspace.slug}`);
   }
 
   return (

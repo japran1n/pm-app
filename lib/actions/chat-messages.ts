@@ -487,6 +487,7 @@ export async function sendMessage(
     return { ok: false, error: "You must be signed in to send a message." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: membership/permission check via requireChannelMembership(); caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
   const isMember = await requireChannelMembership(
     admin,
@@ -608,6 +609,7 @@ export async function editMessage(
     return { ok: false, error: "You must be signed in to edit a message." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
   const { data: existing, error: existingError } = await admin
     .from("messages")
@@ -695,6 +697,7 @@ export async function deleteMessage(
     return { ok: false, error: "You must be signed in to delete a message." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
   const { data: existing, error: existingError } = await admin
     .from("messages")

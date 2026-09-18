@@ -46,6 +46,7 @@ export async function activateInvitedMemberships(
   userId: string,
   email: string,
 ): Promise<ActivatedMembership[]> {
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: invite activation runs immediately after Supabase auth confirms the sign-in, before the user is a member of anything, so no RLS policy would allow their own session to claim the pending invite row
   const admin = createAdminClient();
 
   const { data: pending, error: selectError } = await admin

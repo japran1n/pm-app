@@ -36,6 +36,7 @@
 import { useEffect } from "react";
 
 import { createClient } from "@/lib/supabase/client";
+import { subscribeWhenAuthenticated } from "@/lib/realtime/subscribe-when-authenticated";
 import {
   subscribeToCommentsRealtime,
   type CommentRealtimeEvent,
@@ -58,13 +59,9 @@ export function useCommentsRealtime(
     if (!taskId) return;
 
     const supabase = createClient();
-    const unsubscribe = subscribeToCommentsRealtime(
-      supabase,
-      taskId,
-      onChange,
+    return subscribeWhenAuthenticated(supabase, (client) =>
+      subscribeToCommentsRealtime(client, taskId, onChange),
     );
-
-    return unsubscribe;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskId]);
 }

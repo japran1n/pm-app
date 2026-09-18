@@ -213,6 +213,7 @@ export async function addColumn(input: {
     return { ok: false, error: "You must be signed in to manage board columns." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
   const project = await loadProjectContext(admin, parsed.data.projectId);
   if (!project) {
@@ -308,6 +309,7 @@ export async function updateColumn(input: {
     return { ok: false, error: "You must be signed in to manage board columns." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
   const column = await loadColumnContext(admin, parsed.data.columnId);
   if (!column) {
@@ -420,6 +422,7 @@ export async function reorderColumn(
     return { ok: false, error: "You must be signed in to manage board columns." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
   const column = await loadColumnContext(admin, parsed.data.columnId);
   if (!column) {
@@ -503,6 +506,7 @@ export async function removeColumn(columnId: string): Promise<RemoveColumnResult
     return { ok: false, error: "You must be signed in to manage board columns." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
   const column = await loadColumnContext(admin, parsed.data.columnId);
   if (!column) {
@@ -608,6 +612,7 @@ export async function removeColumnWithReassignment(
     return { ok: false, error: "You must be signed in to manage board columns." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
   const column = await loadColumnContext(admin, parsed.data.columnId);
   if (!column) {

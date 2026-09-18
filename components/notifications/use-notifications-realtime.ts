@@ -15,6 +15,7 @@
 import { useEffect } from "react";
 
 import { createClient } from "@/lib/supabase/client";
+import { subscribeWhenAuthenticated } from "@/lib/realtime/subscribe-when-authenticated";
 import {
   subscribeToNotificationsRealtime,
   type NotificationInsertEvent,
@@ -37,39 +38,16 @@ export function useNotificationsRealtime(
     if (!userId) return;
 
     const supabase = createClient();
-
-    // F272 (part 2, AS-388 regression): on a freshly-loaded page,
-    // `createBrowserClient`'s GoTrueClient reads the session from cookies
-    // ASYNCHRONOUSLY, and only once that resolves does supabase-js's own
-    // auth-state listener call `realtime.setAuth(token)` (see
-    // node_modules/@supabase/supabase-js/dist/index.cjs's
-    // `_handleTokenChanged`, fired from an `INITIAL_SESSION` event).
-    // Subscribing to the channel before that finishes joins it with NO
-    // access token — every `postgres_changes` row is then silently
-    // dropped by Realtime's RLS check for this channel's entire
-    // lifetime, with no visible error (`.subscribe()` still reports
-    // `SUBSCRIBED`, since the join itself succeeds independent of RLS).
-    // Confirmed with a standalone repro against the real linked Supabase
-    // project outside the app entirely (see this session's handoff).
-    // `getSession()` awaits that exact same initialization promise, so
-    // subscribing only after it resolves guarantees `realtime.setAuth`
-    // has already run for the real session first. `cancelled` guards the
-    // case where `userId` changes/unmounts before this resolves.
-    let cancelled = false;
-    let unsubscribe: (() => void) | null = null;
-    void supabase.auth.getSession().then(() => {
-      if (cancelled) return;
-      unsubscribe = subscribeToNotificationsRealtime(
-        supabase,
-        userId,
-        onInsert,
-      );
-    });
-
-    return () => {
-      cancelled = true;
-      unsubscribe?.();
-    };
+    // P2-31: subscribeWhenAuthenticated awaits the session AND explicitly
+    // calls realtime.setAuth() before subscribing — the inline
+    // getSession().then() pattern only waited for session hydration but
+    // did not set the JWT on the socket, so the first phx_join could
+    // still be sent unauthenticated. See
+    // lib/realtime/subscribe-when-authenticated.ts for the full
+    // root-cause write-up.
+    return subscribeWhenAuthenticated(supabase, (client) =>
+      subscribeToNotificationsRealtime(client, userId, onInsert),
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 }

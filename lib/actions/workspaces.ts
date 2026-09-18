@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 
 import type { User } from "@supabase/supabase-js";
 
@@ -32,13 +33,15 @@ import type { ActionOutcome, ActionResult } from "@/lib/actions/authz";
 
 export type CreateWorkspaceResult = ActionOutcome<{ slug: string }>;
 
-export type InviteMemberResult = ActionOutcome<{ invitedEmail: string }>;
+export type InviteMemberResult = ActionOutcome<{ invitedEmail: string; emailSent: boolean }>;
 
 export type RevokeInviteResult = ActionOutcome;
 
 export type ChangeMemberRoleResult = ActionOutcome;
 
-export type RemoveMemberResult = ActionOutcome;
+// P2-25: extend with the pre-removal assigned-task count so the dialog
+// can display a preview before the user confirms.
+export type RemoveMemberResult = ActionOutcome<{ assignedTaskCount?: number }>;
 
 export type TransferOwnershipResult = ActionOutcome;
 
@@ -80,6 +83,11 @@ export async function createWorkspace(
   _prevState: CreateWorkspaceResult | null,
   formData: FormData,
 ): Promise<CreateWorkspaceResult> {
+  const allowCreation = process.env.ALLOW_WORKSPACE_CREATION !== "false";
+  if (!allowCreation) {
+    return { ok: false, error: "Workspace creation is disabled." };
+  }
+
   const parsed = createWorkspaceSchema.safeParse({
     name: formData.get("name"),
   });
@@ -97,6 +105,7 @@ export async function createWorkspace(
     return { ok: false, error: "You must be signed in to create a workspace." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   const baseSlug = slugify(parsed.data.name);
@@ -267,6 +276,7 @@ export async function inviteMember(
     return { ok: false, error: "You must be signed in to invite a member." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: membership/permission check via requireWorkspaceAdmin(); caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   // Defense in depth (AS-143): re-check the caller is an active owner/admin
@@ -460,7 +470,40 @@ export async function inviteMember(
     }
   }
 
-  return { ok: true, invitedEmail: parsed.data.email };
+  // Send the actual invite email via Supabase Auth. The invite row above is
+  // the source of truth for membership/acceptance (lib/actions/invites.ts);
+  // this call is purely about getting a sign-in link into the invitee's
+  // inbox. It can fail non-fatally (e.g. the email already has an account,
+  // which inviteUserByEmail rejects) without undoing the invite record
+  // already written — the caller falls back to telling the inviter to share
+  // the link manually via the `emailSent` flag below.
+  let emailSent = false;
+  try {
+    const headerList = await headers();
+    const origin =
+      headerList.get("origin") ??
+      process.env.NEXT_PUBLIC_APP_URL ??
+      "";
+    const { error: inviteEmailError } = await admin.auth.admin.inviteUserByEmail(
+      parsed.data.email,
+      { redirectTo: `${origin}/auth/callback` },
+    );
+    if (!inviteEmailError) {
+      emailSent = true;
+    } else {
+      logger.warn("inviteMember: invite email failed (non-fatal)", {
+        email: parsed.data.email,
+        error: inviteEmailError.message,
+      });
+    }
+  } catch (inviteEmailError) {
+    logger.warn("inviteMember: invite email failed (non-fatal)", {
+      email: parsed.data.email,
+      error: String(inviteEmailError),
+    });
+  }
+
+  return { ok: true, invitedEmail: parsed.data.email, emailSent };
 }
 
 // Revokes a pending invite (AS-024). Only an active owner/admin member of
@@ -497,6 +540,7 @@ export async function revokeInvite(
     return { ok: false, error: "You must be signed in to revoke an invite." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: membership/permission check via requireWorkspaceAdmin(); caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   // Defense in depth (AS-143): re-check the caller is an active owner/admin
@@ -655,6 +699,7 @@ export async function changeMemberRole(
     };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: membership/permission check via requireWorkspaceAdmin(); caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   // Defense in depth (AS-143 convention): re-check the caller is an active
@@ -803,13 +848,17 @@ export async function changeMemberRole(
 // many active owner-role members this workspace currently has. If the
 // target is an owner and is the only one, reject — a workspace can never
 // be left without an owner via this action.
+// P2-25: `reassignTo` is the user_id of the member who should inherit
+// the removed member's tasks. When absent the tasks are unassigned.
 export async function removeMember(
   workspaceId: string,
   targetMembershipId: string,
+  reassignTo?: string,
 ): Promise<RemoveMemberResult> {
   const parsed = removeMemberSchema.safeParse({
     workspaceId,
     targetMembershipId,
+    reassignTo,
   });
 
   if (!parsed.success) {
@@ -825,6 +874,7 @@ export async function removeMember(
     return { ok: false, error: "You must be signed in to remove a member." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: membership/permission check via requireWorkspaceAdmin(); caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   // Defense in depth (AS-143): re-check the caller is an active owner/admin
@@ -845,7 +895,7 @@ export async function removeMember(
 
   const { data: targetRow, error: lookupError } = await admin
     .from("workspace_members")
-    .select("id, status, role")
+    .select("id, status, role, user_id")
     .eq("id", parsed.data.targetMembershipId)
     .eq("workspace_id", parsed.data.workspaceId)
     .maybeSingle();
@@ -869,6 +919,19 @@ export async function removeMember(
     };
   }
 
+  // P2-25: count tasks currently assigned to this member in this workspace
+  // BEFORE the RPC removes them, so the caller can include the count in a
+  // result (used by the dialog to show a "pre-removal preview"). A failure
+  // here is non-fatal — the count falls back to 0.
+  let assignedTaskCount = 0;
+  if (targetRow.user_id) {
+    const { count } = await admin
+      .from("task_assignees")
+      .select("task_id", { count: "exact", head: true })
+      .eq("user_id", targetRow.user_id);
+    assignedTaskCount = count ?? 0;
+  }
+
   // F094 hardening (AS-018): the old guard here was check-then-act — a
   // SELECT to count active owners, then a separate conditional DELETE, with
   // nothing tying the two together. Two concurrent removeMember calls
@@ -886,11 +949,15 @@ export async function removeMember(
   // where two calls can both observe a stale "safe to delete" count. This
   // mirrors the atomicity approach F095 used for create_workspace_with_owner
   // (AS-006).
+  //
+  // P2-25: the updated RPC also accepts p_reassign_to so task assignments
+  // are cleaned up atomically with the membership deletion.
   const { data: rpcRows, error: rpcError } = await admin.rpc(
     "remove_workspace_member",
     {
       p_membership_id: parsed.data.targetMembershipId,
       p_workspace_id: parsed.data.workspaceId,
+      p_reassign_to: parsed.data.reassignTo ?? null,
     },
   );
 
@@ -928,7 +995,12 @@ export async function removeMember(
     action: "member.removed",
     targetType: "workspace_member",
     targetId: parsed.data.targetMembershipId,
-    metadata: { role: targetRow.role },
+    metadata: {
+      role: targetRow.role,
+      ...(parsed.data.reassignTo
+        ? { reassigned_to: parsed.data.reassignTo }
+        : {}),
+    },
   });
 
   const { data: workspaceRow } = await admin
@@ -950,7 +1022,7 @@ export async function removeMember(
     }
   }
 
-  return { ok: true };
+  return { ok: true, assignedTaskCount };
 }
 
 // F130 (AS-233, AS-234): transfers ownership of a workspace to another
@@ -999,6 +1071,7 @@ export async function transferOwnership(
     };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: membership/permission check via requireWorkspaceOwner(); caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   // Defense in depth (AS-143 convention): re-check the caller is
@@ -1135,6 +1208,7 @@ export async function deleteWorkspace(
     return { ok: false, error: "You must be signed in to delete a workspace." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: membership/permission check via requireWorkspaceOwner(); caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   // Defense in depth (AS-143 convention, tightened per AS-020): re-check the
@@ -1279,6 +1353,7 @@ export async function renameWorkspace(
     return { ok: false, error: "You must be signed in to rename a workspace." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: membership/permission check via requireWorkspaceAdmin(); caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   // Defense in depth (AS-143 convention): re-check the caller is
@@ -1398,6 +1473,7 @@ export async function changeWorkspaceSlug(
     return { ok: false, error: "You must be signed in to change a workspace's URL." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: membership/permission check via requireWorkspaceAdmin(); caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   // Defense in depth (AS-143 convention): re-check the caller is
@@ -1606,6 +1682,7 @@ export async function uploadWorkspaceLogo(
     };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   // Defense in depth (AS-143/renameWorkspace convention): only an

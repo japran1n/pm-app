@@ -292,7 +292,35 @@ export const AttachmentList = forwardRef<AttachmentListHandle, {
     formData.set("taskId", taskId);
     formData.set("file", file);
 
-    const result = await uploadAttachment(formData);
+    // Bug fix: uploadAttachment (a Server Action call) previously had no
+    // try/catch here — an HTTP-layer failure (e.g. a 413 from the body
+    // exceeding next.config.ts's Server Action bodySizeLimit, or a network
+    // error) rejected this async function's promise instead of resolving
+    // with `{ ok: false }`, leaving this job's progress row stuck on
+    // "uploading" forever with no toast, matching the pattern already used
+    // in components/profile/profile-form.tsx.
+    let result: Awaited<ReturnType<typeof uploadAttachment>>;
+    try {
+      result = await uploadAttachment(formData);
+    } catch {
+      if (cancelledJobIdsRef.current.has(jobId)) {
+        cancelledJobIdsRef.current.delete(jobId);
+        return;
+      }
+      setUploadJobs((previous) =>
+        previous.map((existingJob) =>
+          existingJob.id === jobId
+            ? {
+                ...existingJob,
+                status: "error",
+                reason: "Something went wrong. Please try again in a moment.",
+              }
+            : existingJob,
+        ),
+      );
+      toast.error(`${file.name}: Something went wrong. Please try again in a moment.`);
+      return;
+    }
 
     // F259: a cancelled job's result is ignored entirely — no state
     // update, no toast — since its row was already removed from

@@ -68,6 +68,7 @@ export async function createChannel(input: {
     return { ok: false, error: "You must be signed in to create a channel." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: membership/permission check via requireActiveMembership(); caller identity already verified via an explicit !user check immediately above
   const admin = createAdminClient();
 
   const membership = await requireActiveMembership(
@@ -195,6 +196,7 @@ export async function addChannelMember(
     return { ok: false, error: "You must be signed in to manage channel members." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via an explicit !user check immediately above
   const admin = createAdminClient();
 
   const { data: channelRow, error: channelError } = await admin
@@ -250,6 +252,27 @@ export async function addChannelMember(
     return { ok: false, error: "You don't have permission to add members to this channel." };
   }
 
+  // Verify the target user is eligible to be in this channel before inserting:
+  // - project channel → target must have a project_members row for that project
+  // - workspace channel → target must be an active, non-client workspace member
+  const targetUserId = parsed.data.userId;
+  if (channelRow.project_id) {
+    const { data: targetProjectMember } = await admin
+      .from("project_members")
+      .select("user_id")
+      .eq("project_id", channelRow.project_id)
+      .eq("user_id", targetUserId)
+      .maybeSingle();
+    if (!targetProjectMember) {
+      return { ok: false, error: "User cannot be added to this channel." };
+    }
+  } else {
+    const targetMembership = await requireActiveMembership(admin, channelRow.workspace_id, targetUserId);
+    if (!targetMembership.ok || targetMembership.role === "client") {
+      return { ok: false, error: "User cannot be added to this channel." };
+    }
+  }
+
   const { error: insertError } = await admin
     .from("channel_members")
     .insert({ channel_id: parsed.data.channelId, user_id: parsed.data.userId })
@@ -300,6 +323,7 @@ export async function findOrCreateDirectMessage(
     return { ok: false, error: "You can't start a direct message with yourself." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: membership/permission check via requireActiveMembership(); caller identity already verified via an explicit !user check immediately above
   const admin = createAdminClient();
 
   const callerMembership = await requireActiveMembership(admin, workspaceId, user.id);
@@ -348,6 +372,7 @@ export async function removeChannelMember(
     return { ok: false, error: "You must be signed in to manage channel members." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via an explicit !user check immediately above
   const admin = createAdminClient();
 
   const { data: callerMembership } = await admin

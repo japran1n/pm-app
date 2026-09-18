@@ -16,7 +16,7 @@ import {
 import { getProjectCurrentBudgetPeriod, getProjectHoursClient } from "@/lib/queries/hours";
 import { getOpenApprovalsForClient } from "@/lib/queries/approvals";
 import { getClientDeliverables } from "@/lib/queries/deliverables";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { EmptyState } from "@/components/empty-state";
 import { OverviewTiles } from "@/components/portal/overview-tiles";
 import { BudgetBar } from "@/components/portal/budget-bar";
@@ -72,7 +72,7 @@ export default async function PortalOverviewPage({
 }) {
   const { workspaceSlug, projectId } = await params;
 
-  const supabase = await createClient();
+  const { supabase, user } = await getCurrentUser();
   const { data: workspace } = await supabase
     .from("workspaces")
     .select("id, slug")
@@ -80,10 +80,6 @@ export default async function PortalOverviewPage({
     .maybeSingle();
 
   if (!workspace) notFound();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
 
   const projects = await getPortalProjects(workspace.id);
   const project = projects.find((p) => p.id === projectId);

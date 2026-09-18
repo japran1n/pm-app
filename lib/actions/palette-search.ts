@@ -109,6 +109,7 @@ export async function searchPalette(
   // member of some OTHER, unrelated workspace gets nothing back here
   // rather than relying solely on RLS to filter every query below
   // correctly.
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: membership/permission check via requireActiveMembership(); caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
   const membership = await requireActiveMembership(admin, workspaceId, user.id);
 
@@ -208,6 +209,7 @@ export async function resolveRecentItems(
     return empty;
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: membership/permission check via requireActiveMembership(); caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
   const membership = await requireActiveMembership(admin, workspaceId, user.id);
 

@@ -253,7 +253,7 @@ describe.skipIf(!haveAdminCreds)(
 
     it("test_AS_258_getProjectListTasks_carries_the_projects_key_and_the_tasks_number_via_its_existing_project_join", async () => {
       const { getProjectListTasks } = await import("@/lib/queries/tasks");
-      const rows = await getProjectListTasks(projectBId);
+      const { tasks: rows } = await getProjectListTasks(projectBId);
       const row = rows.find((t) => t.id === taskB1Id);
 
       expect(row).toBeDefined();

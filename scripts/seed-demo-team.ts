@@ -34,6 +34,7 @@ import { randomBytes } from "node:crypto";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "../lib/supabase/admin";
 import type { Database } from "../lib/supabase/database.types";
+import { assertSafeSeedTarget } from "./lib/assert-safe-seed-target.mjs";
 
 export const DEMO_WORKSPACE_NAME = "Goodguys Demo";
 export const DEMO_WORKSPACE_SLUG = "goodguys-demo";
@@ -185,6 +186,8 @@ export type SeededTeam = {
 };
 
 export async function seedDemoTeam(): Promise<SeededTeam> {
+  assertSafeSeedTarget("seed:full-demo");
+
   const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
   const SECRET_KEY = process.env.SUPABASE_SECRET_KEY;

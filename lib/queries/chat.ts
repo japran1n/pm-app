@@ -89,23 +89,28 @@ export async function getChannelMessages(
 
 /**
  * F10 (docs/advanced-chat-plan.md): reply counts for a batch of top-level
- * messages in `channelId` -- one aggregate query (all rows with a non-null
- * `parent_message_id` in this channel, reduced client-side) rather than an
- * N+1 count-per-message query, same convention `getWorkspaceChannels`
- * above documents for its own latest-message/unread-count computation.
+ * messages -- one targeted query fetching only replies whose
+ * `parent_message_id` is in the provided `messageIds` array (P2-14: uses
+ * `.in("parent_message_id", messageIds)` instead of scanning all replies
+ * in the channel), reduced client-side to a count-per-parent-id map,
+ * same convention `getWorkspaceChannels` above documents for its own
+ * latest-message/unread-count computation.
  * Runs through the caller's own session; RLS's
  * `messages_select_channel_members` is the real access boundary.
  */
 export async function getReplyCounts(
-  channelId: string,
+  messageIds: string[],
 ): Promise<Record<string, number>> {
+  // P2-14: short-circuit on empty input — an empty .in() is wasteful and
+  // Supabase returns all rows when the array is empty in some versions.
+  if (messageIds.length === 0) return {};
+
   const supabase = await createClient();
 
   const { data, error } = await supabase
     .from("messages")
     .select("parent_message_id")
-    .eq("channel_id", channelId)
-    .not("parent_message_id", "is", null);
+    .in("parent_message_id", messageIds);
 
   if (error || !data) {
     logger.error("getReplyCounts: query failed", { error: error });

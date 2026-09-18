@@ -8,6 +8,7 @@
 import { useEffect } from "react";
 
 import { createClient } from "@/lib/supabase/client";
+import { subscribeWhenAuthenticated } from "@/lib/realtime/subscribe-when-authenticated";
 import {
   subscribeToBoardColumnsRealtime,
   type BoardColumnsRealtimeEvent,
@@ -24,13 +25,9 @@ export function useBoardColumnsRealtime(
     if (!projectId) return;
 
     const supabase = createClient();
-    const unsubscribe = subscribeToBoardColumnsRealtime(
-      supabase,
-      projectId,
-      onChange,
+    return subscribeWhenAuthenticated(supabase, (client) =>
+      subscribeToBoardColumnsRealtime(client, projectId, onChange),
     );
-
-    return unsubscribe;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 }

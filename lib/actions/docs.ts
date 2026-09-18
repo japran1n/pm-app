@@ -264,11 +264,21 @@ export async function createDoc(
 // Saves the editor's title + content (auto-save, W4). `content` is written
 // verbatim — a plain Markdown string, no serialization/escaping — per the
 // plan's "clean Markdown storage" architecture decision.
+//
+// P2-2 (optimistic concurrency): when `lastKnownUpdatedAt` is provided the
+// UPDATE includes `.eq("updated_at", lastKnownUpdatedAt)` so it only
+// succeeds if no other session has written the doc since the caller last
+// loaded it.  0 rows updated → `{ conflict: true }` (no silent overwrite).
+// On success, `newUpdatedAt` carries the DB-assigned timestamp so the
+// caller can refresh its own guard value for subsequent saves.
+// When `lastKnownUpdatedAt` is omitted (backward-compatible callers) the
+// concurrency guard is skipped and the function behaves as before.
 export async function updateDoc(
   docId: string,
   title: string,
   content: string,
-): Promise<{ error?: string }> {
+  lastKnownUpdatedAt?: string,
+): Promise<{ error?: string; conflict?: boolean; newUpdatedAt?: string }> {
   const trimmedTitle = title.trim();
   if (!trimmedTitle) {
     return { error: "Title can't be empty." };
@@ -279,7 +289,7 @@ export async function updateDoc(
     return { error: "You must be signed in to save a document." };
   }
 
-  const { error } = await supabase
+  const baseQuery = supabase
     .from("docs")
     .update({
       title: trimmedTitle,
@@ -288,15 +298,30 @@ export async function updateDoc(
     })
     .eq("id", docId);
 
+  // Conditionally add the optimistic-concurrency guard.
+  const finalQuery =
+    lastKnownUpdatedAt !== undefined
+      ? baseQuery.eq("updated_at", lastKnownUpdatedAt)
+      : baseQuery;
+
+  const { data: updatedRows, error } = await finalQuery.select("updated_at");
+
   if (error) {
     logger.error("updateDoc: update failed", { error: error });
     return { error: "Something went wrong. Please try again in a moment." };
   }
 
+  // Conflict: concurrency guard was active but the row's updated_at no
+  // longer matches — another session saved in the meantime.
+  if (lastKnownUpdatedAt !== undefined && (!updatedRows || updatedRows.length === 0)) {
+    return { conflict: true };
+  }
+
   revalidateDocs();
   await revalidatePortalForDoc(supabase, docId);
 
-  return {};
+  const newUpdatedAt = (updatedRows?.[0] as { updated_at: string } | undefined)?.updated_at;
+  return { newUpdatedAt };
 }
 
 export async function deleteDoc(docId: string): Promise<{ error?: string }> {
@@ -313,7 +338,15 @@ export async function deleteDoc(docId: string): Promise<{ error?: string }> {
     .eq("id", docId)
     .maybeSingle();
 
-  const { error } = await supabase.from("docs").delete().eq("id", docId);
+  // P1-4: soft delete — matches the tasks/projects `deleted_at` convention
+  // (20261127030000_docs_soft_delete.sql) instead of a permanent hard
+  // DELETE, so an accidentally deleted doc is recoverable rather than gone
+  // for good. `archived_by` mirrors `projects.archived_by` / `tasks.
+  // deleted_by`: the acting user, set atomically in the same update.
+  const { error } = await supabase
+    .from("docs")
+    .update({ deleted_at: new Date().toISOString(), archived_by: user.id })
+    .eq("id", docId);
 
   if (error) {
     logger.error("deleteDoc: delete failed", { error: error });

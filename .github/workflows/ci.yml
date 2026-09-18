@@ -17,6 +17,82 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  ci-fast:
+    name: Fast CI (type + lint + unit tests)
+    runs-on: ubuntu-latest
+    env:
+      # Same heap bump as the main `ci` job — `tsc --noEmit` and `next
+      # build`'s internal type check die on ubuntu-latest's default
+      # old-space heap size otherwise (see the `ci` job's own NODE_OPTIONS
+      # comment above for the run IDs that proved this).
+      NODE_OPTIONS: --max-old-space-size=6144
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check no secret key committed
+        run: node scripts/check-no-secret-key.mjs
+
+      # Same reasoning as the `ci` job's own "Generate Next.js route types"
+      # step: without this, tsc fails on `Cannot find name 'LayoutProps'`.
+      - name: Generate Next.js route types
+        run: npx next typegen
+
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npx eslint . --max-warnings=0
+
+      - name: Build
+        run: npm run build
+
+      # Unit tests only — no live Supabase stack, no integration/e2e/
+      # realtime suites. This job's entire point is a fast, reliable green
+      # signal that doesn't depend on `supabase start` or repository
+      # secrets, independent of the slower/flakier `ci` job above.
+      - name: Unit tests
+        run: npx vitest run tests/unit
+
+  extension-check:
+    name: Extension CI (type + lint + build)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: extension/package-lock.json
+
+      - name: Install extension dependencies
+        working-directory: extension
+        run: npm ci
+
+      - name: Type-check extension
+        working-directory: extension
+        run: npx tsc --noEmit
+
+      - name: Lint extension
+        working-directory: extension
+        run: npx eslint .
+
+      - name: Build extension
+        working-directory: extension
+        run: npm run build
+
   ci:
     runs-on: ubuntu-latest
     env:
@@ -59,7 +135,7 @@ jobs:
         run: npx tsc --noEmit
 
       - name: Lint
-        run: npx eslint .
+        run: npx eslint . --max-warnings=0
 
       # W6: CI no longer points at the shared production Supabase project
       # (see missions/20260828-hardening/plan.md "W6" and
@@ -217,6 +293,15 @@ jobs:
         run: |
           npx playwright install --with-deps
           npx playwright test
+
+      - name: Upload Playwright traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces-${{ github.run_number }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Stop local Supabase stack
         if: always()

@@ -218,6 +218,7 @@ export async function uploadScopeDocument(
     return { ok: false, error: "You must be signed in to upload a file." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   const projectExtra = await loadProjectExtra(admin, parsedFields.data.projectId);
@@ -455,6 +456,7 @@ export async function getScopeDocumentSignedUrl(
     return { ok: false, error: "You must be signed in." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   const { data: documentRow, error: documentError } = await admin

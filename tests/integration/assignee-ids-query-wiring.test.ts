@@ -247,7 +247,7 @@ describe.skipIf(!haveAdminCreds)(
 
     it("test_AS_287_getProjectListTasks_carries_the_full_assignee_set_through_into_TaskCardTask", async () => {
       const { getProjectListTasks } = await import("@/lib/queries/tasks");
-      const rows = await getProjectListTasks(projectId);
+      const { tasks: rows } = await getProjectListTasks(projectId);
 
       const withAssignees = rows.find((t) => t.id === taskWithAssigneesId);
       expect(withAssignees?.assigneeIds).toEqual(assigneeIds);

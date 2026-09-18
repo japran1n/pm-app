@@ -23,6 +23,21 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/database.types";
 
+// P2-22: only ever notify staff. `project_decision_owners` rows are
+// team-only by RLS (`project_decision_owners_insert_team`'s
+// `is_project_workspace_writer`) -- but that same function treats a
+// `guest` role as a writer whenever the guest is also a `project_members`
+// row on this project, so a decision owner (or a task's assignee) can
+// legitimately be a guest, not only owner/admin/member. A guest is not
+// "the team" for the purposes of a portal notification, and a client must
+// never be one either (defense in depth -- belt-and-suspenders alongside
+// the RLS policy that already keeps a client from ever holding one of
+// these rows). This is a positive allow-list of staff roles rather than
+// an exclude-list of client/guest, so a future role added to
+// `workspace_members.role` defaults to NOT being notified until someone
+// deliberately adds it here.
+const STAFF_ROLES = ["owner", "admin", "member"] as const;
+
 export async function getPortalEventRecipients(
   admin: SupabaseClient<Database>,
   params: { projectId: string; taskId?: string | null; excludeUserId: string },
@@ -52,5 +67,23 @@ export async function getPortalEventRecipients(
     }
   }
 
-  return Array.from(ids);
+  if (ids.size === 0) return [];
+
+  const { data: project } = await admin
+    .from("projects")
+    .select("workspace_id")
+    .eq("id", params.projectId)
+    .maybeSingle();
+  if (!project?.workspace_id) return [];
+
+  const { data: staff } = await admin
+    .from("workspace_members")
+    .select("user_id")
+    .eq("workspace_id", project.workspace_id)
+    .eq("status", "active")
+    .in("role", STAFF_ROLES)
+    .in("user_id", Array.from(ids));
+
+  const staffIds = new Set((staff ?? []).map((row) => row.user_id));
+  return Array.from(ids).filter((id) => staffIds.has(id));
 }

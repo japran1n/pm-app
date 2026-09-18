@@ -64,6 +64,7 @@ export async function createStatusTemplate(
   const userId = await currentUserId();
   if (!userId) return { ok: false, error: PERMISSION_DENIED_ERROR };
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: membership/permission check via requireWorkspaceAdmin(); caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
   const membership = await requireWorkspaceAdmin(admin, parsed.data.workspaceId, userId);
   if (!membership.ok) return { ok: false, error: PERMISSION_DENIED_ERROR };
@@ -98,6 +99,7 @@ export async function renameStatusTemplate(
   const userId = await currentUserId();
   if (!userId) return { ok: false, error: PERMISSION_DENIED_ERROR };
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
   const { data: template } = await admin
     .from("status_templates")
@@ -138,6 +140,7 @@ export async function deleteStatusTemplate(
   const userId = await currentUserId();
   if (!userId) return { ok: false, error: PERMISSION_DENIED_ERROR };
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
   const { data: template } = await admin
     .from("status_templates")
@@ -171,6 +174,7 @@ async function requireItemAdmin(itemId: string) {
   const userId = await currentUserId();
   if (!userId) return { ok: false as const };
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
   const { data: item } = await admin
     .from("status_template_items")
@@ -200,6 +204,7 @@ export async function addTemplateItem(
   const userId = await currentUserId();
   if (!userId) return { ok: false, error: PERMISSION_DENIED_ERROR };
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
   const { data: template } = await admin
     .from("status_templates")
@@ -336,6 +341,7 @@ export async function applyStatusTemplate(
   const userId = await currentUserId();
   if (!userId) return { ok: false, error: PERMISSION_DENIED_ERROR };
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
   const { data: project } = await admin
     .from("projects")

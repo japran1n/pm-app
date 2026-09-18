@@ -15,14 +15,25 @@ const nextConfig: NextConfig = {
   // a 2MB file's raw request body can exceed 2MB, so the body limit itself
   // must have headroom above the byte-count limit it's meant to let
   // through.
+  //
+  // Bug fix: this was previously "3mb" while
+  // lib/validation/attachments.ts's MAX_ATTACHMENT_SIZE_BYTES was 10MB —
+  // any attachment upload between 3MB and 10MB passed client-side
+  // validation only to 413 on the server. Both are now aligned: the
+  // app-level attachment limit is 4MB and this body limit is 4.5MB
+  // (headroom for multipart overhead). Vercel additionally hard-caps
+  // request bodies at ~4.5MB regardless of this setting, so raising this
+  // further would be a no-op in production.
   experimental: {
     serverActions: {
-      bodySizeLimit: "3mb",
+      bodySizeLimit: "4.5mb",
     },
   },
-  // Audit NX-001: baseline security headers. A full CSP is deferred until the
-  // inline theme script in app/layout.tsx carries a per-request nonce
-  // (audit NX-002) — shipping CSP before that would require 'unsafe-inline'.
+  // Audit NX-001: baseline security headers. The inline theme script obstacle
+  // (audit NX-002) is resolved — the script was extracted to /theme-init.js
+  // (public/theme-init.js, served as a static file). A full enforcing CSP with
+  // a per-request nonce is tracked as a separate PR; a Content-Security-Policy-
+  // Report-Only header with nonce support is set in middleware.ts.
   async headers() {
     return [
       {

@@ -22,7 +22,7 @@ import {
   markAllNotificationsRead,
   markNotificationRead,
 } from "@/lib/actions/notifications";
-import type { NotificationKind, NotificationListItem } from "@/lib/queries/notifications";
+import type { NotificationListItem } from "@/lib/queries/notifications";
 import { chatNotificationHref } from "@/lib/notifications/chat-link";
 
 // AS-385: "actor, action, and task" — the action half is derived purely
@@ -33,34 +33,64 @@ import { chatNotificationHref } from "@/lib/notifications/chat-link";
 // `kind` alone is the ONE source of truth for this text, not a second
 // copy of a description string that could drift from what actually
 // happened.
-function actionLabel(kind: NotificationKind): string {
-  switch (kind) {
-    case "mention":
-      return "mentioned you in";
-    case "comment_reply":
-      return "replied on";
-    case "task_assigned":
-      return "assigned you to";
-    // task_due_soon is rendered by a dedicated branch below (it has no
-    // actor -- F212's hourly pg_cron sweep always inserts it with
-    // `p_actor_id => null`, a genuine system-generated reminder, not a
-    // person-caused event) and never reaches this switch, but the case is
-    // kept here so `NotificationKind`'s exhaustiveness isn't silently
-    // broken by removing it.
-    case "task_due_soon":
-      return "is due soon:";
-    case "watcher_update":
-      return "updated a task you're watching:";
-    // Faza D (docs/chat-slack-parity-plan.md): composes with itemLabel
-    // below the same way every other kind does -- "sent you" + "a direct
-    // message", "replied to" + "your thread".
-    case "chat_dm":
-      return "sent you";
-    case "chat_thread_reply":
-      return "replied to";
-    default:
-      return "sent an update on";
-  }
+//
+// A `Record<string, string>` lookup (not a switch) so it's trivially
+// diffable against the DB's closed vocabulary: every kind in
+// `notifications_kind_check` (supabase/migrations/
+// 20261123010000_f068_brief_answer_changed_kind.sql, the latest widening —
+// mention, comment_reply, task_assigned, task_due_soon, watcher_update,
+// approval_decided, assumption_flagged, budget_threshold_80,
+// budget_threshold_100, portal_task_decided, client_request_submitted,
+// client_deliverable_submitted, approval_owner_nudge, chat_dm,
+// chat_thread_reply, brief_answer_changed — 16 kinds total) gets an entry
+// here, not just the five in `NotificationKind` (fanout.ts's narrower type
+// for computeFanoutRecipients' own output — the portal/chat/brief/SQL-only
+// kinds are written directly via create_notification and never flow
+// through that function, but they DO flow through this panel).
+export const ACTION_LABELS: Record<string, string> = {
+  mention: "mentioned you in",
+  comment_reply: "replied on",
+  task_assigned: "assigned you to",
+  // task_due_soon is rendered by a dedicated branch below (it has no
+  // actor -- F212's hourly pg_cron sweep always inserts it with
+  // `p_actor_id => null`, a genuine system-generated reminder, not a
+  // person-caused event) and never reaches this lookup via the normal
+  // sentence template, but the entry is kept here for the same reason the
+  // switch statement it replaces kept its case: so this map stays a
+  // complete mirror of the DB's closed vocabulary, not a silently-partial
+  // one.
+  task_due_soon: "is due soon:",
+  watcher_update: "updated a task you're watching:",
+  // Faza D (docs/chat-slack-parity-plan.md): composes with itemLabel below
+  // the same way every other kind does -- "sent you" + "a direct message",
+  // "replied to" + "your thread".
+  chat_dm: "sent you",
+  chat_thread_reply: "replied to",
+  // F084/F090/F015/approval_requests: portal- and approval-originated
+  // kinds written directly via create_notification (see fanout.ts's doc
+  // comment on PortalNotificationKind/BriefNotificationKind) — previously
+  // missing from this panel's labels entirely, so they fell through to the
+  // generic "sent an update on" default.
+  client_request_submitted: "submitted a request on",
+  client_deliverable_submitted: "submitted a deliverable for",
+  portal_task_decided: "made a decision on",
+  brief_answer_changed: "updated an answer in",
+  approval_decided: "made a decision on",
+  assumption_flagged: "flagged an assumption on",
+  approval_owner_nudge: "sent a reminder about",
+  budget_threshold_80: "reported 80% budget used on",
+  budget_threshold_100: "reported 100% budget used on",
+};
+
+// Runtime fallback kept deliberately (not just a type-level exhaustiveness
+// check): `kind` is read off a DB row as `NotificationListItem["kind"]`
+// (see lib/queries/notifications.ts), a plain string at the TypeScript
+// boundary, so a notification kind added to the DB's closed vocabulary
+// after this file was last updated must never crash the panel — it
+// degrades to the same generic phrasing every previously-unhandled kind
+// used to get, rather than throwing.
+function actionLabel(kind: string): string {
+  return ACTION_LABELS[kind] ?? "sent an update on";
 }
 
 function taskLabel(task: NotificationListItem["task"]): string {

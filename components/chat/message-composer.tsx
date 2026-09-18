@@ -179,14 +179,34 @@ export function MessageComposer({
     const formData = new FormData();
     formData.set("channelId", channelId);
     formData.set("file", file);
-    const result = await uploadChatAttachment(formData);
-    if (result.ok) {
-      setPendingAttachments((prev) =>
-        prev.map((a) => (a.id === tempId ? { id: result.data.id, fileName: file.name } : a)),
-      );
-    } else {
-      setPendingAttachments((prev) => prev.filter((a) => a.id !== tempId));
-      setError(result.error);
+    // Bug fix: uploadChatAttachment (a Server Action call) previously had
+    // no try/catch — an HTTP-layer failure (e.g. a 413 from the body
+    // exceeding next.config.ts's Server Action bodySizeLimit, or a network
+    // error) rejected this promise instead of resolving with
+    // `{ ok: false }`, leaving this pending attachment's `uploading: true`
+    // flag set forever — since `isUploading` (derived from
+    // `pendingAttachments`) gates both the send button and the attach
+    // button, that stuck flag locked the whole composer. The `finally`
+    // guarantees this pending row is cleared of its `uploading` flag no
+    // matter how the request settles, matching the try/catch/finally
+    // pattern in components/profile/profile-form.tsx.
+    let settledOk = false;
+    try {
+      const result = await uploadChatAttachment(formData);
+      if (result.ok) {
+        settledOk = true;
+        setPendingAttachments((prev) =>
+          prev.map((a) => (a.id === tempId ? { id: result.data.id, fileName: file.name } : a)),
+        );
+      } else {
+        setError(result.error);
+      }
+    } catch {
+      setError("Something went wrong. Please try again in a moment.");
+    } finally {
+      if (!settledOk) {
+        setPendingAttachments((prev) => prev.filter((a) => a.id !== tempId));
+      }
     }
   }
   // Keep the ref current every render so the paste listener always calls

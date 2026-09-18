@@ -28,7 +28,7 @@ import { Loader2, Paperclip } from "lucide-react";
 import { toast } from "sonner";
 
 import { deliverPortalDeliverable } from "@/lib/actions/portal-deliverables";
-import { validateAttachmentFile } from "@/lib/tasks/validate-attachment-file";
+import { validateDeliverableFile } from "@/lib/tasks/validate-attachment-file";
 import { Button } from "@/components/ui/button";
 import { AttachmentDropzone } from "@/components/task/attachment-dropzone";
 import { cn } from "@/lib/utils";
@@ -48,7 +48,7 @@ export function DeliverableUpload({
   const [isDragActive, setIsDragActive] = useState(false);
 
   function sendFile(file: File) {
-    const validation = validateAttachmentFile(file);
+    const validation = validateDeliverableFile(file);
     if (!validation.ok) {
       toast.error(validation.reason);
       return;
@@ -59,12 +59,23 @@ export function DeliverableUpload({
     formData.set("file", file);
 
     startTransition(async () => {
-      const result = await deliverPortalDeliverable(formData);
-      if (result.ok) {
-        toast.success("Sent. We'll check it and let you know.");
-        onDelivered();
-      } else {
-        toast.error(result.error);
+      // Bug fix: deliverPortalDeliverable (a Server Action call) previously
+      // had no try/catch — an HTTP-layer failure (e.g. a 413 from the body
+      // exceeding next.config.ts's Server Action bodySizeLimit, or a
+      // network error) rejected this promise instead of resolving with
+      // `{ ok: false }`, leaving `isPending` stuck true with no error
+      // feedback, matching the pattern in
+      // components/profile/profile-form.tsx.
+      try {
+        const result = await deliverPortalDeliverable(formData);
+        if (result.ok) {
+          toast.success("Sent. We'll check it and let you know.");
+          onDelivered();
+        } else {
+          toast.error(result.error);
+        }
+      } catch {
+        toast.error("Something went wrong. Please try again in a moment.");
       }
     });
   }

@@ -87,6 +87,8 @@ describe.skipIf(!haveAdminCreds)("Out-of-office status note", () => {
   let otherMemberUserId: string;
   let otherEmail: string;
 
+  let memberClient: SupabaseClient;
+
   beforeAll(async () => {
     adminClient = createClient(SUPABASE_URL!, SECRET_KEY!, {
       auth: { autoRefreshToken: false, persistSession: false },
@@ -133,7 +135,7 @@ describe.skipIf(!haveAdminCreds)("Out-of-office status note", () => {
     ]);
     if (memberInsertErr) throw new Error(`Failed to seed members: ${memberInsertErr.message}`);
 
-    const memberClient = await createSessionClientForUser(memberEmail, memberPassword);
+    memberClient = await createSessionClientForUser(memberEmail, memberPassword);
     const otherClient = await createSessionClientForUser(otherEmail, memberPassword);
     sessionClients.set(memberUserId, memberClient);
     sessionClients.set(otherMemberUserId, otherClient);
@@ -231,5 +233,31 @@ describe.skipIf(!haveAdminCreds)("Out-of-office status note", () => {
     expect(cleared.ok).toBe(true);
     if (!cleared.ok) return;
     expect(cleared.data.note).toBeNull();
+  });
+
+  it("rejects PATCH role:owner via PostgREST (column grant)", async () => {
+    const { error } = await memberClient
+      .from("workspace_members")
+      .update({ role: "owner" } as any)
+      .eq("user_id", memberUserId);
+    expect(error).not.toBeNull();
+    expect(error?.code).toBe("42501"); // permission denied
+  });
+
+  it("rejects PATCH workspace_id via PostgREST (column grant)", async () => {
+    const { error } = await memberClient
+      .from("workspace_members")
+      .update({ workspace_id: "00000000-0000-0000-0000-000000000000" } as any)
+      .eq("user_id", memberUserId);
+    expect(error).not.toBeNull();
+    expect(error?.code).toBe("42501"); // permission denied
+  });
+
+  it("still allows PATCH status_note via PostgREST (permitted column)", async () => {
+    const { error } = await memberClient
+      .from("workspace_members")
+      .update({ status_note: "working on it" })
+      .eq("user_id", memberUserId);
+    expect(error).toBeNull();
   });
 });

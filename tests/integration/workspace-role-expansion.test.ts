@@ -198,7 +198,7 @@ describe.skipIf(!haveAdminCreds)("workspace role expansion (F126)", () => {
         const inviteEmail = `f126-invitee-${role}-${Date.now()}@example.com`;
         const result = await inviteMember(workspaceId, inviteEmail, role);
 
-        expect(result).toEqual({ ok: true, invitedEmail: inviteEmail });
+        expect(result).toMatchObject({ ok: true, invitedEmail: inviteEmail });
 
         const { data: row, error } = await adminClient
           .from("workspace_members")
@@ -221,7 +221,7 @@ describe.skipIf(!haveAdminCreds)("workspace role expansion (F126)", () => {
       const inviteEmail = `f126-invitee-default-${Date.now()}@example.com`;
       const result = await inviteMember(workspaceId, inviteEmail);
 
-      expect(result).toEqual({ ok: true, invitedEmail: inviteEmail });
+      expect(result).toMatchObject({ ok: true, invitedEmail: inviteEmail });
 
       const { data: row } = await adminClient
         .from("workspace_members")
@@ -243,7 +243,7 @@ describe.skipIf(!haveAdminCreds)("workspace role expansion (F126)", () => {
 
       const inviteEmail = `f126-invitee-accept-${Date.now()}@example.com`;
       const invited = await inviteMember(workspaceId, inviteEmail, "viewer");
-      expect(invited).toEqual({ ok: true, invitedEmail: inviteEmail });
+      expect(invited).toMatchObject({ ok: true, invitedEmail: inviteEmail });
 
       const acceptingUserId = await createThrowawayUser("accepting");
       const activated = await activateInvitedMemberships(

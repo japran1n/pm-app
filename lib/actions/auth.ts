@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 
 import { createClient, isPortalPreview } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { passwordSignInSchema, signInSchema } from "@/lib/validation/auth";
 import { logger } from "@/lib/observability/logger";
 import {
@@ -49,9 +50,29 @@ export async function signInWithMagicLink(
 
   const supabase = await createClient();
 
+  // P2-1: open self-registration guard. `shouldCreateUser: true`
+  // unconditionally let anyone mint a brand-new account off the sign-in
+  // form. Gate account creation on a pending workspace invite for this
+  // email (admin client, bypassing RLS since `workspace_members` has no
+  // SELECT policy for an anonymous/unrelated caller). Existing accounts
+  // still get their magic link either way — this only blocks *new*
+  // signups for emails with no invite. Never branch the response on the
+  // lookup result: both "pending invite found" and "no invite" return the
+  // same `{ ok: true }`, so this can't be used to enumerate which emails
+  // have an account or a pending invite.
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: pre-authentication invite lookup for an anonymous sign-in caller; workspace_members has no SELECT policy for an unauthenticated caller, so RLS cannot be used here and there is no signed-in user yet to check
+  const admin = createAdminClient();
+  const { data: pendingInvite } = await admin
+    .from("workspace_members")
+    .select("id")
+    .eq("invited_email", parsed.data.email)
+    .eq("status", "invited")
+    .maybeSingle();
+
   const { error } = await supabase.auth.signInWithOtp({
     email: parsed.data.email,
     options: {
+      shouldCreateUser: pendingInvite !== null,
       emailRedirectTo: `${origin}/auth/callback`,
     },
   });
@@ -147,6 +168,16 @@ function usernameLoginEnabled(): boolean {
   return process.env.NODE_ENV === "development";
 }
 
+// Guards the password sign-in Server Action itself. Unlike the client UI
+// (which may simply hide the password tab), a Server Action remains directly
+// callable regardless of what the UI renders, so the action needs its own
+// check. Defaults to enabled so the team can keep using it in the meantime;
+// set PASSWORD_LOGIN_ENABLED=false in production when this path should be
+// fully closed off.
+function passwordLoginEnabled(): boolean {
+  return process.env.PASSWORD_LOGIN_ENABLED !== "false";
+}
+
 // Maps a bare username onto the email of the account that claims it.
 // Returns null when the username is unknown — the caller reports the same
 // generic "invalid credentials" message either way, so this never becomes
@@ -192,6 +223,8 @@ export async function signInWithPassword(
   _prevState: PasswordSignInResult | null,
   formData: FormData,
 ): Promise<PasswordSignInResult> {
+  if (!passwordLoginEnabled()) return { ok: false, error: "Password login is disabled." };
+
   const parsed = passwordSignInSchema.safeParse({
     identifier: formData.get("identifier"),
     password: formData.get("password"),

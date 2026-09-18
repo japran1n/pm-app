@@ -215,6 +215,28 @@ export async function getPortalProjects(
 
 export type PortalProjectOption = { id: string; name: string };
 
+// P2-36: given a projectId that did not appear in `getPortalProjects`
+// (which filters out archived rows via `deleted_at IS NULL`), check
+// whether the project is simply archived rather than truly inaccessible.
+// Returns `true` when the project exists for the workspace AND has a
+// non-null `deleted_at`, so callers can redirect to a "closed" page
+// instead of throwing a 404. Does NOT remove the `deleted_at IS NULL`
+// filter from `getPortalProjects` — those 12 call sites stay untouched.
+export async function isPortalProjectArchived(
+  workspaceId: string,
+  projectId: string,
+): Promise<boolean> {
+  const supabase = await getRequestClient();
+  const { data } = await supabase
+    .from("projects")
+    .select("deleted_at")
+    .eq("workspace_id", workspaceId)
+    .eq("id", projectId)
+    .not("deleted_at", "is", null)
+    .maybeSingle();
+  return data !== null;
+}
+
 // F006b (missions/20260903-portal, AS-007): the new-request form's own
 // project `<select>` — every other project-scoped read in this file that
 // touches `projects` directly needs the same explicit `portal_enabled`

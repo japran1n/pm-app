@@ -189,6 +189,7 @@ export async function addChecklistItem(
     };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   // Look up the task's owning project/workspace so membership is checked
@@ -331,6 +332,7 @@ export async function toggleChecklistItem(
     };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: membership/permission check via requireActiveMembership(); caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
   const context = await loadChecklistItemContext(admin, parsed.data.itemId);
 
@@ -424,6 +426,7 @@ export async function renameChecklistItem(
     };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: membership/permission check via requireActiveMembership(); caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
   const context = await loadChecklistItemContext(admin, parsed.data.itemId);
 
@@ -506,6 +509,7 @@ export async function reorderChecklistItem(
     };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: membership/permission check via requireActiveMembership(); caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
   const context = await loadChecklistItemContext(admin, parsed.data.itemId);
 
@@ -584,6 +588,7 @@ export async function deleteChecklistItem(
     };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: membership/permission check via requireActiveMembership(); caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
   const context = await loadChecklistItemContext(admin, parsed.data.itemId);
 

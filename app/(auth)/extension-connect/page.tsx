@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { mintExtensionHandoffToken } from "@/lib/extension-handoff";
 import { Logo } from "@/components/brand/logo";
 
@@ -22,10 +22,7 @@ import { Logo } from "@/components/brand/logo";
 // app/(auth)/extension-connect/exchange/route.ts. The user never retypes
 // credentials.
 export default async function ExtensionConnectPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return (

@@ -37,6 +37,7 @@ import {
   getProjectListTasks,
   type ProjectListTaskFilters,
   type ProjectListTaskSort,
+  type ProjectListTasksResult,
 } from "@/lib/queries/tasks";
 import { getCurrentUserTimezone } from "@/lib/queries/profile";
 import { getWorkspaceMembers } from "@/lib/queries/members";
@@ -269,10 +270,14 @@ export default async function ProjectListPage({
   // of the three depend on `filters`/`sort` (which do depend on the
   // view-resolution logic that runs between the two batches), so they no
   // longer need to wait behind that resolution at all.
-  const [rawFilteredTasks, timezone] = await Promise.all([
+  const [listResult, timezone] = await Promise.all([
     getProjectListTasks(projectId, filters, sort),
     getCurrentUserTimezone(supabase),
   ]);
+
+  // P2-33: capture the overflow flag from the query before any client-side
+  // narrowing so the banner reflects the DB cap, not the in-memory filter.
+  const hasMore = listResult.hasMore;
 
   // Follow-up (nested AND/OR groups): when the applied view's filter tree
   // has an "or" or nesting the SQL path above couldn't express, `filters`
@@ -280,8 +285,8 @@ export default async function ProjectListPage({
   // narrowing happens here, in memory, via the same recursive evaluator
   // `lib/views/resolve-view.ts` uses.
   const filteredTasks = nonTrivialFilterGroup
-    ? filterTasksByGroup(rawFilteredTasks, nonTrivialFilterGroup)
-    : rawFilteredTasks;
+    ? filterTasksByGroup(listResult.tasks, nonTrivialFilterGroup)
+    : listResult.tasks;
 
   // Follow-up (manual view membership): a view's effective task list is
   // filter-matched UNION manually-added (lib/views/apply-view.ts's
@@ -294,15 +299,15 @@ export default async function ProjectListPage({
     const missingIds = manualIds.filter(
       (id) => !filteredTasks.some((task) => task.id === id),
     );
-    const manualExtraTasks =
+    const manualExtraResult: ProjectListTasksResult =
       missingIds.length > 0
         ? await getProjectListTasks(projectId, { taskIds: missingIds })
-        : [];
+        : { tasks: [], hasMore: false };
     tasks = mergeManualTaskIds(
       filteredTasks,
       manualIds
-        .map((id) => manualExtraTasks.find((task) => task.id === id))
-        .filter((task): task is (typeof manualExtraTasks)[number] => Boolean(task)),
+        .map((id) => manualExtraResult.tasks.find((task) => task.id === id))
+        .filter((task): task is (typeof manualExtraResult.tasks)[number] => Boolean(task)),
     );
   }
 
@@ -441,6 +446,14 @@ export default async function ProjectListPage({
         taskTypeOptions={taskTypes}
         savedViews={savedViews.map((view) => ({ id: view.id, name: view.name }))}
       />
+      {/* P2-33: shown only when the DB query hit the 1000-row safety cap —
+          narrowing filters reduces the row count and makes the banner
+          disappear, which is the intended UX. */}
+      {hasMore && (
+        <p className="text-xs text-muted-foreground">
+          Showing 1 000 of many tasks. Narrow your filters to see all results.
+        </p>
+      )}
     </div>
     </ViewDropContext>
   );

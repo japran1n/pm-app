@@ -93,6 +93,7 @@ export async function watchTask(taskId: string): Promise<WatchTaskResult> {
     return { ok: false, error: "You must be signed in to watch a task." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
   const check = await resolveTaskAndMembership(
     admin,
@@ -149,6 +150,7 @@ export async function unwatchTask(taskId: string): Promise<UnwatchTaskResult> {
     return { ok: false, error: "You must be signed in to unwatch a task." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
   const check = await resolveTaskAndMembership(
     admin,

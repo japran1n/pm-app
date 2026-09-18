@@ -79,6 +79,7 @@ export async function saveTaskAsTemplate(
     return { ok: false, error: "You must be signed in to save a template." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   const { data: sourceRow, error: sourceError } = await admin
@@ -272,6 +273,7 @@ export async function createTaskFromTemplate(
     };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   const { data: projectRow, error: projectError } = await admin
@@ -582,6 +584,7 @@ export async function renameTemplate(
     return { ok: false, error: "You must be signed in to rename a template." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   const { data: templateRow, error: templateError } = await admin
@@ -679,6 +682,7 @@ export async function deleteTemplate(
     return { ok: false, error: "You must be signed in to delete a template." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   const { data: templateRow, error: templateError } = await admin
@@ -790,6 +794,7 @@ export async function saveProjectAsTemplate(
     return { ok: false, error: "You must be signed in to save a template." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   const { data: projectRow, error: projectError } = await admin
@@ -1088,6 +1093,7 @@ export async function createProjectFromTemplate(
     };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: membership/permission check via requireActiveMembership(); caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   const membership = await requireActiveMembership(

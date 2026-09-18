@@ -91,6 +91,7 @@ export async function logTimeEntry(
     return { ok: false, error: "You must be signed in to log time." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   // Look up the task's owning project/workspace so membership is checked
@@ -272,6 +273,7 @@ export async function startTimer(taskId: string): Promise<StartTimerResult> {
     return { ok: false, error: "You must be signed in to start a timer." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   // Same task -> project -> workspace lookup as logTimeEntry, so
@@ -479,6 +481,7 @@ export async function editTimeEntry(
     return { ok: false, error: "You must be signed in to edit a time entry." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   // Look up the entry together with its task's owning workspace, so
@@ -657,6 +660,7 @@ export async function setTimeEntryCategory(
     return { ok: false, error: "You must be signed in to edit a time entry." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   const { data: entryRow, error: entryError } = await admin
@@ -790,6 +794,7 @@ export async function deleteTimeEntry(
     return { ok: false, error: "You must be signed in to delete a time entry." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   const { data: entryRow, error: entryError } = await admin

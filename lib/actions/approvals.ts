@@ -639,6 +639,7 @@ export async function getApprovalDocSnapshotUrl(
     return { ok: false, error: "This approval has no document to open." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
   const { data: signedUrlData, error: signedUrlError } = await admin.storage
     .from(SNAPSHOT_BUCKET)
