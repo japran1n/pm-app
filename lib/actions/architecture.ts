@@ -39,6 +39,8 @@ export type { SetSectionClientVisibilityResult } from "./architecture/sections";
 
 export { getNodeDetailsForToggle } from "./architecture/node-details";
 
+export { setNodeMeta, setNodeMetaClientVisibility } from "./architecture/node-meta";
+
 export {
   createComponentFromSection,
   createComponent,
