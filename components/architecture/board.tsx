@@ -23,6 +23,7 @@ import { PageColumn } from "@/components/architecture/page-column";
 import { ComponentPanel } from "@/components/architecture/component-panel";
 import { CreatePageDialog } from "@/components/architecture/create-page-dialog";
 import { useComponentHover } from "@/lib/architecture/use-component-hover";
+import { computeRollups } from "@/lib/architecture/estimate-rollup";
 import {
   reorderSections,
   moveSectionToPage,
@@ -57,8 +58,8 @@ export function ArchitectureBoard({
   pages,
   components,
   projectId,
-  showDetails: _showDetails,
-  detailsData: _detailsData,
+  showDetails,
+  detailsData,
 }: {
   pages: BoardPage[];
   components: BoardComponent[];
@@ -66,6 +67,11 @@ export function ArchitectureBoard({
   showDetails?: boolean;
   detailsData?: import('@/lib/architecture/types').ArchitectureNodeDetails | null;
 }) {
+  // F18: per-page estimate rollups, only computed when the caller has
+  // toggled "show details" on and fetched the detail data -- avoids the
+  // work entirely in the default (no details) view.
+  const rollups =
+    showDetails && detailsData ? computeRollups(pages, detailsData) : null;
   // Local, client-side-only mirror of every page's section id order, keyed
   // by page id -- optimistically updated on drop, rolled back to the
   // pre-drop snapshot if the persisting Server Action (reorderSections or
@@ -363,6 +369,8 @@ export function ArchitectureBoard({
                 sectionsById={sectionsById}
                 components={components}
                 onComponentClick={handleComponentClick}
+                showDetails={showDetails}
+                rollup={rollups?.get(page.id)}
               />
             ))}
             <div className="shrink-0 w-52">

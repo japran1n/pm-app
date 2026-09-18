@@ -21,8 +21,28 @@ import { toast } from "sonner";
 import { renamePage } from "@/lib/actions/architecture";
 import { Input } from "@/components/ui/input";
 import type { BoardPage } from "@/lib/queries/architecture";
+import type { EstimateRollup } from "@/lib/architecture/types";
 
-export function PageColumnHeader({ page }: { page: BoardPage }) {
+// Mission 20260918-architecture-enrichment, F18 (AS estimate rollup
+// display): formats a minute count as compact hours/minutes text for the
+// rollup badge below the page title. Matches estimate-chip.tsx's own
+// formatting so the same number reads identically in both places.
+function formatMinutes(m: number): string {
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  const rem = m % 60;
+  return rem === 0 ? `${h}h` : `${h}h ${rem}m`;
+}
+
+export function PageColumnHeader({
+  page,
+  showDetails,
+  rollup,
+}: {
+  page: BoardPage;
+  showDetails?: boolean;
+  rollup?: EstimateRollup;
+}) {
   const router = useRouter();
   const [isEditing, setIsEditing] = useState(false);
   const [value, setValue] = useState(page.title);
@@ -109,20 +129,43 @@ export function PageColumnHeader({ page }: { page: BoardPage }) {
   }
 
   return (
-    <p
-      role="button"
-      tabIndex={0}
-      onClick={startEditing}
-      onDoubleClick={startEditing}
-      onKeyDown={(keyEvent) => {
-        if (keyEvent.key === "Enter" || keyEvent.key === " ") {
-          keyEvent.preventDefault();
-          startEditing();
-        }
-      }}
-      className="min-w-0 flex-1 cursor-text truncate rounded-sm text-sm font-medium hover:bg-muted/50"
-    >
-      {page.title}
-    </p>
+    <div className="min-w-0 flex-1">
+      <p
+        role="button"
+        tabIndex={0}
+        onClick={startEditing}
+        onDoubleClick={startEditing}
+        onKeyDown={(keyEvent) => {
+          if (keyEvent.key === "Enter" || keyEvent.key === " ") {
+            keyEvent.preventDefault();
+            startEditing();
+          }
+        }}
+        className="cursor-text truncate rounded-sm text-sm font-medium hover:bg-muted/50"
+      >
+        {page.title}
+      </p>
+      {showDetails && rollup && rollup.source !== "none" && (
+        <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+          <span className="font-mono text-xs tabular-nums text-muted-foreground">
+            {rollup.source === "rolled" && "Σ "}
+            {formatMinutes(rollup.total)}
+          </span>
+          {rollup.source === "rolled" && page.sections.length > 0 && (
+            <span className="text-xs text-muted-foreground/60">
+              ({page.sections.length} sections)
+            </span>
+          )}
+          {rollup.conflicts && (
+            <span
+              className="text-xs text-muted-foreground/60"
+              title={`Sections total: ${formatMinutes(rollup.sectionsTotal)}`}
+            >
+              · sections {formatMinutes(rollup.sectionsTotal)}
+            </span>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
