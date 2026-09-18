@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect } from "react";
+
 // Audit NX-004: last-resort boundary for a throw inside app/layout.tsx
 // itself. Unlike app/error.tsx this replaces the root layout entirely, so
 // it must render its own <html>/<body> and can rely on no providers, no
@@ -11,7 +13,22 @@ export default function GlobalError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  console.error(error);
+  useEffect(() => {
+    console.error(error);
+
+    // Client-side errors otherwise produce no server-side signal at all —
+    // best-effort only, must never throw inside this last-resort boundary.
+    fetch("/api/client-errors", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: error.message,
+        digest: error.digest,
+        url: typeof window !== "undefined" ? window.location.href : undefined,
+      }),
+    }).catch(() => {});
+  }, [error]);
+
   return (
     <html lang="en">
       <body
@@ -33,6 +50,19 @@ export default function GlobalError({
           <p style={{ fontSize: 14, color: "#525252", marginBottom: 16 }}>
             The app failed to load. Reloading usually fixes this.
           </p>
+          {error.digest && (
+            <p
+              style={{
+                fontFamily:
+                  "ui-monospace, SFMono-Regular, Menlo, monospace",
+                fontSize: 12,
+                color: "#737373",
+                marginBottom: 16,
+              }}
+            >
+              Error ID: {error.digest}
+            </p>
+          )}
           <button
             onClick={reset}
             style={{
