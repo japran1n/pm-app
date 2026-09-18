@@ -135,6 +135,17 @@ describe("convertHtmlToWebflow (M4)", () => {
     expect(capturedHtml).toContain("<\\/script>");
   });
 
+  it("test_D2_nodeCount_counts_all_nested_nodes_not_just_roots", async () => {
+    // A single root <div> containing three nested children: the flat
+    // (root-only) count would be 1, but the real element count is 4.
+    const result = await convertHtmlToWebflow({
+      html: '<div class="a"><span>one</span><span>two</span><span>three</span></div>',
+      css: ".a { color: red; }",
+    });
+    expect(result.ok).toBe(true);
+    expect(result.stats?.nodeCount).toBeGreaterThanOrEqual(4);
+  });
+
   it("test_AS_118_conversion_error_from_the_engine_is_surfaced_with_ok_false", async () => {
     const result = await convertHtmlToWebflow({ html: "<!-- just a comment -->", css: "" });
     expect(result.ok).toBe(false);

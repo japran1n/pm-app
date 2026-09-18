@@ -178,14 +178,20 @@ export function ConverterEditor({
         </AlertDialog>
       </div>
       {TAB_CONFIG.map((tab) => (
-        <TabsContent key={tab.value} value={tab.value} className="flex-1">
+        <TabsContent
+          key={tab.value}
+          value={tab.value}
+          className="min-h-0 flex-1 overflow-hidden"
+        >
           <Textarea
             aria-label={`${tab.label} editor`}
             value={values[tab.value]}
             onChange={(event) => onChangeHandlers[tab.value](event.target.value)}
             placeholder={tab.placeholder}
             disabled={disabled}
-            className={cn("h-full min-h-64 resize-none font-mono")}
+            className={cn(
+              "field-sizing-fixed h-full min-h-0 resize-none overflow-y-auto font-mono"
+            )}
           />
         </TabsContent>
       ))}

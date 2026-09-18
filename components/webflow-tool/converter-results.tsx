@@ -19,6 +19,22 @@ export interface ConverterResultsProps {
 
 type CopyStatus = "idle" | "success" | "error"
 
+// D3: the conversion engine's internal error strings (e.g. from schema/shape
+// validation) are meant for developers, not end users. Map known internal
+// patterns to friendlier copy; unknown messages pass through unchanged.
+const KNOWN_ERROR_MESSAGES: Record<string, string> = {
+  "payload.nodes must not be empty":
+    "No convertible elements found. Paste HTML that contains at least one visible element.",
+}
+
+export function formatErrorMessage(msg: string): string {
+  if (KNOWN_ERROR_MESSAGES[msg]) return KNOWN_ERROR_MESSAGES[msg]
+  if (msg.startsWith("payload.")) {
+    return "No convertible elements found in the provided HTML."
+  }
+  return msg
+}
+
 export function ConverterResults({ result }: ConverterResultsProps) {
   const [copyStatus, setCopyStatus] = React.useState<CopyStatus>("idle")
 
@@ -43,13 +59,13 @@ export function ConverterResults({ result }: ConverterResultsProps) {
     <div className="flex flex-col gap-2">
       {!result.ok ? (
         <p role="alert" className="text-sm font-medium text-destructive">
-          {result.message}
+          {result.message ? formatErrorMessage(result.message) : result.message}
         </p>
       ) : null}
 
       {result.ok && hasErrors ? (
         <p role="alert" className="text-sm font-medium text-destructive">
-          {errors.join(" ")}
+          {errors.map(formatErrorMessage).join(" ")}
         </p>
       ) : null}
 

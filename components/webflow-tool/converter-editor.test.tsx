@@ -184,4 +184,19 @@ describe("ConverterEditor (F025)", () => {
 
     cleanup()
   })
+
+  it("test_D1_html_editor_textarea_has_bounded_height_not_field_sizing_content", () => {
+    renderEditor()
+
+    const textarea = screen.getByLabelText(/html editor/i)
+
+    // Must not auto-grow with content -- that's what caused the textarea to
+    // overlap the results/copy button when long HTML was pasted.
+    expect(textarea.className).not.toMatch(/field-sizing-content/)
+    expect(textarea.className).toMatch(/resize-none/)
+    expect(textarea.className).toMatch(/h-full/)
+    expect(textarea.className).toMatch(/overflow-y-auto/)
+
+    cleanup()
+  })
 })

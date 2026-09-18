@@ -217,4 +217,34 @@ describe("ConverterResults custom code (F035)", () => {
       { mimeType: "text/plain", data: "console.log('hello');" },
     ])
   })
+
+  it("test_D3_raw_internal_validator_error_is_replaced_with_friendly_copy", () => {
+    const result: ConvertActionResult = {
+      ok: false,
+      message: "payload.nodes must not be empty",
+      errors: ["payload.nodes must not be empty"],
+      warnings: [],
+    }
+    render(<ConverterResults result={result} />)
+
+    const alert = screen.getByRole("alert")
+    expect(alert).not.toHaveTextContent("payload.nodes must not be empty")
+    expect(alert).toHaveTextContent(
+      "No convertible elements found. Paste HTML that contains at least one visible element."
+    )
+  })
+
+  it("test_D3_unknown_error_messages_pass_through_unchanged", () => {
+    const result: ConvertActionResult = {
+      ok: false,
+      message: "Something unexpected happened.",
+      errors: ["Something unexpected happened."],
+      warnings: [],
+    }
+    render(<ConverterResults result={result} />)
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Something unexpected happened."
+    )
+  })
 })
