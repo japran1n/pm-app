@@ -23,6 +23,18 @@ export function writeToClipboard(
         break;
       }
     }
+    // Read back what was written -- some browsers (WebKit) silently sanitise
+    // non-standard MIME types like application/json: setData "succeeds" but
+    // nothing is actually written. Catch that silent rejection here.
+    if (!threw) {
+      for (const item of items) {
+        const written = e.clipboardData!.getData(item.mimeType);
+        if (!written) {
+          threw = true;
+          break;
+        }
+      }
+    }
   };
   document.addEventListener("copy", handler, { once: true });
 

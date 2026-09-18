@@ -1,37 +1,38 @@
-# Handoff: F095 — repair combo chains with missing intermediate links (AS-117 blocker fix)
+# Handoff: F095 — M6-L clipboard tests (silent-rejection read-back + falsifiable clipboard/JS-escape tests)
 
 ## Status
 COMPLETE
 
 ## Assertions covered
-AS-117: PASS — every combo chain's `comb` reference resolves to an id present in `styles[]`; missing intermediate combos (e.g. `.a{} .a.b.c{}`) are synthesized as empty stub styles instead of being dropped, and stale `idByKey` entries for skipped combos are removed so deeper combos can never resolve to a dangling id.
+AS-031: PASS — writes application/json to clipboard (unaffected by read-back change; getData added to test mocks)
+AS-032: PASS — new test_no_async_clipboard_api_used pins that navigator.clipboard.write is never called; existing execCommand-mock-only test also still passes
 
 ## Files changed
-lib/webflow-converter/emit.ts
-lib/webflow-converter/emit.test.ts
-lib/webflow-converter/convert.test.ts
+lib/webflow-converter-client/clipboard.ts
+lib/webflow-converter-client/clipboard.test.ts
+lib/actions/webflow-converter.test.ts
 
 ## Commands run
-`npx vitest run lib/webflow-converter/` (0) — 393 tests passed
+`npx vitest run lib/webflow-converter-client/ lib/actions/webflow-converter.test.ts` (0) — 21 tests passed
 `npx tsc --noEmit` (0)
 `npm run lint` (0)
 
 ## Decisions made
-- Removed the old two-pass `idByKey` pre-registration (which assigned an id to every chain key up front, including combos that later got skipped) and replaced it with lazy id assignment: an id is only written into `idByKey` when a style — real or synthesized stub — is actually pushed onto `styles[]`. This eliminates B1 (stale dangling `comb`) as a structural class of bug rather than patching it with an extra delete call in every skip path.
-- For B2 (missing intermediate), synthesis is attempted only one level deep: if a combo's immediate base key is missing, check whether the base's own base ("grandparent") already has a real or synthesized style. If so, synthesize an empty stub (`styleLess: ""`, `variants: {}`, name = last segment of the missing key, `comb` = grandparent's id) and continue processing the current combo normally. If the grandparent is also missing, fall back to the original warn-and-skip behavior — this matches the spec's explicit requirement that a "truly broken" 3+-level chain (none of the intermediates exist) still gracefully skips with a warning instead of attempting unbounded synthesis.
-- Updated the pre-existing test `"AS-117: combo class with undefined base emits a warning..."` (using `.a{} .a.b.c{}`) because that exact input is B2's own worked example in the spec — the correct new behavior is synthesis, not skip-and-warn. Renamed/rewrote it to assert the synthesized stub and full chain instead.
-- Synthesized stub styles reuse the same `name` collision pattern already present in the codebase (e.g. a standalone `.b` stub from the AS-114 pass and a combo-child stub both named `"b"` but distinguished by `comb !== ""`) — no new naming scheme introduced.
+- Added the read-back loop (`e.clipboardData!.getData(item.mimeType)`) strictly after the existing `setData` loop and gated it with `if (!threw)` so it doesn't run when a `setData` call already threw — preserves existing throw-path semantics and test expectations.
+- Updated the default mock `ClipboardEvent.clipboardData` in `clipboard.test.ts`'s `beforeEach` to include a `getData` implementation backed by the same `clipboardData` record used by `setData`, so pre-existing happy-path tests keep passing under the new read-back check. Mocks that intentionally throw from `setData` were left untouched since the read-back loop never runs on that path.
+- `test_setData_silent_rejection_returns_false` uses a `setData` that is a true no-op (never populates the record) and `getData` that always returns `""`, matching the WebKit sanitisation failure mode described in the spec (D-M1) — this is what the new read-back loop is designed to catch.
+- `test_preventDefault_called` and `test_no_async_clipboard_api_used` don't require intercepting `document.addEventListener` differently from the existing pattern already set up in `beforeEach`; reused it.
+- For webflow-converter.test.ts, chose the "capture what HTML was passed to the underlying convert call" strengthening option. Used `vi.mock` with `vi.importActual` plus `vi.hoisted` to keep a reference to the real `convert` implementation while wrapping it in a `vi.fn` spy (`mockConvert`) so tests could both assert on captured arguments and still get real conversion output for other assertions (json/js shape, etc.) in the same suite. Verified by temporarily removing the `replace(/<\/script>/gi, ...)` line from webflow-converter.ts — `test_script_closing_tag_in_js_escaped` failed as expected, then reverted.
 
 ## Out-of-scope work needed
-None identified. B1 and B2 are the only two blockers named in the spec and both are fixed with test coverage for 2-level, 3-level (working), 4-level, and "truly broken" 3-level chains.
+None identified within this feature's scope.
 
 ## Blockers
 (none — Status is COMPLETE)
 
 ## Autonomous decisions
-AUTONOMOUS_DECISION: Chose to eliminate the pre-pass entirely (Option A — defer id assignment) rather than the more surgical "Option B — delete key on skip" suggested as the primary approach in the spec, because deferring assignment removes the B1 bug class structurally (no id ever exists for a style that wasn't pushed) and is no more invasive than adding delete calls at every skip site. The spec explicitly allowed either approach ("You need to either... (A) ... OR (B) ...").
+AUTONOMOUS_DECISION: Used `vi.hoisted` + `vi.importActual` pattern (rather than a manually maintained fixture of `convert`'s behaviour) to keep the strengthened D-M3 test exercising the real conversion engine end-to-end while still allowing argument capture, per clarified spec Option A ("capture what HTML was passed to the underlying convert call").
 
 ## Notes for the next worker
-- `buildStyles()` in `lib/webflow-converter/emit.ts` is the single source of truth for combo-chain resolution; any future combo-related bug should start there.
-- Test helper pattern for verifying "no dangling comb references" used throughout the new tests: build `ids = new Set(styles.map(s => s._id))`, then assert every non-empty `s.comb` is in `ids`. Reuse this pattern for any future combo-chain regression tests.
-- No MCP tools used — this is pure application-logic code with no external service dependency.
+- Naive `vi.mock` factories that reference a top-level `import { convert as realConvert } from ...` will get the *mocked* module back (infinite recursion) because `vi.mock` hoists above imports. Use `vi.hoisted()` to stash the real implementation obtained via `vi.importActual` inside the factory itself, then read it back via a getter in tests — this avoids the recursion trap and is a useful pattern for any future "spy while keeping the real behaviour" test in this codebase.
+- No MCP tools used — this feature is pure unit-test/logic work with no live external service state to introspect.

@@ -27,6 +27,7 @@ describe("writeToClipboard", () => {
             setData: (mime: string, data: string) => {
               clipboardData[mime] = data;
             },
+            getData: (mime: string) => clipboardData[mime] ?? "",
           },
         } as unknown as ClipboardEvent;
         handler(mockEvent);
@@ -168,5 +169,66 @@ describe("writeToClipboard", () => {
     const result = writeToClipboard([]);
     expect(result).toBe(false);
     expect(addSpy).not.toHaveBeenCalled();
+  });
+
+  it("test_preventDefault_called", () => {
+    let preventDefaultSpy: ReturnType<typeof vi.fn> | null = null;
+    vi.spyOn(document, "execCommand").mockImplementation((cmd) => {
+      if (cmd === "copy" && handler) {
+        preventDefaultSpy = vi.fn();
+        const mockEvent = {
+          preventDefault: preventDefaultSpy,
+          clipboardData: {
+            setData: (mime: string, data: string) => {
+              clipboardData[mime] = data;
+            },
+            getData: (mime: string) => clipboardData[mime] ?? "",
+          },
+        } as unknown as ClipboardEvent;
+        handler(mockEvent);
+        return true;
+      }
+      return false;
+    });
+
+    writeToClipboard([{ mimeType: "text/plain", data: "x" }]);
+    expect(preventDefaultSpy).not.toBeNull();
+    expect(preventDefaultSpy!).toHaveBeenCalled();
+  });
+
+  it("test_no_async_clipboard_api_used", () => {
+    const writeSpy = vi.fn();
+    Object.defineProperty(navigator, "clipboard", {
+      value: { write: writeSpy },
+      configurable: true,
+    });
+
+    writeToClipboard([{ mimeType: "text/plain", data: "x" }]);
+
+    expect(writeSpy).not.toHaveBeenCalled();
+  });
+
+  it("test_setData_silent_rejection_returns_false", () => {
+    vi.spyOn(document, "execCommand").mockImplementation((cmd) => {
+      if (cmd === "copy" && handler) {
+        const mockEvent = {
+          preventDefault: vi.fn(),
+          clipboardData: {
+            // setData is a silent no-op (as some browsers do for
+            // non-standard MIME types like application/json)
+            setData: () => {},
+            getData: () => "",
+          },
+        } as unknown as ClipboardEvent;
+        handler(mockEvent);
+        return true;
+      }
+      return false;
+    });
+
+    const result = writeToClipboard([
+      { mimeType: "application/json", data: "{}" },
+    ]);
+    expect(result).toBe(false);
   });
 });

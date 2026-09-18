@@ -12,11 +12,44 @@ vi.mock("@/lib/auth/current-user", () => ({
   getCurrentUser: () => mockGetCurrentUser(),
 }));
 
+const { mockConvert, getActualConvert, setActualConvert } = vi.hoisted(
+  () => {
+    let actualConvert: ((html: string, css: string) => unknown) | null =
+      null;
+    return {
+      mockConvert: vi.fn((html: string, css: string) => {
+        if (!actualConvert) throw new Error("actual convert not loaded yet");
+        return actualConvert(html, css);
+      }),
+      getActualConvert: () => actualConvert,
+      setActualConvert: (fn: (html: string, css: string) => unknown) => {
+        actualConvert = fn;
+      },
+    };
+  }
+);
+
+vi.mock("@/lib/webflow-converter/convert", async () => {
+  const actual = await vi.importActual<
+    typeof import("@/lib/webflow-converter/convert")
+  >("@/lib/webflow-converter/convert");
+  setActualConvert(actual.convert);
+  return {
+    ...actual,
+    convert: (html: string, css: string) => mockConvert(html, css),
+  };
+});
+
 import { convertHtmlToWebflow } from "@/lib/actions/webflow-converter";
 
 describe("convertHtmlToWebflow (M4)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockConvert.mockImplementation((html: string, css: string) => {
+      const actualConvert = getActualConvert();
+      if (!actualConvert) throw new Error("actual convert not loaded yet");
+      return actualConvert(html, css);
+    });
     mockGetCurrentUser.mockResolvedValue({ user: { id: "user-1" } });
   });
 
@@ -85,6 +118,21 @@ describe("convertHtmlToWebflow (M4)", () => {
       js: "alert('</script><script>evil()')",
     });
     expect(result.ok).toBe(true);
+
+    // The escape must have actually run: the HTML handed to the conversion
+    // engine must not contain a bare </script> closing tag anywhere inside
+    // the injected JS -- a real, unescaped closing tag there would break out
+    // of the <script> block early (script injection). This test fails if the
+    // replace(/<\/script>/gi, ...) line is removed from webflow-converter.ts.
+    expect(mockConvert).toHaveBeenCalledTimes(1);
+    const [capturedHtml] = mockConvert.mock.calls[0] as [string, string];
+    const scriptBlockStart = capturedHtml.indexOf("<script>");
+    const scriptBlockContent = capturedHtml.slice(
+      scriptBlockStart,
+      capturedHtml.lastIndexOf("</script>")
+    );
+    expect(scriptBlockContent).not.toContain("</script><script>evil()");
+    expect(capturedHtml).toContain("<\\/script>");
   });
 
   it("test_AS_118_conversion_error_from_the_engine_is_surfaced_with_ok_false", async () => {
