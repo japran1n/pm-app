@@ -29,7 +29,7 @@ export function writeToClipboard(
     if (!threw) {
       for (const item of items) {
         const written = e.clipboardData!.getData(item.mimeType);
-        if (!written) {
+        if (written !== item.data) {
           threw = true;
           break;
         }

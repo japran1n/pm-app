@@ -39,15 +39,21 @@ describe("writeToClipboard", () => {
 
   afterEach(() => vi.restoreAllMocks());
 
-  it("AS-031: writes application/json to clipboard", () => {
+  it("AS-031: writes application/json to clipboard and returns true on full success", () => {
     const payload = '{"type":"@webflow/XscpData"}';
-    writeToClipboard([{ mimeType: "application/json", data: payload }]);
+    const result = writeToClipboard([
+      { mimeType: "application/json", data: payload },
+    ]);
     expect(clipboardData["application/json"]).toBe(payload);
+    expect(result).toBe(true);
   });
 
-  it("writes text/plain to clipboard", () => {
-    writeToClipboard([{ mimeType: "text/plain", data: "hello" }]);
+  it("writes text/plain to clipboard and returns true on full success", () => {
+    const result = writeToClipboard([
+      { mimeType: "text/plain", data: "hello" },
+    ]);
     expect(clipboardData["text/plain"]).toBe("hello");
+    expect(result).toBe(true);
   });
 
   it("writes multiple MIME types in one call", () => {
@@ -198,14 +204,31 @@ describe("writeToClipboard", () => {
 
   it("test_no_async_clipboard_api_used", () => {
     const writeSpy = vi.fn();
+    const writeTextSpy = vi.fn();
+    const readSpy = vi.fn();
+    const readTextSpy = vi.fn();
+    const clipboardAccessSpy = vi.fn();
+    const mockClipboard = {
+      write: writeSpy,
+      writeText: writeTextSpy,
+      read: readSpy,
+      readText: readTextSpy,
+    };
     Object.defineProperty(navigator, "clipboard", {
-      value: { write: writeSpy },
+      get: () => {
+        clipboardAccessSpy();
+        return mockClipboard;
+      },
       configurable: true,
     });
 
     writeToClipboard([{ mimeType: "text/plain", data: "x" }]);
 
     expect(writeSpy).not.toHaveBeenCalled();
+    expect(writeTextSpy).not.toHaveBeenCalled();
+    expect(readSpy).not.toHaveBeenCalled();
+    expect(readTextSpy).not.toHaveBeenCalled();
+    expect(clipboardAccessSpy).not.toHaveBeenCalled();
   });
 
   it("test_setData_silent_rejection_returns_false", () => {
