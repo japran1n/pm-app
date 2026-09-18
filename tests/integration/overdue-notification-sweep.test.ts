@@ -444,5 +444,49 @@ describe.skipIf(!haveMgmtCreds)(
       expect(jobs[0].schedule).toBe("0 * * * *");
       expect(jobs[0].active).toBe(true);
     });
+
+    // P2-21: all 4 pg_cron jobs must be registered with the expected
+    // schedules. Querying cron.job for each job in one statement is cheaper
+    // than four separate round-trips and gives a single, readable failure
+    // message if any job is missing or misconfigured.
+    //
+    // Job catalog (one row per cron.schedule() call across all migrations):
+    //   generate-due-recurring-occurrences  0 * * * *   (F178 / 20260822160000)
+    //   notify-overdue-task-assignees       0 * * * *   (F212 / 20260823050000)
+    //   sweep-overdue-blocking-deliverables 0 * * * *   (F013 / 20260927010000)
+    //   sweep-project-budget-thresholds     30 6 * * *  (F018 / 20261012010000)
+    it("P2-21: all 4 pg_cron jobs exist with the expected schedules", async () => {
+      const expectedJobs: Array<{ jobname: string; schedule: string }> = [
+        { jobname: "generate-due-recurring-occurrences", schedule: "0 * * * *" },
+        { jobname: "notify-overdue-task-assignees", schedule: "0 * * * *" },
+        { jobname: "sweep-overdue-blocking-deliverables", schedule: "0 * * * *" },
+        { jobname: "sweep-project-budget-thresholds", schedule: "30 6 * * *" },
+      ];
+
+      const jobnames = expectedJobs.map((j) => `'${j.jobname}'`).join(", ");
+      const jobs = await sql<{ jobname: string; schedule: string; active: boolean }>(`
+        select jobname, schedule, active
+        from cron.job
+        where jobname in (${jobnames})
+        order by jobname;
+      `);
+
+      // Every expected job must exist.
+      const registeredNames = new Set(jobs.map((j) => j.jobname));
+      for (const expected of expectedJobs) {
+        expect(
+          registeredNames.has(expected.jobname),
+          `pg_cron job "${expected.jobname}" is not registered in cron.job`,
+        ).toBe(true);
+      }
+
+      // Schedule and active state must match for each registered job.
+      for (const job of jobs) {
+        const expected = expectedJobs.find((e) => e.jobname === job.jobname);
+        if (!expected) continue;
+        expect(job.schedule).toBe(expected.schedule);
+        expect(job.active).toBe(true);
+      }
+    });
   },
 );
