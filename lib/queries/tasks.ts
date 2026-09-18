@@ -307,11 +307,18 @@ export async function filterTaskIdsByAnyAssignee(
   return [...new Set((data ?? []).map((row) => row.task_id))];
 }
 
+export type ProjectListTasksResult = {
+  tasks: TaskCardTask[];
+  // P2-33: true when the underlying query hit the 1000-row safety cap and
+  // there are more rows in the database that the caller cannot see.
+  hasMore: boolean;
+};
+
 export async function getProjectListTasks(
   projectId: string,
   filters?: ProjectListTaskFilters,
   sort?: ProjectListTaskSort,
-): Promise<TaskCardTask[]> {
+): Promise<ProjectListTasksResult> {
   const supabase = await createClient();
 
   let query = supabase
@@ -401,7 +408,9 @@ export async function getProjectListTasks(
   // more" UI end-to-end is out of scope for this pass (see W10 handoff's
   // "Out-of-scope work needed") — this `.limit()` is a safety cap only,
   // matching this feature's documented fallback.
-  query = query.limit(1000);
+  // P2-33: fetch 1001 rows so we can detect overflow without loading all
+  // rows; the caller receives `hasMore: true` and a list of exactly 1000.
+  query = query.limit(1001);
 
   const { data, error } = await query;
 
@@ -409,7 +418,9 @@ export async function getProjectListTasks(
     throw error;
   }
 
-  const rows = data ?? [];
+  const allRows = data ?? [];
+  const hasMore = allRows.length > 1000;
+  const rows = hasMore ? allRows.slice(0, 1000) : allRows;
 
   // F412: one batched sum of logged time for the whole visible page,
   // rather than a per-row fetch — see getTaskLoggedMinutes's own doc
@@ -418,7 +429,9 @@ export async function getProjectListTasks(
     rows.map((task) => task.id),
   );
 
-  return rows.map((task) => ({
+  return {
+    hasMore,
+    tasks: rows.map((task) => ({
     id: task.id,
     title: task.title,
     status: task.status as TaskCardTask["status"],
@@ -457,7 +470,8 @@ export async function getProjectListTasks(
     // Free-text "why is this blocked" reason — see this function's select
     // above and TaskCardTask.blockedReason's own comment.
     blockedReason: task.blocked_reason ?? null,
-  }));
+  })),
+  };
 }
 
 // F078 (AS-134): the dashboard's task table — same filter shape as the

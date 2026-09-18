@@ -72,11 +72,14 @@ export default async function ProjectPrintSummaryPage({
     notFound();
   }
 
-  const [phases, tasks, members] = await Promise.all([
+  const [phases, tasksResult, members] = await Promise.all([
     getProjectPhasesForTeam(project.id),
     getProjectListTasks(project.id),
     getProjectMembers(project.id),
   ]);
+  // P2-33: print view uses the task list as-is; hasMore is not surfaced here
+  // since this is a static export and adding rows would require pagination.
+  const tasks = tasksResult.tasks;
 
   const currentPhase = phases.find((phase) => phase.state === "active") ?? null;
 
