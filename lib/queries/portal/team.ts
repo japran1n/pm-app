@@ -7,6 +7,24 @@ import {
   type ProjectRoleValue,
 } from "@/lib/queries/project-roles";
 
+// P2-23: both `getPortalLiveNow` and `getPortalTeam` below used to decide
+// "is this a teammate the client should see" by checking
+// `roleByUserId.get(userId) !== "client"` -- an EXCLUDE-list check that
+// silently INCLUDES any user id absent from `roleByUserId` at all. A
+// removed colleague (`remove_workspace_member`, baseline migration) does
+// not soft-delete or re-label their `workspace_members` row -- it DELETEs
+// it outright -- so a since-removed teammate simply has no row for that
+// `.eq("workspace_id", ...).in("user_id", ...)` lookup to return, `.get()`
+// comes back `undefined`, and `undefined !== "client"` is `true`: exactly
+// the defect ("removed colleague stays as working now / in Your team").
+// The fix is a positive allow-list instead -- only a user id present in a
+// role-and-status-filtered result counts as a current teammate; an id
+// with no matching row (removed, or never a member) is excluded by
+// default rather than by exception. Scoped to `active` status too, so a
+// former member who is later re-invited (status `invited`, not yet
+// accepted) does not reappear either.
+const STAFF_ROLES = ["owner", "admin", "member"] as const;
+
 // --- Live now (F006, missions/20260903-portal; P3, docs/client-portal-
 // sixstar-plan.md) ----------------------------------------------------
 //
@@ -87,6 +105,8 @@ export async function getPortalLiveNow(
       .from("workspace_members")
       .select("user_id, role")
       .eq("workspace_id", project.workspace_id)
+      .eq("status", "active")
+      .in("role", STAFF_ROLES)
       .in("user_id", userIds),
     // F006b (missions/20260903-portal, AS-012): `client_visible` filtered
     // explicitly, same as `getProjectPhases`'s own identical filter (and
@@ -106,14 +126,20 @@ export async function getPortalLiveNow(
       : Promise.resolve({ data: [] as { id: string; name: string }[] }),
   ]);
 
-  const roleByUserId = new Map((roleRows.data ?? []).map((r) => [r.user_id, r.role]));
+  // Positive allow-list, not an exclude-list -- see this file's top-of-
+  // file P2-23 comment. Only a user id present here (active, staff role)
+  // counts; a removed colleague's timer row is filtered out because
+  // their `workspace_members` row no longer exists, not because their
+  // role happens to be "client".
+  const staffUserIds = new Set((roleRows.data ?? []).map((r) => r.user_id));
   const phaseNameById = new Map((phaseRows.data ?? []).map((p) => [p.id, p.name]));
 
   return timers
     // A client should never see their own (or a co-client's) presence
     // reflected back at them -- "your team" is the agency's, never the
-    // client's own membership.
-    .filter((row) => roleByUserId.get(row.user_id) !== "client")
+    // client's own membership. Same filter also drops a removed
+    // colleague's stale timer row (P2-23).
+    .filter((row) => staffUserIds.has(row.user_id))
     .flatMap((row) => {
       const task = Array.isArray(row.tasks) ? row.tasks[0] : row.tasks;
       if (!task) return [];
@@ -194,6 +220,8 @@ export async function getPortalTeam(projectId: string): Promise<PortalTeamMember
       .from("workspace_members")
       .select("user_id, role")
       .eq("workspace_id", project.workspace_id)
+      .eq("status", "active")
+      .in("role", STAFF_ROLES)
       .in("user_id", userIds),
     admin
       .from("project_roles")
@@ -201,10 +229,15 @@ export async function getPortalTeam(projectId: string): Promise<PortalTeamMember
       .eq("project_id", projectId),
   ]);
 
-  const roleByUserId = new Map((roleRows.data ?? []).map((r) => [r.user_id, r.role]));
+  // Positive allow-list, not an exclude-list -- see this file's top-of-
+  // file P2-23 comment. A removed colleague's `project_members` row can
+  // outlive their (deleted) `workspace_members` row; requiring presence
+  // in this active-staff result (rather than merely `role !== "client"`)
+  // is what actually drops them from "Your team".
+  const staffUserIds = new Set((roleRows.data ?? []).map((r) => r.user_id));
   const teamMemberIds = members
     .map((member) => member.user_id)
-    .filter((userId) => roleByUserId.get(userId) !== "client");
+    .filter((userId) => staffUserIds.has(userId));
   const teamMemberIdSet = new Set(teamMemberIds);
 
   const jobsByUserId = new Map<string, { role: string; note: string | null }[]>();
