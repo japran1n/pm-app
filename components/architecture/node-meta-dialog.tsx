@@ -84,12 +84,7 @@ export function NodeMetaDialog({
         primaryCta: primaryCta || undefined,
         tone: tone || undefined,
         keywords,
-        // NOTE: setNodeMeta's inline patch.copyStatus TS annotation
-        // (node-meta.ts) is narrower than the zod schema / NodeMeta type
-        // (missing "brief_ready" | "drafted") -- pre-existing bug from F13,
-        // out of scope for F21. The runtime validator (copyStatusSchema)
-        // already accepts the full enum, so this cast is safe.
-        copyStatus: copyStatus as "not_started" | "in_review" | "approved",
+        copyStatus,
       });
       if (result.success) {
         router.refresh();

@@ -10,6 +10,8 @@
 // then require write permission before touching data.
 import { revalidatePath } from "next/cache";
 
+import { type z } from "zod";
+
 import { logger } from "@/lib/observability/logger";
 import {
   revalidatePortalProject,
@@ -22,9 +24,12 @@ import { canWrite } from "@/lib/auth/permissions";
 import {
   setNodeMetaSchema,
   setNodeMetaClientVisibilitySchema,
+  copyStatusSchema,
 } from "@/lib/validation/architecture";
 
 import type { MutationResult } from "./shared";
+
+type CopyStatus = z.infer<typeof copyStatusSchema>;
 
 // Shared helper: resolve the task's owning project + workspace, and
 // confirm the caller is an active, write-capable member -- same convention
@@ -88,7 +93,7 @@ export async function setNodeMeta(
     primaryCta?: string;
     tone?: string;
     keywords?: string[];
-    copyStatus?: "not_started" | "drafting" | "in_review" | "approved";
+    copyStatus?: CopyStatus;
   },
 ): Promise<MutationResult> {
   const parsed = setNodeMetaSchema.safeParse({ taskId, patch });
