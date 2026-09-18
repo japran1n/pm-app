@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { LayoutGrid, Loader2, Network, SlidersHorizontal } from "lucide-react";
+import { toast } from "sonner";
 
 import type { BoardComponent, BoardPage } from "@/lib/queries/architecture";
 import { ArchitectureBoard } from "@/components/architecture/board";
@@ -50,28 +51,79 @@ export function ArchitectureViewToggle({
   // Details toggle — default OFF, persisted to localStorage per project.
   // Data fetched lazily on first enable, cached for the session.
   const storageKey = `pm-app:architecture-details:${projectId}`;
-  const [showDetails, setShowDetails] = useState(() => {
-    try {
-      return localStorage.getItem(storageKey) === 'true';
-    } catch {
-      return false;
-    }
-  });
+  // FIX (hydration mismatch): localStorage is not available during SSR, so
+  // the initial render must match the server (false). We sync the real
+  // persisted value in an effect once mounted on the client.
+  const [showDetails, setShowDetails] = useState(false);
   const [detailsData, setDetailsData] = useState<ArchitectureNodeDetails | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
 
-  // Fetch once when toggle turns on, never again in this session.
+  // FIX C-8: request id ref so a rapid toggle-off before the fetch resolves
+  // never lets a stale response set loading/data state after the fact, and
+  // toggling off always clears the loading flag immediately.
+  const fetchIdRef = useRef(0);
+
   useEffect(() => {
-    if (!showDetails || detailsData !== null) return;
-    let cancelled = false;
-    setDetailsLoading(true);
-    getNodeDetailsForToggle(projectId).then(result => {
-      if (cancelled) return;
+    try {
+      setShowDetails(localStorage.getItem(storageKey) === "true");
+    } catch {
+      // ignore — storage unavailable (private mode, SSR, etc.)
+    }
+    // Only run on mount / when the project changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storageKey]);
+
+  // Fetch once when toggle turns on, never again in this session (until
+  // detailsData is invalidated, e.g. after a write — see refreshDetails).
+  useEffect(() => {
+    if (!showDetails) {
+      // FIX C-8: turning the toggle off must always release the button,
+      // even if a fetch was in flight — otherwise a rapid on/off toggle
+      // permanently disables it because the in-flight promise's
+      // setDetailsLoading(false) never runs (its `cancelled` guard skips
+      // it, and the fetch id changing below skips it again).
+      fetchIdRef.current += 1;
       setDetailsLoading(false);
-      if (result.ok) setDetailsData(result.data);
-    });
-    return () => { cancelled = true; };
+      return;
+    }
+    if (detailsData !== null) return;
+
+    const fetchId = ++fetchIdRef.current;
+    setDetailsLoading(true);
+
+    getNodeDetailsForToggle(projectId)
+      .then((result) => {
+        if (fetchId !== fetchIdRef.current) return; // superseded/stale
+        if (result.ok) {
+          setDetailsData(result.data);
+        } else {
+          // FIX C-7: a failed server action used to be swallowed silently
+          // -- the toggle just showed nothing. Surface the error and
+          // revert the toggle so the button doesn't look "on" with no data.
+          toast.error(result.error ?? "Failed to load details.");
+          setShowDetails(false);
+        }
+      })
+      .catch((err) => {
+        if (fetchId !== fetchIdRef.current) return;
+        toast.error(err instanceof Error ? err.message : "Failed to load details.");
+        setShowDetails(false);
+      })
+      .finally(() => {
+        if (fetchId === fetchIdRef.current) setDetailsLoading(false);
+      });
   }, [showDetails, detailsData, projectId]);
+
+  // NOTE (C-6, known limitation): detailsData is only invalidated by
+  // toggling off/on. Write actions deep in the board tree (estimate saved
+  // via DisciplineEstimatePopover, meta saved via NodeMetaDialog) call
+  // router.refresh() for the server-rendered board data, but that doesn't
+  // touch this client-side cache, so rollups can show stale numbers after
+  // a save until the user toggles details off and back on. Fixing this
+  // properly requires threading an onWriteSuccess callback (calling
+  // setDetailsData(null) here) down through ArchitectureBoard/CanvasBoard
+  // to estimate-chip.tsx's DisciplineEstimatePopover and node-meta-dialog.tsx
+  // -- out of scope for this fix; see handoff for the follow-up spec.
 
   function toggleDetails() {
     const next = !showDetails;
