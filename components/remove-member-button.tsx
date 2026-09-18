@@ -62,13 +62,17 @@ export function RemoveMemberButton({
 
   // Fetch the task count once when the dialog opens (only if we have
   // a userId to look up; invited-but-not-accepted members have no user_id).
+  // FIX (react-hooks/set-state-in-effect): resetting countLoading/taskCount/
+  // reassignTo for a fresh open used to happen synchronously at the top of
+  // this effect. That reset is really part of the user-triggered "open the
+  // dialog" action, not a reaction to a committed render, so it now runs in
+  // the trigger button's onClick handler below instead — this effect only
+  // performs the actual fetch, and only ever calls setState from inside the
+  // async `.then` callback.
   useEffect(() => {
     if (!open || !userId) return;
 
     let cancelled = false;
-    setCountLoading(true);
-    setTaskCount(null);
-    setReassignTo("");
 
     getAssignedTaskCount(workspaceId, userId).then((result) => {
       if (!cancelled) {
@@ -122,7 +126,14 @@ export function RemoveMemberButton({
         variant="ghost"
         size="icon"
         disabled={isPending}
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          if (userId) {
+            setCountLoading(true);
+            setTaskCount(null);
+          }
+          setReassignTo("");
+          setOpen(true);
+        }}
         aria-label={`Remove ${memberLabel}`}
       >
         {isPending ? (

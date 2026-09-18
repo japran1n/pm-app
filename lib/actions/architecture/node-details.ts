@@ -25,6 +25,7 @@ export async function getNodeDetailsForToggle(
     return { ok: false, error: "Unauthorized" };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   const { data: projectRow, error: projectError } = await admin

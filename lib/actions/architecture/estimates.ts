@@ -89,6 +89,7 @@ export async function setDisciplineEstimate(
     return { success: false, error: "You must be signed in to set an estimate." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   const taskInfo = await loadTaskForEstimate(admin, parsed.data.taskId);
@@ -165,6 +166,7 @@ export async function clearDisciplineEstimate(
     return { success: false, error: "You must be signed in to clear an estimate." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   const taskInfo = await loadTaskForEstimate(admin, parsed.data.taskId);
@@ -252,6 +254,7 @@ export async function setDisciplineEstimatesBulk(
     return { success: false, error: "You must be signed in to set estimates." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   const taskInfo = await loadTaskForEstimate(admin, parsed.data.taskId);

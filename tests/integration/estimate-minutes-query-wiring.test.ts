@@ -218,7 +218,7 @@ describe.skipIf(!haveAdminCreds)(
 
     it("test_AS_300_getProjectListTasks_carries_estimate_minutes_through_into_TaskCardTask", async () => {
       const { getProjectListTasks } = await import("@/lib/queries/tasks");
-      const rows = await getProjectListTasks(projectId);
+      const { tasks: rows } = await getProjectListTasks(projectId);
 
       const withEstimate = rows.find((t) => t.id === taskWithEstimateId);
       expect(withEstimate?.estimateMinutes).toBe(90);

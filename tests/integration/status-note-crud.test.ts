@@ -238,7 +238,7 @@ describe.skipIf(!haveAdminCreds)("Out-of-office status note", () => {
   it("rejects PATCH role:owner via PostgREST (column grant)", async () => {
     const { error } = await memberClient
       .from("workspace_members")
-      .update({ role: "owner" } as any)
+      .update({ role: "owner" } as unknown as Record<string, unknown>)
       .eq("user_id", memberUserId);
     expect(error).not.toBeNull();
     expect(error?.code).toBe("42501"); // permission denied
@@ -247,7 +247,7 @@ describe.skipIf(!haveAdminCreds)("Out-of-office status note", () => {
   it("rejects PATCH workspace_id via PostgREST (column grant)", async () => {
     const { error } = await memberClient
       .from("workspace_members")
-      .update({ workspace_id: "00000000-0000-0000-0000-000000000000" } as any)
+      .update({ workspace_id: "00000000-0000-0000-0000-000000000000" } as unknown as Record<string, unknown>)
       .eq("user_id", memberUserId);
     expect(error).not.toBeNull();
     expect(error?.code).toBe("42501"); // permission denied

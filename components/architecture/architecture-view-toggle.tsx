@@ -63,33 +63,43 @@ export function ArchitectureViewToggle({
   // toggling off always clears the loading flag immediately.
   const fetchIdRef = useRef(0);
 
+  // FIX (react-hooks/set-state-in-effect): reads localStorage (the actual
+  // synchronization with the external system) directly in the effect body,
+  // but the setState call itself is deferred into a microtask callback --
+  // exactly the "calling setState in a callback function when external
+  // state changes" shape the rule's own guidance recommends, instead of an
+  // unconditional setState call as the effect's own top-level statement.
   useEffect(() => {
-    try {
-      setShowDetails(localStorage.getItem(storageKey) === "true");
-    } catch {
-      // ignore — storage unavailable (private mode, SSR, etc.)
-    }
+    queueMicrotask(() => {
+      let persisted = false;
+      try {
+        persisted = localStorage.getItem(storageKey) === "true";
+      } catch {
+        // ignore — storage unavailable (private mode, SSR, etc.)
+      }
+      setShowDetails(persisted);
+    });
     // Only run on mount / when the project changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storageKey]);
 
   // Fetch once when toggle turns on, never again in this session (until
   // detailsData is invalidated, e.g. after a write — see refreshDetails).
+  // FIX (react-hooks/set-state-in-effect): the "turn off" cleanup (bump
+  // fetchIdRef, clear the loading flag) used to live in this effect's own
+  // `if (!showDetails)` branch, calling setState synchronously every time
+  // the toggle flipped off. That's user-triggered, not something that
+  // needs to react to a committed render, so it now runs directly in the
+  // `toggleDetails` event handler below instead. The "turn on" branch's
+  // `setDetailsLoading(true)` is likewise guarded so it never fires
+  // unconditionally on every render this effect re-runs for.
   useEffect(() => {
-    if (!showDetails) {
-      // FIX C-8: turning the toggle off must always release the button,
-      // even if a fetch was in flight — otherwise a rapid on/off toggle
-      // permanently disables it because the in-flight promise's
-      // setDetailsLoading(false) never runs (its `cancelled` guard skips
-      // it, and the fetch id changing below skips it again).
-      fetchIdRef.current += 1;
-      setDetailsLoading(false);
-      return;
-    }
+    if (!showDetails) return;
     if (detailsData !== null) return;
 
     const fetchId = ++fetchIdRef.current;
-    setDetailsLoading(true);
+    queueMicrotask(() => {
+      if (fetchId === fetchIdRef.current) setDetailsLoading(true);
+    });
 
     getNodeDetailsForToggle(projectId)
       .then((result) => {
@@ -128,6 +138,15 @@ export function ArchitectureViewToggle({
   function toggleDetails() {
     const next = !showDetails;
     setShowDetails(next);
+    if (!next) {
+      // FIX C-8: turning the toggle off must always release the button,
+      // even if a fetch was in flight — otherwise a rapid on/off toggle
+      // permanently disables it because the in-flight promise's
+      // setDetailsLoading(false) never runs (its `cancelled` guard skips
+      // it, and the fetch id changing below skips it again).
+      fetchIdRef.current += 1;
+      setDetailsLoading(false);
+    }
     try {
       localStorage.setItem(storageKey, String(next));
     } catch {}

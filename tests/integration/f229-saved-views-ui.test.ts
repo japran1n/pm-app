@@ -263,7 +263,7 @@ describe.skipIf(!haveAdminCreds)(
         validStatusNames: new Set(["todo", "in_progress"]),
         validAssigneeIds: new Set(),
       });
-      const tasksForA = await getProjectListTasks(projectId, resolvedForA.filters, resolvedForA.sort);
+      const { tasks: tasksForA } = await getProjectListTasks(projectId, resolvedForA.filters, resolvedForA.sort);
 
       // memberB opens the SAME url (viewId) as a DIFFERENT real member.
       await signInAs(MEMBER_B);
@@ -276,7 +276,7 @@ describe.skipIf(!haveAdminCreds)(
         validStatusNames: new Set(["todo", "in_progress"]),
         validAssigneeIds: new Set(),
       });
-      const tasksForB = await getProjectListTasks(projectId, resolvedForB.filters, resolvedForB.sort);
+      const { tasks: tasksForB } = await getProjectListTasks(projectId, resolvedForB.filters, resolvedForB.sort);
 
       expect(tasksForB.map((t) => t.id).sort()).toEqual(tasksForA.map((t) => t.id).sort());
       expect(tasksForB.every((t) => t.status === "todo")).toBe(true);
@@ -427,7 +427,7 @@ describe.skipIf(!haveAdminCreds)(
       // (unfiltered, since the only filter was dropped) tasks — never an
       // error, never an empty result caused by filtering on a status that
       // can no longer match anything.
-      const tasks = await getProjectListTasks(projectId, resolved.filters, resolved.sort);
+      const { tasks } = await getProjectListTasks(projectId, resolved.filters, resolved.sort);
       expect(tasks.length).toBeGreaterThan(0);
     });
 
@@ -486,7 +486,7 @@ describe.skipIf(!haveAdminCreds)(
         expect(resolved.filters.assigneeId).toBeUndefined();
         expect(resolved.droppedCount).toBe(1);
 
-        const tasks = await getProjectListTasks(projectId, resolved.filters, resolved.sort);
+        const { tasks } = await getProjectListTasks(projectId, resolved.filters, resolved.sort);
         expect(tasks.length).toBeGreaterThan(0);
       } finally {
         // Restore for any later test's assumptions (memberB is reused as

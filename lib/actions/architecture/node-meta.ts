@@ -111,6 +111,7 @@ export async function setNodeMeta(
     return { success: false, error: "You must be signed in to do this." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   const authz = await resolveTaskAndAuthorizeWrite(admin, parsed.data.taskId, user.id);
@@ -191,6 +192,7 @@ export async function setNodeMetaClientVisibility(
     return { success: false, error: "You must be signed in to do this." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   const authz = await resolveTaskAndAuthorizeWrite(admin, parsed.data.taskId, user.id);
