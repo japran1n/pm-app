@@ -58,14 +58,15 @@ export interface WebflowStyleVariants {
 
 export interface WebflowStyle {
   _id: string;
-  name: string;
   fake: boolean;
-  comb: string;
+  type: "class";
+  name: string;
   namespace: "";
-  categories: [];
+  comb: string;
   styleLess: string;
   variants: WebflowStyleVariants;
   children: string[];
+  categories: [];
 }
 
 export interface XscpPayload {
@@ -173,6 +174,11 @@ export function buildStyles(cssResult: ParseCssResult, warnings: string[] = []):
   // `comb` to an id that was never emitted, producing a dangling reference
   // the validator rejects (AS-117 blocker B1).
   const idByKey = new Map<string, string>();
+  // Tracks combo style _id -> base style _id, since `comb` on a combo style
+  // now carries the literal "&" marker (Webflow's real clipboard format)
+  // rather than the base's id. The second pass below uses this map to
+  // populate each base's `children` array.
+  const comboBaseById = new Map<string, string>();
 
   for (const key of cssResult.order) {
     const rec: ParsedClass = cssResult.classes.get(key)!;
@@ -222,6 +228,7 @@ export function buildStyles(cssResult: ParseCssResult, warnings: string[] = []):
     // the bare last class name — otherwise it resolves to the standalone
     // ".b" style instead of the ".a.b" combo.
     let comb = "";
+    let resolvedBaseId: string | undefined;
     if (rec.comboOf && rec.comboOf.length > 0) {
       const baseKey = rec.comboOf.join("|");
       let baseId = idByKey.get(baseKey);
@@ -246,22 +253,25 @@ export function buildStyles(cssResult: ParseCssResult, warnings: string[] = []):
           const stubId = makeId();
           styles.push({
             _id: stubId,
-            name: rec.comboOf[rec.comboOf.length - 1],
             fake: false,
-            comb: grandBaseId ?? "",
+            type: "class",
+            name: rec.comboOf[rec.comboOf.length - 1],
             namespace: "",
-            categories: [],
+            comb: grandBaseId !== undefined ? "&" : "",
             styleLess: "",
             variants: {},
             children: [],
+            categories: [],
           });
           idByKey.set(baseKey, stubId);
           baseId = stubId;
+          if (grandBaseId !== undefined) comboBaseById.set(stubId, grandBaseId);
         }
       }
 
       if (baseId !== undefined) {
-        comb = baseId;
+        comb = "&";
+        resolvedBaseId = baseId;
       } else {
         warnings.push(
           `combo class "${rec.name}" references base "${rec.comboOf.join(".")}" which has no style definition — cannot emit combo`
@@ -278,23 +288,29 @@ export function buildStyles(cssResult: ParseCssResult, warnings: string[] = []):
 
     const id = makeId();
     idByKey.set(key, id);
+    if (resolvedBaseId !== undefined) comboBaseById.set(id, resolvedBaseId);
     styles.push({
       _id: id,
-      name: rec.name,
       fake: false,
-      comb,
+      type: "class",
+      name: rec.name,
       namespace: "",
-      categories: [],
+      comb,
       styleLess: toStyleLess(rec.base),
       variants,
       children: [],
+      categories: [],
     });
   }
 
-  // Second pass: populate each base style's children with its combos' _ids.
+  // Second pass: populate each base style's children with its combos' _ids,
+  // using the combo->base relationships recorded above (comb now carries the
+  // literal "&" marker, not the base's id, so it can no longer be used to
+  // find the base).
   for (const style of styles) {
-    if (style.comb) {
-      const base = styles.find((s) => s._id === style.comb);
+    const baseId = comboBaseById.get(style._id);
+    if (baseId) {
+      const base = styles.find((s) => s._id === baseId);
       if (base) {
         base.children = base.children ?? [];
         if (!base.children.includes(style._id)) base.children.push(style._id);
@@ -570,14 +586,15 @@ export function emitWebflow(html: string, cssMap: ParseCssResult, scripts: strin
   if (embedsInjected && !styles.some((s) => s.name === "is-hidden")) {
     styles.push({
       _id: makeId(),
-      name: "is-hidden",
       fake: false,
-      comb: "",
+      type: "class",
+      name: "is-hidden",
       namespace: "",
-      categories: [],
+      comb: "",
       styleLess: "display: none;",
       variants: {},
       children: [],
+      categories: [],
     });
   }
 
@@ -591,14 +608,15 @@ export function emitWebflow(html: string, cssMap: ParseCssResult, scripts: strin
     if (!styleNames.has(className)) {
       styles.push({
         _id: makeId(),
-        name: className,
         fake: false,
-        comb: "",
+        type: "class",
+        name: className,
         namespace: "",
-        categories: [],
+        comb: "",
         styleLess: "",
         variants: {},
         children: [],
+        categories: [],
       });
       styleNames.add(className);
     }

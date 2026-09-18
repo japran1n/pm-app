@@ -171,13 +171,24 @@ function validateStyles(
       errors.push(`Style ${style.name ?? style._id ?? "(unknown)"} has a non-string styleLess`);
     }
 
-    if (style.comb) {
-      const base = styleMap.get(style.comb);
-      if (!base) {
-        errors.push(`Combo style "${style._id ?? "(no id)"}" references unknown base "${style.comb}"`);
-      } else if (!Array.isArray(base.children) || !base.children.includes(style._id)) {
+    if ((style as { type?: unknown }).type !== "class") {
+      errors.push(`Style "${style._id ?? "(no id)"}" is missing type: "class" (buildStyleBlock requires it)`);
+    }
+
+    if (style.comb === "&") {
+      // Combo styles no longer carry their base's id in `comb` — the base is
+      // identified solely by having this style's _id in its `children`
+      // array. A combo must be registered in exactly one base's children.
+      const owners = styles.filter(
+        (s) => s && typeof s === "object" && Array.isArray(s.children) && s.children.includes(style._id)
+      );
+      if (owners.length === 0) {
         errors.push(
-          `Combo style "${style._id ?? "(no id)"}" is not registered in base "${style.comb}"'s children array`
+          `Combo style "${style._id ?? "(no id)"}" is not registered in any base style's children array`
+        );
+      } else if (owners.length > 1) {
+        errors.push(
+          `Combo style "${style._id ?? "(no id)"}" is registered in more than one base style's children array`
         );
       }
     }

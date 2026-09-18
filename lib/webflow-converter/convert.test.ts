@@ -55,9 +55,12 @@ describe("convert", () => {
 
     expect(result.payload).not.toBeNull();
     expect(result.errors).toEqual([]);
-    const ids = new Set(result.payload!.payload.styles.map((s) => s._id));
-    for (const s of result.payload!.payload.styles) {
-      if (s.comb) expect(ids.has(s.comb)).toBe(true);
+    const styles = result.payload!.payload.styles;
+    for (const s of styles) {
+      if (s.comb === "&") {
+        const owners = styles.filter((o) => o.children.includes(s._id));
+        expect(owners.length).toBe(1);
+      }
     }
   });
 
@@ -336,10 +339,9 @@ describe("convert", () => {
 
     // Combo: btn--primary is a combo of btn; btn.children includes btn--primary._id
     const btnStyle = styles.find((s) => s.name === "btn" && s.comb === "");
-    const btnPrimaryStyle = styles.find((s) => s.name === "btn--primary" && s.comb !== "");
+    const btnPrimaryStyle = styles.find((s) => s.name === "btn--primary" && s.comb === "&");
     expect(btnStyle).toBeDefined();
     expect(btnPrimaryStyle).toBeDefined();
-    expect(btnPrimaryStyle?.comb).toBe(btnStyle?._id);
     expect(btnStyle?.children).toContain(btnPrimaryStyle?._id);
 
     // Hover variant present on the combo (btn--primary), carrying background-color
@@ -553,6 +555,7 @@ describe("convert", () => {
           {
             _id: "injected-bad-style",
             fake: false,
+            type: "class" as const,
             name: "123invalid",
             namespace: "" as const,
             categories: [] as [],

@@ -213,10 +213,9 @@ describe("emitWebflow — CSS to WebflowStyle conversion", () => {
     const cssMap = parseCss(".card { color: red; } .card.is-featured { color: blue; }");
     const { payload } = emitWebflow('<div class="card is-featured"></div>', cssMap);
     const base = payload.payload.styles.find((s) => s.name === "card" && s.comb === "")!;
-    const combo = payload.payload.styles.find((s) => s.name === "is-featured" && s.comb !== "")!;
+    const combo = payload.payload.styles.find((s) => s.name === "is-featured" && s.comb === "&")!;
     expect(base).toBeDefined();
     expect(combo).toBeDefined();
-    expect(combo.comb).toBe(base._id);
     expect(base.children).toContain(combo._id);
   });
 
@@ -228,17 +227,16 @@ describe("emitWebflow — CSS to WebflowStyle conversion", () => {
     );
     const { payload } = emitWebflow('<div class="a b c"></div>', cssMap);
     const standaloneB = payload.payload.styles.find((s) => s.name === "b" && s.comb === "")!;
-    const comboAB = payload.payload.styles.find((s) => s.name === "b" && s.comb !== "")!;
-    const comboABC = payload.payload.styles.find((s) => s.name === "c" && s.comb !== "")!;
+    const comboAB = payload.payload.styles.find((s) => s.name === "b" && s.comb === "&")!;
+    const comboABC = payload.payload.styles.find((s) => s.name === "c" && s.comb === "&")!;
 
     expect(standaloneB).toBeDefined();
     expect(comboAB).toBeDefined();
     expect(comboABC).toBeDefined();
 
     // .a.b.c's parent must be the .a.b combo, never the standalone .b.
-    expect(comboABC.comb).toBe(comboAB._id);
-    expect(comboABC.comb).not.toBe(standaloneB._id);
     expect(comboAB.children).toContain(comboABC._id);
+    expect(standaloneB.children).not.toContain(comboABC._id);
   });
 
   it("AS-117: combo class with missing intermediate base gets a synthesized stub instead of being dropped", () => {
@@ -250,22 +248,25 @@ describe("emitWebflow — CSS to WebflowStyle conversion", () => {
     const { payload, warnings } = emitWebflow('<div class="a b c"></div>', cssMap);
 
     const a = payload.payload.styles.find((s) => s.name === "a" && s.comb === "")!;
-    const stubAB = payload.payload.styles.find((s) => s.name === "b" && s.comb !== "")!;
+    const stubAB = payload.payload.styles.find((s) => s.name === "b" && s.comb === "&")!;
     const comboABC = payload.payload.styles.find((s) => s.name === "c")!;
 
     expect(a).toBeDefined();
     expect(stubAB).toBeDefined();
     expect(stubAB.styleLess).toBe("");
-    expect(stubAB.comb).toBe(a._id);
+    expect(a.children).toContain(stubAB._id);
 
     expect(comboABC).toBeDefined();
     expect(comboABC.styleLess).toBe("color: yellow;");
-    expect(comboABC.comb).toBe(stubAB._id);
+    expect(comboABC.comb).toBe("&");
+    expect(stubAB.children).toContain(comboABC._id);
 
-    // Every comb reference resolves to an id that actually exists in styles.
-    const ids = new Set(payload.payload.styles.map((s) => s._id));
+    // Every combo (comb === "&") is registered in exactly one base's children.
     for (const s of payload.payload.styles) {
-      if (s.comb) expect(ids.has(s.comb)).toBe(true);
+      if (s.comb === "&") {
+        const owners = payload.payload.styles.filter((o) => o.children.includes(s._id));
+        expect(owners.length).toBe(1);
+      }
     }
 
     expect(warnings.some((w) => w.includes("has no style definition"))).toBe(false);
@@ -290,16 +291,18 @@ describe("emitWebflow — CSS to WebflowStyle conversion", () => {
     const { payload, warnings } = emitWebflow('<div class="a b c d"></div>', cssMap);
 
     expect(payload).not.toBeNull();
-    const ids = new Set(payload.payload.styles.map((s) => s._id));
     for (const s of payload.payload.styles) {
-      if (s.comb) expect(ids.has(s.comb)).toBe(true);
+      if (s.comb === "&") {
+        const owners = payload.payload.styles.filter((o) => o.children.includes(s._id));
+        expect(owners.length).toBe(1);
+      }
     }
     expect(warnings.some((w) => w.includes("references unknown base"))).toBe(false);
     expect(warnings.some((w) => w.includes("has no style definition"))).toBe(false);
 
     const comboD = payload.payload.styles.find((s) => s.name === "d")!;
     const comboC = payload.payload.styles.find((s) => s.name === "c" && s.styleLess === "color: green;")!;
-    expect(comboD.comb).toBe(comboC._id);
+    expect(comboC.children).toContain(comboD._id);
   });
 
   it("test_AS_117_truly_broken_three_level_chain_gracefully_skips_with_warning_not_null_payload", () => {
@@ -319,8 +322,7 @@ describe("emitWebflow — CSS to WebflowStyle conversion", () => {
     const cssMap = parseCss(".card { color: red; } .card.is-featured { color: blue; }");
     const { payload } = emitWebflow('<div class="card is-featured"></div>', cssMap);
     const base = payload.payload.styles.find((s) => s.name === "card" && s.comb === "")!;
-    const combo = payload.payload.styles.find((s) => s.name === "is-featured" && s.comb !== "")!;
-    expect(combo.comb).toBe(base._id);
+    const combo = payload.payload.styles.find((s) => s.name === "is-featured" && s.comb === "&")!;
     expect(base.children).toContain(combo._id);
   });
 
@@ -504,6 +506,20 @@ describe("emitWebflowFromSource — convenience wrapper", () => {
     const { payload } = emitWebflowFromSource(html, css);
     expect(payload.payload.nodes[0].classes).toEqual(["card"]);
     expect(payload.payload.styles[0].name).toBe("card");
+  });
+});
+
+describe("emitWebflow — buildStyleBlock crash regression", () => {
+  it("test_every_emitted_style_has_type_class", () => {
+    const cssMap = parseCss(".card { color: red; } .card.is-featured { color: blue; } .wrapper {}");
+    const { payload } = emitWebflow(
+      '<div class="card is-featured wrapper stub-only"></div>',
+      cssMap
+    );
+    expect(payload.payload.styles.length).toBeGreaterThan(0);
+    for (const style of payload.payload.styles) {
+      expect(style.type).toBe("class");
+    }
   });
 });
 

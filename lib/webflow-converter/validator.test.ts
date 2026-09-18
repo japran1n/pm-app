@@ -20,10 +20,11 @@ function makeNode(overrides: Partial<WebflowNode> = {}): WebflowNode {
 function makeStyle(overrides: Partial<WebflowStyle> = {}): WebflowStyle {
   return {
     _id: "style-1",
-    name: "my-class",
     fake: false,
-    comb: "",
+    type: "class",
+    name: "my-class",
     namespace: "",
+    comb: "",
     categories: [],
     styleLess: "color: red;",
     variants: {},
@@ -261,7 +262,7 @@ describe("validatePayload", () => {
   describe("AS-117: combo classes must be registered in their base's children array", () => {
     it("rejects a combo style whose base does not list it in children", () => {
       const base = makeStyle({ _id: "base", name: "base-class", children: [] });
-      const combo = makeStyle({ _id: "combo", name: "combo-class", comb: "base" });
+      const combo = makeStyle({ _id: "combo", name: "combo-class", comb: "&" });
       const payload = withType(
         makePayload({
           nodes: [makeNode({ classes: ["base-class", "combo-class"] })],
@@ -272,27 +273,29 @@ describe("validatePayload", () => {
       const result = validatePayload(payload);
 
       expect(result.valid).toBe(false);
-      expect(result.errors.some((e) => e.includes('not registered in base "base"'))).toBe(true);
+      expect(result.errors.some((e) => e.includes("not registered in any base style"))).toBe(true);
     });
 
-    it("rejects a combo style whose base does not exist", () => {
-      const combo = makeStyle({ _id: "combo", name: "combo-class", comb: "missing-base" });
+    it("rejects a combo style registered in more than one base's children", () => {
+      const base1 = makeStyle({ _id: "base1", name: "base-class-1", children: ["combo"] });
+      const base2 = makeStyle({ _id: "base2", name: "base-class-2", children: ["combo"] });
+      const combo = makeStyle({ _id: "combo", name: "combo-class", comb: "&" });
       const payload = withType(
         makePayload({
-          nodes: [makeNode({ classes: ["combo-class"] })],
-          styles: [combo],
+          nodes: [makeNode({ classes: ["base-class-1", "base-class-2", "combo-class"] })],
+          styles: [base1, base2, combo],
         })
       );
 
       const result = validatePayload(payload);
 
       expect(result.valid).toBe(false);
-      expect(result.errors.some((e) => e.includes("unknown base"))).toBe(true);
+      expect(result.errors.some((e) => e.includes("more than one base style"))).toBe(true);
     });
 
     it("accepts a combo style correctly registered in its base's children", () => {
       const base = makeStyle({ _id: "base", name: "base-class", children: ["combo"] });
-      const combo = makeStyle({ _id: "combo", name: "combo-class", comb: "base" });
+      const combo = makeStyle({ _id: "combo", name: "combo-class", comb: "&" });
       const payload = withType(
         makePayload({
           nodes: [makeNode({ classes: ["base-class", "combo-class"] })],
@@ -304,6 +307,24 @@ describe("validatePayload", () => {
 
       expect(result.valid).toBe(true);
       expect(result.errors).toEqual([]);
+    });
+  });
+
+  describe("crash regression: every style must carry type: \"class\"", () => {
+    it("rejects a style missing the type field (buildStyleBlock crash)", () => {
+      const style = makeStyle();
+      delete (style as { type?: unknown }).type;
+      const payload = withType(
+        makePayload({
+          nodes: [makeNode({ classes: ["my-class"] })],
+          styles: [style],
+        })
+      );
+
+      const result = validatePayload(payload);
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.some((e) => e.includes('type: "class"'))).toBe(true);
     });
   });
 });
