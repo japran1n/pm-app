@@ -32,7 +32,7 @@
 
 import { Suspense } from "react";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser, getRequestClient } from "@/lib/auth/current-user";
 import { getCurrentUserTimezone } from "@/lib/queries/profile";
 import { getCalendarTasks, getWorkspaceStatusOptions, type CalendarTask } from "@/lib/queries/calendar";
 import { getCalendarBlocks } from "@/lib/queries/calendar-blocks";
@@ -73,18 +73,16 @@ export default async function CalendarPage({
     projectId: projectIdParam,
   } = await searchParams;
 
-  const supabase = await createClient();
+  const supabase = await getRequestClient();
 
   // Perf (W9): auth, the workspace-by-slug lookup, and the caller's
   // timezone are independent of each other once `supabase` exists.
   const [
-    {
-      data: { user },
-    },
+    { user },
     { data: workspace },
     timezone,
   ] = await Promise.all([
-    supabase.auth.getUser(),
+    getCurrentUser(),
     // RLS-scoped lookup (workspaces_select_active_members) -- same
     // "reaching this route already means the caller is an active member"
     // fallback pattern the My Tasks page uses one level up.

@@ -9,7 +9,7 @@ import {
   getProjectScopeItems,
 } from "@/lib/queries/project-records";
 import { getProjectScopeDocuments } from "@/lib/queries/project-scope-documents";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { EmptyState } from "@/components/empty-state";
 import { ScopeLists } from "@/components/portal/scope-lists";
 import { ChangeRequestsTable } from "@/components/portal/change-requests-table";
@@ -34,7 +34,7 @@ export default async function PortalScopePage({
 }) {
   const { workspaceSlug, projectId } = await params;
 
-  const supabase = await createClient();
+  const { supabase, user } = await getCurrentUser();
   const { data: workspace } = await supabase
     .from("workspaces")
     .select("id, slug")
@@ -47,10 +47,6 @@ export default async function PortalScopePage({
   const project = projects.find((p) => p.id === projectId);
 
   if (!project) notFound();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
 
   const [scopeResult, decisionsResult, assumptionsResult, changeRequestsResult, documentsResult, role] =
     await Promise.all([

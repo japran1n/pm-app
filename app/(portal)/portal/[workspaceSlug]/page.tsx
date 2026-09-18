@@ -7,7 +7,7 @@ import {
   getPortalOverview,
   getPortalActivitySummary,
 } from "@/lib/queries/portal";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { ProjectProgress } from "@/components/portal/project-progress";
 import { EmptyState } from "@/components/empty-state";
 import { WorkspaceLogo } from "@/components/workspace/workspace-logo";
@@ -49,7 +49,7 @@ export default async function PortalOverviewPage({
 }) {
   const { workspaceSlug } = await params;
 
-  const supabase = await createClient();
+  const { supabase, user } = await getCurrentUser();
   const { data: workspace } = await supabase
     .from("workspaces")
     .select("id, name, slug, logo_url")
@@ -57,10 +57,6 @@ export default async function PortalOverviewPage({
     .maybeSingle();
 
   if (!workspace) notFound();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
 
   const projects = await getPortalProjects(workspace.id);
 

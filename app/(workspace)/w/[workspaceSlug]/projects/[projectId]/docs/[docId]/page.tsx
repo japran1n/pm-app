@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { getProjectById } from "@/lib/queries/projects";
 import { getDocById, getDocLinks } from "@/lib/queries/docs";
 import { getWorkspaceRoleForCurrentUser } from "@/lib/queries/portal";
@@ -14,10 +14,7 @@ export default async function ProjectDocEditorPage({
 }) {
   const { workspaceSlug, projectId, docId } = await params;
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     redirect("/sign-in");

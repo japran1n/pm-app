@@ -7,7 +7,7 @@ import { logger } from "@/lib/observability/logger";
 // convention as every other detail view in this codebase.
 import { notFound } from "next/navigation";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import {
   getChannelMessages,
   getChannelMembers,
@@ -25,10 +25,7 @@ export default async function ChatChannelPage({
 }) {
   const { workspaceSlug, channelId } = await params;
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     notFound();

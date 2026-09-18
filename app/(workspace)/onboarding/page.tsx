@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { CreateWorkspaceForm } from "@/components/onboarding/create-workspace-form";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { getDefaultWorkspaceSlug } from "@/lib/queries/workspaces";
 import { Logo } from "@/components/brand/logo";
 
@@ -18,10 +18,7 @@ import { Logo } from "@/components/brand/logo";
 // call sites can't drift. Only a user with zero active memberships sees
 // the form below.
 export default async function OnboardingPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   // Auth guard: this page has no other membership/role check standing
   // between it and the public internet, so a logged-out visitor hitting

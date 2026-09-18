@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { getNotificationsForWorkspace } from "@/lib/queries/notifications";
 import { NotificationPanel } from "@/components/notifications/notification-panel";
 
@@ -25,10 +25,7 @@ export default async function NotificationsPage({
 }) {
   const { workspaceSlug } = await params;
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     redirect("/sign-in");

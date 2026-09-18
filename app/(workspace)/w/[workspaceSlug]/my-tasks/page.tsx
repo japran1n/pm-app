@@ -15,7 +15,7 @@
 
 import Link from "next/link";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser, getRequestClient } from "@/lib/auth/current-user";
 import { getCurrentUserTimezone } from "@/lib/queries/profile";
 import { getMyTasks, type MyTasksBuckets } from "@/lib/queries/my-tasks";
 import { Button } from "@/components/ui/button";
@@ -74,18 +74,16 @@ export default async function MyTasksPage({
   const { watched } = await searchParams;
   const includeWatched = watched === "1";
 
-  const supabase = await createClient();
+  const supabase = await getRequestClient();
 
   // Perf (W9): auth, the workspace-by-slug lookup, and the caller's
   // timezone are independent of each other once `supabase` exists.
   const [
-    {
-      data: { user },
-    },
+    { user },
     { data: workspace },
     timezone,
   ] = await Promise.all([
-    supabase.auth.getUser(),
+    getCurrentUser(),
     // RLS-scoped lookup (workspaces_select_active_members) -- same
     // fallback pattern the project List page uses one level up: reaching
     // this route already means the caller is an active member, this just

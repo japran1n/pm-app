@@ -3,7 +3,7 @@ import { MessageSquare } from "lucide-react";
 
 import { getPortalProjects, getPortalRequests } from "@/lib/queries/portal";
 import { getChannelMessages, getChannelMembers, getReplyCounts } from "@/lib/queries/chat";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { createClientRequest } from "@/lib/actions/client-requests";
 import { ChannelView } from "@/components/chat/channel-view";
 import { RequestList } from "@/components/portal/request-list";
@@ -44,10 +44,7 @@ export default async function PortalConversationPage({
   const { workspaceSlug, projectId } = await params;
   const { mention: mentionUserId } = await searchParams;
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) notFound();
 

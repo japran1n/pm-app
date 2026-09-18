@@ -7,7 +7,7 @@ import {
 } from "@/lib/queries/portal";
 import { getClientVisiblePortalLinks } from "@/lib/queries/project-site";
 import { getWaitingOnYouCount } from "@/lib/portal/waiting-on-you-count";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { PortalSidebar, type PortalForYouBadge } from "@/components/portal/portal-sidebar";
 import { PortalTopbar } from "@/components/portal/portal-topbar";
 import { PortalTitleProvider } from "@/components/portal/portal-title-context";
@@ -47,7 +47,7 @@ export default async function PortalProjectLayout({
 }) {
   const { workspaceSlug, projectId } = await params;
 
-  const supabase = await createClient();
+  const { supabase, user } = await getCurrentUser();
   const { data: workspace } = await supabase
     .from("workspaces")
     .select("id, name, slug, logo_url")
@@ -55,10 +55,6 @@ export default async function PortalProjectLayout({
     .maybeSingle();
 
   if (!workspace) notFound();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
 
   // The outer layout already guarantees a signed-in user (redirects to
   // /sign-in otherwise); this defensively re-checks rather than

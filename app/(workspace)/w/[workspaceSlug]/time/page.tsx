@@ -27,7 +27,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Clock } from "lucide-react";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { getWorkspaceMembers } from "@/lib/queries/members";
 import { getWorkspaceTimeByPerson, getWorkspaceTimeByPersonAndDay } from "@/lib/queries/time-entries";
 import { getPeriodShortcuts } from "@/lib/time/period-shortcuts";
@@ -61,10 +61,7 @@ export default async function TimeReportPage({
   const { workspaceSlug } = await params;
   const query = await searchParams;
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     redirect("/sign-in");

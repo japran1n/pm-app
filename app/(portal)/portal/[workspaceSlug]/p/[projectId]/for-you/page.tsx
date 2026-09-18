@@ -9,7 +9,7 @@ import {
 } from "@/lib/queries/approvals";
 import { getClientDeliverablesForPortal } from "@/lib/queries/deliverables";
 import { getPortalProjects } from "@/lib/queries/portal";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import {
   awaitingReviewDeliverables,
   buildForYouItems,
@@ -67,7 +67,7 @@ export default async function PortalForYouPage({
   const { filter: rawFilter, approvalId: highlightApprovalId } = await searchParams;
   const filter = parseForYouFilter(rawFilter);
 
-  const supabase = await createClient();
+  const { supabase, user } = await getCurrentUser();
   const { data: workspace } = await supabase
     .from("workspaces")
     .select("id, slug")
@@ -75,10 +75,6 @@ export default async function PortalForYouPage({
     .maybeSingle();
 
   if (!workspace) notFound();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
 
   const projects = await getPortalProjects(workspace.id);
   const project = projects.find((p) => p.id === projectId);

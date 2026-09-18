@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 
 import { getPortalTaskDetail } from "@/lib/queries/portal";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { PortalConversation } from "@/components/portal/conversation";
 import { PortalApprovalActions } from "@/components/portal/approval-actions";
 import { PortalTaskTitleAnnouncer } from "@/components/portal/portal-task-title-announcer";
@@ -35,10 +35,7 @@ export default async function PortalTaskPage({
 }) {
   const { workspaceSlug, taskId } = await params;
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   const { data: workspace } = await supabase
     .from("workspaces")
