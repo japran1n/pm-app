@@ -39,7 +39,9 @@ export type RevokeInviteResult = ActionOutcome;
 
 export type ChangeMemberRoleResult = ActionOutcome;
 
-export type RemoveMemberResult = ActionOutcome;
+// P2-25: extend with the pre-removal assigned-task count so the dialog
+// can display a preview before the user confirms.
+export type RemoveMemberResult = ActionOutcome<{ assignedTaskCount?: number }>;
 
 export type TransferOwnershipResult = ActionOutcome;
 
@@ -842,13 +844,17 @@ export async function changeMemberRole(
 // many active owner-role members this workspace currently has. If the
 // target is an owner and is the only one, reject — a workspace can never
 // be left without an owner via this action.
+// P2-25: `reassignTo` is the user_id of the member who should inherit
+// the removed member's tasks. When absent the tasks are unassigned.
 export async function removeMember(
   workspaceId: string,
   targetMembershipId: string,
+  reassignTo?: string,
 ): Promise<RemoveMemberResult> {
   const parsed = removeMemberSchema.safeParse({
     workspaceId,
     targetMembershipId,
+    reassignTo,
   });
 
   if (!parsed.success) {
@@ -884,7 +890,7 @@ export async function removeMember(
 
   const { data: targetRow, error: lookupError } = await admin
     .from("workspace_members")
-    .select("id, status, role")
+    .select("id, status, role, user_id")
     .eq("id", parsed.data.targetMembershipId)
     .eq("workspace_id", parsed.data.workspaceId)
     .maybeSingle();
@@ -908,6 +914,19 @@ export async function removeMember(
     };
   }
 
+  // P2-25: count tasks currently assigned to this member in this workspace
+  // BEFORE the RPC removes them, so the caller can include the count in a
+  // result (used by the dialog to show a "pre-removal preview"). A failure
+  // here is non-fatal — the count falls back to 0.
+  let assignedTaskCount = 0;
+  if (targetRow.user_id) {
+    const { count } = await admin
+      .from("task_assignees")
+      .select("task_id", { count: "exact", head: true })
+      .eq("user_id", targetRow.user_id);
+    assignedTaskCount = count ?? 0;
+  }
+
   // F094 hardening (AS-018): the old guard here was check-then-act — a
   // SELECT to count active owners, then a separate conditional DELETE, with
   // nothing tying the two together. Two concurrent removeMember calls
@@ -925,11 +944,15 @@ export async function removeMember(
   // where two calls can both observe a stale "safe to delete" count. This
   // mirrors the atomicity approach F095 used for create_workspace_with_owner
   // (AS-006).
+  //
+  // P2-25: the updated RPC also accepts p_reassign_to so task assignments
+  // are cleaned up atomically with the membership deletion.
   const { data: rpcRows, error: rpcError } = await admin.rpc(
     "remove_workspace_member",
     {
       p_membership_id: parsed.data.targetMembershipId,
       p_workspace_id: parsed.data.workspaceId,
+      p_reassign_to: parsed.data.reassignTo ?? null,
     },
   );
 
@@ -967,7 +990,12 @@ export async function removeMember(
     action: "member.removed",
     targetType: "workspace_member",
     targetId: parsed.data.targetMembershipId,
-    metadata: { role: targetRow.role },
+    metadata: {
+      role: targetRow.role,
+      ...(parsed.data.reassignTo
+        ? { reassigned_to: parsed.data.reassignTo }
+        : {}),
+    },
   });
 
   const { data: workspaceRow } = await admin
@@ -989,7 +1017,7 @@ export async function removeMember(
     }
   }
 
-  return { ok: true };
+  return { ok: true, assignedTaskCount };
 }
 
 // F130 (AS-233, AS-234): transfers ownership of a workspace to another

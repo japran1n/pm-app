@@ -17,6 +17,7 @@ import {
   TransferOwnershipDialog,
   type TransferOwnershipCandidate,
 } from "@/components/transfer-ownership-dialog";
+import type { ReassignCandidate } from "@/components/remove-member-button";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -210,6 +211,16 @@ export default async function MembersPage({
                   {members.active.map((member) => {
                     const label = member.name ?? member.email ?? "Unknown member";
 
+                    // P2-25: candidates for task reassignment are every
+                    // other active member (exclude the one being removed).
+                    const reassignCandidates: ReassignCandidate[] =
+                      members.active
+                        .filter((m) => m.userId !== member.userId)
+                        .map((m) => ({
+                          userId: m.userId,
+                          label: m.name ?? m.email ?? "Unknown member",
+                        }));
+
                     return (
                       <TableRow key={member.id}>
                         <TableCell>
@@ -249,11 +260,15 @@ export default async function MembersPage({
                             {/* AS-016/AS-018: owner/admin can remove any active
                                 member; the sole owner is rejected server-side
                                 by `removeMember` regardless of what's rendered
-                                here. */}
+                                here. P2-25: userId + otherMembers passed so the
+                                dialog can show a task-count preview and offer a
+                                reassign dropdown. */}
                             <RemoveMemberButton
                               workspaceId={workspace.id}
                               workspaceMemberId={member.id}
                               memberLabel={label}
+                              userId={member.userId}
+                              otherMembers={reassignCandidates}
                             />
                           </TableCell>
                         )}
