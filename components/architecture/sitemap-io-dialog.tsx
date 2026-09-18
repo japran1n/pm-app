@@ -13,6 +13,7 @@ import { Download, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import type { BoardPage } from "@/lib/queries/architecture";
+import type { ArchitectureNodeDetails } from "@/lib/architecture/types";
 import {
   toSitemapXml,
   toCsv,
@@ -20,6 +21,7 @@ import {
   toJson,
   parseSitemap,
 } from "@/lib/architecture/sitemap-io";
+import { toCopyBriefMarkdown, toCopyBriefJson } from "@/lib/architecture/copy-brief";
 import { importPages } from "@/lib/actions/architecture";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,25 +35,47 @@ import {
 } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
-type Format = "xml" | "csv" | "md" | "json";
+type Format = "xml" | "csv" | "md" | "json" | "brief-md" | "brief-json";
 
-const FORMATS: { value: Format; label: string; extension: string; mime: string }[] = [
+const FORMATS: {
+  value: Format;
+  label: string;
+  extension: string;
+  mime: string;
+  exportOnly?: boolean;
+}[] = [
   { value: "xml", label: "Sitemap XML", extension: "xml", mime: "application/xml" },
   { value: "csv", label: "CSV", extension: "csv", mime: "text/csv" },
   { value: "md", label: "Markdown", extension: "md", mime: "text/markdown" },
   { value: "json", label: "JSON", extension: "json", mime: "application/json" },
+  {
+    value: "brief-md",
+    label: "Copy brief (Markdown)",
+    extension: "md",
+    mime: "text/markdown",
+    exportOnly: true,
+  },
+  {
+    value: "brief-json",
+    label: "Copy brief (JSON)",
+    extension: "json",
+    mime: "application/json",
+    exportOnly: true,
+  },
 ];
 
 export function SitemapIoDialog({
   pages,
   projectId,
   projectName,
+  detailsData,
   open,
   onOpenChange,
 }: {
   pages: BoardPage[];
   projectId: string;
   projectName: string;
+  detailsData?: ArchitectureNodeDetails | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -71,6 +95,10 @@ export function SitemapIoDialog({
         return toMarkdown(pages);
       case "json":
         return toJson(pages);
+      case "brief-md":
+        return toCopyBriefMarkdown(pages, detailsData ?? new Map());
+      case "brief-json":
+        return toCopyBriefJson(pages, detailsData ?? new Map());
     }
   }
 
@@ -81,7 +109,9 @@ export function SitemapIoDialog({
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `${projectName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-sitemap.${spec.extension}`;
+    const slug = (projectName || "site").toLowerCase().replace(/[^a-z0-9]+/g, "-");
+    const suffix = format === "brief-md" || format === "brief-json" ? "copy-brief" : "sitemap";
+    anchor.download = `${slug}-${suffix}.${spec.extension}`;
     anchor.click();
     URL.revokeObjectURL(url);
   }

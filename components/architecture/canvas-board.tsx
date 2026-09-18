@@ -207,11 +207,13 @@ function SitemapCanvas({
   components,
   projectId,
   projectName,
+  detailsData,
 }: {
   pages: BoardPage[];
   components: BoardComponent[];
   projectId: string;
   projectName: string;
+  detailsData?: import('@/lib/architecture/types').ArchitectureNodeDetails | null;
 }) {
   const { fitBounds } = useReactFlow();
 
@@ -435,6 +437,7 @@ function SitemapCanvas({
         pages={pages}
         projectId={projectId}
         projectName={projectName}
+        detailsData={detailsData}
         open={ioOpen}
         onOpenChange={setIoOpen}
       />
