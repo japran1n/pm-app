@@ -15,9 +15,18 @@ const nextConfig: NextConfig = {
   // a 2MB file's raw request body can exceed 2MB, so the body limit itself
   // must have headroom above the byte-count limit it's meant to let
   // through.
+  //
+  // Bug fix: this was previously "3mb" while
+  // lib/validation/attachments.ts's MAX_ATTACHMENT_SIZE_BYTES was 10MB —
+  // any attachment upload between 3MB and 10MB passed client-side
+  // validation only to 413 on the server. Both are now aligned: the
+  // app-level attachment limit is 4MB and this body limit is 4.5MB
+  // (headroom for multipart overhead). Vercel additionally hard-caps
+  // request bodies at ~4.5MB regardless of this setting, so raising this
+  // further would be a no-op in production.
   experimental: {
     serverActions: {
-      bodySizeLimit: "3mb",
+      bodySizeLimit: "4.5mb",
     },
   },
   // Audit NX-001: baseline security headers. A full CSP is deferred until the

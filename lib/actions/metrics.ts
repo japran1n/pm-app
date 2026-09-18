@@ -1259,7 +1259,7 @@ export async function uploadImprovementImage(formData: FormData): Promise<Upload
   }
 
   if (file.size > MAX_ATTACHMENT_SIZE_BYTES) {
-    return { ok: false, error: "File is too large. Maximum size is 10MB." };
+    return { ok: false, error: "File is too large. Maximum size is 4 MB." };
   }
 
   if (!ALLOWED_ATTACHMENT_MIME_TYPES.includes(file.type as (typeof ALLOWED_ATTACHMENT_MIME_TYPES)[number])) {

@@ -23,7 +23,12 @@ export type UploadableScreenshot = { dataUrl: string };
 // the server-side check in app/api/extension/attachments/route.ts is the
 // real, authoritative enforcement boundary regardless of what this client
 // constant says.
-export const MAX_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
+//
+// Bug fix: aligned from 10MB to 4MB to match lib/validation/attachments.ts's
+// MAX_ATTACHMENT_SIZE_BYTES and next.config.ts's 4.5MB Server Action
+// bodySizeLimit (see both files' own comments — Vercel hard-caps request
+// bodies at ~4.5MB regardless).
+export const MAX_ATTACHMENT_SIZE_BYTES = 4 * 1024 * 1024; // 4MB
 
 export type UploadScreenshotResult =
   | { ok: true }
