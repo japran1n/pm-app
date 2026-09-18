@@ -3,7 +3,7 @@
 // placed on the clipboard. Errors here always BLOCK the copy — there is no
 // "copy anyway" escape hatch anywhere in this module or its callers (AS-119).
 
-import type { WebflowNode, WebflowStyle, XscpPayload } from "./emit";
+import type { WebflowChild, WebflowNode, WebflowStyle, XscpPayload } from "./emit";
 
 /** Known Webflow node types this converter (and Webflow itself) recognizes. */
 const KNOWN_TYPES = new Set([
@@ -18,6 +18,7 @@ const KNOWN_TYPES = new Set([
   "LinkBlock",
   "Image",
   "HtmlEmbed",
+  "text",
 ]);
 
 /** Webflow class name rule: must start with a letter, then letters/digits/_/-. */
@@ -58,11 +59,11 @@ export interface ValidationResult {
  * class names (as written in the source HTML), not style `_id`s.
  */
 function walkNodes(
-  nodes: WebflowNode[] | null | undefined,
+  nodes: WebflowChild[] | null | undefined,
   errors: string[],
   warnings: string[],
   seenIds: Set<string>,
-  ancestors: Set<WebflowNode>,
+  ancestors: Set<WebflowChild>,
   styleNames: Set<string> | null
 ): void {
   if (!Array.isArray(nodes)) return;
@@ -78,8 +79,10 @@ function walkNodes(
       continue;
     }
 
+    const maybeElement = node as Partial<WebflowNode>;
+
     if (typeof node._id !== "string" || node._id.trim() === "") {
-      errors.push(`Node is missing a non-empty _id (tag: ${node.tag ?? "unknown"})`);
+      errors.push(`Node is missing a non-empty _id (tag: ${maybeElement.tag ?? "unknown"})`);
     } else if (seenIds.has(node._id)) {
       errors.push(`Duplicate node _id found: ${node._id}`);
     } else {
@@ -92,8 +95,8 @@ function walkNodes(
       warnings.push(`Node ${node._id ?? "(no id)"} has an unknown type "${node.type}"`);
     }
 
-    if (styleNames && Array.isArray(node.classes)) {
-      for (const cls of node.classes) {
+    if (styleNames && Array.isArray(maybeElement.classes)) {
+      for (const cls of maybeElement.classes) {
         if (!styleNames.has(cls)) {
           errors.push(`Node ${node._id ?? "(no id)"} references class "${cls}" with no matching style definition`);
         }
@@ -102,7 +105,7 @@ function walkNodes(
 
     const nextAncestors = new Set(ancestors);
     nextAncestors.add(node);
-    walkNodes(node.children, errors, warnings, seenIds, nextAncestors, styleNames);
+    walkNodes(maybeElement.children, errors, warnings, seenIds, nextAncestors, styleNames);
   }
 }
 
@@ -214,7 +217,7 @@ export function validatePayload(payload: XscpPayload): ValidationResult {
     if (payload.nodes.length === 0) {
       errors.push("payload.nodes must not be empty");
     }
-    walkNodes(payload.nodes, errors, warnings, new Set<string>(), new Set<WebflowNode>(), styleNames);
+    walkNodes(payload.nodes, errors, warnings, new Set<string>(), new Set<WebflowChild>(), styleNames);
   }
 
   return {

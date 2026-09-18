@@ -16,9 +16,25 @@ export interface WebflowNode {
   type: string;
   tag: string;
   classes: string[];
-  children: WebflowNode[];
+  children: WebflowChild[];
   data: Record<string, unknown>;
   v: number;
+}
+
+/** A text child node in the Webflow clipboard node tree (no tag/classes/data — just text). */
+export interface WebflowTextNode {
+  _id: string;
+  type: "text";
+  v: number;
+  text: { text: string; html: string };
+}
+
+/** Union of element and text children that can live under a WebflowNode. */
+export type WebflowChild = WebflowNode | WebflowTextNode;
+
+/** Narrows a WebflowChild to a WebflowTextNode. */
+export function isTextNode(node: WebflowChild): node is WebflowTextNode {
+  return node.type === "text";
 }
 
 /** One entry in the Webflow clipboard style array. */
@@ -316,9 +332,27 @@ function walkElement(el: HTMLElement, ctx: WalkContext): WebflowNode | null {
   // svg -> HtmlEmbed carries raw markup verbatim and has no element children of its own.
   if (typeInfo.type === "HtmlEmbed" && tag === "svg") return node;
 
-  for (const child of elementChildren) {
-    const childNode = walkElement(child, ctx);
-    if (childNode) node.children.push(childNode);
+  // Walk all child nodes in source order so interleaved text and inline
+  // elements (e.g. "Hello <strong>world</strong>!") come out in the right
+  // sequence. Direct text content must be preserved as Webflow "text" child
+  // nodes (AS bug fix) — omitting them drops the node's visible content and
+  // produces a clipboard payload Webflow rejects for text-bearing tags.
+  for (const child of el.childNodes) {
+    if (child.nodeType === NodeType.TEXT_NODE) {
+      const rawText = child.rawText ?? "";
+      if (rawText.trim() === "") continue; // whitespace-only — skip
+      node.children.push({
+        _id: makeId(),
+        type: "text",
+        v: 1,
+        text: { text: rawText, html: rawText },
+      });
+      continue;
+    }
+    if (child.nodeType === NodeType.ELEMENT_NODE) {
+      const childNode = walkElement(child as HTMLElement, ctx);
+      if (childNode) node.children.push(childNode);
+    }
   }
 
   return node;
@@ -327,8 +361,9 @@ function walkElement(el: HTMLElement, ctx: WalkContext): WebflowNode | null {
 /** Recursively walks a node tree, collecting every class name referenced on any node. */
 function collectClasses(nodes: WebflowNode[]): Set<string> {
   const found = new Set<string>();
-  const visit = (list: WebflowNode[]) => {
+  const visit = (list: WebflowChild[]) => {
     for (const node of list) {
+      if (isTextNode(node)) continue;
       for (const cls of node.classes) found.add(cls);
       if (node.children.length > 0) visit(node.children);
     }

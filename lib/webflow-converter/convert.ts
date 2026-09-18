@@ -8,7 +8,7 @@
 // warnings/errors on the returned result.
 
 import { mergeCssResults, parseCss } from "./css";
-import { emitWebflow, type WebflowNode, type XscpData, type XscpPayload } from "./emit";
+import { emitWebflow, isTextNode, type WebflowNode, type XscpData, type XscpPayload } from "./emit";
 import { extractScripts, extractStyles } from "./js-extract";
 import { validatePayload } from "./validator";
 
@@ -84,7 +84,10 @@ export function convert(html: string, css: string): ConvertResult {
   const nodeClassLists: string[][] = [];
   const collectUsedClasses = (node: WebflowNode): void => {
     nodeClassLists.push(node.classes ?? []);
-    for (const child of node.children ?? []) collectUsedClasses(child);
+    for (const child of node.children ?? []) {
+      if (isTextNode(child)) continue;
+      collectUsedClasses(child);
+    }
   };
   for (const node of emitResult.payload.payload.nodes ?? []) {
     collectUsedClasses(node);

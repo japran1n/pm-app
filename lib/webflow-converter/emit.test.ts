@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { emitWebflow, emitWebflowFromSource } from "./emit";
+import { emitWebflow, emitWebflowFromSource, isTextNode } from "./emit";
 import { parseCss } from "./css";
 
 // F018: node tree assembly — walks parsed HTML + parsed CSS into Webflow's
@@ -26,6 +26,55 @@ describe("emitWebflow — node walk", () => {
     expect(node.data.level).toBe(1);
   });
 
+  it("test_M7_text_content_preserved_as_text_child_node_on_heading", () => {
+    const html = '<h2 class="offers_heading">Vara tjanstepaket</h2>';
+    const { payload } = emitWebflow(html, parseCss(""));
+    const node = payload.payload.nodes[0];
+    expect(node.data.text).toBe(true);
+    expect(node.children).toHaveLength(1);
+    const textChild = node.children[0];
+    expect(isTextNode(textChild)).toBe(true);
+    if (!isTextNode(textChild)) throw new Error("expected text child");
+    expect(textChild.type).toBe("text");
+    expect(textChild.text.text).toBe("Vara tjanstepaket");
+    expect(textChild.text.html).toBe("Vara tjanstepaket");
+    expect(typeof textChild._id).toBe("string");
+    expect(textChild._id.length).toBeGreaterThan(0);
+    expect(textChild.v).toBe(1);
+  });
+
+  it("test_M7_text_content_preserved_on_paragraph", () => {
+    const { payload } = emitWebflow('<p class="lead">Hello world</p>', parseCss(""));
+    const node = payload.payload.nodes[0];
+    expect(node.type).toBe("Paragraph");
+    expect(node.children).toHaveLength(1);
+    const textChild = node.children[0];
+    if (!isTextNode(textChild)) throw new Error("expected text child");
+    expect(textChild.text.text).toBe("Hello world");
+  });
+
+  it("test_M7_whitespace_only_text_node_is_skipped", () => {
+    const html = `<div class="wrap">\n  <span class="inner">x</span>\n</div>`;
+    const { payload } = emitWebflow(html, parseCss(""));
+    const node = payload.payload.nodes[0];
+    // Only the <span> element child — surrounding whitespace text nodes dropped.
+    expect(node.children).toHaveLength(1);
+    expect(isTextNode(node.children[0])).toBe(false);
+  });
+
+  it("test_M7_mixed_text_and_inline_element_children_preserve_order_and_text", () => {
+    const html = '<p class="mixed">Hello <strong>world</strong>!</p>';
+    const { payload } = emitWebflow(html, parseCss(""));
+    const node = payload.payload.nodes[0];
+    expect(node.children.length).toBeGreaterThanOrEqual(2);
+    const first = node.children[0];
+    if (!isTextNode(first)) throw new Error("expected leading text node");
+    expect(first.text.text).toBe("Hello ");
+    const last = node.children[node.children.length - 1];
+    if (!isTextNode(last)) throw new Error("expected trailing text node");
+    expect(last.text.text).toBe("!");
+  });
+
   it("test_AS_092_nested_elements_produce_correct_children_tree", () => {
     const html = `
       <div class="parent">
@@ -37,10 +86,13 @@ describe("emitWebflow — node walk", () => {
     const root = payload.payload.nodes[0];
     expect(root.classes).toEqual(["parent"]);
     expect(root.children).toHaveLength(2);
-    expect(root.children[0].type).toBe("Paragraph");
-    expect(root.children[0].classes).toEqual(["child-a"]);
-    expect(root.children[1].type).toBe("Block");
-    expect(root.children[1].classes).toEqual(["child-b"]);
+    const childA = root.children[0];
+    const childB = root.children[1];
+    if (isTextNode(childA) || isTextNode(childB)) throw new Error("expected element children");
+    expect(childA.type).toBe("Paragraph");
+    expect(childA.classes).toEqual(["child-a"]);
+    expect(childB.type).toBe("Block");
+    expect(childB.classes).toEqual(["child-b"]);
   });
 
   it("test_AS_089_script_and_style_elements_produce_no_node", () => {

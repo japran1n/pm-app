@@ -3,7 +3,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { convert, convertFromSource } from "./convert";
 import { validatePayload } from "./validator";
-import type { WebflowNode, WebflowStyle } from "./emit";
+import { isTextNode, type WebflowNode, type WebflowStyle } from "./emit";
 
 describe("convert", () => {
   it("converts simple HTML + CSS into a valid payload with no errors", () => {
@@ -316,7 +316,10 @@ describe("convert", () => {
 
     // Node count: section > div > (h1 + a + ul > li) = 6 nodes total.
     const flattenNodes = (nodes: WebflowNode[]): WebflowNode[] =>
-      nodes.flatMap((n) => [n, ...flattenNodes(n.children ?? [])]);
+      nodes.flatMap((n) => [
+        n,
+        ...flattenNodes((n.children ?? []).filter((c): c is WebflowNode => !isTextNode(c))),
+      ]);
     const topLevelNodes = result.payload?.payload.nodes ?? [];
     const allNodes = flattenNodes(topLevelNodes);
     expect(allNodes.length).toBe(6);
