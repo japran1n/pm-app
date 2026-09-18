@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
-import { LayoutGrid, Loader2, Network } from "lucide-react";
+import { LayoutGrid, Loader2, Network, SlidersHorizontal } from "lucide-react";
 
 import type { BoardComponent, BoardPage } from "@/lib/queries/architecture";
 import { ArchitectureBoard } from "@/components/architecture/board";
+import { getNodeDetailsForToggle } from "@/lib/actions/architecture";
+import type { ArchitectureNodeDetails } from "@/lib/architecture/types";
 
 // NX-006: CanvasBoard is the only consumer of @xyflow/react — statically
 // importing it here pulled the whole flow-graph library into the shared
@@ -43,6 +45,40 @@ export function ArchitectureViewToggle({
   projectName: string;
 }) {
   const [view, setView] = useState<ViewMode>("canvas");
+
+  // Details toggle — default OFF, persisted to localStorage per project.
+  // Data fetched lazily on first enable, cached for the session.
+  const storageKey = `pm-app:architecture-details:${projectId}`;
+  const [showDetails, setShowDetails] = useState(() => {
+    try {
+      return localStorage.getItem(storageKey) === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const [detailsData, setDetailsData] = useState<ArchitectureNodeDetails | null>(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+
+  // Fetch once when toggle turns on, never again in this session.
+  useEffect(() => {
+    if (!showDetails || detailsData !== null) return;
+    let cancelled = false;
+    setDetailsLoading(true);
+    getNodeDetailsForToggle(projectId).then(result => {
+      if (cancelled) return;
+      setDetailsLoading(false);
+      if (result.ok) setDetailsData(result.data);
+    });
+    return () => { cancelled = true; };
+  }, [showDetails, detailsData, projectId]);
+
+  function toggleDetails() {
+    const next = !showDetails;
+    setShowDetails(next);
+    try {
+      localStorage.setItem(storageKey, String(next));
+    } catch {}
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
@@ -89,17 +125,42 @@ export function ArchitectureViewToggle({
           >
             <Network size={14} />
           </button>
+          <div className="mx-0.5 h-4 w-px bg-border" aria-hidden="true" />
+          <button
+            type="button"
+            onClick={toggleDetails}
+            title={showDetails ? "Hide details" : "Show estimates & copy brief"}
+            disabled={detailsLoading}
+            className={`flex h-7 w-7 items-center justify-center rounded transition-colors disabled:opacity-50 ${
+              showDetails
+                ? "bg-background text-foreground shadow-xs"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {detailsLoading
+              ? <Loader2 size={14} className="animate-spin" aria-hidden="true" />
+              : <SlidersHorizontal size={14} aria-hidden="true" />
+            }
+          </button>
         </div>
       </div>
 
       {view === "board" ? (
-        <ArchitectureBoard pages={pages} components={components} projectId={projectId} />
+        <ArchitectureBoard
+          pages={pages}
+          components={components}
+          projectId={projectId}
+          showDetails={showDetails}
+          detailsData={detailsData}
+        />
       ) : (
         <CanvasBoard
           pages={pages}
           components={components}
           projectId={projectId}
           projectName={projectName}
+          showDetails={showDetails}
+          detailsData={detailsData}
         />
       )}
     </div>

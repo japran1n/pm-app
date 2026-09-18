@@ -57,10 +57,14 @@ export function ArchitectureBoard({
   pages,
   components,
   projectId,
+  showDetails: _showDetails,
+  detailsData: _detailsData,
 }: {
   pages: BoardPage[];
   components: BoardComponent[];
   projectId: string;
+  showDetails?: boolean;
+  detailsData?: import('@/lib/architecture/types').ArchitectureNodeDetails | null;
 }) {
   // Local, client-side-only mirror of every page's section id order, keyed
   // by page id -- optimistically updated on drop, rolled back to the

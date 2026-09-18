@@ -475,6 +475,8 @@ export function CanvasBoard(props: {
   components: BoardComponent[];
   projectId: string;
   projectName: string;
+  showDetails?: boolean;
+  detailsData?: import('@/lib/architecture/types').ArchitectureNodeDetails | null;
 }) {
   return (
     <ReactFlowProvider>
