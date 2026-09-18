@@ -64,18 +64,22 @@ export type UpdatePageInput = z.infer<typeof updatePageSchema>;
 
 export { workCategorySchema };
 
+// Raw estimate string as typed by the user, e.g. "2h 30m", "90m", "1.5h".
+// Parsed to minutes server-side via parseEstimateInput below.
+export const estimateInputSchema = z.string().min(1).max(50);
+
 export const estimateMinutesSchema = z.number().int().min(1, "Estimate must be at least 1 minute");
 
 export const setDisciplineEstimateSchema = z.object({
   taskId: z.string().uuid(),
   discipline: workCategorySchema,
-  input: z.string().min(1).max(50),
+  input: estimateInputSchema,
   note: z.string().max(500).optional(),
 });
 
 export const disciplineEstimateEntrySchema = z.object({
   discipline: workCategorySchema,
-  input: z.string().min(1).max(50),
+  input: estimateInputSchema,
   note: z.string().max(500).optional(),
 });
 
@@ -107,3 +111,24 @@ export const setNodeMetaClientVisibilitySchema = z.object({
   taskId: z.string().uuid(),
   visible: z.boolean(),
 });
+
+// Parses "2h 30m", "90m", "1.5h", "2h", "30" (treated as minutes) into a
+// minutes integer. Returns null if the string doesn't match any known
+// format so callers can surface a validation error instead of NaN.
+export function parseEstimateInput(input: string): number | null {
+  const s = input.trim().toLowerCase();
+
+  // "2h 30m" or "2h30m"
+  const hm = s.match(/^(\d+(?:\.\d+)?)\s*h\s*(\d+)\s*m?$/);
+  if (hm) return Math.round(parseFloat(hm[1]) * 60 + parseInt(hm[2], 10));
+
+  // "2h" or "1.5h"
+  const h = s.match(/^(\d+(?:\.\d+)?)\s*h$/);
+  if (h) return Math.round(parseFloat(h[1]) * 60);
+
+  // "90m" or "90"
+  const m = s.match(/^(\d+)\s*m?$/);
+  if (m) return parseInt(m[1], 10);
+
+  return null;
+}
