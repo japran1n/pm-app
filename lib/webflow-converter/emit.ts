@@ -4,37 +4,42 @@
 //
 // Walks a parsed HTML tree (node-html-parser) and a parsed CSS map
 // (css.ts's parseCss()) and assembles Webflow's XscpData clipboard JSON
-// shape: a tree of WebflowNode plus a flat WebflowStyle array.
+// shape: a FLAT array of nodes (WebflowChild) plus a flat WebflowStyle
+// array, matching the exact shape Webflow Designer's own "copy to
+// clipboard" produces (see missions/20260917-170249 ground-truth wf.json).
+//
+// Internally the HTML tree is still walked recursively (a "tree" node has
+// its children nested inline), but the tree is flattened into
+// `payload.nodes` as a final pass — see flattenTree() — because that is
+// the only shape Webflow's paste handler (`pasteAttempted`) accepts.
 
 import { HTMLElement, NodeType, parse } from "node-html-parser";
 import { getWebflowType } from "./typemap";
 import { parseCss, type ParseCssResult, type ParsedClass } from "./css";
 
-/** One node in the Webflow clipboard node tree. */
+/** A text node in Webflow's flat node array. No `type`, no nested `text` object — `v` is the string itself. */
+export interface WebflowTextNode {
+  _id: string;
+  text: true;
+  v: string;
+}
+
+/** An element node in Webflow's flat node array. `children` holds child node `_id`s, `classes` holds style `_id`s. */
 export interface WebflowNode {
   _id: string;
   type: string;
   tag: string;
   classes: string[];
-  children: WebflowChild[];
+  children: string[];
   data: Record<string, unknown>;
-  v: number;
 }
 
-/** A text child node in the Webflow clipboard node tree (no tag/classes/data — just text). */
-export interface WebflowTextNode {
-  _id: string;
-  type: "text";
-  v: number;
-  text: { text: string; html: string };
-}
-
-/** Union of element and text children that can live under a WebflowNode. */
+/** Union of element and text nodes that can live in `payload.nodes`. */
 export type WebflowChild = WebflowNode | WebflowTextNode;
 
 /** Narrows a WebflowChild to a WebflowTextNode. */
 export function isTextNode(node: WebflowChild): node is WebflowTextNode {
-  return node.type === "text";
+  return (node as WebflowTextNode).text === true;
 }
 
 /** One entry in the Webflow clipboard style array. */
@@ -66,15 +71,17 @@ export interface WebflowStyle {
   styleLess: string;
   variants: WebflowStyleVariants;
   children: string[];
-  categories: [];
+  origin: null;
+  selector: null;
 }
 
 export interface XscpPayload {
-  nodes: WebflowNode[];
+  nodes: WebflowChild[];
   styles: WebflowStyle[];
   assets: unknown[];
   ix1: unknown[];
   ix2: { interactions: unknown[]; events: unknown[]; actionLists: unknown[] };
+  expandUserComponents: true;
 }
 
 export interface XscpData {
@@ -164,8 +171,42 @@ function toStyleLess(decls: Record<string, string>): string {
     .join(" ");
 }
 
-/** Converts css.ts's parseCss() output into Webflow's WebflowStyle array. */
-export function buildStyles(cssResult: ParseCssResult, warnings: string[] = []): WebflowStyle[] {
+/** Result of buildStyles(): the emitted style array plus the key->id map used to resolve node class names to style _ids. */
+export interface BuildStylesResult {
+  styles: WebflowStyle[];
+  /** Maps a css.ts class key (e.g. "team_toggle-icon|is-active", or a bare name for a standalone class) to the style's emitted _id. */
+  idByKey: Map<string, string>;
+}
+
+/** Pushes one style entry, in wf.json's exact field order. */
+function pushStyle(
+  styles: WebflowStyle[],
+  fields: {
+    _id: string;
+    name: string;
+    comb: string;
+    styleLess: string;
+    variants: WebflowStyleVariants;
+    children: string[];
+  }
+): void {
+  styles.push({
+    _id: fields._id,
+    fake: false,
+    type: "class",
+    name: fields.name,
+    namespace: "",
+    comb: fields.comb,
+    styleLess: fields.styleLess,
+    variants: fields.variants,
+    children: fields.children,
+    origin: null,
+    selector: null,
+  });
+}
+
+/** Converts css.ts's parseCss() output into Webflow's WebflowStyle array, plus the key->id map for class resolution. */
+export function buildStyles(cssResult: ParseCssResult, warnings: string[] = []): BuildStylesResult {
   const styles: WebflowStyle[] = [];
   // Ids are assigned lazily, only when a style is actually pushed to
   // `styles` (real style or synthesized stub). Pre-registering ids for
@@ -251,17 +292,13 @@ export function buildStyles(cssResult: ParseCssResult, warnings: string[] = []):
 
         if (canSynthesize) {
           const stubId = makeId();
-          styles.push({
+          pushStyle(styles, {
             _id: stubId,
-            fake: false,
-            type: "class",
             name: rec.comboOf[rec.comboOf.length - 1],
-            namespace: "",
             comb: grandBaseId !== undefined ? "&" : "",
             styleLess: "",
             variants: {},
             children: [],
-            categories: [],
           });
           idByKey.set(baseKey, stubId);
           baseId = stubId;
@@ -289,17 +326,13 @@ export function buildStyles(cssResult: ParseCssResult, warnings: string[] = []):
     const id = makeId();
     idByKey.set(key, id);
     if (resolvedBaseId !== undefined) comboBaseById.set(id, resolvedBaseId);
-    styles.push({
+    pushStyle(styles, {
       _id: id,
-      fake: false,
-      type: "class",
       name: rec.name,
-      namespace: "",
       comb,
       styleLess: toStyleLess(rec.base),
       variants,
       children: [],
-      categories: [],
     });
   }
 
@@ -318,7 +351,98 @@ export function buildStyles(cssResult: ParseCssResult, warnings: string[] = []):
     }
   }
 
-  return styles;
+  return { styles, idByKey };
+}
+
+/** Common `data` keys required on every element node — see wf.json. */
+function commonNodeData(): {
+  devlink: { runtimeProps: Record<string, never>; slot: "" };
+  displayName: "";
+  attr: { id: "" };
+  xattr: { name: string; value: string }[];
+  search: { exclude: false };
+  visibility: { conditions: unknown[]; keepInHtml: { tag: "False"; val: Record<string, never> } };
+} {
+  return {
+    devlink: { runtimeProps: {}, slot: "" },
+    displayName: "",
+    attr: { id: "" },
+    xattr: [],
+    search: { exclude: false },
+    visibility: { conditions: [], keepInHtml: { tag: "False", val: {} } },
+  };
+}
+
+/**
+ * Builds the final `data` object for one element node, merging the
+ * type-specific keys typemap.ts computed with the common key set every
+ * element node must carry (item 5 of the ground-truth spec — this is the
+ * crash source `Object.hasOwn` chokes on when a key is missing).
+ */
+function buildNodeData(
+  type: string,
+  tag: string,
+  typeData: Record<string, unknown> | undefined,
+  xattr: { name: string; value: string }[]
+): Record<string, unknown> {
+  const common = commonNodeData();
+  const td = typeData ?? {};
+
+  switch (type) {
+    case "Section":
+      return { tag, ...common, xattr };
+    case "Heading":
+      return { tag, text: true, ...common, xattr };
+    case "Paragraph":
+      return { text: true, ...common, xattr };
+    case "Blockquote":
+      return { text: true, ...common, xattr };
+    case "Link":
+      return {
+        link: td.link ?? { url: "#" },
+        block: (td.block as string) ?? "",
+        text: true,
+        button: td.button === true,
+        eventIds: [],
+        ...common,
+        xattr,
+      };
+    case "LinkBlock":
+      return {
+        link: td.link ?? { url: "#" },
+        block: (td.block as string) ?? "block",
+        ...common,
+        xattr,
+      };
+    case "List":
+      return { unstyled: td.unstyled === true, ...common, xattr };
+    case "ListItem":
+      return { ...common, xattr };
+    case "Image":
+      return {
+        attr: {
+          src: (td.src as string) ?? "",
+          alt: (td.alt as string) ?? "",
+          loading: "lazy",
+          width: "auto",
+          height: "auto",
+          id: "",
+        },
+        xattr,
+        img: { id: "plugins/Basic/assets/placeholder.svg" },
+        srcsetDisabled: false,
+        sizes: [],
+        devlink: common.devlink,
+        displayName: common.displayName,
+        search: common.search,
+        visibility: common.visibility,
+      };
+    case "HtmlEmbed":
+      return { html: (td.html as string) ?? "", ...common, xattr };
+    case "Block":
+    default:
+      return { tag, text: td.text === true, ...common, xattr };
+  }
 }
 
 interface WalkContext {
@@ -332,8 +456,22 @@ function buildXattr(attrs: Record<string, string>): { name: string; value: strin
     .map((name) => ({ name, value: attrs[name] }));
 }
 
-/** Recursively converts one HTML element (and its element children) into a WebflowNode, or null if it should be skipped. */
-function walkElement(el: HTMLElement, ctx: WalkContext): WebflowNode | null {
+/** One node in the internal (pre-flatten) tree — children nested inline, classes still human names. */
+interface TreeElement {
+  _id: string;
+  type: string;
+  tag: string;
+  classNames: string[];
+  data: Record<string, unknown>;
+  children: (TreeElement | WebflowTextNode)[];
+}
+
+function isTreeText(node: TreeElement | WebflowTextNode): node is WebflowTextNode {
+  return (node as WebflowTextNode).text === true;
+}
+
+/** Recursively converts one HTML element (and its element children) into a TreeElement, or null if it should be skipped. */
+function walkElement(el: HTMLElement, ctx: WalkContext): TreeElement | null {
   const tag = el.tagName ? el.tagName.toLowerCase() : "";
   if (SKIPPED_TAGS.has(tag)) return null;
 
@@ -361,24 +499,25 @@ function walkElement(el: HTMLElement, ctx: WalkContext): WebflowNode | null {
   });
   if (typeInfo.warning) ctx.warnings.push(typeInfo.warning);
 
-  const classes = (attrs.class ?? "").split(/\s+/).filter(Boolean);
+  const classNames = (attrs.class ?? "").split(/\s+/).filter(Boolean);
 
-  const data: Record<string, unknown> = { ...(typeInfo.data ?? {}) };
-  if (typeInfo.level !== undefined) data.level = typeInfo.level;
+  const typeData: Record<string, unknown> = { ...(typeInfo.data ?? {}) };
+  if (tag === "img" && attrs.src !== undefined) typeData.src = attrs.src;
+
   const xattr = buildXattr(attrs);
   if (attrs.id) {
     xattr.unshift({ name: "id", value: attrs.id });
   }
-  if (xattr.length > 0) data.xattr = xattr;
 
-  const node: WebflowNode = {
+  const data = buildNodeData(typeInfo.type, typeInfo.tag, typeData, xattr);
+
+  const node: TreeElement = {
     _id: makeId(),
     type: typeInfo.type,
     tag: typeInfo.tag,
-    classes,
-    children: [],
+    classNames,
     data,
-    v: 1,
+    children: [],
   };
 
   // svg -> HtmlEmbed carries raw markup verbatim and has no element children of its own.
@@ -386,19 +525,14 @@ function walkElement(el: HTMLElement, ctx: WalkContext): WebflowNode | null {
 
   // Walk all child nodes in source order so interleaved text and inline
   // elements (e.g. "Hello <strong>world</strong>!") come out in the right
-  // sequence. Direct text content must be preserved as Webflow "text" child
-  // nodes (AS bug fix) — omitting them drops the node's visible content and
+  // sequence. Direct text content must be preserved as Webflow text nodes
+  // (AS bug fix) — omitting them drops the node's visible content and
   // produces a clipboard payload Webflow rejects for text-bearing tags.
   for (const child of el.childNodes) {
     if (child.nodeType === NodeType.TEXT_NODE) {
       const rawText = child.rawText ?? "";
       if (rawText.trim() === "") continue; // whitespace-only — skip
-      node.children.push({
-        _id: makeId(),
-        type: "text",
-        v: 1,
-        text: { text: rawText, html: rawText },
-      });
+      node.children.push({ _id: makeId(), text: true, v: rawText });
       continue;
     }
     if (child.nodeType === NodeType.ELEMENT_NODE) {
@@ -410,13 +544,13 @@ function walkElement(el: HTMLElement, ctx: WalkContext): WebflowNode | null {
   return node;
 }
 
-/** Recursively walks a node tree, collecting every class name referenced on any node. */
-function collectClasses(nodes: WebflowNode[]): Set<string> {
+/** Recursively walks the tree, collecting every class name referenced on any element node. */
+function collectClasses(nodes: (TreeElement | WebflowTextNode)[]): Set<string> {
   const found = new Set<string>();
-  const visit = (list: WebflowChild[]) => {
+  const visit = (list: (TreeElement | WebflowTextNode)[]) => {
     for (const node of list) {
-      if (isTextNode(node)) continue;
-      for (const cls of node.classes) found.add(cls);
+      if (isTreeText(node)) continue;
+      for (const cls of node.classNames) found.add(cls);
       if (node.children.length > 0) visit(node.children);
     }
   };
@@ -438,11 +572,11 @@ function chainIsUsed(chain: string[], classLists: string[][]): boolean {
   return classLists.some((classes) => chain.every((c) => classes.includes(c)));
 }
 
-/** Recursively collects the class list of every node in a subtree (each node's own list, not flattened). */
-function collectClassLists(nodes: WebflowChild[], out: string[][]): void {
+/** Recursively collects the class-name list of every element node in a subtree (each node's own list, not flattened). */
+function collectClassLists(nodes: (TreeElement | WebflowTextNode)[], out: string[][]): void {
   for (const node of nodes) {
-    if (isTextNode(node)) continue;
-    out.push(node.classes);
+    if (isTreeText(node)) continue;
+    out.push(node.classNames);
     if (node.children.length > 0) collectClassLists(node.children, out);
   }
 }
@@ -502,32 +636,35 @@ function buildCssEmbedHtml(cssMap: ParseCssResult, classLists: string[][]): stri
   return `<style>\n${rules.join("\n")}\n</style>`;
 }
 
-/** Builds one Embed (Custom Code) WebflowNode with the given raw HTML payload. */
-function buildEmbedNode(html: string): WebflowNode {
+/** Builds one Embed (Custom Code) tree element with the given raw HTML payload. */
+function buildEmbedNode(html: string): TreeElement {
   return {
     _id: makeId(),
     type: "HtmlEmbed",
     tag: "div",
-    classes: ["is-hidden"],
+    classNames: ["is-hidden"],
+    data: buildNodeData("HtmlEmbed", "div", { html }, []),
     children: [],
-    data: { html },
-    v: 1,
   };
 }
 
 /**
- * Walks the node tree and, for every `<section>` element, injects a CSS
- * embed (first child, containing any CSS this section's classes need that
+ * Walks the tree and, for every `<section>` element, injects a CSS embed
+ * (first child, containing any CSS this section's classes need that
  * Webflow's clipboard engine can't represent natively) and a JS embed (last
  * child, only when script content exists) as `is-hidden` Embed nodes.
  * Mutates `nodes` in place. Returns true when at least one embed was added
  * (the caller uses this to decide whether to add the `is-hidden` style
  * stub).
  */
-function injectSectionEmbeds(nodes: WebflowChild[], cssMap: ParseCssResult, scriptHtml: string): boolean {
+function injectSectionEmbeds(
+  nodes: (TreeElement | WebflowTextNode)[],
+  cssMap: ParseCssResult,
+  scriptHtml: string
+): boolean {
   let injected = false;
   for (const node of nodes) {
-    if (isTextNode(node)) continue;
+    if (isTreeText(node)) continue;
     if (node.children.length > 0) {
       injected = injectSectionEmbeds(node.children, cssMap, scriptHtml) || injected;
     }
@@ -546,6 +683,67 @@ function injectSectionEmbeds(nodes: WebflowChild[], cssMap: ParseCssResult, scri
     }
   }
   return injected;
+}
+
+/** Per class-name candidate style entry, derived from a buildStyles() idByKey map. */
+interface ClassCandidate {
+  id: string;
+  comboOf: string[];
+}
+
+/** Builds a class-name -> candidate-styles index from buildStyles()'s idByKey map, sorted longest-combo-first. */
+function buildClassIndex(idByKey: Map<string, string>): Map<string, ClassCandidate[]> {
+  const index = new Map<string, ClassCandidate[]>();
+  for (const [key, id] of idByKey) {
+    const parts = key.split("|");
+    const name = parts[parts.length - 1];
+    const comboOf = parts.slice(0, -1);
+    const arr = index.get(name) ?? [];
+    arr.push({ id, comboOf });
+    index.set(name, arr);
+  }
+  for (const arr of index.values()) arr.sort((a, b) => b.comboOf.length - a.comboOf.length);
+  return index;
+}
+
+/** Resolves one element's class-name list (source order) to style `_id`s, using the fullest matching combo chain available. */
+function resolveClassIds(names: string[], index: Map<string, ClassCandidate[]>): string[] {
+  const set = new Set(names);
+  const ids: string[] = [];
+  for (const name of names) {
+    const candidates = index.get(name) ?? [];
+    const match = candidates.find((c) => c.comboOf.every((x) => set.has(x)));
+    if (match) ids.push(match.id);
+  }
+  return ids;
+}
+
+/**
+ * Flattens the internal tree into Webflow's flat `payload.nodes` array, in
+ * document (pre-order) order — parent before its full subtree, matching
+ * wf.json. Element `children` become arrays of child `_id`s; `classes`
+ * become style `_id`s resolved via `classIndex`.
+ */
+function flattenTree(
+  roots: (TreeElement | WebflowTextNode)[],
+  classIndex: Map<string, ClassCandidate[]>,
+  out: WebflowChild[]
+): void {
+  for (const node of roots) {
+    if (isTreeText(node)) {
+      out.push(node);
+      continue;
+    }
+    out.push({
+      _id: node._id,
+      type: node.type,
+      tag: node.tag,
+      classes: resolveClassIds(node.classNames, classIndex),
+      children: node.children.map((c) => c._id),
+      data: node.data,
+    });
+    flattenTree(node.children, classIndex, out);
+  }
 }
 
 /**
@@ -567,13 +765,13 @@ export function emitWebflow(html: string, cssMap: ParseCssResult, scripts: strin
     (n) => n.nodeType === NodeType.ELEMENT_NODE
   ) as HTMLElement[];
 
-  const nodes: WebflowNode[] = [];
+  const treeRoots: TreeElement[] = [];
   for (const el of topLevel) {
     const node = walkElement(el, ctx);
-    if (node) nodes.push(node);
+    if (node) treeRoots.push(node);
   }
 
-  const styles = buildStyles(cssMap, warnings);
+  const { styles, idByKey } = buildStyles(cssMap, warnings);
 
   // Only inline JS code belongs inside a <script> embed — external
   // <script src> tags come through this array as their own outerHTML
@@ -582,45 +780,35 @@ export function emitWebflow(html: string, cssMap: ParseCssResult, scripts: strin
   const inlineScripts = scripts.filter((s) => s.trim() !== "" && !s.trim().startsWith("<"));
   const scriptHtml = inlineScripts.length > 0 ? `<script>${inlineScripts.join("\n")}</script>` : "";
 
-  const embedsInjected = injectSectionEmbeds(nodes, cssMap, scriptHtml);
+  const embedsInjected = injectSectionEmbeds(treeRoots, cssMap, scriptHtml);
   if (embedsInjected && !styles.some((s) => s.name === "is-hidden")) {
-    styles.push({
-      _id: makeId(),
-      fake: false,
-      type: "class",
-      name: "is-hidden",
-      namespace: "",
-      comb: "",
-      styleLess: "display: none;",
-      variants: {},
-      children: [],
-      categories: [],
-    });
+    const id = makeId();
+    pushStyle(styles, { _id: id, name: "is-hidden", comb: "", styleLess: "display: none;", variants: {}, children: [] });
+    idByKey.set("is-hidden", id);
   }
 
   // AS-114: every class referenced on a node must resolve to a style
   // definition. Classes with no matching CSS rule (ubiquitous in pasted
   // Webflow markup — e.g. `w-container`, `js-trigger`) get a minimal stub
   // style instead of blocking the copy. No warning — this is normal.
-  const styleNames = new Set(styles.map((s) => s.name));
-  const nodeClasses = collectClasses(nodes);
+  const nodeClasses = collectClasses(treeRoots);
+  const knownNames = new Set<string>();
+  for (const key of idByKey.keys()) {
+    const parts = key.split("|");
+    knownNames.add(parts[parts.length - 1]);
+  }
   for (const className of nodeClasses) {
-    if (!styleNames.has(className)) {
-      styles.push({
-        _id: makeId(),
-        fake: false,
-        type: "class",
-        name: className,
-        namespace: "",
-        comb: "",
-        styleLess: "",
-        variants: {},
-        children: [],
-        categories: [],
-      });
-      styleNames.add(className);
+    if (!knownNames.has(className)) {
+      const id = makeId();
+      pushStyle(styles, { _id: id, name: className, comb: "", styleLess: "", variants: {}, children: [] });
+      idByKey.set(className, id);
+      knownNames.add(className);
     }
   }
+
+  const classIndex = buildClassIndex(idByKey);
+  const nodes: WebflowChild[] = [];
+  flattenTree(treeRoots, classIndex, nodes);
 
   return {
     payload: {
@@ -631,6 +819,7 @@ export function emitWebflow(html: string, cssMap: ParseCssResult, scripts: strin
         assets: [],
         ix1: [],
         ix2: { interactions: [], events: [], actionLists: [] },
+        expandUserComponents: true,
       },
     },
     warnings,

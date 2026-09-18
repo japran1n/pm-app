@@ -1,81 +1,106 @@
 import { describe, expect, it } from "vitest";
-import { emitWebflow, emitWebflowFromSource, isTextNode } from "./emit";
+import { emitWebflow, emitWebflowFromSource, isTextNode, type WebflowChild, type WebflowNode, type WebflowStyle } from "./emit";
 import { parseCss } from "./css";
 
 // F018: node tree assembly — walks parsed HTML + parsed CSS into Webflow's
-// XscpData clipboard shape. Covers AS-089 through AS-094, AS-047, AS-042
-// through AS-045, and AS-051.
+// XscpData clipboard shape (a FLAT node array, matching Webflow Designer's
+// own real clipboard format — see ground-truth wf.json). Covers AS-089
+// through AS-094, AS-047, AS-042 through AS-045, and AS-051.
+
+/** Looks up a flat node by its _id. Throws if not found (fail loud in tests). */
+function byId(nodes: WebflowChild[], id: string): WebflowChild {
+  const found = nodes.find((n) => n._id === id);
+  if (!found) throw new Error(`node ${id} not found in flat nodes array`);
+  return found;
+}
+
+/** Resolves an element node's style `_id`s to their class NAMEs, in order, via the styles array. */
+function classNames(styles: WebflowStyle[], node: WebflowNode): string[] {
+  return node.classes.map((id) => {
+    const style = styles.find((s) => s._id === id);
+    if (!style) throw new Error(`style ${id} not found`);
+    return style.name;
+  });
+}
+
+/** Root nodes are always index 0..N in `nodes` in document order — for these single-root tests, node 0. */
+function firstNode(nodes: WebflowChild[]): WebflowNode {
+  const n = nodes[0];
+  if (isTextNode(n)) throw new Error("expected element node");
+  return n;
+}
 
 describe("emitWebflow — node walk", () => {
   it("test_AS_089_090_simple_div_with_class_produces_block_node_with_classes", () => {
     const { payload } = emitWebflow('<div class="card"></div>', parseCss(""));
     expect(payload.payload.nodes).toHaveLength(1);
-    const node = payload.payload.nodes[0];
+    const node = firstNode(payload.payload.nodes);
     expect(node.type).toBe("Block");
     expect(node.tag).toBe("div");
-    expect(node.classes).toEqual(["card"]);
+    expect(classNames(payload.payload.styles, node)).toEqual(["card"]);
     expect(node._id).toBeTruthy();
-    expect(node.v).toBe(1);
   });
 
-  it("test_AS_091_heading_h1_produces_heading_type_with_level", () => {
+  it("test_AS_091_heading_h1_produces_heading_type_with_no_level_key", () => {
     const { payload } = emitWebflow('<h1 class="title">Hi</h1>', parseCss(""));
-    const node = payload.payload.nodes[0];
+    const node = firstNode(payload.payload.nodes);
     expect(node.type).toBe("Heading");
     expect(node.tag).toBe("h1");
-    expect(node.data.level).toBe(1);
+    expect(node.data.text).toBe(true);
+    // Ground-truth wf.json Heading data has no `level` key — dropped.
+    expect(node.data.level).toBeUndefined();
   });
 
-  it("test_M7_text_content_preserved_as_text_child_node_on_heading", () => {
+  it("test_M7_text_content_preserved_as_flat_text_node_on_heading", () => {
     const html = '<h2 class="offers_heading">Vara tjanstepaket</h2>';
     const { payload } = emitWebflow(html, parseCss(""));
-    const node = payload.payload.nodes[0];
+    const node = firstNode(payload.payload.nodes);
     expect(node.data.text).toBe(true);
     expect(node.children).toHaveLength(1);
-    const textChild = node.children[0];
+    const textChild = byId(payload.payload.nodes, node.children[0]);
     expect(isTextNode(textChild)).toBe(true);
     if (!isTextNode(textChild)) throw new Error("expected text child");
-    expect(textChild.type).toBe("text");
-    expect(textChild.text.text).toBe("Vara tjanstepaket");
-    expect(textChild.text.html).toBe("Vara tjanstepaket");
+    expect(textChild.text).toBe(true);
+    expect(textChild.v).toBe("Vara tjanstepaket");
     expect(typeof textChild._id).toBe("string");
     expect(textChild._id.length).toBeGreaterThan(0);
-    expect(textChild.v).toBe(1);
+    expect("type" in textChild).toBe(false);
   });
 
-  it("test_M7_text_content_preserved_on_paragraph", () => {
+  it("test_M7_text_content_preserved_on_paragraph_with_no_tag_key", () => {
     const { payload } = emitWebflow('<p class="lead">Hello world</p>', parseCss(""));
-    const node = payload.payload.nodes[0];
+    const node = firstNode(payload.payload.nodes);
     expect(node.type).toBe("Paragraph");
+    expect(node.data.tag).toBeUndefined();
     expect(node.children).toHaveLength(1);
-    const textChild = node.children[0];
+    const textChild = byId(payload.payload.nodes, node.children[0]);
     if (!isTextNode(textChild)) throw new Error("expected text child");
-    expect(textChild.text.text).toBe("Hello world");
+    expect(textChild.v).toBe("Hello world");
   });
 
   it("test_M7_whitespace_only_text_node_is_skipped", () => {
     const html = `<div class="wrap">\n  <span class="inner">x</span>\n</div>`;
     const { payload } = emitWebflow(html, parseCss(""));
-    const node = payload.payload.nodes[0];
+    const node = firstNode(payload.payload.nodes);
     // Only the <span> element child — surrounding whitespace text nodes dropped.
     expect(node.children).toHaveLength(1);
-    expect(isTextNode(node.children[0])).toBe(false);
+    expect(isTextNode(byId(payload.payload.nodes, node.children[0]))).toBe(false);
   });
 
   it("test_M7_mixed_text_and_inline_element_children_preserve_order_and_text", () => {
     const html = '<p class="mixed">Hello <strong>world</strong>!</p>';
     const { payload } = emitWebflow(html, parseCss(""));
-    const node = payload.payload.nodes[0];
+    const node = firstNode(payload.payload.nodes);
     expect(node.children.length).toBeGreaterThanOrEqual(2);
-    const first = node.children[0];
+    const first = byId(payload.payload.nodes, node.children[0]);
     if (!isTextNode(first)) throw new Error("expected leading text node");
-    expect(first.text.text).toBe("Hello ");
-    const last = node.children[node.children.length - 1];
+    expect(first.v).toBe("Hello ");
+    const last = byId(payload.payload.nodes, node.children[node.children.length - 1]);
     if (!isTextNode(last)) throw new Error("expected trailing text node");
-    expect(last.text.text).toBe("!");
+    expect(last.v).toBe("!");
   });
 
-  it("test_AS_092_nested_elements_produce_correct_children_tree", () => {
+  it("test_AS_092_nested_elements_produce_correct_children_ids_in_flat_array", () => {
     const html = `
       <div class="parent">
         <p class="child-a">a</p>
@@ -83,16 +108,16 @@ describe("emitWebflow — node walk", () => {
       </div>
     `;
     const { payload } = emitWebflow(html, parseCss(""));
-    const root = payload.payload.nodes[0];
-    expect(root.classes).toEqual(["parent"]);
+    const root = firstNode(payload.payload.nodes);
+    expect(classNames(payload.payload.styles, root)).toEqual(["parent"]);
     expect(root.children).toHaveLength(2);
-    const childA = root.children[0];
-    const childB = root.children[1];
+    const childA = byId(payload.payload.nodes, root.children[0]);
+    const childB = byId(payload.payload.nodes, root.children[1]);
     if (isTextNode(childA) || isTextNode(childB)) throw new Error("expected element children");
     expect(childA.type).toBe("Paragraph");
-    expect(childA.classes).toEqual(["child-a"]);
+    expect(classNames(payload.payload.styles, childA)).toEqual(["child-a"]);
     expect(childB.type).toBe("Block");
-    expect(childB.classes).toEqual(["child-b"]);
+    expect(classNames(payload.payload.styles, childB)).toEqual(["child-b"]);
   });
 
   it("test_AS_089_script_and_style_elements_produce_no_node", () => {
@@ -104,16 +129,18 @@ describe("emitWebflow — node walk", () => {
       </div>
     `;
     const { payload } = emitWebflow(html, parseCss(""));
-    const root = payload.payload.nodes[0];
+    const root = firstNode(payload.payload.nodes);
     expect(root.children).toHaveLength(1);
-    expect(root.children[0].type).toBe("Paragraph");
+    const child = byId(payload.payload.nodes, root.children[0]);
+    if (isTextNode(child)) throw new Error("expected element child");
+    expect(child.type).toBe("Paragraph");
   });
 
   it("test_AS_093_data_attributes_carry_through_as_xattr_reserved_attrs_excluded", () => {
     const html =
       '<div class="card" id="hero" style="color:red" href="#" src="x.png" alt="pic" target="_blank" data-foo="bar" data-baz="qux"></div>';
     const { payload } = emitWebflow(html, parseCss(""));
-    const node = payload.payload.nodes[0];
+    const node = firstNode(payload.payload.nodes);
     expect(node.data.xattr).toEqual([
       { name: "id", value: "hero" },
       { name: "data-foo", value: "bar" },
@@ -123,7 +150,7 @@ describe("emitWebflow — node walk", () => {
 
   it("test_AS_091_id_attribute_round_trips_as_xattr_entry", () => {
     const { payload } = emitWebflow('<section id="hero"></section>', parseCss(""));
-    const node = payload.payload.nodes[0];
+    const node = firstNode(payload.payload.nodes);
     expect(node.data.xattr).toContainEqual({ name: "id", value: "hero" });
   });
 
@@ -131,8 +158,10 @@ describe("emitWebflow — node walk", () => {
     const html = '<section class="one"></section><div class="two"></div>';
     const { payload } = emitWebflow(html, parseCss(""));
     expect(payload.payload.nodes).toHaveLength(2);
-    expect(payload.payload.nodes[0].classes).toEqual(["one"]);
-    expect(payload.payload.nodes[1].classes).toEqual(["two"]);
+    const n0 = firstNode(payload.payload.nodes);
+    const n1 = payload.payload.nodes[1] as WebflowNode;
+    expect(classNames(payload.payload.styles, n0)).toEqual(["one"]);
+    expect(classNames(payload.payload.styles, n1)).toEqual(["two"]);
   });
 
   it("test_AS_047_inline_style_attribute_produces_warning_during_node_walk", () => {
@@ -147,14 +176,14 @@ describe("emitWebflow — node walk", () => {
 
   it("test_AS_091_uppercase_ID_attribute_handled_identically_to_lowercase", () => {
     const { payload } = emitWebflow('<div ID="hero"></div>', parseCss(""));
-    const node = payload.payload.nodes[0];
+    const node = firstNode(payload.payload.nodes);
     expect(node.data.xattr).toContainEqual({ name: "id", value: "hero" });
   });
 
   it("test_AS_091_uppercase_CLASS_attribute_handled_identically_to_lowercase", () => {
     const { payload } = emitWebflow('<div CLASS="card featured"></div>', parseCss(""));
-    const node = payload.payload.nodes[0];
-    expect(node.classes).toEqual(["card", "featured"]);
+    const node = firstNode(payload.payload.nodes);
+    expect(classNames(payload.payload.styles, node)).toEqual(["card", "featured"]);
   });
 
   it("test_AS_091_uppercase_STYLE_attribute_handled_identically_to_lowercase", () => {
@@ -164,13 +193,13 @@ describe("emitWebflow — node walk", () => {
 
   it("test_AS_091_uppercase_HREF_attribute_handled_identically_to_lowercase", () => {
     const { payload } = emitWebflow('<a HREF="https://example.com">link</a>', parseCss(""));
-    const node = payload.payload.nodes[0];
+    const node = firstNode(payload.payload.nodes);
     expect(node.data.link).toMatchObject({ url: "https://example.com" });
   });
 
   it("test_AS_091_uppercase_DATA_FOO_attribute_handled_identically_to_lowercase", () => {
     const { payload } = emitWebflow('<div class="card" DATA-FOO="bar"></div>', parseCss(""));
-    const node = payload.payload.nodes[0];
+    const node = firstNode(payload.payload.nodes);
     expect(node.data.xattr).toContainEqual({ name: "data-foo", value: "bar" });
   });
 });
@@ -240,10 +269,6 @@ describe("emitWebflow — CSS to WebflowStyle conversion", () => {
   });
 
   it("AS-117: combo class with missing intermediate base gets a synthesized stub instead of being dropped", () => {
-    // .a.b.c defined without .a.b ever being defined in CSS: the immediate
-    // base "a.b" has no style of its own, but its own base "a" does — so
-    // buildStyles() synthesizes an empty stub for "a.b" and chains .a.b.c
-    // onto it, instead of dropping .a.b.c's real declarations entirely.
     const cssMap = parseCss(".a { color: red; } .a.b.c { color: yellow; }");
     const { payload, warnings } = emitWebflow('<div class="a b c"></div>', cssMap);
 
@@ -261,7 +286,6 @@ describe("emitWebflow — CSS to WebflowStyle conversion", () => {
     expect(comboABC.comb).toBe("&");
     expect(stubAB.children).toContain(comboABC._id);
 
-    // Every combo (comb === "&") is registered in exactly one base's children.
     for (const s of payload.payload.styles) {
       if (s.comb === "&") {
         const owners = payload.payload.styles.filter((o) => o.children.includes(s._id));
@@ -273,8 +297,6 @@ describe("emitWebflow — CSS to WebflowStyle conversion", () => {
   });
 
   it("test_AS_117_missing_intermediate_synthesized_no_null_payload_no_errors", () => {
-    // .a{} .a.b.c{} + <div class="a b c"> — combo content must survive and
-    // the payload must not be null.
     const cssMap = parseCss(".a { color: red; } .a.b.c { color: blue; }");
     const { payload, warnings } = emitWebflow('<div class="a b c"></div>', cssMap);
     expect(payload).not.toBeNull();
@@ -284,9 +306,6 @@ describe("emitWebflow — CSS to WebflowStyle conversion", () => {
   });
 
   it("test_AS_117_four_level_combo_chain_every_comb_resolves_to_an_existing_style", () => {
-    // .a{} .a.b.c{} .a.b.c.d{} — "a.b" is a stale/missing intermediate: it
-    // must be synthesized so that .a.b.c.d's chain through .a.b.c stays
-    // valid, and no comb reference dangles.
     const cssMap = parseCss(".a { color: red; } .a.b.c { color: green; } .a.b.c.d { color: blue; }");
     const { payload, warnings } = emitWebflow('<div class="a b c d"></div>', cssMap);
 
@@ -306,11 +325,6 @@ describe("emitWebflow — CSS to WebflowStyle conversion", () => {
   });
 
   it("test_AS_117_truly_broken_three_level_chain_gracefully_skips_with_warning_not_null_payload", () => {
-    // .a.b.c.d{} defined alone — none of .a, .a.b, or .a.b.c ever exist as
-    // CSS rules, and the immediate base "a.b.c" has no grandparent "a.b"
-    // registered either, so synthesis is not attempted for this deepest
-    // level: buildStyles() falls back to warn-and-skip. The payload must
-    // still be non-null (AS-114 stub picks up the leftover class).
     const cssMap = parseCss(".a.b.c.d { color: yellow; }");
     const { payload, warnings } = emitWebflow('<div class="a b c d"></div>', cssMap);
 
@@ -409,7 +423,6 @@ describe("emitWebflow — CSS to WebflowStyle conversion", () => {
     const style = payload.payload.styles.find((s) => s.name === "btn")!;
     expect((style.variants as Record<string, unknown>)["medium_hover"]).toBeDefined();
     expect(((style.variants as Record<string, { styleLess: string }>)["medium_hover"]).styleLess).toBe("color: green;");
-    // No "not representable" warning
     expect(warnings.some((w) => w.includes("not representable"))).toBe(false);
   });
 
@@ -447,14 +460,11 @@ describe("emitWebflow — CSS to WebflowStyle conversion", () => {
     `);
     const { payload, warnings } = emitWebflow('<a class="btn"></a>', cssMap);
     const style = payload.payload.styles.find((s) => s.name === "btn")!;
-    // Default-breakpoint hover slot is preserved
     expect(style.variants.hover).toBeDefined();
     expect(style.variants.hover?.styleLess).toBe("color: blue;");
-    // medium breakpoint hover goes to medium_hover, not medium
     expect(style.variants.medium).toBeUndefined();
     expect((style.variants as Record<string, unknown>)["medium_hover"]).toBeDefined();
     expect(((style.variants as Record<string, { styleLess: string }>)["medium_hover"]).styleLess).toBe("color: green;");
-    // No "not representable" warning anymore
     expect(warnings.some((w) => w.includes("not representable"))).toBe(false);
   });
 
@@ -480,15 +490,12 @@ describe("emitWebflow — CSS to WebflowStyle conversion", () => {
     const style = payload.payload.styles.find((s) => s.name === "btn")!;
     expect(style.variants.medium).toBeDefined();
     expect(style.variants.medium?.styleLess).toBe("color: blue;");
-    // Hover at medium goes to medium_hover
     expect((style.variants as Record<string, unknown>)["medium_hover"]).toBeDefined();
     expect(((style.variants as Record<string, { styleLess: string }>)["medium_hover"]).styleLess).toBe("color: green;");
-    // No warning about "not representable"
     expect(warnings.some((w) => w.includes("not representable"))).toBe(false);
   });
 
   it("aggregates F012/F014 selector and unsupported-@media warnings into the same warnings list", () => {
-    // AS-042: descendant selector rejected. AS-043: id selector rejected.
     const cssMap = parseCss(`
       .card h3 { color: red; }
       #hero { color: blue; }
@@ -504,7 +511,8 @@ describe("emitWebflowFromSource — convenience wrapper", () => {
     const html = '<div class="card"><p class="text">hi</p></div>';
     const css = ".card { color: red; }";
     const { payload } = emitWebflowFromSource(html, css);
-    expect(payload.payload.nodes[0].classes).toEqual(["card"]);
+    const node = firstNode(payload.payload.nodes);
+    expect(classNames(payload.payload.styles, node)).toEqual(["card"]);
     expect(payload.payload.styles[0].name).toBe("card");
   });
 });
@@ -565,5 +573,67 @@ describe("emitWebflow — AS-114 stub styles for classes with no CSS rule", () =
     const cssMap = parseCss("");
     const { warnings } = emitWebflow('<div class="js-trigger"></div>', cssMap);
     expect(warnings.some((w) => w.toLowerCase().includes("js-trigger"))).toBe(false);
+  });
+});
+
+describe("emitWebflow — ground-truth shape conformance (wf.json)", () => {
+  it("test_wf_json_nodes_array_is_flat_no_nested_children_objects", () => {
+    const html = '<section class="hero"><div class="inner"><p class="text">Hi</p></div></section>';
+    const { payload } = emitWebflow(html, parseCss(""));
+    for (const node of payload.payload.nodes) {
+      if (isTextNode(node)) continue;
+      for (const childId of node.children) {
+        expect(typeof childId).toBe("string");
+      }
+    }
+    // 3 element nodes + 1 text node
+    expect(payload.payload.nodes).toHaveLength(4);
+  });
+
+  it("test_wf_json_classes_are_style_ids_not_names", () => {
+    const cssMap = parseCss(".hero { color: red; }");
+    const { payload } = emitWebflow('<section class="hero"></section>', cssMap);
+    const node = firstNode(payload.payload.nodes);
+    const styleIds = new Set(payload.payload.styles.map((s) => s._id));
+    for (const cls of node.classes) {
+      expect(styleIds.has(cls)).toBe(true);
+      expect(cls).not.toBe("hero");
+    }
+  });
+
+  it("test_wf_json_element_node_data_has_all_six_common_keys", () => {
+    const html = '<section class="hero"><div class="inner"></div></section>';
+    const { payload } = emitWebflow(html, parseCss(""));
+    for (const node of payload.payload.nodes) {
+      if (isTextNode(node)) continue;
+      expect(node.data.devlink).toEqual({ runtimeProps: {}, slot: "" });
+      expect(node.data.displayName).toBe("");
+      expect(node.data.attr).toEqual({ id: "" });
+      expect(Array.isArray(node.data.xattr)).toBe(true);
+      expect(node.data.search).toEqual({ exclude: false });
+      expect(node.data.visibility).toEqual({ conditions: [], keepInHtml: { tag: "False", val: {} } });
+    }
+  });
+
+  it("test_wf_json_payload_has_expandUserComponents_true", () => {
+    const { payload } = emitWebflow('<div class="card"></div>', parseCss(""));
+    expect(payload.payload.expandUserComponents).toBe(true);
+  });
+
+  it("test_wf_json_section_node_has_no_text_key", () => {
+    const { payload } = emitWebflow('<section class="hero"></section>', parseCss(""));
+    const node = firstNode(payload.payload.nodes);
+    expect(node.data.text).toBeUndefined();
+    expect(node.data.tag).toBe("section");
+  });
+
+  it("test_wf_json_styles_have_origin_and_selector_null_no_categories", () => {
+    const cssMap = parseCss(".card { color: red; }");
+    const { payload } = emitWebflow('<div class="card"></div>', cssMap);
+    for (const style of payload.payload.styles) {
+      expect(style.origin).toBeNull();
+      expect(style.selector).toBeNull();
+      expect("categories" in style).toBe(false);
+    }
   });
 });

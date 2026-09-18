@@ -4,6 +4,17 @@ import type { WebflowNode, WebflowStyle, XscpPayload } from "./emit";
 
 const WEBFLOW_TYPE = "@webflow/XscpData";
 
+function commonData(): Record<string, unknown> {
+  return {
+    devlink: { runtimeProps: {}, slot: "" },
+    displayName: "",
+    attr: { id: "" },
+    xattr: [],
+    search: { exclude: false },
+    visibility: { conditions: [], keepInHtml: { tag: "False", val: {} } },
+  };
+}
+
 function makeNode(overrides: Partial<WebflowNode> = {}): WebflowNode {
   return {
     _id: "node-1",
@@ -11,8 +22,7 @@ function makeNode(overrides: Partial<WebflowNode> = {}): WebflowNode {
     tag: "div",
     classes: [],
     children: [],
-    data: {},
-    v: 1,
+    data: commonData(),
     ...overrides,
   };
 }
@@ -25,7 +35,8 @@ function makeStyle(overrides: Partial<WebflowStyle> = {}): WebflowStyle {
     name: "my-class",
     namespace: "",
     comb: "",
-    categories: [],
+    origin: null,
+    selector: null,
     styleLess: "color: red;",
     variants: {},
     children: [],
@@ -40,6 +51,7 @@ function makePayload(overrides: Partial<XscpPayload> = {}): XscpPayload {
     assets: [],
     ix1: [],
     ix2: { interactions: [], events: [], actionLists: [] },
+    expandUserComponents: true,
     ...overrides,
   };
 }
@@ -109,8 +121,8 @@ describe("validatePayload", () => {
   it("invalid class name starting with a number is invalid", () => {
     const payload = withType(
       makePayload({
-        nodes: [makeNode({ classes: ["1-bad-class"] })],
-        styles: [makeStyle({ name: "1-bad-class" })],
+        nodes: [makeNode({ classes: ["style-1"] })],
+        styles: [makeStyle({ _id: "style-1", name: "1-bad-class" })],
       })
     );
 
@@ -123,8 +135,8 @@ describe("validatePayload", () => {
   it("styleLess must be a string when present", () => {
     const payload = withType(
       makePayload({
-        nodes: [makeNode({ classes: ["my-class"] })],
-        styles: [makeStyle({ styleLess: 42 as unknown as string })],
+        nodes: [makeNode({ classes: ["style-1"] })],
+        styles: [makeStyle({ _id: "style-1", styleLess: 42 as unknown as string })],
       })
     );
 
@@ -133,13 +145,81 @@ describe("validatePayload", () => {
     expect(result.valid).toBe(false);
   });
 
-  it("AS-113: a node that is its own ancestor (circular child reference) is invalid", () => {
-    const child = makeNode({ _id: "child" });
-    const parent = makeNode({ _id: "parent", children: [child] });
-    // introduce a cycle: child points back to parent
-    child.children.push(parent);
+  it("node missing a data object is invalid", () => {
+    const node = makeNode();
+    delete (node as { data?: unknown }).data;
+    const payload = withType(makePayload({ nodes: [node], styles: [] }));
 
-    const payload = withType(makePayload({ nodes: [parent], styles: [] }));
+    const result = validatePayload(payload);
+
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes("data object"))).toBe(true);
+  });
+
+  it("node data missing a required common key (e.g. devlink) is invalid — the wf.json crash source", () => {
+    const node = makeNode();
+    delete (node.data as Record<string, unknown>).devlink;
+    const payload = withType(makePayload({ nodes: [node], styles: [] }));
+
+    const result = validatePayload(payload);
+
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes('"devlink"'))).toBe(true);
+  });
+
+  it("a valid text node ({_id, text: true, v}) passes", () => {
+    const payload = withType(makePayload({ nodes: [{ _id: "text-1", text: true, v: "Hello" }], styles: [] }));
+
+    const result = validatePayload(payload);
+
+    expect(result.valid).toBe(true);
+  });
+
+  it("a text node with a type key is invalid", () => {
+    const payload = withType(
+      makePayload({ nodes: [{ _id: "text-1", text: true, v: "Hello", type: "text" } as never], styles: [] })
+    );
+
+    const result = validatePayload(payload);
+
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes('must not have a "type"'))).toBe(true);
+  });
+
+  it("a text node missing a string v is invalid", () => {
+    const payload = withType(makePayload({ nodes: [{ _id: "text-1", text: true } as never], styles: [] }));
+
+    const result = validatePayload(payload);
+
+    expect(result.valid).toBe(false);
+  });
+
+  it("an element's children entry that does not resolve to any node's _id is invalid", () => {
+    const payload = withType(
+      makePayload({ nodes: [makeNode({ children: ["ghost-child"] })], styles: [] })
+    );
+
+    const result = validatePayload(payload);
+
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes("ghost-child"))).toBe(true);
+  });
+
+  it("an element's children entry that resolves to a real node's _id is valid", () => {
+    const child = makeNode({ _id: "child" });
+    const parent = makeNode({ _id: "parent", children: ["child"] });
+    const payload = withType(makePayload({ nodes: [parent, child], styles: [] }));
+
+    const result = validatePayload(payload);
+
+    expect(result.valid).toBe(true);
+  });
+
+  it("AS-113: a node whose children id-chain points back to itself (circular reference) is invalid", () => {
+    const child = makeNode({ _id: "child", children: ["parent"] });
+    const parent = makeNode({ _id: "parent", children: ["child"] });
+
+    const payload = withType(makePayload({ nodes: [parent, child], styles: [] }));
 
     const result = validatePayload(payload);
 
@@ -213,11 +293,11 @@ describe("validatePayload", () => {
     });
   });
 
-  describe("AS-114: every node class reference must resolve to a style entry", () => {
-    it("rejects a node referencing an unknown class with a specific error", () => {
+  describe("AS-114: every node classes entry must resolve to a style _id", () => {
+    it("rejects a node referencing an unknown style id with a specific error", () => {
       const payload = withType(
         makePayload({
-          nodes: [makeNode({ classes: ["ghost-class"] })],
+          nodes: [makeNode({ classes: ["ghost-style-id"] })],
           styles: [makeStyle({ _id: "style-1", name: "my-class" })],
         })
       );
@@ -225,13 +305,13 @@ describe("validatePayload", () => {
       const result = validatePayload(payload);
 
       expect(result.valid).toBe(false);
-      expect(result.errors.some((e) => e.includes('references class "ghost-class"'))).toBe(true);
+      expect(result.errors.some((e) => e.includes('references class id "ghost-style-id"'))).toBe(true);
     });
 
     it("rejects a class reference when there are no styles at all", () => {
       const payload = withType(
         makePayload({
-          nodes: [makeNode({ classes: ["ghost-class"] })],
+          nodes: [makeNode({ classes: ["ghost-style-id"] })],
           styles: [],
         })
       );
@@ -239,7 +319,7 @@ describe("validatePayload", () => {
       const result = validatePayload(payload);
 
       expect(result.valid).toBe(false);
-      expect(result.errors.some((e) => e.includes('references class "ghost-class"'))).toBe(true);
+      expect(result.errors.some((e) => e.includes('references class id "ghost-style-id"'))).toBe(true);
     });
   });
 
@@ -247,7 +327,7 @@ describe("validatePayload", () => {
     it("rejects duplicate style _ids with a specific error", () => {
       const payload = withType(
         makePayload({
-          nodes: [makeNode({ classes: ["a-class"] })],
+          nodes: [makeNode({ classes: ["dup"] })],
           styles: [makeStyle({ _id: "dup", name: "a-class" }), makeStyle({ _id: "dup", name: "b-class" })],
         })
       );
@@ -265,7 +345,7 @@ describe("validatePayload", () => {
       const combo = makeStyle({ _id: "combo", name: "combo-class", comb: "&" });
       const payload = withType(
         makePayload({
-          nodes: [makeNode({ classes: ["base-class", "combo-class"] })],
+          nodes: [makeNode({ classes: ["base", "combo"] })],
           styles: [base, combo],
         })
       );
@@ -282,7 +362,7 @@ describe("validatePayload", () => {
       const combo = makeStyle({ _id: "combo", name: "combo-class", comb: "&" });
       const payload = withType(
         makePayload({
-          nodes: [makeNode({ classes: ["base-class-1", "base-class-2", "combo-class"] })],
+          nodes: [makeNode({ classes: ["base1", "base2", "combo"] })],
           styles: [base1, base2, combo],
         })
       );
@@ -298,7 +378,7 @@ describe("validatePayload", () => {
       const combo = makeStyle({ _id: "combo", name: "combo-class", comb: "&" });
       const payload = withType(
         makePayload({
-          nodes: [makeNode({ classes: ["base-class", "combo-class"] })],
+          nodes: [makeNode({ classes: ["base", "combo"] })],
           styles: [base, combo],
         })
       );
@@ -316,7 +396,7 @@ describe("validatePayload", () => {
       delete (style as { type?: unknown }).type;
       const payload = withType(
         makePayload({
-          nodes: [makeNode({ classes: ["my-class"] })],
+          nodes: [makeNode({ classes: ["style-1"] })],
           styles: [style],
         })
       );

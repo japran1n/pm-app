@@ -14,7 +14,8 @@ describe("convert", () => {
 
     expect(result.errors).toEqual([]);
     expect(result.payload).not.toBeNull();
-    expect(result.payload!.payload.nodes.length).toBe(1);
+    // payload.nodes is flat: div, h1, and h1's text node = 3 entries.
+    expect(result.payload!.payload.nodes.length).toBe(3);
     expect(result.payload!.payload.styles.length).toBeGreaterThan(0);
   });
 
@@ -322,13 +323,9 @@ describe("convert", () => {
     // moden.club-derived whitelist, so `.container`'s `margin: 0 auto`
     // expansion (margin-right/left: auto) is representable in styleLess and
     // no CSS embed is needed here.
-    const flattenNodes = (nodes: WebflowNode[]): WebflowNode[] =>
-      nodes.flatMap((n) => [
-        n,
-        ...flattenNodes((n.children ?? []).filter((c): c is WebflowNode => !isTextNode(c))),
-      ]);
-    const topLevelNodes = result.payload?.payload.nodes ?? [];
-    const allNodes = flattenNodes(topLevelNodes);
+    // payload.nodes is already flat — every element (not text) node is a
+    // top-level entry.
+    const allNodes = (result.payload?.payload.nodes ?? []).filter((n) => !isTextNode(n)) as WebflowNode[];
     expect(allNodes.length).toBe(6);
 
     // Style count: 8 classes defined (hero, container, hero-title, btn,
@@ -558,7 +555,8 @@ describe("convert", () => {
             type: "class" as const,
             name: "123invalid",
             namespace: "" as const,
-            categories: [] as [],
+            origin: null,
+            selector: null,
             comb: "",
             styleLess: "",
             variants: {},
@@ -587,6 +585,77 @@ describe("convert", () => {
       const styleNames = result.payload!.payload.styles.map((s) => s.name);
       expect(styleNames).toContain("wrapper");
       expect(styleNames).toContain("w-container");
+    });
+  });
+
+  describe("ground-truth wf.json shape regression — the paste-crash fix", () => {
+    it("converting a small section produces a payload matching Webflow Designer's real clipboard shape", () => {
+      const html = `
+        <section class="team_component">
+          <div class="team_top">
+            <h2 class="team_heading">Leadership</h2>
+            <p class="team_text">Some copy.</p>
+          </div>
+        </section>
+      `;
+      const css = `
+        .team_component { display: flex; }
+        .team_top { display: flex; justify-content: space-between; }
+        .team_heading { color: #ffffff; font-size: 3rem; }
+        .team_text { max-width: 20rem; color: var(--team-text-secondary, #d6d6d6); }
+      `;
+
+      const result = convert(html, css);
+      expect(result.errors).toEqual([]);
+      const payload = result.payload!.payload;
+
+      // 1. payload.nodes is FLAT — no nested objects under `children`, only id strings.
+      for (const node of payload.nodes) {
+        if (isTextNode(node)) continue;
+        for (const childId of node.children) {
+          expect(typeof childId).toBe("string");
+        }
+      }
+
+      // 2. Every `classes` entry on every element node is a known style `_id`.
+      const styleIds = new Set(payload.styles.map((s) => s._id));
+      const styleNamesById = new Map(payload.styles.map((s) => [s._id, s.name]));
+      let sawResolvedClass = false;
+      for (const node of payload.nodes) {
+        if (isTextNode(node)) continue;
+        for (const cls of node.classes) {
+          expect(styleIds.has(cls)).toBe(true);
+          sawResolvedClass = true;
+        }
+      }
+      expect(sawResolvedClass).toBe(true);
+      // Sanity: classes are ids (resolvable via the map above), not the
+      // literal HTML class name — e.g. no node's classes array literally
+      // contains the string "team_component".
+      const anyLiteralClassName = payload.nodes.some(
+        (n) => !isTextNode(n) && (n as WebflowNode).classes.includes("team_component")
+      );
+      expect(anyLiteralClassName).toBe(false);
+      expect(Array.from(styleNamesById.values())).toContain("team_component");
+
+      // 3. Every element node's `data` has all six common keys.
+      const COMMON_KEYS = ["devlink", "displayName", "attr", "xattr", "search", "visibility"];
+      for (const node of payload.nodes) {
+        if (isTextNode(node)) continue;
+        for (const key of COMMON_KEYS) {
+          expect(node.data).toHaveProperty(key);
+        }
+      }
+
+      // 4. payload.expandUserComponents === true.
+      expect(payload.expandUserComponents).toBe(true);
+
+      // 5. var() with a fallback passes through styleLess verbatim (no crash-prone resolution).
+      const teamText = payload.styles.find((s) => s.name === "team_text")!;
+      expect(teamText.styleLess).toContain("var(--team-text-secondary, #d6d6d6)");
+
+      // The payload must also pass the validator end to end.
+      expect(validatePayload({ ...payload, type: result.payload!.type } as never).valid).toBe(true);
     });
   });
 });

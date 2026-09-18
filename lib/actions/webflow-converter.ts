@@ -42,15 +42,11 @@ function withInjectedScript(html: string, js?: string): string {
   return `${html}\n<script>\n${safeJs}\n</script>`;
 }
 
-// D2: `payload.nodes` is a nested tree (each node may have `children`), not a
-// flat list -- so `nodes.length` only counts root-level nodes. This walks
-// the full tree to report the real total element count.
+// `payload.nodes` is a flat array (each element/text node is a top-level
+// entry; element `children` hold child `_id` strings, not nested objects) --
+// so the node count is simply the array length.
 function countNodes(nodes: unknown[]): number {
-  if (!Array.isArray(nodes)) return 0;
-  return nodes.reduce((sum: number, n: unknown) => {
-    const node = n as { children?: unknown[] } | null | undefined;
-    return sum + 1 + countNodes(node?.children ?? []);
-  }, 0);
+  return Array.isArray(nodes) ? nodes.length : 0;
 }
 
 export async function convertHtmlToWebflow(input: {

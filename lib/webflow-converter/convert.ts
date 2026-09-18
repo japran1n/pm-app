@@ -8,7 +8,7 @@
 // warnings/errors on the returned result.
 
 import { mergeCssResults, parseCss } from "./css";
-import { emitWebflow, isTextNode, type WebflowNode, type XscpData, type XscpPayload } from "./emit";
+import { emitWebflow, isTextNode, type WebflowChild, type XscpData, type XscpPayload } from "./emit";
 import { extractScripts, extractStyles } from "./js-extract";
 import { validatePayload } from "./validator";
 
@@ -74,23 +74,24 @@ export function convert(html: string, css: string): ConvertResult {
   const warnings = new Set([...emitResult.warnings, ...scriptsResult.warnings, ...stylesResult.warnings]);
 
   // AS-051: warn for every CSS class that is defined but never referenced by
-  // any emitted node. Recurses into all descendant nodes, not just the
-  // top-level ones, so a class used only on a deeply nested element is
-  // correctly counted as used. Each node's own class list is tracked
-  // separately (rather than flattened into one global set) so combo class
-  // chains (e.g. "a|b" for ".a.b") can be matched against a single element
-  // that actually carries every class in the chain, not just each class
-  // individually somewhere in the tree.
+  // any emitted node. `payload.nodes` is flat and each element's `classes`
+  // holds style `_id`s (not names), so first build an id->name lookup from
+  // the emitted styles, then reconstruct each node's own class-NAME list.
+  // Each node's own class list is tracked separately (rather than flattened
+  // into one global set) so combo class chains (e.g. "a|b" for ".a.b") can
+  // be matched against a single element that actually carries every class
+  // in the chain, not just each class individually somewhere in the tree.
+  const styleNameById = new Map<string, string>();
+  for (const style of emitResult.payload.payload.styles ?? []) {
+    styleNameById.set(style._id, style.name);
+  }
   const nodeClassLists: string[][] = [];
-  const collectUsedClasses = (node: WebflowNode): void => {
-    nodeClassLists.push(node.classes ?? []);
-    for (const child of node.children ?? []) {
-      if (isTextNode(child)) continue;
-      collectUsedClasses(child);
-    }
-  };
-  for (const node of emitResult.payload.payload.nodes ?? []) {
-    collectUsedClasses(node);
+  for (const node of (emitResult.payload.payload.nodes ?? []) as WebflowChild[]) {
+    if (isTextNode(node)) continue;
+    const names: string[] = (node.classes ?? [])
+      .map((id: string) => styleNameById.get(id))
+      .filter((n: string | undefined): n is string => typeof n === "string");
+    nodeClassLists.push(names);
   }
   const usedClasses = new Set(nodeClassLists.flat());
   for (const [cls, parsed] of cssResult.classes) {

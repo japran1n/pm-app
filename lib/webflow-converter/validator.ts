@@ -2,6 +2,12 @@
 // (the `payload.payload` shape from emit.ts's XscpData) right before it is
 // placed on the clipboard. Errors here always BLOCK the copy — there is no
 // "copy anyway" escape hatch anywhere in this module or its callers (AS-119).
+//
+// `payload.nodes` is a FLAT array (matches Webflow Designer's own clipboard
+// format — see ground-truth wf.json referenced in the F-emit-shape spec):
+// every node (root, descendant, text) is a top-level entry; an element
+// node's `children` holds child `_id` strings, and `classes` holds style
+// `_id`s, not class names.
 
 import type { WebflowChild, WebflowNode, WebflowStyle, XscpPayload } from "./emit";
 
@@ -18,7 +24,6 @@ const KNOWN_TYPES = new Set([
   "LinkBlock",
   "Image",
   "HtmlEmbed",
-  "text",
 ]);
 
 /** Webflow class name rule: must start with a letter, then letters/digits/_/-. */
@@ -46,6 +51,9 @@ const TAILWIND_VARIANT_RE = /^(?:[a-zA-Z0-9_-]+:)*[a-zA-Z][a-zA-Z0-9_.%/#-]*(?:\
  */
 const EXPECTED_TYPE = "@webflow/XscpData";
 
+/** The six `data` keys every element node must carry (item 5 of the ground-truth spec). */
+const COMMON_DATA_KEYS = ["devlink", "displayName", "attr", "xattr", "search", "visibility"] as const;
+
 export interface ValidationResult {
   valid: boolean;
   errors: string[];
@@ -53,66 +61,143 @@ export interface ValidationResult {
 }
 
 /**
- * Recursively walks the node tree, collecting errors/warnings, detecting
- * cycles, and (when `styleNames` is provided) verifying every class name on
- * a node resolves to a known style's `name` (AS-114). Node `classes` are
- * class names (as written in the source HTML), not style `_id`s.
+ * Validates the flat node array: every node has a non-empty unique `_id`;
+ * text nodes match `{_id, text: true, v: string}`; element nodes have a
+ * known `type`, every `children` entry resolves to another node's `_id`,
+ * every `classes` entry resolves to a known style `_id` (when `styleIds` is
+ * provided), and `data` carries the full common key set (AS-114 style, plus
+ * the crash-source structural checks from the ground-truth spec).
  */
-function walkNodes(
-  nodes: WebflowChild[] | null | undefined,
+function validateFlatNodes(
+  nodes: WebflowChild[],
   errors: string[],
   warnings: string[],
-  seenIds: Set<string>,
-  ancestors: Set<WebflowChild>,
-  styleNames: Set<string> | null
+  styleIds: Set<string> | null
 ): void {
-  if (!Array.isArray(nodes)) return;
+  const seenIds = new Set<string>();
+  const nodeIds = new Set<string>();
 
   for (const node of nodes) {
     if (!node || typeof node !== "object") {
       errors.push("Node is missing or not an object");
       continue;
     }
-
-    if (ancestors.has(node)) {
-      errors.push("Node tree contains a circular reference");
-      continue;
+    if (typeof node._id === "string" && node._id.trim() !== "") {
+      nodeIds.add(node._id);
     }
+  }
 
-    const maybeElement = node as Partial<WebflowNode>;
+  for (const node of nodes) {
+    if (!node || typeof node !== "object") continue;
+
+    const idLabel = typeof node._id === "string" && node._id.trim() !== "" ? node._id : "(no id)";
 
     if (typeof node._id !== "string" || node._id.trim() === "") {
-      errors.push(`Node is missing a non-empty _id (tag: ${maybeElement.tag ?? "unknown"})`);
+      errors.push("Node is missing a non-empty _id");
     } else if (seenIds.has(node._id)) {
       errors.push(`Duplicate node _id found: ${node._id}`);
     } else {
       seenIds.add(node._id);
     }
 
-    if (typeof node.type !== "string" || node.type.trim() === "") {
-      errors.push(`Node ${node._id ?? "(no id)"} is missing a type`);
-    } else if (!KNOWN_TYPES.has(node.type)) {
-      warnings.push(`Node ${node._id ?? "(no id)"} has an unknown type "${node.type}"`);
+    if ((node as { text?: unknown }).text === true) {
+      // Text node — must be exactly {_id, text: true, v: string}.
+      if (typeof (node as { v?: unknown }).v !== "string") {
+        errors.push(`Text node ${idLabel} is missing a string "v"`);
+      }
+      if ("type" in node) {
+        errors.push(`Text node ${idLabel} must not have a "type" key`);
+      }
+      continue;
     }
 
-    if (styleNames && Array.isArray(maybeElement.classes)) {
-      for (const cls of maybeElement.classes) {
-        if (!styleNames.has(cls)) {
-          errors.push(`Node ${node._id ?? "(no id)"} references class "${cls}" with no matching style definition`);
+    const el = node as WebflowNode;
+
+    if (typeof el.type !== "string" || el.type.trim() === "") {
+      errors.push(`Node ${idLabel} is missing a type`);
+    } else if (!KNOWN_TYPES.has(el.type)) {
+      warnings.push(`Node ${idLabel} has an unknown type "${el.type}"`);
+    }
+
+    if (!Array.isArray(el.children)) {
+      errors.push(`Node ${idLabel} is missing a children array`);
+    } else {
+      for (const childId of el.children) {
+        if (typeof childId !== "string" || !nodeIds.has(childId)) {
+          errors.push(`Node ${idLabel} references child id "${String(childId)}" that does not exist in payload.nodes`);
         }
       }
     }
 
-    const nextAncestors = new Set(ancestors);
-    nextAncestors.add(node);
-    walkNodes(maybeElement.children, errors, warnings, seenIds, nextAncestors, styleNames);
+    if (!Array.isArray(el.classes)) {
+      errors.push(`Node ${idLabel} is missing a classes array`);
+    } else if (styleIds) {
+      for (const classId of el.classes) {
+        if (!styleIds.has(classId)) {
+          errors.push(`Node ${idLabel} references class id "${classId}" with no matching style definition`);
+        }
+      }
+    }
+
+    if (!el.data || typeof el.data !== "object") {
+      errors.push(`Node ${idLabel} is missing a data object`);
+    } else {
+      for (const key of COMMON_DATA_KEYS) {
+        if (!(key in el.data)) {
+          errors.push(`Node ${idLabel} data is missing required key "${key}" — Webflow's paste handler crashes without it`);
+        }
+      }
+    }
+  }
+
+  detectCycles(nodes, errors);
+}
+
+/**
+ * AS-113: a node that (transitively, via `children` id references) points
+ * back to itself is invalid. Flat arrays have no object identity to walk, so
+ * this runs a standard directed-graph cycle check (DFS + recursion stack)
+ * over the id -> children-id adjacency instead.
+ */
+function detectCycles(nodes: WebflowChild[], errors: string[]): void {
+  const childrenOf = new Map<string, string[]>();
+  for (const node of nodes) {
+    if (!node || typeof node !== "object" || typeof node._id !== "string") continue;
+    if ((node as { text?: unknown }).text === true) continue;
+    const el = node as WebflowNode;
+    if (Array.isArray(el.children)) childrenOf.set(el._id, el.children);
+  }
+
+  const state = new Map<string, "visiting" | "done">();
+  let reported = false;
+
+  const visit = (id: string): void => {
+    if (reported) return;
+    const st = state.get(id);
+    if (st === "done") return;
+    if (st === "visiting") {
+      errors.push("Node tree contains a circular reference");
+      reported = true;
+      return;
+    }
+    state.set(id, "visiting");
+    for (const childId of childrenOf.get(id) ?? []) {
+      if (typeof childId === "string" && childrenOf.has(childId)) visit(childId);
+      if (reported) break;
+    }
+    state.set(id, "done");
+  };
+
+  for (const id of childrenOf.keys()) {
+    if (reported) break;
+    visit(id);
   }
 }
 
 /**
  * Validates the style array: class names, styleLess shape, duplicate _ids
  * (AS-116), and combo classes' registration under their base's children
- * array (AS-117 prerequisite). Returns the set of valid style `name`s found
+ * array (AS-117 prerequisite). Returns the set of valid style `_id`s found
  * (the values node `classes` entries reference — see AS-114), or null if
  * `styles` was not a valid array.
  */
@@ -123,7 +208,7 @@ function validateStyles(
 ): Set<string> | null {
   if (!Array.isArray(styles)) return null;
 
-  const styleNames = new Set<string>();
+  const styleIds = new Set<string>();
   const styleMap = new Map<string, WebflowStyle>();
 
   for (const style of styles) {
@@ -135,9 +220,7 @@ function validateStyles(
     } else {
       styleMap.set(style._id, style);
     }
-    if (typeof style.name === "string" && style.name.trim() !== "") {
-      styleNames.add(style.name);
-    }
+    styleIds.add(style._id);
   }
 
   for (const style of styles) {
@@ -194,7 +277,7 @@ function validateStyles(
     }
   }
 
-  return styleNames;
+  return styleIds;
 }
 
 /**
@@ -217,7 +300,7 @@ export function validatePayload(payload: XscpPayload): ValidationResult {
     errors.push(`payload.type must equal "${EXPECTED_TYPE}"`);
   }
 
-  const styleNames = validateStyles(payload.styles, errors, warnings);
+  const styleIds = validateStyles(payload.styles, errors, warnings);
   if (!Array.isArray(payload.styles)) {
     errors.push("payload.styles must be an array");
   }
@@ -228,7 +311,7 @@ export function validatePayload(payload: XscpPayload): ValidationResult {
     if (payload.nodes.length === 0) {
       errors.push("payload.nodes must not be empty");
     }
-    walkNodes(payload.nodes, errors, warnings, new Set<string>(), new Set<WebflowChild>(), styleNames);
+    validateFlatNodes(payload.nodes, errors, warnings, styleIds);
   }
 
   return {
