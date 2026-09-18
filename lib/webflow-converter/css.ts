@@ -61,6 +61,81 @@ export function parseSelector(sel: string): ParsedSelector | null {
 export { STATE_ALIASES };
 
 // ---------------------------------------------------------------------------
+// M7: var() fallback resolution.
+//
+// Webflow's clipboard style engine (buildStyleBlock) crashes with
+// "Invalid style type: undefined" when a styleLess declaration value
+// contains a CSS custom property reference (`var(--name, fallback)`) — it
+// only understands concrete values. Declarations whose value contains a
+// `var()` with a fallback can still go into styleLess, but only after the
+// fallback has been substituted in place of the whole var() expression.
+// Declarations whose `var()` has no fallback cannot be represented at all
+// and must be routed to the CSS embed instead (by the caller in parseCss),
+// where the ORIGINAL value (with var() intact) is preserved verbatim.
+
+/** Find the index of the first top-level (paren-depth 0) comma in `s`, or -1. */
+function findTopLevelComma(s: string): number {
+  let depth = 0;
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === "(") depth++;
+    else if (s[i] === ")") depth--;
+    else if (s[i] === "," && depth === 0) return i;
+  }
+  return -1;
+}
+
+/**
+ * Resolve every `var(--name, fallback)` in a CSS declaration value to its
+ * fallback, recursively (fallbacks may themselves contain `var()`).
+ *
+ *   "var(--color, #fff)"            -> "#fff"
+ *   "var(--size, 1rem)"             -> "1rem"
+ *   "var(--a, var(--b, blue))"      -> "blue"
+ *   "var(--color)"                  -> null   (no fallback — unrepresentable)
+ *   "0.875rem"                      -> "0.875rem"  (no var() — unchanged)
+ *   "var(--x, #fff) var(--y, 2px)"  -> "#fff 2px" (each var() resolved separately)
+ *
+ * Returns null when ANY `var()` in the value has no fallback — the caller
+ * must route the whole declaration to the CSS embed in that case.
+ */
+export function resolveVarFallback(value: string): string | null {
+  if (!value.includes("var(")) return value;
+
+  let result = "";
+  let i = 0;
+  while (i < value.length) {
+    const idx = value.indexOf("var(", i);
+    if (idx === -1) {
+      result += value.slice(i);
+      break;
+    }
+    result += value.slice(i, idx);
+
+    // Find the matching close paren for this var( by counting depth.
+    let depth = 1;
+    let j = idx + 4;
+    while (j < value.length && depth > 0) {
+      if (value[j] === "(") depth++;
+      else if (value[j] === ")") depth--;
+      j++;
+    }
+    if (depth !== 0) return null; // unbalanced parens — malformed, unrepresentable
+
+    const inner = value.slice(idx + 4, j - 1);
+    const commaIdx = findTopLevelComma(inner);
+    if (commaIdx === -1) return null; // var(--name) with no fallback
+
+    const fallback = inner.slice(commaIdx + 1).trim();
+    const resolvedFallback = resolveVarFallback(fallback);
+    if (resolvedFallback === null) return null;
+
+    result += resolvedFallback;
+    i = j;
+  }
+  return result;
+}
+
+// ---------------------------------------------------------------------------
 // F014: parseCss() orchestration — port of the prototype's parseCss() from
 // ~/Desktop/html-to-webflow/src/css.mjs, combining this module's
 // parseSelector, breakpoints.ts's mapBreakpoint/variantKey, and
@@ -208,7 +283,24 @@ export function parseCss(cssText: string): ParseCssResult {
               // flagged properties (e.g. grid-template-*) instead of writing
               // it into styleLess, where it would crash buildStyleBlock.
               const { supported, unsupported: notWhitelisted } = partitionByWebflowSupport(decls);
-              const allUnsupported = { ...unsupported, ...notWhitelisted };
+              // M7: styleLess cannot hold CSS custom property references —
+              // Webflow's clipboard style engine crashes on `var(...)`.
+              // Resolve each supported declaration's value to its var()
+              // fallback (recursively); when a var() has no fallback the
+              // declaration is unrepresentable in styleLess and is routed to
+              // the CSS embed instead, preserving the ORIGINAL value (with
+              // var() intact) rather than the fallback.
+              const resolvedSupported: Record<string, string> = {};
+              const varUnsupported: Record<string, string> = {};
+              for (const [prop, val] of Object.entries(supported)) {
+                const resolved = resolveVarFallback(val);
+                if (resolved === null) {
+                  varUnsupported[prop] = val;
+                } else {
+                  resolvedSupported[prop] = resolved;
+                }
+              }
+              const allUnsupported = { ...unsupported, ...notWhitelisted, ...varUnsupported };
               if (Object.keys(allUnsupported).length > 0) {
                 // Handled via a CSS embed (emit.ts) instead of a warning —
                 // the declaration isn't lost, just relocated.
@@ -227,7 +319,7 @@ export function parseCss(cssText: string): ParseCssResult {
               if (child.important) {
                 warnings.push(`.${chain.join(".")}: "!important" on ${child.prop} was dropped`);
               }
-              Object.assign(bucket, supported);
+              Object.assign(bucket, resolvedSupported);
             } catch (err: unknown) {
               const msg = err instanceof Error ? err.message : String(err);
               warnings.push(`unexpected error expanding '${child.prop}': ${msg}`);
