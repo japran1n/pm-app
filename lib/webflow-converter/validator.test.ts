@@ -12,6 +12,7 @@ function commonData(): Record<string, unknown> {
     xattr: [],
     search: { exclude: false },
     visibility: { conditions: [], keepInHtml: { tag: "False", val: {} } },
+    eventIds: [],
   };
 }
 

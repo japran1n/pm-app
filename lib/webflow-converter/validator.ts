@@ -52,7 +52,7 @@ const TAILWIND_VARIANT_RE = /^(?:[a-zA-Z0-9_-]+:)*[a-zA-Z][a-zA-Z0-9_.%/#-]*(?:\
 const EXPECTED_TYPE = "@webflow/XscpData";
 
 /** The six `data` keys every element node must carry (item 5 of the ground-truth spec). */
-const COMMON_DATA_KEYS = ["devlink", "displayName", "attr", "xattr", "search", "visibility"] as const;
+const COMMON_DATA_KEYS = ["devlink", "displayName", "attr", "xattr", "search", "visibility", "eventIds"] as const;
 
 export interface ValidationResult {
   valid: boolean;

@@ -601,7 +601,7 @@ describe("emitWebflow — ground-truth shape conformance (wf.json)", () => {
     }
   });
 
-  it("test_wf_json_element_node_data_has_all_six_common_keys", () => {
+  it("test_wf_json_element_node_data_has_all_seven_common_keys", () => {
     const html = '<section class="hero"><div class="inner"></div></section>';
     const { payload } = emitWebflow(html, parseCss(""));
     for (const node of payload.payload.nodes) {
@@ -612,6 +612,7 @@ describe("emitWebflow — ground-truth shape conformance (wf.json)", () => {
       expect(Array.isArray(node.data.xattr)).toBe(true);
       expect(node.data.search).toEqual({ exclude: false });
       expect(node.data.visibility).toEqual({ conditions: [], keepInHtml: { tag: "False", val: {} } });
+      expect(node.data.eventIds).toEqual([]);
     }
   });
 
