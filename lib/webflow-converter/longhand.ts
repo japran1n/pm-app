@@ -496,10 +496,20 @@ export function expandDeclaration(prop: string, value: string): ExpandResult {
 
     case 'gap':
     case 'grid-gap': {
+      // Webflow's clipboard style engine uses the pre-standardization Grid
+      // property names (grid-row-gap / grid-column-gap) — the modern
+      // row-gap / column-gap longhands have no style-type entry and crash
+      // buildStyleBlock with "Invalid style type: undefined" on paste.
       if (!v) return { decls: {}, warning: `${p}: empty value skipped` };
       const [row, col] = splitTop(v);
-      return { decls: { 'row-gap': row, 'column-gap': col ?? row } };
+      return { decls: { 'grid-row-gap': row, 'grid-column-gap': col ?? row } };
     }
+
+    case 'row-gap':
+      return { decls: { 'grid-row-gap': v } };
+
+    case 'column-gap':
+      return { decls: { 'grid-column-gap': v } };
 
     case 'overflow': {
       if (!v) return { decls: {}, warning: `${p}: empty value skipped` };

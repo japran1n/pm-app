@@ -187,16 +187,16 @@ describe('isShorthand', () => {
   });
 });
 
-describe('AS-058: gap shorthand expands to row-gap + column-gap', () => {
+describe('AS-058: gap shorthand expands to grid-row-gap + grid-column-gap', () => {
   it('test_AS_058_one_value_applies_to_row_and_column', () => {
     expect(expandDeclaration('gap', '10px')).toEqual({
-      decls: { 'row-gap': '10px', 'column-gap': '10px' },
+      decls: { 'grid-row-gap': '10px', 'grid-column-gap': '10px' },
     });
   });
 
   it('test_AS_058_two_values_row_then_column', () => {
     expect(expandDeclaration('gap', '10px 20px')).toEqual({
-      decls: { 'row-gap': '10px', 'column-gap': '20px' },
+      decls: { 'grid-row-gap': '10px', 'grid-column-gap': '20px' },
     });
   });
 
@@ -1124,7 +1124,7 @@ describe('AS-069: expandDeclaration dispatches to the correct expander by proper
   });
 
   it('test_AS_069_dispatches_gap_overflow_place_handler', () => {
-    expect(expandDeclaration('gap', '1px').decls).toHaveProperty('row-gap');
+    expect(expandDeclaration('gap', '1px').decls).toHaveProperty('grid-row-gap');
     expect(expandDeclaration('overflow', 'hidden').decls).toHaveProperty('overflow-x');
     expect(expandDeclaration('place-items', 'center').decls).toHaveProperty('align-items');
   });
@@ -1231,12 +1231,12 @@ describe('AS-069: unimplemented shorthands are warned-and-dropped, never emitted
     }
   });
 
-  it('test_AS_069_grid_gap_expands_to_row_gap_and_column_gap', () => {
+  it('test_AS_069_grid_gap_expands_to_grid_row_gap_and_grid_column_gap', () => {
     expect(expandDeclaration('grid-gap', '10px')).toEqual({
-      decls: { 'row-gap': '10px', 'column-gap': '10px' },
+      decls: { 'grid-row-gap': '10px', 'grid-column-gap': '10px' },
     });
     expect(expandDeclaration('grid-gap', '10px 20px')).toEqual({
-      decls: { 'row-gap': '10px', 'column-gap': '20px' },
+      decls: { 'grid-row-gap': '10px', 'grid-column-gap': '20px' },
     });
   });
 
