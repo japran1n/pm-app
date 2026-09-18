@@ -10,7 +10,7 @@ import { z } from "zod";
 // additional enforcement layer — if these constants change, that migration
 // (or a follow-up one) must be updated to match.
 
-// AS-205: max avatar size. Smaller than attachments' 10MB — an avatar is
+// AS-205: max avatar size. Smaller than attachments' 4MB — an avatar is
 // a single small profile picture rendered at thumbnail size on every task
 // card app-wide, not an arbitrary document. 2MB comfortably covers a
 // full-resolution phone photo while keeping the public avatars bucket from

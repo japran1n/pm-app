@@ -65,7 +65,7 @@ describe("UploadProgress (F259: AS-504, AS-507)", () => {
         fileName: "huge.png",
         fileSize: 999,
         status: "rejected",
-        reason: "File must be 10MB or smaller.",
+        reason: "File must be 4MB or smaller.",
       },
     ];
 
@@ -77,7 +77,7 @@ describe("UploadProgress (F259: AS-504, AS-507)", () => {
       }),
     );
 
-    expect(screen.getByText("File must be 10MB or smaller.")).toBeInTheDocument();
+    expect(screen.getByText("File must be 4MB or smaller.")).toBeInTheDocument();
   });
 
   it("test_AS_507_an_error_row_shows_the_server_reason_it_failed", () => {
