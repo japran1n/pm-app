@@ -47,3 +47,9 @@ export {
   unlinkComponentFromSection,
   deleteComponent,
 } from "./architecture/components";
+
+export {
+  setDisciplineEstimate,
+  clearDisciplineEstimate,
+  setDisciplineEstimatesBulk,
+} from "./architecture/estimates";
