@@ -111,6 +111,13 @@ export const GET = withExtensionAuth(
       );
     }
 
+    // Clients access via the portal, not the extension — the admin client
+    // below bypasses RLS, so without this check a client caller would get
+    // back every workspace project and every team member's name/email.
+    if (membership.role === "client") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403, headers });
+    }
+
     const [{ data: projectRows, error: projectsError }, { data: memberRows, error: membersError }, { data: taskTypeRows, error: taskTypesError }] =
       await Promise.all([
         admin
@@ -123,7 +130,8 @@ export const GET = withExtensionAuth(
           .from("workspace_members")
           .select("user_id")
           .eq("workspace_id", workspaceId)
-          .eq("status", "active"),
+          .eq("status", "active")
+          .neq("role", "client"),
         admin
           .from("task_types")
           .select("id, name")
@@ -193,9 +201,11 @@ export const GET = withExtensionAuth(
     // isProjectVisibleToCaller's rule, applied per row using the batched
     // lookup above instead of a per-project query: workspace-visible OR
     // caller is owner/admin OR caller has an explicit project_members row.
+    // Guests are excluded from the workspace-visible shortcut — they only
+    // see projects they're explicitly a member of.
     const visibleProjectRows = allProjectRows.filter((row) => {
       const visibility = (row.visibility as ProjectVisibility) ?? "workspace";
-      if (visibility === "workspace") return true;
+      if (visibility === "workspace" && membership.role !== "guest") return true;
       if (membership.role === "owner" || membership.role === "admin") return true;
       return visiblePrivateProjectIds.has(row.id);
     });
