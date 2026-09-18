@@ -13,8 +13,11 @@ import {
 import { logger } from "@/lib/observability/logger";
 import { getCurrentUserTimezone } from "@/lib/queries/profile";
 import { canWrite } from "@/lib/auth/permissions";
+import { getWorkspaceContext } from "@/lib/queries/workspaces";
 import { DashboardTaskTable } from "@/components/dashboard/dashboard-task-table";
-import { DashboardContentLazy as DashboardContent } from "@/components/dashboard/dashboard-content-lazy";
+// P2-17: DashboardContent no longer needs ssr:false — Recharts is gone;
+// import directly instead of through the dashboard-content-lazy wrapper.
+import { DashboardContent } from "@/components/dashboard/dashboard-content";
 import { PersonalTodoList } from "@/components/my-tasks/personal-todo-list";
 import { getPersonalTodos } from "@/lib/queries/personal-todos";
 
@@ -67,30 +70,18 @@ export default async function WorkspacePage({
 
   const supabase = await createClient();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  // F124 (AS-207): the viewer's timezone is resolved ONCE per request here
-  // (lib/queries/profile.ts's getCurrentUserTimezone), run alongside the
-  // independent workspace lookup rather than sequentially awaited, then
-  // threaded through to getOverdueCount (the SQL-side "is this task
-  // overdue" definition) and down to <DashboardTaskTable> as a prop.
-  const [{ data: workspace }, timezone] = await Promise.all([
-    supabase
-      .from("workspaces")
-      .select("id, name")
-      .eq("slug", workspaceSlug)
-      .maybeSingle(),
+  // P2-17: wave 1 — context (workspace, user, role) and timezone in
+  // parallel. getWorkspaceContext is cache()-wrapped and batches the user
+  // lookup, workspace-by-slug query, and membership role check into one
+  // chain without extra round trips (see lib/queries/workspaces.ts).
+  // getCurrentUserTimezone only needs the current user (not workspace_id),
+  // so it runs alongside the context fetch rather than waiting for it.
+  const [ctx, timezone] = await Promise.all([
+    getWorkspaceContext(workspaceSlug),
     getCurrentUserTimezone(supabase),
   ]);
 
-  // Consolidation (20261116010000): the personal to-do list — not a
-  // separate "quick notes" entity — is the always-visible personal
-  // reminder widget, fetched here once workspace.id is known (below the
-  // redirect guard) and passed down as a plain prop, same table and same
-  // component the My Tasks page uses.
-  const personalTodos = workspace ? await getPersonalTodos(workspace.id) : [];
+  const { user, workspace, role } = ctx;
 
   // The layout above already redirects away when the workspace can't be
   // resolved, so this is just a defensive fallback, not the primary guard.
@@ -103,24 +94,18 @@ export default async function WorkspacePage({
   // workspace, so this only decides the finer-grained `canWrite` question
   // (viewers are read-only, AS-216/AS-217). `createSampleProject` itself
   // independently re-checks this server-side via `createProject`.
-  let canOfferSampleProject = false;
-  if (user) {
-    const { data: callerMembership } = await supabase
-      .from("workspace_members")
-      .select("role")
-      .eq("workspace_id", workspace.id)
-      .eq("user_id", user.id)
-      .eq("status", "active")
-      .maybeSingle();
+  const canOfferSampleProject = user
+    ? canWrite({
+        role: (role ?? "member") as Parameters<typeof canWrite>[0]["role"],
+      })
+    : false;
 
-    canOfferSampleProject = canWrite({
-      role: (callerMembership?.role ?? "member") as Parameters<
-        typeof canWrite
-      >[0]["role"],
-    });
-  }
-
+  // P2-17: wave 2 — every remaining fetch depends only on workspace.id
+  // and/or timezone (both resolved above), so all run in parallel.
+  // Consolidation (20261116010000): personalTodos joins the same wave.
+  // UX-20: all six workspace-scoped counts run here in one Promise.all.
   const [
+    personalTodos,
     priorityResult,
     statusResult,
     overdueResult,
@@ -128,12 +113,10 @@ export default async function WorkspacePage({
     blockedResult,
     completedResult,
   ] = await Promise.all([
+    getPersonalTodos(workspace.id),
     getPriorityCounts(supabase, workspace.id),
     getStatusCounts(supabase, workspace.id),
     getOverdueCount(supabase, workspace.id, timezone),
-    // UX-20: three more small workspace-scoped counts, fetched alongside
-    // the three that already existed — same "server-fetched RPC results
-    // passed down as plain props" shape, no new round trip pattern.
     getDueSoonCount(supabase, workspace.id, timezone),
     getBlockedCount(supabase, workspace.id),
     getCompletedCount(supabase, workspace.id, timezone),

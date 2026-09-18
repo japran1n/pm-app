@@ -204,7 +204,7 @@ describe.skipIf(!haveAdminCreds)("getProjectListTasks filters (F054)", () => {
 
   it("AS-086: a single status filter narrows results to matching tasks only", async () => {
     const { getProjectListTasks } = await import("@/lib/queries/tasks");
-    const tasks = await getProjectListTasks(projectId, { status: "in_progress" });
+    const { tasks } = await getProjectListTasks(projectId, { status: "in_progress" });
 
     expect(tasks).toHaveLength(1);
     expect(tasks[0].title).toBe("Task C");
@@ -212,7 +212,7 @@ describe.skipIf(!haveAdminCreds)("getProjectListTasks filters (F054)", () => {
 
   it("AS-087: a single priority filter narrows results to matching tasks only", async () => {
     const { getProjectListTasks } = await import("@/lib/queries/tasks");
-    const tasks = await getProjectListTasks(projectId, { priority: "high" });
+    const { tasks } = await getProjectListTasks(projectId, { priority: "high" });
 
     const titles = tasks.map((t) => t.title).sort();
     expect(titles).toEqual(["Task A", "Task C"]);
@@ -220,7 +220,7 @@ describe.skipIf(!haveAdminCreds)("getProjectListTasks filters (F054)", () => {
 
   it("AS-088: a single assignee filter narrows results to matching tasks only", async () => {
     const { getProjectListTasks } = await import("@/lib/queries/tasks");
-    const tasks = await getProjectListTasks(projectId, {
+    const { tasks } = await getProjectListTasks(projectId, {
       assigneeId: otherMemberUserId,
     });
 
@@ -251,7 +251,7 @@ describe.skipIf(!haveAdminCreds)("getProjectListTasks filters (F054)", () => {
       // the join weren't deduplicated) and Task B matches on one
       // (otherMemberUserId). The critical assertion is that Task A appears
       // EXACTLY ONCE despite matching twice.
-      const tasks = await getProjectListTasks(projectId, {
+      const { tasks } = await getProjectListTasks(projectId, {
         assigneeId: [memberUserId, otherMemberUserId],
       });
 
@@ -293,7 +293,7 @@ describe.skipIf(!haveAdminCreds)("getProjectListTasks filters (F054)", () => {
     }
 
     try {
-      const tasks = await getProjectListTasks(projectId, {
+      const { tasks } = await getProjectListTasks(projectId, {
         assigneeId: unrelatedAuth.user.id,
       });
       expect(tasks).toHaveLength(0);
@@ -308,7 +308,7 @@ describe.skipIf(!haveAdminCreds)("getProjectListTasks filters (F054)", () => {
     // Both Task A and Task B are status=todo; only Task A is also
     // priority=high. An OR-combined filter would incorrectly also return
     // Task C (priority=high, status=in_progress).
-    const tasks = await getProjectListTasks(projectId, {
+    const { tasks } = await getProjectListTasks(projectId, {
       status: "todo",
       priority: "high",
     });
@@ -322,7 +322,7 @@ describe.skipIf(!haveAdminCreds)("getProjectListTasks filters (F054)", () => {
 
     // status=in_progress AND priority=low matches nothing (Task C is
     // in_progress/high, Task B is todo/low).
-    const tasks = await getProjectListTasks(projectId, {
+    const { tasks } = await getProjectListTasks(projectId, {
       status: "in_progress",
       priority: "low",
     });
@@ -333,11 +333,11 @@ describe.skipIf(!haveAdminCreds)("getProjectListTasks filters (F054)", () => {
   it("AS-090: omitting all filters (clearing) restores the full unfiltered list", async () => {
     const { getProjectListTasks } = await import("@/lib/queries/tasks");
 
-    const filtered = await getProjectListTasks(projectId, { status: "todo" });
+    const { tasks: filtered } = await getProjectListTasks(projectId, { status: "todo" });
     expect(filtered).toHaveLength(2);
 
-    const cleared = await getProjectListTasks(projectId, {});
-    const clearedNoArg = await getProjectListTasks(projectId);
+    const { tasks: cleared } = await getProjectListTasks(projectId, {});
+    const { tasks: clearedNoArg } = await getProjectListTasks(projectId);
 
     expect(cleared).toHaveLength(3);
     expect(clearedNoArg).toHaveLength(3);

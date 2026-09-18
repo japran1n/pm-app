@@ -43,7 +43,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Clock } from "lucide-react";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import {
   getPersonTimeDaily,
   getPersonTimeByProject,
@@ -94,10 +94,7 @@ export default async function MyTimePage({
   const { workspaceSlug } = await params;
   const query = await searchParams;
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     redirect("/sign-in");

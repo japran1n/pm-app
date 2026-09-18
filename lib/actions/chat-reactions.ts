@@ -107,6 +107,7 @@ export async function toggleMessageReaction(
     return { ok: false, error: "You must be signed in to react to a message." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
   const check = await resolveMessageAndMembership(
     admin,

@@ -48,6 +48,9 @@ export type PendingInvite = {
   id: string;
   invitedEmail: string;
   role: "owner" | "admin" | "member";
+  /** ISO timestamp the invite row was created — already selected in the
+   * query; surfaced here so the UI can show invite age (P2-38). */
+  createdAt: string;
 };
 
 export type WorkspaceMembers = {
@@ -104,6 +107,7 @@ export async function getWorkspaceMembers(
     id: row.id,
     invitedEmail: row.invited_email ?? "(unknown)",
     role: row.role as "owner" | "admin" | "member",
+    createdAt: row.created_at as string,
   }));
 
   return { active, pending };

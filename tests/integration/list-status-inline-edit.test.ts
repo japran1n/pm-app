@@ -203,7 +203,7 @@ describe.skipIf(!haveAdminCreds)("List view status dropdown (F057: AS-093)", () 
       "@/lib/queries/tasks"
     );
 
-    const beforeList = await getProjectListTasks(projectId);
+    const { tasks: beforeList } = await getProjectListTasks(projectId);
     expect(beforeList.find((t) => t.id === taskId)?.status).toBe("todo");
 
     const result = await moveTaskStatus(taskId, "in_review");
@@ -215,7 +215,7 @@ describe.skipIf(!haveAdminCreds)("List view status dropdown (F057: AS-093)", () 
     // without a full page reload being involved in this assertion — a
     // fresh read after the action call is exactly what the client
     // component's own optimistic-update-then-reconcile flow depends on.
-    const afterList = await getProjectListTasks(projectId);
+    const { tasks: afterList } = await getProjectListTasks(projectId);
     const changedListRow = afterList.find((t) => t.id === taskId);
     expect(changedListRow?.status).toBe("in_review");
 
@@ -242,7 +242,7 @@ describe.skipIf(!haveAdminCreds)("List view status dropdown (F057: AS-093)", () 
     const result = await moveTaskStatus(otherTaskId, "not_a_real_status");
     expect(result.ok).toBe(false);
 
-    const rows = await getProjectListTasks(projectId);
+    const { tasks: rows } = await getProjectListTasks(projectId);
     expect(rows.find((t) => t.id === otherTaskId)?.status).toBe("todo");
   });
 });

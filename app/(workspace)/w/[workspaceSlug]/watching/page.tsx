@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Eye } from "lucide-react";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { getWatchedTasksForUser } from "@/lib/queries/watching";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { STATUS_LABELS, STATUS_COLORS } from "@/lib/task-colors";
@@ -25,11 +25,7 @@ export default async function WatchingPage({
   params: Promise<{ workspaceSlug: string }>;
 }) {
   const { workspaceSlug } = await params;
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     redirect("/sign-in");

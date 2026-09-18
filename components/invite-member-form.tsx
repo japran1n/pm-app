@@ -84,7 +84,11 @@ export function InviteMemberForm({
         needsProject && projectId ? projectId : undefined,
       );
       if (result.ok) {
-        toast.success(`Invite sent to ${result.invitedEmail}.`);
+        toast.success(
+          result.emailSent
+            ? `Invite sent to ${result.invitedEmail}.`
+            : `Invite recorded for ${result.invitedEmail} — send them the sign-in link manually.`,
+        );
         setEmail("");
         setRole("member");
         setProjectId(null);

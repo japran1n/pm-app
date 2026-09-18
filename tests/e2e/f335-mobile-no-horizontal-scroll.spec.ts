@@ -70,6 +70,11 @@ test.describe("AS-517: no primary view scrolls horizontally on a phone", () => {
   const createdWorkspaceIds: string[] = [];
   const createdUserIds: string[] = [];
 
+  // P2-39: portal client session state — seeded once in beforeAll alongside
+  // the workspace member; torn down in afterAll alongside other test users.
+  let clientUserId: string;
+  let clientEmail: string;
+
   let workspaceSlug: string;
   let memberUserId: string;
   let memberEmail: string;
@@ -128,6 +133,10 @@ test.describe("AS-517: no primary view scrolls horizontally on a phone", () => {
         workspace_id: workspaceId,
         name: "F335 Mobile Scroll Test Project — a deliberately long project name to stress-test header truncation on narrow viewports",
         visibility: "workspace",
+        // P2-39: portal_enabled lets the client user visit portal routes
+        // for this project. Defaults false — must be set explicitly here so
+        // the portal routes resolve rather than 404ing.
+        portal_enabled: true,
       })
       .select("id")
       .single();
@@ -179,6 +188,34 @@ test.describe("AS-517: no primary view scrolls horizontally on a phone", () => {
       if (taskErr) {
         throw new Error(`Failed to seed task: ${taskErr.message}`);
       }
+    }
+
+    // P2-39: client user — a workspace member with `role: "client"` so the
+    // portal layout's `canViewClientPortal` guard passes and the portal
+    // shell renders. The login helper below uses `clientEmail` to produce a
+    // magic-link session for the portal scroll tests.
+    clientEmail = `f335-client-${uniqueSuffix}@example.com`;
+    const { data: clientAuth, error: clientAuthErr } =
+      await adminClient.auth.admin.createUser({
+        email: clientEmail,
+        email_confirm: true,
+      });
+    if (clientAuthErr || !clientAuth.user) {
+      throw new Error(`Failed to create client user: ${clientAuthErr?.message}`);
+    }
+    clientUserId = clientAuth.user.id;
+    createdUserIds.push(clientUserId);
+
+    const { error: clientMemberErr } = await adminClient
+      .from("workspace_members")
+      .insert({
+        workspace_id: workspaceId,
+        user_id: clientUserId,
+        role: "client",
+        status: "active",
+      });
+    if (clientMemberErr) {
+      throw new Error(`Failed to seed client member: ${clientMemberErr.message}`);
     }
   });
 
@@ -243,6 +280,57 @@ test.describe("AS-517: no primary view scrolls horizontally on a phone", () => {
         ? Number(expiresAt)
         : Math.floor(Date.now() / 1000) + 3600,
       user: { id: memberUserId, email: memberEmail },
+    };
+    const cookieValue =
+      "base64-" + Buffer.from(JSON.stringify(session)).toString("base64url");
+
+    await page.context().addCookies([
+      {
+        name: `sb-${projectRef}-auth-token`,
+        value: cookieValue,
+        url: baseURL,
+      },
+    ]);
+  }
+
+  // P2-39: same cookie-injection technique as `login` above, but for the
+  // client user so the portal layout's `canViewClientPortal` guard passes.
+  async function loginAsClient(page: Page, baseURL: string) {
+    const { data: linkData, error: linkErr } =
+      await adminClient.auth.admin.generateLink({
+        type: "magiclink",
+        email: clientEmail,
+        options: { redirectTo: `${baseURL}/auth/callback` },
+      });
+    if (linkErr || !linkData?.properties?.action_link) {
+      throw new Error(`Failed to generate client magic link: ${linkErr?.message}`);
+    }
+
+    await page.goto(linkData.properties.action_link);
+    await page.waitForURL(/#access_token=/, { timeout: 15_000 });
+
+    const fragment = new URL(page.url()).hash.slice(1);
+    const params = new URLSearchParams(fragment);
+    const accessToken = params.get("access_token");
+    const refreshToken = params.get("refresh_token");
+    const expiresIn = params.get("expires_in");
+    const expiresAt = params.get("expires_at");
+    if (!accessToken || !refreshToken) {
+      throw new Error(
+        `Client magic link redirect did not carry session tokens: ${page.url()}`,
+      );
+    }
+
+    const projectRef = projectRefFromUrl(SUPABASE_URL!);
+    const session = {
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      token_type: "bearer",
+      expires_in: expiresIn ? Number(expiresIn) : 3600,
+      expires_at: expiresAt
+        ? Number(expiresAt)
+        : Math.floor(Date.now() / 1000) + 3600,
+      user: { id: clientUserId, email: clientEmail },
     };
     const cookieValue =
       "base64-" + Buffer.from(JSON.stringify(session)).toString("base64url");
@@ -360,5 +448,39 @@ test.describe("AS-517: no primary view scrolls horizontally on a phone", () => {
     ).toBeVisible();
 
     await assertNoHorizontalPageScroll(page, "dashboard with mobile nav open");
+  });
+
+  // P2-39: extend the scroll guard to portal routes. Uses a CLIENT session
+  // (role: "client") that the portal layout's `canViewClientPortal` guard
+  // accepts, and visits each of the eight portal project views plus the
+  // workspace-level project chooser. The project was seeded with
+  // `portal_enabled: true` in beforeAll.
+  test("primary portal routes fit within a 375px viewport with no page-level horizontal scroll", async ({
+    page,
+    baseURL,
+  }) => {
+    test.setTimeout(180_000);
+    await page.setViewportSize({ width: 375, height: 812 });
+    await loginAsClient(page, baseURL!);
+
+    const portalRoutes: Array<{ label: string; path: string }> = [
+      // Workspace-level project chooser (rendered by [workspaceSlug]/page.tsx,
+      // wrapped only by the workspace-level guard layout).
+      { label: "portal-project-chooser", path: `/portal/${workspaceSlug}` },
+      // Project shell views (all wrapped by the p/[projectId]/layout.tsx shell).
+      { label: "portal-overview", path: `/portal/${workspaceSlug}/p/${projectId}` },
+      { label: "portal-for-you", path: `/portal/${workspaceSlug}/p/${projectId}/for-you` },
+      { label: "portal-approvals", path: `/portal/${workspaceSlug}/p/${projectId}/approvals` },
+      { label: "portal-requests", path: `/portal/${workspaceSlug}/p/${projectId}/requests` },
+      { label: "portal-scope", path: `/portal/${workspaceSlug}/p/${projectId}/scope` },
+      { label: "portal-results", path: `/portal/${workspaceSlug}/p/${projectId}/results` },
+      { label: "portal-files", path: `/portal/${workspaceSlug}/p/${projectId}/files` },
+    ];
+
+    for (const route of portalRoutes) {
+      await page.goto(`${baseURL}${route.path}`);
+      await page.waitForURL(`**${route.path}**`, { timeout: 15_000 });
+      await assertNoHorizontalPageScroll(page, route.label);
+    }
   });
 });

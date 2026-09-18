@@ -153,7 +153,7 @@ describe.skipIf(!haveAdminCreds)(
     it("test_AS_350_project_list_excludes_trashed_tasks", async () => {
       const { getProjectListTasks } = await import("@/lib/queries/tasks");
 
-      const tasks = await getProjectListTasks(projectId);
+      const { tasks } = await getProjectListTasks(projectId);
       const ids = tasks.map((t) => t.id);
 
       expect(ids).toContain(liveTaskId);

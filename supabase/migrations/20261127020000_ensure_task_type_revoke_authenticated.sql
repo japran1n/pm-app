@@ -1,0 +1,23 @@
+-- P2-10: ensure_task_type(uuid, text, text, text, boolean, boolean) is
+-- SECURITY DEFINER and takes p_workspace_id as a plain argument with no
+-- membership check of its own -- it trusts the caller to have already
+-- verified the caller belongs to that workspace. 20261104050000 granted
+-- EXECUTE to `authenticated` so the self-healing `tasks_default_task_type`
+-- trigger (a plain, non-SECURITY DEFINER trigger, so it runs with the
+-- INSERTing session's own privileges) could still call it when an
+-- ordinary member inserts a task directly. That grant is broader than the
+-- trigger needs, though: PostgREST exposes every function granted to
+-- `authenticated` as a directly callable RPC, so any signed-in user could
+-- call `ensure_task_type` themselves with an arbitrary p_workspace_id and
+-- create/read a task_types row in a workspace they have no membership in
+-- at all -- a cross-tenant write with no authorization check anywhere in
+-- the call path.
+--
+-- ensure_task_type is called only via service_role in this codebase: all
+-- 5 application call sites (lib/actions/templates.ts,
+-- lib/actions/architecture/sections.ts, lib/actions/architecture/pages.ts
+-- x2, lib/tasks/create.ts) go through `createAdminClient()`, and
+-- service_role already has its own, separate grant (20261104060000).
+-- Revoke the authenticated execute grant to close the direct-RPC
+-- privilege gap.
+revoke execute on function public.ensure_task_type(uuid, text, text, text, boolean, boolean) from authenticated;

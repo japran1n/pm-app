@@ -55,6 +55,7 @@ export async function createTaskType(input: unknown): Promise<TaskTypeActionResu
   const userId = await currentUserId();
   if (!userId) return { ok: false, error: PERMISSION_DENIED_ERROR };
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: membership/permission check via requireWorkspaceAdmin(); caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
   const membership = await requireWorkspaceAdmin(admin, parsed.data.workspaceId, userId);
   if (!membership.ok) return { ok: false, error: PERMISSION_DENIED_ERROR };
@@ -91,6 +92,7 @@ async function requireTaskTypeAdmin(taskTypeId: string) {
   const userId = await currentUserId();
   if (!userId) return { ok: false as const };
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
   const { data: taskType } = await admin
     .from("task_types")
@@ -235,6 +237,7 @@ export async function setTaskType(input: unknown): Promise<TaskTypeActionResult>
   const userId = await currentUserId();
   if (!userId) return { ok: false, error: "You must be signed in to edit this task." };
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
   const { data: taskRow } = await admin
     .from("tasks")

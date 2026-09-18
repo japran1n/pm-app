@@ -1,8 +1,9 @@
 {
+  "//": "Committed MCP config — read-only Supabase tools, no project ref baked in. For local development with a real project ref and write/migration tools, copy this file to .mcp.local.json (gitignored) and fill in your own project_ref. See README's 'Local MCP config' section for details.",
   "mcpServers": {
     "supabase": {
       "type": "http",
-      "url": "https://mcp.supabase.com/mcp?features=docs,database,debugging,development,functions&project_ref=qcipqonnqajmazdbysow"
+      "url": "https://mcp.supabase.com/mcp?features=docs,database,debugging&project_ref="
     }
   }
 }

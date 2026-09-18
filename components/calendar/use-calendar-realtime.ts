@@ -17,6 +17,7 @@
 import { useEffect } from "react";
 
 import { createClient } from "@/lib/supabase/client";
+import { subscribeWhenAuthenticated } from "@/lib/realtime/subscribe-when-authenticated";
 import {
   subscribeToCalendarRealtime,
   type CalendarRealtimeEvent,
@@ -48,12 +49,8 @@ export function useCalendarRealtime({
     if (!workspaceId) return;
 
     const supabase = createClient();
-    const unsubscribe = subscribeToCalendarRealtime(
-      supabase,
-      workspaceId,
-      onDueDateChange,
+    return subscribeWhenAuthenticated(supabase, (client) =>
+      subscribeToCalendarRealtime(client, workspaceId, onDueDateChange),
     );
-
-    return unsubscribe;
   }, [workspaceId, onDueDateChange]);
 }

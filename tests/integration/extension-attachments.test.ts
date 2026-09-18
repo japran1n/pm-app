@@ -211,9 +211,9 @@ describe.skipIf(!haveCreds)(
       const taskId = await createRealTask("F294 task, oversized attempt");
 
       // A file whose real byte size exceeds MAX_ATTACHMENT_SIZE_BYTES
-      // (10MB) — content doesn't matter, only its .size.
+      // (4MB) — content doesn't matter, only its .size.
       const oversized = new File(
-        [new Uint8Array(10 * 1024 * 1024 + 1)],
+        [new Uint8Array(4 * 1024 * 1024 + 1)],
         "too-big.png",
         { type: "image/png" },
       );
@@ -230,7 +230,7 @@ describe.skipIf(!haveCreds)(
       const res = await postExtensionAttachment(formData, memberAccessToken);
       expect(res.status).toBe(400);
       const json = await res.json();
-      expect(json.error).toMatch(/10MB/);
+      expect(json.error).toMatch(/4MB/);
 
       const { count: after } = await adminClient
         .from("attachments")

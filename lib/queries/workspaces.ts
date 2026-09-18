@@ -24,10 +24,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export async function getDefaultWorkspaceSlug(
   supabase: SupabaseClient,
   userId: string,
-): Promise<string | undefined> {
+): Promise<{ slug: string; role: string } | null> {
   const { data: membership, error: membershipError } = await supabase
     .from("workspace_members")
-    .select("workspace_id, created_at")
+    .select("workspace_id, created_at, role")
     .eq("user_id", userId)
     .eq("status", "active")
     .order("created_at", { ascending: false })
@@ -39,7 +39,7 @@ export async function getDefaultWorkspaceSlug(
   }
 
   if (!membership) {
-    return undefined;
+    return null;
   }
 
   const { data: workspace, error: workspaceError } = await supabase
@@ -52,7 +52,11 @@ export async function getDefaultWorkspaceSlug(
     logger.error("getDefaultWorkspaceSlug: failed to look up workspace slug", { error: workspaceError });
   }
 
-  return workspace?.slug ?? undefined;
+  if (!workspace?.slug) {
+    return null;
+  }
+
+  return { slug: workspace.slug, role: membership.role };
 }
 
 // F002 (mission 20260913-perf-latency, AS-002): request-scoped memoised

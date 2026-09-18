@@ -30,7 +30,7 @@ function decodePngDimensions(dataUrl: string): { width: number; height: number }
 }
 
 /** A real, decodable PNG of random-noise pixels whose base64 payload stays
- * comfortably over MAX_ATTACHMENT_SIZE_BYTES (10MB) even after the
+ * comfortably over MAX_ATTACHMENT_SIZE_BYTES (4MB) even after the
  * select-first flow's real crop.ts canvas re-encode. See the "oversized
  * screenshot" test below for why a fake/padded data URL no longer works. */
 async function generateOversizedNoisePngDataUrl(context: BrowserContext): Promise<string> {
@@ -633,7 +633,7 @@ test.describe.serial("F297 offline and error states (AS-565)", () => {
       await page.getByTestId("capture-button").click();
       const captureError = page.getByTestId("capture-error");
       await expect(captureError).toBeVisible({ timeout: 10_000 });
-      await expect(captureError).toContainText("10MB");
+      await expect(captureError).toContainText("4MB");
       await expect(page.getByTestId("capture-preview")).toHaveCount(0);
 
       // No report form interaction is even possible from this state (the

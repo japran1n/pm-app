@@ -380,18 +380,19 @@ export async function getTaskLoggedMinutes(
   if (taskIds.length === 0) return totals;
 
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("time_entries")
-    .select("task_id, minutes")
-    .in("task_id", taskIds);
+  // P2-15: use server-side aggregation RPC to avoid Supabase's 1000-row silent
+  // cap on .in() filters; the RPC is security invoker so RLS still applies.
+  const { data, error } = await supabase.rpc("get_task_logged_minutes", {
+    p_task_ids: taskIds,
+  });
 
   if (error) {
     logger.error("getTaskLoggedMinutes: query failed", { error: error });
     return totals;
   }
 
-  for (const row of data ?? []) {
-    totals.set(row.task_id, (totals.get(row.task_id) ?? 0) + row.minutes);
+  for (const row of (data ?? []) as Array<{ task_id: string; logged_minutes: number }>) {
+    totals.set(row.task_id, Number(row.logged_minutes));
   }
 
   return totals;
@@ -532,6 +533,58 @@ export async function getMyTimeEntriesInRange(
   });
 }
 
+export type WorkspaceTimeByPersonAndDay = {
+  userId: string;
+  entryDate: string;
+  totalMinutes: number;
+  billableMinutes: number;
+};
+
+// getWorkspaceTimeByPersonAndDay (P2-19): single-query replacement for the
+// per-member `getPersonTimeDaily` fan-out on the team time report page.
+// Wraps the `get_workspace_time_by_person_and_day` RPC
+// (supabase/migrations/20261127100000_get_workspace_time_by_person_and_day_rpc.sql).
+// The RPC's workspace_members join limits rows to staff roles only
+// ('owner', 'admin', 'member') — client and guest members are excluded from
+// the team heatmap by the RPC itself, not by post-processing in the page.
+// Uses the request-scoped (RLS-respecting) client; security invoker so RLS
+// on time_entries and tasks applies as for any direct SELECT.
+export async function getWorkspaceTimeByPersonAndDay(
+  workspaceId: string,
+  from: string,
+  to: string,
+): Promise<WorkspaceTimeByPersonAndDay[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase.rpc(
+    "get_workspace_time_by_person_and_day",
+    {
+      p_workspace_id: workspaceId,
+      p_from: from,
+      p_to: to,
+    },
+  );
+
+  if (error || !data) {
+    if (error) {
+      logger.error("getWorkspaceTimeByPersonAndDay: rpc failed", { error: error });
+    }
+    return [];
+  }
+
+  return (data as Array<{
+    user_id: string;
+    entry_date: string;
+    total_minutes: number;
+    billable_minutes: number;
+  }>).map((row) => ({
+    userId: row.user_id,
+    entryDate: row.entry_date,
+    totalMinutes: Number(row.total_minutes ?? 0),
+    billableMinutes: Number(row.billable_minutes ?? 0),
+  }));
+}
+
 export type PersonEstimateVsLogged = {
   userId: string;
   estimateMinutes: number;
@@ -557,55 +610,28 @@ export async function getProjectEstimateAndLoggedByPerson(
 ): Promise<PersonEstimateVsLogged[]> {
   const supabase = await createClient();
 
-  const { data: taskRows, error: taskError } = await supabase
-    .from("tasks")
-    .select("id, assignee_id, estimate_minutes")
-    .eq("project_id", projectId)
-    .is("deleted_at", null);
+  // P2-16: replace two sequential full-scan queries with a single server-side
+  // FULL OUTER JOIN aggregation RPC; security invoker so RLS still applies on
+  // both tasks and time_entries.
+  const { data, error } = await supabase.rpc(
+    "get_project_estimate_and_logged_by_person",
+    { p_project_id: projectId },
+  );
 
-  if (taskError) {
-    logger.error("getProjectEstimateAndLoggedByPerson: task query failed", { error: taskError });
+  if (error) {
+    logger.error("getProjectEstimateAndLoggedByPerson: rpc failed", { error });
     return [];
   }
 
-  const estimateByUser = new Map<string, number>();
-  const taskIds: string[] = [];
-  for (const task of taskRows ?? []) {
-    taskIds.push(task.id);
-    if (task.assignee_id && task.estimate_minutes) {
-      estimateByUser.set(
-        task.assignee_id,
-        (estimateByUser.get(task.assignee_id) ?? 0) + task.estimate_minutes,
-      );
-    }
-  }
-
-  const loggedByUser = new Map<string, number>();
-  if (taskIds.length > 0) {
-    const { data: entryRows, error: entryError } = await supabase
-      .from("time_entries")
-      .select("user_id, minutes")
-      .in("task_id", taskIds);
-
-    if (entryError) {
-      logger.error("getProjectEstimateAndLoggedByPerson: time_entries query failed", { error: entryError });
-    } else {
-      for (const entry of entryRows ?? []) {
-        loggedByUser.set(
-          entry.user_id,
-          (loggedByUser.get(entry.user_id) ?? 0) + entry.minutes,
-        );
-      }
-    }
-  }
-
-  const userIds = new Set([...estimateByUser.keys(), ...loggedByUser.keys()]);
-
-  return [...userIds]
-    .map((userId) => ({
-      userId,
-      estimateMinutes: estimateByUser.get(userId) ?? 0,
-      loggedMinutes: loggedByUser.get(userId) ?? 0,
+  return ((data ?? []) as Array<{
+    user_id: string;
+    estimated_minutes: number;
+    logged_minutes: number;
+  }>)
+    .map((row) => ({
+      userId: row.user_id,
+      estimateMinutes: Number(row.estimated_minutes),
+      loggedMinutes: Number(row.logged_minutes),
     }))
     .sort((a, b) => b.loggedMinutes - a.loggedMinutes);
 }

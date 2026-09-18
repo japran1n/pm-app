@@ -18,7 +18,7 @@
 // project-level visibility itself, exactly like settings/page.tsx does.
 import { notFound, redirect } from "next/navigation";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser, getRequestClient } from "@/lib/auth/current-user";
 import { getProjectPhasesForTeam } from "@/lib/queries/phases";
 import { getProjectListTasks } from "@/lib/queries/tasks";
 import { getProjectMembers } from "@/lib/queries/project-members";
@@ -38,15 +38,10 @@ export default async function ProjectPrintSummaryPage({
 }) {
   const { workspaceSlug, projectId } = await params;
 
-  const supabase = await createClient();
+  const supabase = await getRequestClient();
 
-  const [
-    {
-      data: { user },
-    },
-    { data: workspace },
-  ] = await Promise.all([
-    supabase.auth.getUser(),
+  const [{ user }, { data: workspace }] = await Promise.all([
+    getCurrentUser(),
     supabase.from("workspaces").select("id, name").eq("slug", workspaceSlug).maybeSingle(),
   ]);
 
@@ -72,11 +67,14 @@ export default async function ProjectPrintSummaryPage({
     notFound();
   }
 
-  const [phases, tasks, members] = await Promise.all([
+  const [phases, tasksResult, members] = await Promise.all([
     getProjectPhasesForTeam(project.id),
     getProjectListTasks(project.id),
     getProjectMembers(project.id),
   ]);
+  // P2-33: print view uses the task list as-is; hasMore is not surfaced here
+  // since this is a static export and adding rows would require pagination.
+  const tasks = tasksResult.tasks;
 
   const currentPhase = phases.find((phase) => phase.state === "active") ?? null;
 

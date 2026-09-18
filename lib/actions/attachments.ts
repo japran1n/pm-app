@@ -125,6 +125,7 @@ export async function getAttachmentSignedUrl(
     return { ok: false, error: "You must be signed in." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   const { data: attachmentRow, error: attachmentError } = await admin
@@ -302,6 +303,7 @@ export async function deleteAttachment(
     return { ok: false, error: "You must be signed in to delete a file." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   // Look up the attachment's owning task/project/workspace and its

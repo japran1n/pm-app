@@ -82,6 +82,7 @@ export async function createProject(
     return { ok: false, error: "You must be signed in to create a project." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: membership/permission check via requireActiveMembership(); caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   // Defense in depth (AS-143): re-check the caller is an active member of
@@ -107,6 +108,14 @@ export async function createProject(
     return {
       ok: false,
       error: "Viewers don't have permission to create projects.",
+    };
+  }
+
+  // Guests are project-scoped contributors; they cannot create new projects.
+  if (membership.role === "guest") {
+    return {
+      ok: false,
+      error: "Guests cannot create projects.",
     };
   }
 
@@ -334,6 +343,7 @@ export async function editProject(
     return { ok: false, error: "You must be signed in to edit a project." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: membership/permission check via requireActiveMembership(); caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   // Defense in depth (AS-143): re-check the caller is an active member of
@@ -366,7 +376,7 @@ export async function editProject(
   // AS-035's start/end ordering constraint.
   const { data: existing, error: fetchError } = await admin
     .from("projects")
-    .select("id, workspace_id, name, description, start_date, end_date, deleted_at")
+    .select("id, workspace_id, name, description, start_date, end_date, deleted_at, visibility")
     .eq("id", projectId)
     .eq("workspace_id", workspaceId)
     .is("deleted_at", null)
@@ -374,6 +384,24 @@ export async function editProject(
 
   if (fetchError || !existing) {
     return { ok: false, error: "Project not found." };
+  }
+
+  // Verify the caller can actually see this project. For private projects the
+  // caller must have an explicit project_members row; for workspace-visible
+  // projects any active workspace member qualifies (already established above
+  // by requireActiveMembership). Returning "Project not found." rather than a
+  // permission error avoids leaking the existence of projects the caller has
+  // no access to.
+  if (existing.visibility === "private") {
+    const { data: projectMemberRow } = await admin
+      .from("project_members")
+      .select("user_id")
+      .eq("project_id", projectId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (!projectMemberRow) {
+      return { ok: false, error: "Project not found." };
+    }
   }
 
   const nextStartDate =
@@ -529,6 +557,7 @@ export async function archiveProject(
     return { ok: false, error: "You must be signed in to archive a project." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: membership/permission check via requireWorkspaceAdmin(); caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   // Defense in depth (AS-143 convention, tightened per AS-030/AS-033): the
@@ -705,6 +734,7 @@ export async function restoreProject(
     return { ok: false, error: "You must be signed in to restore a project." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: membership/permission check via requireWorkspaceAdmin(); caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   // Defense in depth (AS-143 convention, tightened per AS-253): the caller
@@ -886,6 +916,7 @@ export async function reorderProject(
     return { ok: false, error: "You must be signed in to reorder projects." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   const { data: target, error: targetError } = await admin

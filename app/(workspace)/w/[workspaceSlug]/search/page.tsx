@@ -31,7 +31,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Search as SearchIcon } from "lucide-react";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { searchWorkspaceTasks } from "@/lib/queries/search";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -52,10 +52,7 @@ export default async function SearchPage({
   const query = await searchParams;
   const q = (query.q ?? "").trim();
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     redirect("/sign-in");

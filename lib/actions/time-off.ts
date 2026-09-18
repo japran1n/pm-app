@@ -68,6 +68,7 @@ export async function createTimeOff(input: unknown): Promise<TimeOffEntryResult>
     return { ok: false, error: "You must be signed in to add time off." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: membership/permission check via requireActiveMembership(); caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
   const membership = await requireActiveMembership(admin, parsed.data.workspaceId, user.id);
   if (!membership.ok) {
@@ -125,6 +126,7 @@ export async function deleteTimeOff(input: unknown): Promise<DeleteTimeOffResult
     return { ok: false, error: "You must be signed in to manage time off." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
   const { data: entry, error: loadError } = await admin
     .from("time_off_entries")

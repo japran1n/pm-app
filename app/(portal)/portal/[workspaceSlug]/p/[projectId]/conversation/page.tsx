@@ -3,7 +3,7 @@ import { MessageSquare } from "lucide-react";
 
 import { getPortalProjects, getPortalRequests } from "@/lib/queries/portal";
 import { getChannelMessages, getChannelMembers, getReplyCounts } from "@/lib/queries/chat";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { createClientRequest } from "@/lib/actions/client-requests";
 import { ChannelView } from "@/components/chat/channel-view";
 import { RequestList } from "@/components/portal/request-list";
@@ -44,10 +44,7 @@ export default async function PortalConversationPage({
   const { workspaceSlug, projectId } = await params;
   const { mention: mentionUserId } = await searchParams;
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) notFound();
 
@@ -148,11 +145,14 @@ export default async function PortalConversationPage({
     );
   }
 
-  const [messages, members, replyCounts] = await Promise.all([
+  // P2-14: wave 1 — messages and members; getReplyCounts now takes message
+  // ids (not channelId), so derive ids first, then call it in wave 2.
+  const [messages, members] = await Promise.all([
     getChannelMessages(channel.id),
     getChannelMembers(channel.id),
-    getReplyCounts(channel.id),
   ]);
+  const messageIds = messages.map((m) => m.id);
+  const replyCounts = await getReplyCounts(messageIds);
 
   // "Piši nam" (Paket E): resolve the ?mention=<userId> query param (the
   // team card's own link shape) against this channel's already-fetched

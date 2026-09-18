@@ -76,6 +76,7 @@ export async function createPage(
     return { ok: false, error: "You must be signed in to create a page." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   // Look up the project's owning workspace server-side -- never trust a
@@ -267,6 +268,7 @@ export async function changePageKind(
     return { success: false, error: "You must be signed in to change a page's kind." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   // Look up the task's owning project/workspace server-side, and confirm
@@ -369,6 +371,7 @@ export async function renamePage(
     return { success: false, error: "You must be signed in to rename a page." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   const { data: taskRow, error: taskError } = await admin
@@ -462,6 +465,7 @@ export async function deletePage(
     return { success: false, error: "You must be signed in to delete a page." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   // Look up the task's owning project/workspace server-side, and confirm
@@ -569,6 +573,7 @@ export async function reorderPages(
     return { success: false, error: "You must be signed in to reorder pages." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   const ids = updates.map((update) => update.id);
@@ -707,6 +712,7 @@ export async function setPageClientVisibility(
     return { ok: false, error: "You must be signed in." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   const { data: taskRow, error: taskError } = await admin
@@ -845,6 +851,7 @@ export async function importPages(
     return { ok: false, error: "You must be signed in to import a sitemap." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   const { data: projectRow, error: projectError } = await admin

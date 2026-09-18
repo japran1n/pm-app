@@ -20,6 +20,7 @@
 import { useEffect } from "react";
 
 import { createClient } from "@/lib/supabase/client";
+import { subscribeWhenAuthenticated } from "@/lib/realtime/subscribe-when-authenticated";
 import {
   subscribeToReactionsRealtime,
   type ReactionRealtimeEvent,
@@ -68,13 +69,9 @@ export function useReactionsRealtime(
       return;
     }
 
-    const unsubscribe = subscribeToReactionsRealtime(
-      supabase,
-      taskId,
-      onChange,
+    return subscribeWhenAuthenticated(supabase, (client) =>
+      subscribeToReactionsRealtime(client, taskId, onChange),
     );
-
-    return unsubscribe;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskId]);
 }

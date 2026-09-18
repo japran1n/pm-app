@@ -295,12 +295,37 @@ vi.mock("@/lib/supabase/admin", () => ({
         };
       }
       if (table === "workspace_members") {
+        // P2-23: `getPortalLiveNow`/`getPortalTeam` now chain
+        // `.eq("workspace_id", ...).eq("status", "active").in("role",
+        // STAFF_ROLES).in("user_id", userIds)` -- any number of `.eq()`/
+        // `.in()` calls in sequence, all run through `applyFilters` (same
+        // shape as the `tasks`/`project_phases` branches above) so a
+        // dropped `status`/`role` filter changes what a test observes,
+        // not just the chain's shape. `then` makes the builder itself
+        // awaitable, matching real supabase-js query builders (and this
+        // file's own `project_decision_owners` mock above), since the
+        // real code chains TWO `.in()` calls and a naive "last call is
+        // async" mock cannot support that.
         return {
-          select: vi.fn(() => ({
-            eq: vi.fn(() => ({
-              in: vi.fn(async () => ({ data: workspaceMemberRoleRows, error: null })),
-            })),
-          })),
+          select: vi.fn(() => {
+            const filters: Array<(row: Row) => boolean> = [];
+            const builder = {
+              eq: vi.fn((col: string, val: unknown) => {
+                filters.push(eqFilter(col, val));
+                return builder;
+              }),
+              in: vi.fn((col: string, vals: unknown[]) => {
+                filters.push(inFilter(col, vals as string[]));
+                return builder;
+              }),
+              then: (
+                resolve: (value: { data: Row[] | null; error: unknown }) => void,
+              ) => {
+                resolve({ data: applyFilters(workspaceMemberRoleRows, filters), error: null });
+              },
+            };
+            return builder;
+          }),
         };
       }
       if (table === "project_roles") {
@@ -835,7 +860,7 @@ describe("getPortalLiveNow", () => {
         },
       },
     ];
-    workspaceMemberRoleRows = [{ user_id: "user-1", role: "member" }];
+    workspaceMemberRoleRows = [{ user_id: "user-1", workspace_id: WORKSPACE_ID, role: "member", status: "active" }];
 
     const entries = await getPortalLiveNow(PROJECT_ID);
 
@@ -859,7 +884,7 @@ describe("getPortalLiveNow", () => {
         },
       },
     ];
-    workspaceMemberRoleRows = [{ user_id: "user-2", role: "member" }];
+    workspaceMemberRoleRows = [{ user_id: "user-2", workspace_id: WORKSPACE_ID, role: "member", status: "active" }];
     // A client_visible=true phase -- this is what the real
     // `.eq("client_visible", true)` filter on the project_phases lookup
     // returns for a phase that passes it, so the row is present here.
@@ -899,7 +924,7 @@ describe("getPortalLiveNow", () => {
         },
       },
     ];
-    workspaceMemberRoleRows = [{ user_id: "user-2b", role: "member" }];
+    workspaceMemberRoleRows = [{ user_id: "user-2b", workspace_id: WORKSPACE_ID, role: "member", status: "active" }];
     // The hidden phase's row is absent -- exactly what
     // `.eq("client_visible", true)` produces for a `client_visible = false`
     // phase against a real database.
@@ -928,7 +953,7 @@ describe("getPortalLiveNow", () => {
         },
       },
     ];
-    workspaceMemberRoleRows = [{ user_id: "user-3", role: "member" }];
+    workspaceMemberRoleRows = [{ user_id: "user-3", workspace_id: WORKSPACE_ID, role: "member", status: "active" }];
 
     const entries = await getPortalLiveNow(PROJECT_ID);
 
@@ -951,7 +976,7 @@ describe("getPortalLiveNow", () => {
         },
       },
     ];
-    workspaceMemberRoleRows = [{ user_id: "client-user", role: "client" }];
+    workspaceMemberRoleRows = [{ user_id: "client-user", workspace_id: WORKSPACE_ID, role: "client", status: "active" }];
 
     const entries = await getPortalLiveNow(PROJECT_ID);
 
@@ -963,6 +988,60 @@ describe("getPortalLiveNow", () => {
     const entries = await getPortalLiveNow(PROJECT_ID);
     expect(entries).toEqual([]);
   });
+
+  // P2-23: a removed colleague has no `workspace_members` row at all --
+  // `remove_workspace_member` deletes it outright, it does not merely
+  // relabel their role or status. `workspaceMemberRoleRows = []` is
+  // exactly what that looks like from this function's side (the real
+  // `.eq("status","active").in("role", STAFF_ROLES)` query simply never
+  // returns a row for them). Their stale `active_timers` row must not
+  // render them as "working now" regardless.
+  it("test_P2_23_a_removed_colleagues_stale_timer_never_shows_as_working_now", async () => {
+    activeTimerRows = [
+      {
+        id: "timer-removed",
+        user_id: "removed-user",
+        tasks: {
+          id: "task-removed",
+          title: "Should never show",
+          client_visible: true,
+          phase_id: null,
+          project_id: PROJECT_ID,
+          deleted_at: null,
+        },
+      },
+    ];
+    workspaceMemberRoleRows = [];
+
+    const entries = await getPortalLiveNow(PROJECT_ID);
+
+    expect(entries).toEqual([]);
+  });
+
+  // A `viewer` (or `guest`) role is not one of the "your team" staff
+  // roles this feature allow-lists -- same reasoning as the removed-
+  // colleague case, just via role rather than a missing row.
+  it("test_P2_23_a_viewer_role_never_shows_as_working_now", async () => {
+    activeTimerRows = [
+      {
+        id: "timer-viewer",
+        user_id: "viewer-user",
+        tasks: {
+          id: "task-viewer",
+          title: "Should never show",
+          client_visible: true,
+          phase_id: null,
+          project_id: PROJECT_ID,
+          deleted_at: null,
+        },
+      },
+    ];
+    workspaceMemberRoleRows = [{ user_id: "viewer-user", workspace_id: WORKSPACE_ID, role: "viewer", status: "active" }];
+
+    const entries = await getPortalLiveNow(PROJECT_ID);
+
+    expect(entries).toEqual([]);
+  });
 });
 
 describe("getPortalTeam", () => {
@@ -972,8 +1051,8 @@ describe("getPortalTeam", () => {
       { user_id: "member-1", project_role: "member" },
     ];
     workspaceMemberRoleRows = [
-      { user_id: "lead-1", role: "admin" },
-      { user_id: "member-1", role: "member" },
+      { user_id: "lead-1", workspace_id: WORKSPACE_ID, role: "admin", status: "active" },
+      { user_id: "member-1", workspace_id: WORKSPACE_ID, role: "member", status: "active" },
     ];
 
     const team = await getPortalTeam(PROJECT_ID);
@@ -991,8 +1070,8 @@ describe("getPortalTeam", () => {
       { user_id: "member-1", project_role: "member" },
     ];
     workspaceMemberRoleRows = [
-      { user_id: "client-1", role: "client" },
-      { user_id: "member-1", role: "member" },
+      { user_id: "client-1", workspace_id: WORKSPACE_ID, role: "client", status: "active" },
+      { user_id: "member-1", workspace_id: WORKSPACE_ID, role: "member", status: "active" },
     ];
 
     const team = await getPortalTeam(PROJECT_ID);
@@ -1015,8 +1094,8 @@ describe("getPortalTeam", () => {
       { user_id: "lead-1", project_role: "lead" },
     ];
     workspaceMemberRoleRows = [
-      { user_id: "dev-1", role: "member" },
-      { user_id: "lead-1", role: "admin" },
+      { user_id: "dev-1", workspace_id: WORKSPACE_ID, role: "member", status: "active" },
+      { user_id: "lead-1", workspace_id: WORKSPACE_ID, role: "admin", status: "active" },
     ];
     projectRoleRows = [
       { user_id: "dev-1", role: "developer", note: "Backend build." },
@@ -1034,7 +1113,7 @@ describe("getPortalTeam", () => {
 
   it("renders one row per role when a person holds two project_roles jobs", async () => {
     projectMemberRows = [{ user_id: "multi-1", project_role: "member" }];
-    workspaceMemberRoleRows = [{ user_id: "multi-1", role: "member" }];
+    workspaceMemberRoleRows = [{ user_id: "multi-1", workspace_id: WORKSPACE_ID, role: "member", status: "active" }];
     projectRoleRows = [
       { user_id: "multi-1", role: "design_lead", note: null },
       { user_id: "multi-1", role: "developer", note: null },
@@ -1044,5 +1123,57 @@ describe("getPortalTeam", () => {
 
     expect(team).toHaveLength(2);
     expect(team.map((m) => m.roleLabel).sort()).toEqual(["Design lead", "Developer"]);
+  });
+
+  // P2-23: a colleague removed from the workspace keeps their
+  // `project_members` row (`removeProjectMember` and
+  // `remove_workspace_member` are two separate actions on two separate
+  // tables) but their `workspace_members` row is gone entirely --
+  // `workspaceMemberRoleRows = []` reflects that. They must not still
+  // render in "Your team".
+  it("test_P2_23_a_removed_colleague_is_dropped_from_your_team", async () => {
+    projectMemberRows = [
+      { user_id: "removed-1", project_role: "member" },
+      { user_id: "member-1", project_role: "member" },
+    ];
+    workspaceMemberRoleRows = [{ user_id: "member-1", workspace_id: WORKSPACE_ID, role: "member", status: "active" }];
+
+    const team = await getPortalTeam(PROJECT_ID);
+
+    expect(team.map((m) => m.userId)).toEqual(["member-1"]);
+  });
+
+  // A `viewer`/`guest` project member is not staff either -- same
+  // allow-list, exercised via role this time rather than a missing row.
+  it("test_P2_23_a_viewer_role_is_excluded_from_your_team", async () => {
+    projectMemberRows = [
+      { user_id: "viewer-1", project_role: "member" },
+      { user_id: "member-1", project_role: "member" },
+    ];
+    workspaceMemberRoleRows = [
+      { user_id: "viewer-1", workspace_id: WORKSPACE_ID, role: "viewer", status: "active" },
+      { user_id: "member-1", workspace_id: WORKSPACE_ID, role: "member", status: "active" },
+    ];
+
+    const team = await getPortalTeam(PROJECT_ID);
+
+    expect(team.map((m) => m.userId)).toEqual(["member-1"]);
+  });
+
+  // A former member re-invited but not yet re-accepted (`status:
+  // "invited"`) must not reappear in "Your team" either.
+  it("test_P2_23_an_invited_but_not_yet_active_member_is_excluded_from_your_team", async () => {
+    projectMemberRows = [
+      { user_id: "invited-1", project_role: "member" },
+      { user_id: "member-1", project_role: "member" },
+    ];
+    workspaceMemberRoleRows = [
+      { user_id: "invited-1", workspace_id: WORKSPACE_ID, role: "member", status: "invited" },
+      { user_id: "member-1", workspace_id: WORKSPACE_ID, role: "member", status: "active" },
+    ];
+
+    const team = await getPortalTeam(PROJECT_ID);
+
+    expect(team.map((m) => m.userId)).toEqual(["member-1"]);
   });
 });

@@ -18,6 +18,10 @@ dashboard with charts (tasks by status/priority).
    and `ALLOW_USERNAME_LOGIN=true`.
 3. `npm run dev` — app on http://localhost:3000.
 4. Demo data: `npm run seed:demo` (or `seed:full-demo`).
+   > ⚠️ **Warning:** `seed:demo` and `seed:full-demo` delete all existing
+   > data. Only run against a local Supabase instance (`localhost`). The
+   > script will refuse to run against a hosted project unless
+   > `ALLOW_DESTRUCTIVE_SEED_ON_HOSTED=<project-ref>` is explicitly set.
 5. Tests: `npm test` requires a **local** Supabase stack — install the
    Supabase CLI, run `supabase start`, and point the `.env` Supabase vars
    at the local stack (the same way `.github/workflows/ci.yml` does).
@@ -75,9 +79,9 @@ change, bulk delete), and a soft-delete trash/restore flow.
 
 Per-task activity feed, threaded comments with emoji reactions, @-mentions,
 and in-app notifications (including an overdue-task notification sweep —
-see [scheduled jobs](#scheduled-jobs-pg_cron)). **Email delivery
-(Resend) was scoped but deliberately not connected** — see
-[Email / Resend](#email--resend-not-connected) below. Features F213–F217
+see [scheduled jobs](#scheduled-jobs-pg_cron)). **Transactional email
+(Resend API) was scoped but not wired in app code** — see
+[Email / Resend](#email--resend) below. Features F213–F217
 are `[SKIPPED]` for that reason; there is no digest job running.
 
 ### Views: custom statuses, swimlanes, saved views, my tasks, calendar, timeline (M16)
@@ -108,36 +112,51 @@ out of scope).
 See ["Browser extension (QA feedback capture)"](#browser-extension-qa-feedback-capture)
 below.
 
-## Prerequisites
+## Local MCP config
 
-- Node.js 20+ (repo developed and tested against Node 26; anything 20 LTS or
-  newer should work)
-- npm (ships with Node)
-- A [Supabase](https://supabase.com) account and project (Postgres + Auth +
-  Storage)
-- [Supabase CLI](https://supabase.com/docs/guides/cli) (`brew install
-  supabase/tap/supabase` or see docs) for linking the project and applying
-  migrations
+`.mcp.json` (committed) is a sanitized template: no project ref, and only
+read-only Supabase tools (`docs`, `database`, `debugging`). It intentionally
+omits write/destructive tools like `apply_migration` and never carries the
+real project ref, so cloning this repo does not hand out production write
+access.
 
-## Setup
-
-```
-git clone <repo-url>
-cd pm-app
-npm install
-supabase link --project-ref <your-project-ref>
-supabase db push
-cp .env.example .env
-```
-
-Then fill in `.env` with the values described below.
-
-## How to run the app
+For local development with your own project ref and write/migration tools,
+copy it to `.mcp.local.json` (already gitignored) and fill in your project
+ref and desired feature set:
 
 ```
-npm install
-npm run dev
+cp .mcp.json .mcp.local.json
+# then edit .mcp.local.json: set project_ref=<your-project-ref> and add
+# "development" (or other write-capable features) to the `features` list
 ```
+
+## Database migrations
+
+Migrations live in `supabase/migrations/` and are applied **one file at a
+time** via the Supabase Management API:
+
+```
+npm run db:apply
+```
+
+### Naming convention
+
+Files must follow the pattern `YYYYMMDDHHMMSS_description.sql`, where the
+14-digit timestamp is `>= 20261126040000` (the repo floor established when
+the production-readiness fixes were applied). Generate a fresh timestamp
+from the current UTC time for every new migration.
+
+### Do NOT renumber existing migrations
+
+Each timestamp is a row in the `schema_migrations` table. Renaming a file
+that has already been applied creates drift between the filesystem and the
+live database — the renamed file looks "unapplied" to Supabase, and the
+original row in `schema_migrations` becomes an orphan. If you need to fix
+a migration, add a new one that corrects it; never rename or delete an
+applied file.
+
+`tests/unit/migration-version-floor-guard.test.ts` asserts no duplicate
+timestamps and that the latest migration is at or above the floor.
 
 ## How to run tests
 
@@ -197,6 +216,22 @@ Notes:
   Project X can manage Project X's columns and member list even though
   their workspace role alone wouldn't grant that).
 
+## Client portal
+
+Clients access a read-and-comment view of their project at
+`/portal/<workspace-slug>`. The portal is a separate authenticated surface
+from the main staff workspace.
+
+**Roles overview:** There are five staff workspace roles (`owner`, `admin`,
+`member`, `viewer`, `guest`) plus one portal-only role (`client`). Client
+accounts are distinct from staff accounts — a client user sees only the
+portal view of projects they have been explicitly granted access to, not the
+full workspace.
+
+**Inviting clients:** Workspace owners and admins invite clients from the
+Members settings page (`/settings/members`). An invitation email is sent;
+after accepting, the client lands on their portal home.
+
 ## Scheduled jobs (pg_cron)
 
 Two `pg_cron` jobs run inside the linked Supabase Postgres instance. Both
@@ -212,22 +247,24 @@ staying well inside Supabase Cron's guidance on job frequency/duration.
 
 There is **no email digest job** — the digest feature (F217) was scoped but
 skipped along with the rest of the email/Resend feature set (F213–F217);
-see [Email / Resend](#email--resend-not-connected) below. A regression test
+see [Email / Resend](#email--resend) below. A regression test
 for job registration lives in
 `tests/integration/overdue-notification-sweep.test.ts`.
 
-## Email / Resend (not connected)
+## Email / Resend
 
-Transactional email (task-assignment emails, mention emails, and a
-digest) was scoped in this mission but the user deferred connecting
-Resend. The `resend` and `@react-email/components` npm packages are
-installed and `RESEND_API_KEY` / `RESEND_FROM_EMAIL` exist as placeholder
-entries in `.env.example`, but **no code path sends email** — there is no
-key configured, and features F213–F217 are `[SKIPPED]` in the mission
-plan. To enable email, a future feature would need to: add a real
-`RESEND_API_KEY`/`RESEND_FROM_EMAIL` to `.env`, wire the already-scaffolded
-Resend client into the notification-creation paths, and add a digest
-`pg_cron` job alongside the two documented above.
+Resend is configured as Supabase's SMTP gateway for authentication emails
+(magic links, password resets). Transactional email for in-app events
+(task-assignment, mention, and digest emails — features F213–F217) was
+scoped in this mission but not wired in app code. The `resend` and
+`@react-email/components` npm packages are installed and
+`RESEND_API_KEY` / `RESEND_FROM_EMAIL` exist as placeholder entries in
+`.env.example`, but **no app code path sends transactional email** — features
+F213–F217 are `[SKIPPED]` in the mission plan. To enable transactional email,
+a future feature would need to: add a real `RESEND_API_KEY`/`RESEND_FROM_EMAIL`
+to `.env`, wire the already-scaffolded Resend client into the
+notification-creation paths, and add a digest `pg_cron` job alongside the
+two documented above.
 
 ## Environment variables
 
@@ -242,8 +279,8 @@ keys with empty values.
 | `SUPABASE_PROJECT_REF` | Project reference ID, used by the Supabase CLI (`supabase link`) and server-side tooling | Supabase dashboard → Project Settings → General, or the URL of your project dashboard |
 | `SENTRY_DSN` | Data Source Name Sentry uses to receive error reports; optional at local-dev time, required before a Vercel deploy | Sentry dashboard → Project Settings → Client Keys (DSN) |
 | `SENTRY_AUTH_TOKEN` | Auth token Sentry's build tooling uses to upload source maps; optional at local-dev time, required before a Vercel deploy | Sentry dashboard → Settings → Auth Tokens |
-| `RESEND_API_KEY` | **Not currently used by any code path** — placeholder only. Transactional email (F213–F217) was scoped but deliberately not connected this mission; see [Email / Resend](#email--resend-not-connected). | Resend dashboard → API Keys, if/when email is enabled |
-| `RESEND_FROM_EMAIL` | **Not currently used by any code path** — same status as `RESEND_API_KEY` above. | The verified sending domain/address in Resend, if/when email is enabled |
+| `RESEND_API_KEY` | Used by Supabase as the SMTP credential for authentication emails (magic links, password resets). Transactional in-app email (F213–F217) is not yet wired in app code; see [Email / Resend](#email--resend). | Resend dashboard → API Keys |
+| `RESEND_FROM_EMAIL` | Sending address paired with `RESEND_API_KEY`. | The verified sending domain/address in Resend |
 | `EXTENSION_HANDOFF_SECRET` | Server-only. Encrypts the short-lived one-time token that lets the QA feedback browser extension pick up an already-signed-in web session without the user retyping credentials. Required for the extension's session handoff to work. | Generate any random 32+ byte string yourself (e.g. `openssl rand -hex 32`) |
 | `EXTENSION_ID` | The QA feedback extension's Chrome extension id, used to restrict `app/api/extension/tasks/route.ts`'s CORS to exactly `chrome-extension://<EXTENSION_ID>`. An unpacked/dev load gets a random id per load (visible at `chrome://extensions`); set this to the published id once the extension ships. | `chrome://extensions` (dev) or the Chrome Web Store listing (published) |
 
@@ -336,8 +373,9 @@ order:
 - No periodic rebalance of Kanban card fractional positions — a very long
   column could theoretically exhaust position precision over time; documented
   as a known limitation rather than silently unhandled.
-- No email delivery (Resend was deferred) — see
-  [Email / Resend](#email--resend-not-connected).
+- No transactional in-app email (features F213–F217 were deferred) — Resend
+  is configured as Supabase SMTP for auth emails, but no app code sends
+  task/mention/digest emails; see [Email / Resend](#email--resend).
 - Saved views apply to the list view only; board/calendar/timeline saved
   views are schema-ready but not yet wired (M16 follow-up).
 - This is a solo-built MVP, not a hardened multi-team/enterprise system.

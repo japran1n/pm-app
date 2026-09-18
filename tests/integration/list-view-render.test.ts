@@ -207,7 +207,7 @@ describe.skipIf(!haveAdminCreds)("getProjectListTasks (F053: AS-085)", () => {
 
   it("AS-085: returns every non-deleted task for this project with title, status, priority, assignee, due date", async () => {
     const { getProjectListTasks } = await import("@/lib/queries/tasks");
-    const tasks = await getProjectListTasks(projectId);
+    const { tasks } = await getProjectListTasks(projectId);
 
     // Exactly the 2 non-deleted tasks in this project — the soft-deleted
     // one and the other project's task are both excluded.
@@ -236,7 +236,7 @@ describe.skipIf(!haveAdminCreds)("getProjectListTasks (F053: AS-085)", () => {
 
   it("AS-085 (isolation): a different project's tasks are fetched independently, without this project's tasks leaking either way", async () => {
     const { getProjectListTasks } = await import("@/lib/queries/tasks");
-    const otherTasks = await getProjectListTasks(otherProjectId);
+    const { tasks: otherTasks } = await getProjectListTasks(otherProjectId);
 
     expect(otherTasks).toHaveLength(1);
     expect(otherTasks[0].title).toBe("Should not appear on the other list");

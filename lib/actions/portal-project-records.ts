@@ -68,6 +68,7 @@ export async function flagAssumption(input: {
   // fails (the caller's own next fetch will still see the fresh row),
   // same non-fatal-revalidate convention every other portal action here
   // uses.
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data needed before the RLS-respecting write below
   const admin = createAdminClient();
   const { data: assumptionRow } = await admin
     .from("project_assumptions")

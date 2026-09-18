@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { getOpenApprovalsForWorkspace, getDecisionOwnerNames } from "@/lib/queries/approvals";
 import { ApprovalsQueue, type ApprovalsQueueRow } from "@/components/approvals/approvals-queue";
 
@@ -29,10 +29,7 @@ export default async function ApprovalsQueuePage({
 }) {
   const { workspaceSlug } = await params;
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     redirect("/sign-in");

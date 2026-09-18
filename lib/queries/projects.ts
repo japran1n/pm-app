@@ -26,6 +26,7 @@ import { logger } from "@/lib/observability/logger";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolvePeople } from "@/lib/queries/people";
+import { getCurrentUser, getRequestClient } from "@/lib/auth/current-user";
 
 export type ProjectListItem = {
   id: string;
@@ -176,11 +177,11 @@ export async function getFavoriteProjectIds(
   workspaceId: string,
   preloadedUserId?: string,
 ): Promise<Set<string>> {
-  const supabase = await createClient();
+  const supabase = await getRequestClient();
 
   let userId = preloadedUserId;
   if (!userId) {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { user } = await getCurrentUser();
     if (!user) return new Set();
     userId = user.id;
   }

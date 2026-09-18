@@ -3,7 +3,8 @@ import { cookies } from "next/headers";
 
 import { canViewClientPortal } from "@/lib/auth/permissions";
 import { getWorkspaceRoleForCurrentUser } from "@/lib/queries/portal";
-import { createClient, createRealSessionClient } from "@/lib/supabase/server";
+import { createRealSessionClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import {
   PORTAL_PREVIEW_ACCESS_COOKIE,
   PORTAL_PREVIEW_LABEL_COOKIE,
@@ -56,10 +57,7 @@ export default async function PortalLayout({
 }) {
   const { workspaceSlug } = await params;
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     redirect("/sign-in");
@@ -140,7 +138,15 @@ export default async function PortalLayout({
   }
 
   return (
-    <div className="min-h-svh bg-background">
+    // P2-39: `h-svh overflow-hidden` mirrors the workspace app shell's own
+    // `flex h-svh` outer div (app/(workspace)/w/[workspaceSlug]/layout.tsx).
+    // Without it, `document.documentElement.scrollWidth` can exceed the
+    // viewport on narrow screens if any descendant grows wider than the
+    // available column — which the AS-517 no-scroll guard catches. The inner
+    // project shell (`p/[projectId]/layout.tsx`) adds its own `overflow-y-auto`
+    // scroll container on the main content area, so vertical content is still
+    // reachable; only unwanted horizontal overflow is clipped here.
+    <div className="h-svh overflow-hidden bg-background">
       {isPreview && previewLabel && (
         <ClientPreviewBanner
           workspaceSlug={workspace.slug}

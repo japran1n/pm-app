@@ -27,7 +27,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Clock } from "lucide-react";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { getWorkspaceMembers } from "@/lib/queries/members";
 import {
   getPersonTimeByProject,
@@ -62,10 +62,7 @@ export default async function PersonTimeDrilldownPage({
   const { workspaceSlug, userId: targetUserId } = await params;
   const query = await searchParams;
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     redirect("/sign-in");

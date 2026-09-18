@@ -133,7 +133,7 @@ describe.skipIf(!haveAdminCreds)("inviteMember (F015: AS-007)", () => {
     const inviteEmail = `f015-invitee-${Date.now()}@example.com`;
     const result = await inviteMember(workspaceId, inviteEmail);
 
-    expect(result).toEqual({ ok: true, invitedEmail: inviteEmail });
+    expect(result).toMatchObject({ ok: true, invitedEmail: inviteEmail });
 
     const { data: row, error } = await adminClient
       .from("workspace_members")
@@ -157,7 +157,7 @@ describe.skipIf(!haveAdminCreds)("inviteMember (F015: AS-007)", () => {
     const inviteEmail = `f015-invitee-admin-${Date.now()}@example.com`;
     const result = await inviteMember(workspaceId, inviteEmail);
 
-    expect(result).toEqual({ ok: true, invitedEmail: inviteEmail });
+    expect(result).toMatchObject({ ok: true, invitedEmail: inviteEmail });
   });
 
   it("AS-007 (failure case): a plain member cannot invite — rejected server-side, not just UI-hidden", async () => {
@@ -204,7 +204,7 @@ describe.skipIf(!haveAdminCreds)("inviteMember (F015: AS-007)", () => {
     const inviteEmail = `f015-duplicate-invite-${Date.now()}@example.com`;
 
     const first = await inviteMember(workspaceId, inviteEmail);
-    expect(first).toEqual({ ok: true, invitedEmail: inviteEmail });
+    expect(first).toMatchObject({ ok: true, invitedEmail: inviteEmail });
 
     const second = await inviteMember(workspaceId, inviteEmail);
     expect(second.ok).toBe(false);
@@ -267,7 +267,7 @@ describe.skipIf(!haveAdminCreds)("inviteMember (F015: AS-007)", () => {
 
     const inviteEmail = `f015-scoped-${Date.now()}@example.com`;
     const result = await inviteMember(workspaceA, inviteEmail);
-    expect(result).toEqual({ ok: true, invitedEmail: inviteEmail });
+    expect(result).toMatchObject({ ok: true, invitedEmail: inviteEmail });
 
     const { data: rowsInB } = await adminClient
       .from("workspace_members")

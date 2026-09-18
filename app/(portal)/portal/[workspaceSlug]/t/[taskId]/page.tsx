@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 
 import { getPortalTaskDetail } from "@/lib/queries/portal";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 
 // F003b (missions/20260903-portal): task detail moved to
 // `p/[projectId]/t/[taskId]`, inside the project-scoped shell. This file
@@ -20,10 +20,7 @@ export default async function LegacyPortalTaskRedirect({
 }) {
   const { workspaceSlug, taskId } = await params;
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   const { data: workspace } = await supabase
     .from("workspaces")

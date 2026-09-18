@@ -101,7 +101,7 @@ async function stubCaptureVisibleTab(worker: Worker, resolveWith: string) {
 }
 
 /** A real, decodable PNG of random-noise pixels whose base64 payload stays
- * comfortably over MAX_ATTACHMENT_SIZE_BYTES (10MB) even after the
+ * comfortably over MAX_ATTACHMENT_SIZE_BYTES (4MB) even after the
  * select-first flow's real crop.ts canvas re-encode (see the AS-566 test's
  * comment for why a fake/padded data URL no longer works here). */
 async function generateOversizedNoisePngDataUrl(context: BrowserContext): Promise<string> {
@@ -400,7 +400,7 @@ test.describe.serial("F294 attachment upload from extension (AS-559, AS-566, AS-
     // size check. So this test instead generates a genuine, decodable PNG
     // of random noise pixels large enough that even after canvas
     // re-encoding its base64 payload still exceeds MAX_ATTACHMENT_SIZE_BYTES
-    // (10MB) — random per-pixel data defeats PNG's deflate compression, so
+    // (4MB) — random per-pixel data defeats PNG's deflate compression, so
     // the size survives the real crop step's real re-encode.
     const oversizedDataUrl = await generateOversizedNoisePngDataUrl(context);
 
@@ -436,7 +436,7 @@ test.describe.serial("F294 attachment upload from extension (AS-559, AS-566, AS-
       await page.getByTestId("capture-button").click();
       const captureError = page.getByTestId("capture-error");
       await expect(captureError).toBeVisible({ timeout: 10_000 });
-      await expect(captureError).toContainText("10MB");
+      await expect(captureError).toContainText("4MB");
       await expect(page.getByTestId("capture-preview")).toHaveCount(0);
 
       // No report to submit at all — the capture never reached a state a

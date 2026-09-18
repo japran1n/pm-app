@@ -11,7 +11,7 @@
 // return to instead of being bounced straight back into the same channel.
 import { MessageCircle } from "lucide-react";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser, getRequestClient } from "@/lib/auth/current-user";
 import { getWorkspaceChannels, getDmCandidates } from "@/lib/queries/chat";
 import { ChatNavList } from "@/components/chat/chat-nav-list";
 import { ChatMessageSearch } from "@/components/chat/chat-message-search";
@@ -25,16 +25,15 @@ export default async function ChatIndexPage({
 }) {
   const { workspaceSlug } = await params;
 
-  const supabase = await createClient();
-  const { data: workspace } = await supabase
-    .from("workspaces")
-    .select("id")
-    .eq("slug", workspaceSlug)
-    .maybeSingle();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const supabase = await getRequestClient();
+  const [{ data: workspace }, { user }] = await Promise.all([
+    supabase
+      .from("workspaces")
+      .select("id")
+      .eq("slug", workspaceSlug)
+      .maybeSingle(),
+    getCurrentUser(),
+  ]);
 
   const [channels, dmCandidates] = await Promise.all([
     workspace ? getWorkspaceChannels(workspace.id) : Promise.resolve([]),

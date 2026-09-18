@@ -132,6 +132,7 @@ if [ "$STATUS" = "COMPLETE" ]; then
 
   # 4c. test command from tech-decisions.md must pass
   TECH="$MISSION_DIR/tech-decisions.md"
+  TEST_CMD=""
   if [ -f "$TECH" ]; then
     # Pull the first fenced command after a line matching /how to run tests/i
     TEST_CMD=$(awk '
@@ -139,13 +140,19 @@ if [ "$STATUS" = "COMPLETE" ]; then
       found && /^```/ {in_block=!in_block; next}
       found && in_block && NF {print; exit}
     ' "$TECH" || true)
+  fi
 
-    if [ -n "$TEST_CMD" ]; then
-      if ! eval "$TEST_CMD" > /tmp/missions-test-output.log 2>&1; then
-        TAIL=$(tail -n 40 /tmp/missions-test-output.log)
-        block "Status is COMPLETE but the test command failed. Command: $TEST_CMD. Last 40 lines of output: $TAIL. Either fix the failures and re-commit, or change Status to PARTIAL/BLOCKED and document in Blockers."
-      fi
-    fi
+  # Fall back to running the unit suite directly rather than skipping tests
+  # entirely — this used to be a silent no-op when tech-decisions.md was
+  # absent or didn't declare a "How to run tests" block, which let COMPLETE
+  # handoffs through without ever being tested.
+  if [ -z "$TEST_CMD" ]; then
+    TEST_CMD="npx vitest run tests/unit"
+  fi
+
+  if ! eval "$TEST_CMD" > /tmp/missions-test-output.log 2>&1; then
+    TAIL=$(tail -n 40 /tmp/missions-test-output.log)
+    block "Status is COMPLETE but the test command failed. Command: $TEST_CMD. Last 40 lines of output: $TAIL. Either fix the failures and re-commit, or change Status to PARTIAL/BLOCKED and document in Blockers."
   fi
 
   # 5. Assertion IDs in handoff vs plan.md

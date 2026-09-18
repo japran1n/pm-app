@@ -183,7 +183,7 @@ describe.skipIf(!haveAdminCreds)("getProjectListTasks sort (F055)", () => {
 
   it("AS-091: due_date_asc orders tasks earliest-first, with no-due-date tasks last", async () => {
     const { getProjectListTasks } = await import("@/lib/queries/tasks");
-    const tasks = await getProjectListTasks(projectId, {}, "due_date_asc");
+    const { tasks } = await getProjectListTasks(projectId, {}, "due_date_asc");
 
     expect(tasks.map((t) => t.title)).toEqual([
       "Task Early",
@@ -195,7 +195,7 @@ describe.skipIf(!haveAdminCreds)("getProjectListTasks sort (F055)", () => {
 
   it("AS-091: due_date_desc orders tasks latest-first, with no-due-date tasks last", async () => {
     const { getProjectListTasks } = await import("@/lib/queries/tasks");
-    const tasks = await getProjectListTasks(projectId, {}, "due_date_desc");
+    const { tasks } = await getProjectListTasks(projectId, {}, "due_date_desc");
 
     expect(tasks.map((t) => t.title)).toEqual([
       "Task Late",
@@ -212,7 +212,7 @@ describe.skipIf(!haveAdminCreds)("getProjectListTasks sort (F055)", () => {
     // then due_date_asc orders what's left. If sort were applied before
     // filtering (or ignored the filter), "Task Late" would leak into the
     // result.
-    const tasks = await getProjectListTasks(
+    const { tasks } = await getProjectListTasks(
       projectId,
       { status: "todo" },
       "due_date_asc",
@@ -231,7 +231,7 @@ describe.skipIf(!haveAdminCreds)("getProjectListTasks sort (F055)", () => {
     // never forwarded as the `sort` argument at all — passing `undefined`
     // here reproduces that degraded path and should return the full,
     // unsorted-by-due-date list without throwing.
-    const tasks = await getProjectListTasks(projectId, {}, undefined);
+    const { tasks } = await getProjectListTasks(projectId, {}, undefined);
 
     expect(tasks).toHaveLength(4);
   });

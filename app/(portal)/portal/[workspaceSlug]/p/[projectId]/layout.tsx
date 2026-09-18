@@ -3,10 +3,11 @@ import { notFound, redirect } from "next/navigation";
 import {
   getPortalCurrentUserProfile,
   getPortalProjects,
+  isPortalProjectArchived,
 } from "@/lib/queries/portal";
 import { getClientVisiblePortalLinks } from "@/lib/queries/project-site";
 import { getWaitingOnYouCount } from "@/lib/portal/waiting-on-you-count";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { PortalSidebar, type PortalForYouBadge } from "@/components/portal/portal-sidebar";
 import { PortalTopbar } from "@/components/portal/portal-topbar";
 import { PortalTitleProvider } from "@/components/portal/portal-title-context";
@@ -46,7 +47,7 @@ export default async function PortalProjectLayout({
 }) {
   const { workspaceSlug, projectId } = await params;
 
-  const supabase = await createClient();
+  const { supabase, user } = await getCurrentUser();
   const { data: workspace } = await supabase
     .from("workspaces")
     .select("id, name, slug, logo_url")
@@ -54,10 +55,6 @@ export default async function PortalProjectLayout({
     .maybeSingle();
 
   if (!workspace) notFound();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
 
   // The outer layout already guarantees a signed-in user (redirects to
   // /sign-in otherwise); this defensively re-checks rather than
@@ -74,7 +71,18 @@ export default async function PortalProjectLayout({
   ]);
 
   const project = projects.find((p) => p.id === projectId);
-  if (!project) notFound();
+  if (!project) {
+    // P2-36: before throwing a 404, check whether the project was archived
+    // (deleted_at IS NOT NULL). If so, send the client to a friendly
+    // "project closed" page instead of a raw Next.js 404.
+    const archived = await isPortalProjectArchived(workspace.id, projectId);
+    if (archived) {
+      // Route outside p/[projectId]/ so this layout does not run again and
+      // cause an infinite redirect cycle.
+      redirect(`/portal/${workspaceSlug}/closed/${projectId}`);
+    }
+    notFound();
+  }
 
   // F005/F008 (AS-007): the "For you" nav badge's own single source of
   // truth -- a failed read renders no badge at all, never a fabricated
@@ -104,7 +112,11 @@ export default async function PortalProjectLayout({
     // (`app/(workspace)/w/[workspaceSlug]/layout.tsx`), for the same
     // reason. See `components/portal/portal-title-context.tsx`.
     <PortalTitleProvider>
-      <div className="flex min-h-svh flex-col md:flex-row">
+      {/* P2-39: `h-svh overflow-hidden` is the scroll guard (mirrors the
+          workspace shell's `flex h-svh`). The main content area below gets
+          `overflow-y-auto` so vertical page content is still reachable;
+          only unwanted horizontal growth is clipped. */}
+      <div className="flex h-svh overflow-hidden flex-col md:flex-row">
         <PortalSidebar
           workspaceSlug={workspace.slug}
           workspaceId={workspace.id}
@@ -132,7 +144,7 @@ export default async function PortalProjectLayout({
             launchConfidence={project.launchConfidence}
             keyLinks={keyLinks}
           />
-          <main className="flex-1 px-6 py-8">{children}</main>
+          <main className="flex-1 overflow-y-auto px-6 py-8">{children}</main>
         </div>
       </div>
     </PortalTitleProvider>

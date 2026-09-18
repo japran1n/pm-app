@@ -55,10 +55,21 @@ export async function GET(request: NextRequest) {
     await activateInvitedMemberships(user.id, user.email);
   }
 
-  const slug = await getDefaultWorkspaceSlug(supabase, user.id);
+  const defaultWorkspace = await getDefaultWorkspaceSlug(supabase, user.id);
 
-  if (slug) {
-    return NextResponse.redirect(new URL(`/w/${slug}`, requestUrl.origin));
+  if (defaultWorkspace) {
+    // Portal clients (role "client") don't get the agency-facing
+    // "Create your workspace" flow or a `/w/*` route — they land in the
+    // client portal for their workspace instead.
+    if (defaultWorkspace.role === "client") {
+      return NextResponse.redirect(
+        new URL(`/portal/${defaultWorkspace.slug}`, requestUrl.origin),
+      );
+    }
+
+    return NextResponse.redirect(
+      new URL(`/w/${defaultWorkspace.slug}`, requestUrl.origin),
+    );
   }
 
   return NextResponse.redirect(new URL("/onboarding", requestUrl.origin));

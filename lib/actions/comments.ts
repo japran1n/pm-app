@@ -139,6 +139,7 @@ export async function addComment(
     return { ok: false, error: "You must be signed in to comment." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   // Look up the task's owning project/workspace so membership is checked
@@ -492,6 +493,7 @@ export async function deleteComment(
     return { ok: false, error: "You must be signed in to delete a comment." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   // Look up the comment's owning task/project/workspace, and its author,
@@ -781,6 +783,7 @@ export async function restoreComment(
     return { ok: false, error: "You must be signed in to restore a comment." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   const { data: commentRow, error: commentError } = await admin
@@ -1068,6 +1071,7 @@ export async function editComment(
     return { ok: false, error: "You must be signed in to edit a comment." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   // A soft-deleted comment behaves as "not found" for editing, same
@@ -1391,6 +1395,7 @@ export async function getMentionCandidates(
     return { ok: false, error: "You must be signed in." };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
   const { data: taskRow, error: taskError } = await admin

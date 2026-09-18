@@ -17,6 +17,7 @@ export type {
 export {
   getPortalProjects,
   getPortalProjectOptions,
+  isPortalProjectArchived,
   type PortalTask,
   type PortalProject,
   type PortalProjectOption,
