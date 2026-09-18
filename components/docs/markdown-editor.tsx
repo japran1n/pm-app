@@ -30,6 +30,7 @@
 // project-scoped doc has a project to attach an approval_requests row to.
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 // F009: announces this doc's title upward via the SAME "leaf announces
 // itself upward" context ProjectBreadcrumb already uses
 // (components/project/project-breadcrumb.tsx).
@@ -140,6 +141,13 @@ export type MarkdownEditorProps = {
   /** F114: this doc's video/document link previews. Undefined hides the
    * links editor, same convention as the props above. */
   initialDocLinks?: DocLink[];
+  /** P2-2: the `updated_at` timestamp the server returned when this doc
+   * was loaded. When provided, updateDoc uses optimistic concurrency — if
+   * another session has saved since this load, the save returns
+   * { conflict: true } and the editor shows a reload banner instead of
+   * silently overwriting. Optional so callers that haven't been updated
+   * yet continue to work without a concurrency guard. */
+  initialUpdatedAt?: string;
 };
 
 export function MarkdownEditor({
@@ -153,7 +161,17 @@ export function MarkdownEditor({
   initialRelevantFrom,
   initialDocLinks,
   currentUserRole,
+  initialUpdatedAt,
 }: MarkdownEditorProps) {
+  const router = useRouter();
+  // P2-2: tracks the last-known updated_at so updateDoc can use optimistic
+  // concurrency. Refreshed to the DB-returned value after every successful
+  // save, so back-to-back autosaves don't falsely conflict with each other
+  // (the trigger bumps updated_at on every write, so saving the doc itself
+  // changes the timestamp we need to match on the next save).
+  const lastKnownUpdatedAtRef = useRef<string | undefined>(initialUpdatedAt);
+  const [showConflictBanner, setShowConflictBanner] = useState(false);
+
   const [title, setTitle] = useState(initialTitle);
   // F009 (AS-061): keeps the header breadcrumb AND the docs assistant
   // sidebar's context bar in sync with the live (possibly-unsaved) title
@@ -244,8 +262,26 @@ export function MarkdownEditor({
       }
       timerRef.current = setTimeout(async () => {
         setStatus("saving");
-        const result = await updateDoc(docId, nextTitle, nextContent);
-        setStatus(result.error ? "error" : "saved");
+        // P2-2: pass the current guard value; updateDoc returns conflict:true
+        // if another session saved in the meantime, or newUpdatedAt on success.
+        const result = await updateDoc(
+          docId,
+          nextTitle,
+          nextContent,
+          lastKnownUpdatedAtRef.current,
+        );
+        if (result.conflict) {
+          setStatus("idle");
+          setShowConflictBanner(true);
+        } else if (result.error) {
+          setStatus("error");
+        } else {
+          setStatus("saved");
+          // Refresh the guard value so the next autosave matches the new row.
+          if (result.newUpdatedAt) {
+            lastKnownUpdatedAtRef.current = result.newUpdatedAt;
+          }
+        }
       }, AUTOSAVE_DEBOUNCE_MS);
     },
     [docId],
@@ -360,6 +396,35 @@ export function MarkdownEditor({
 
   return (
     <div className="flex flex-col gap-4">
+      {/* P2-2: concurrent-edit conflict banner — shown when another session
+          saved the doc after this one loaded it. A reload fetches the latest
+          version; dismissing hides the banner without reloading (the user's
+          unsaved changes remain in the editor). */}
+      {showConflictBanner && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">
+          <span>
+            This document was edited in another window. Reload to see the latest version.
+          </span>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              onClick={() => router.refresh()}
+            >
+              Reload
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowConflictBanner(false)}
+            >
+              Dismiss
+            </Button>
+          </div>
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-4">
         <textarea
           ref={titleTextareaRef}

@@ -58,6 +58,7 @@ export default async function DocEditorPage({
         docId={doc.id}
         initialTitle={doc.title}
         initialContent={doc.content}
+        initialUpdatedAt={doc.updatedAt}
       />
     </div>
   );

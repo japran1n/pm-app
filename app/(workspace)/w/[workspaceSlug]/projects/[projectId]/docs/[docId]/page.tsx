@@ -80,6 +80,7 @@ export default async function ProjectDocEditorPage({
         docId={doc.id}
         initialTitle={doc.title}
         initialContent={doc.content}
+        initialUpdatedAt={doc.updatedAt}
         workspaceSlug={workspaceSlug}
         projectId={project.id}
         initialClientVisible={doc.clientVisible}

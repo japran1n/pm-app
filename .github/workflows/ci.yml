@@ -60,6 +60,36 @@ jobs:
       - name: Unit tests
         run: npx vitest run tests/unit
 
+  extension-check:
+    name: Extension CI (type + lint + build)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: extension/package-lock.json
+
+      - name: Install extension dependencies
+        working-directory: extension
+        run: npm ci
+
+      - name: Type-check extension
+        working-directory: extension
+        run: npx tsc --noEmit
+
+      - name: Lint extension
+        working-directory: extension
+        run: npx eslint .
+
+      - name: Build extension
+        working-directory: extension
+        run: npm run build
+
   ci:
     runs-on: ubuntu-latest
     env:
