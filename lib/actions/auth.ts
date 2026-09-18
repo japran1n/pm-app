@@ -147,6 +147,16 @@ function usernameLoginEnabled(): boolean {
   return process.env.NODE_ENV === "development";
 }
 
+// Guards the password sign-in Server Action itself. Unlike the client UI
+// (which may simply hide the password tab), a Server Action remains directly
+// callable regardless of what the UI renders, so the action needs its own
+// check. Defaults to enabled so the team can keep using it in the meantime;
+// set PASSWORD_LOGIN_ENABLED=false in production when this path should be
+// fully closed off.
+function passwordLoginEnabled(): boolean {
+  return process.env.PASSWORD_LOGIN_ENABLED !== "false";
+}
+
 // Maps a bare username onto the email of the account that claims it.
 // Returns null when the username is unknown — the caller reports the same
 // generic "invalid credentials" message either way, so this never becomes
@@ -192,6 +202,8 @@ export async function signInWithPassword(
   _prevState: PasswordSignInResult | null,
   formData: FormData,
 ): Promise<PasswordSignInResult> {
+  if (!passwordLoginEnabled()) return { ok: false, error: "Password login is disabled." };
+
   const parsed = passwordSignInSchema.safeParse({
     identifier: formData.get("identifier"),
     password: formData.get("password"),

@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 
 import type { User } from "@supabase/supabase-js";
 
@@ -32,7 +33,7 @@ import type { ActionOutcome, ActionResult } from "@/lib/actions/authz";
 
 export type CreateWorkspaceResult = ActionOutcome<{ slug: string }>;
 
-export type InviteMemberResult = ActionOutcome<{ invitedEmail: string }>;
+export type InviteMemberResult = ActionOutcome<{ invitedEmail: string; emailSent: boolean }>;
 
 export type RevokeInviteResult = ActionOutcome;
 
@@ -465,7 +466,40 @@ export async function inviteMember(
     }
   }
 
-  return { ok: true, invitedEmail: parsed.data.email };
+  // Send the actual invite email via Supabase Auth. The invite row above is
+  // the source of truth for membership/acceptance (lib/actions/invites.ts);
+  // this call is purely about getting a sign-in link into the invitee's
+  // inbox. It can fail non-fatally (e.g. the email already has an account,
+  // which inviteUserByEmail rejects) without undoing the invite record
+  // already written — the caller falls back to telling the inviter to share
+  // the link manually via the `emailSent` flag below.
+  let emailSent = false;
+  try {
+    const headerList = await headers();
+    const origin =
+      headerList.get("origin") ??
+      process.env.NEXT_PUBLIC_APP_URL ??
+      "";
+    const { error: inviteEmailError } = await admin.auth.admin.inviteUserByEmail(
+      parsed.data.email,
+      { redirectTo: `${origin}/auth/callback` },
+    );
+    if (!inviteEmailError) {
+      emailSent = true;
+    } else {
+      logger.warn("inviteMember: invite email failed (non-fatal)", {
+        email: parsed.data.email,
+        error: inviteEmailError.message,
+      });
+    }
+  } catch (inviteEmailError) {
+    logger.warn("inviteMember: invite email failed (non-fatal)", {
+      email: parsed.data.email,
+      error: String(inviteEmailError),
+    });
+  }
+
+  return { ok: true, invitedEmail: parsed.data.email, emailSent };
 }
 
 // Revokes a pending invite (AS-024). Only an active owner/admin member of
