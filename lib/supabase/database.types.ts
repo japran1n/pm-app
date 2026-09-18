@@ -307,6 +307,73 @@ export type Database = {
           },
         ]
       }
+      architecture_node_meta: {
+        Row: {
+          audience: string | null
+          client_visible: boolean
+          copy_status: string
+          created_at: string
+          intent: string | null
+          keywords: string[]
+          primary_cta: string | null
+          project_id: string
+          task_id: string
+          tone: string | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          audience?: string | null
+          client_visible?: boolean
+          copy_status?: string
+          created_at?: string
+          intent?: string | null
+          keywords?: string[]
+          primary_cta?: string | null
+          project_id: string
+          task_id: string
+          tone?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          audience?: string | null
+          client_visible?: boolean
+          copy_status?: string
+          created_at?: string
+          intent?: string | null
+          keywords?: string[]
+          primary_cta?: string | null
+          project_id?: string
+          task_id?: string
+          tone?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "architecture_node_meta_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "architecture_node_meta_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: true
+            referencedRelation: "active_project_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "architecture_node_meta_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: true
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       attachments: {
         Row: {
           created_at: string
@@ -3027,6 +3094,61 @@ export type Database = {
           {
             foreignKeyName: "task_dependencies_blocking_task_id_fkey"
             columns: ["blocking_task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      task_discipline_estimates: {
+        Row: {
+          created_at: string
+          discipline: string
+          estimated_by: string | null
+          minutes: number
+          note: string | null
+          project_id: string
+          task_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          discipline: string
+          estimated_by?: string | null
+          minutes: number
+          note?: string | null
+          project_id: string
+          task_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          discipline?: string
+          estimated_by?: string | null
+          minutes?: number
+          note?: string | null
+          project_id?: string
+          task_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_discipline_estimates_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_discipline_estimates_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "active_project_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_discipline_estimates_task_id_fkey"
+            columns: ["task_id"]
             isOneToOne: false
             referencedRelation: "tasks"
             referencedColumns: ["id"]
