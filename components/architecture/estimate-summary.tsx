@@ -64,9 +64,13 @@ export function EstimateSummary({
         )}
       </div>
 
-      {/* Per-page table */}
+      {/* Per-page table. F016 (AS-065/066): the wrapping div is the only
+          element allowed to scroll horizontally -- `min-w-max` on the table
+          lets all five discipline columns (F011) claim their natural width
+          instead of being squeezed by `w-full`, so overflow is contained
+          here and never reaches the page body. */}
       <div className="overflow-x-auto">
-        <table className="w-full">
+        <table className="w-full min-w-max">
           <thead>
             <tr className="border-b text-left">
               <th className="pb-1.5 pr-4 text-xs font-medium text-muted-foreground">Page</th>
