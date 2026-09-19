@@ -6,7 +6,10 @@ import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 
 import { setDisciplineEstimatesBulk } from "@/lib/actions/architecture";
-import { parseEstimateInput, NOTE_MAX_LENGTH } from "@/lib/validation/architecture";
+import {
+  parseEstimateInput,
+  disciplineEstimateNoteSchema,
+} from "@/lib/validation/architecture";
 import type { DisciplineEstimate, WorkCategory } from "@/lib/architecture/types";
 import { WORK_CATEGORIES } from "@/lib/architecture/types";
 import { Input } from "@/components/ui/input";
@@ -88,10 +91,9 @@ export function DisciplineEstimatePopover({
         continue;
       }
       const note = notes[d]?.trim() ?? "";
-      if (note.length > NOTE_MAX_LENGTH) {
-        newErrors[d] = `Note is ${note.length - NOTE_MAX_LENGTH} character${
-          note.length - NOTE_MAX_LENGTH === 1 ? "" : "s"
-        } over the ${NOTE_MAX_LENGTH}-character limit.`;
+      const noteResult = disciplineEstimateNoteSchema.safeParse(note || undefined);
+      if (!noteResult.success) {
+        newErrors[d] = noteResult.error.issues[0]?.message ?? "Note is too long.";
       }
     }
     setErrors(newErrors);
