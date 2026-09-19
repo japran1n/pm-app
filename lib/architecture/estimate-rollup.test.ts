@@ -56,12 +56,18 @@ describe("AS-063: page-level rollup includes all five disciplines", () => {
 });
 
 describe("AS-064: site-level rollup includes all five disciplines", () => {
-  it("aggregates content_seo/pm/qa (plus design/development) across pages into site totals", () => {
+  it("aggregates every WORK_CATEGORY discipline (design, development, content_seo, pm, qa) across pages into site totals", () => {
     const pageA = makePage("page-a");
     const pageB = makePage("page-b");
     const details = makeDetails({
-      [pageA.id]: [{ discipline: "content_seo", minutes: 15, note: null, estimatedBy: null }],
+      [pageA.id]: [
+        { discipline: "design", minutes: 20, note: null, estimatedBy: null },
+        { discipline: "development", minutes: 50, note: null, estimatedBy: null },
+        { discipline: "content_seo", minutes: 15, note: null, estimatedBy: null },
+      ],
       [pageB.id]: [
+        { discipline: "design", minutes: 40, note: null, estimatedBy: null },
+        { discipline: "development", minutes: 70, note: null, estimatedBy: null },
         { discipline: "content_seo", minutes: 25, note: null, estimatedBy: null },
         { discipline: "pm", minutes: 5, note: null, estimatedBy: null },
         { discipline: "qa", minutes: 7, note: null, estimatedBy: null },
@@ -71,14 +77,23 @@ describe("AS-064: site-level rollup includes all five disciplines", () => {
     const rollups = computeRollups([pageA, pageB], details);
     const totals = computeSiteTotals(rollups);
 
+    expect(totals.design).toBe(60);
+    expect(totals.development).toBe(120);
     expect(totals.content_seo).toBe(40);
     expect(totals.pm).toBe(5);
     expect(totals.qa).toBe(7);
-    // Every discipline that appears in the schema is reachable in the totals
-    // shape -- none of the five are structurally excluded.
-    for (const discipline of WORK_CATEGORIES) {
-      expect(WORK_CATEGORIES.includes(discipline)).toBe(true);
-    }
+
+    const expectedSum = WORK_CATEGORIES.reduce(
+      (sum, discipline) => sum + (totals[discipline] ?? 0),
+      0,
+    );
+    expect(expectedSum).toBe(60 + 120 + 40 + 5 + 7);
+
+    const grandTotal = WORK_CATEGORIES.reduce(
+      (sum, discipline) => sum + totals[discipline],
+      0,
+    );
+    expect(grandTotal).toBe(232);
   });
 
   it("does not leak an unrecognised legacy discipline value into totals (negative case)", () => {
