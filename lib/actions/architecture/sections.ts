@@ -15,8 +15,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { canWrite } from "@/lib/auth/permissions";
-import { createSectionSchema } from "@/lib/validation/architecture";
+import { createSectionSchema, changeSectionKindSchema } from "@/lib/validation/architecture";
 import { z } from "zod";
+import { writeAudit } from "@/lib/activity/audit";
 
 import type { MutationResult, MutationWithIdResult } from "./shared";
 import type { ActionResult } from "@/lib/actions/authz";
@@ -799,4 +800,138 @@ export async function setSectionClientVisibility(
       pageHidden,
     },
   };
+}
+
+// Mission 20260919-150607, F003 (AS-015..AS-021): changes a section's
+// `section_kind` ('static' | 'cms', tasks_section_kind_check). Sibling of
+// changePageKind above -- same "resolve workspace server-side from the
+// task row, re-check membership + write access, then a single targeted
+// UPDATE" shape -- with two deltas the clarified spec calls for:
+//
+// 1. The "confirm it's actually a page" guard changePageKind has
+//    (`taskRow.page_slug` truthy) becomes "confirm it's actually a
+//    section" here: `section_kind IS NOT NULL` is the column's own
+//    definition of "this task participates in section-kind at all"
+//    (only sections get a non-null value -- pages and plain tasks never
+//    do), so AS-017 (a non-section task is rejected) falls out of the
+//    same not-found-shaped guard changePageKind uses for AS-018's page
+//    analogue, not a bespoke check.
+// 2. A `writeAudit` call on success (AS-020) -- changePageKind predates
+//    F140's audit log and was never backfilled; this new action doesn't
+//    repeat that gap. `writeAudit` needs the session-bound client (its
+//    own header comment: the `write_audit_log_entry` RPC pins actor_id
+//    to `auth.uid()`), which is exactly what `getCurrentUser()` already
+//    returned above -- no second client construction.
+//
+// AS-018 (a task from a different project is rejected): this action
+// takes no `projectId` argument (clarified API: `changeSectionKind(taskId,
+// kind)`), so "different project" can only ever mean "a project outside
+// a workspace this caller is an active member of" -- the workspace is
+// resolved from the task row itself (never trusted from the caller), so
+// requireActiveMembership below is the enforcement point for that case,
+// same as every other task-scoped action in this file.
+//
+// AS-021 (idempotent): re-applying the same kind is just another UPDATE
+// with an unchanged value -- Postgres has no "no-op" special case, so
+// this returns `{ success: true }` exactly like a real change, with no
+// extra branch needed.
+export async function changeSectionKind(
+  taskId: string,
+  kind: string,
+): Promise<MutationResult> {
+  const parsed = changeSectionKindSchema.safeParse({ taskId, kind });
+
+  if (!parsed.success) {
+    return {
+      success: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid section kind.",
+    };
+  }
+
+  const { user, supabase } = await getCurrentUser();
+
+  if (!user) {
+    return { success: false, error: "You must be signed in to change a section's kind." };
+  }
+
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
+  const admin = createAdminClient();
+
+  // Look up the task's owning project/workspace server-side, and confirm
+  // it is actually a section (section_kind IS NOT NULL -- only sections
+  // ever get a non-null value for this column) before touching it.
+  const { data: taskRow, error: taskError } = await admin
+    .from("tasks")
+    .select("id, project_id, section_kind, projects(workspace_id, workspaces(slug))")
+    .eq("id", parsed.data.taskId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (
+    taskError ||
+    !taskRow ||
+    !taskRow.section_kind ||
+    !(taskRow as { projects?: { workspace_id?: string } }).projects?.workspace_id
+  ) {
+    return { success: false, error: "Section not found." };
+  }
+
+  const workspaceId = (taskRow as { projects: { workspace_id: string } }).projects
+    .workspace_id;
+  const changeSectionKindWorkspace = (
+    taskRow as { projects: { workspaces: { slug: string } | { slug: string }[] | null } }
+  ).projects.workspaces;
+  const changeSectionKindWorkspaceSlug = extractWorkspaceSlug(changeSectionKindWorkspace);
+
+  const membership = await requireActiveMembership(admin, workspaceId, user.id);
+
+  if (!membership.ok) {
+    return {
+      success: false,
+      error: "You don't have permission to change this section's kind.",
+    };
+  }
+
+  if (!canWrite({ role: membership.role })) {
+    return {
+      success: false,
+      error: "Viewers don't have permission to change a section's kind.",
+    };
+  }
+
+  const { error: updateError } = await admin
+    .from("tasks")
+    .update({ section_kind: parsed.data.kind })
+    .eq("id", parsed.data.taskId)
+    .not("section_kind", "is", null);
+
+  if (updateError) {
+    logger.error("changeSectionKind: update failed", { error: updateError });
+    return {
+      success: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  await writeAudit(supabase, {
+    workspaceId,
+    action: "section.kind_changed",
+    targetType: "task",
+    targetId: parsed.data.taskId,
+    metadata: { projectId: taskRow.project_id, kind: parsed.data.kind },
+  });
+
+  try {
+    revalidatePath("/w", "layout");
+  } catch (revalidateError) {
+    logger.error("changeSectionKind: revalidatePath failed (non-fatal)", {
+      error: revalidateError,
+    });
+  }
+
+  if (changeSectionKindWorkspaceSlug) {
+    revalidatePortalProject(changeSectionKindWorkspaceSlug, taskRow.project_id);
+  }
+
+  return { success: true };
 }

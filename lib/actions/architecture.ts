@@ -34,6 +34,7 @@ export {
   reorderSections,
   moveSectionToPage,
   setSectionClientVisibility,
+  changeSectionKind,
 } from "./architecture/sections";
 export type { SetSectionClientVisibilityResult } from "./architecture/sections";
 
