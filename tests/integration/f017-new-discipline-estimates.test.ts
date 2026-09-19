@@ -295,18 +295,30 @@ describe.skipIf(!canRunLive)(
       expect(details?.estimates.length).toBe(3);
     });
 
-    // AS-081: setDisciplineEstimatesBulk writes its whole batch through a
-    // single multi-row `upsert()` call specifically so that Postgres's
-    // single-statement guarantee makes the write all-or-nothing -- either
-    // every row in the batch lands, or none do. Zod pre-validates every
-    // client-reachable bad input (minutes must be a positive number), so a
-    // mid-batch DB failure can never be provoked through the action's public
-    // API. To exercise the actual atomicity mechanism, this test calls the
-    // admin Supabase client's `.upsert()` directly -- the same client and
-    // the same call shape the action uses -- with one row that satisfies the
-    // DB's `minutes > 0` check constraint and one that deliberately violates
-    // it (bypassing Zod entirely, since Zod is not in the call path here).
+    // AS-081 (F082, 5th/final attempt): setDisciplineEstimatesBulk writes
+    // its whole batch through a single multi-row `upsert()` call
+    // specifically so that Postgres's single-statement guarantee makes the
+    // write all-or-nothing -- either every row in the batch lands, or none
+    // do. F081's version of this test called the admin client's
+    // `.upsert()` directly (bypassing the action entirely), which only
+    // proved Postgres upserts are atomic in general -- not that *this
+    // action's* call site is. Zod pre-validates every client-reachable bad
+    // *value* (minutes must be a positive number), so a bad value can never
+    // reach the DB through setDisciplineEstimatesBulk. But
+    // setDisciplineEstimatesBulkSchema (lib/validation/architecture.ts)
+    // does not dedupe `entries` by discipline, so a caller CAN legitimately
+    // pass the same discipline twice in one batch. The action folds each
+    // entry into a row keyed by (task_id, discipline) and upserts all rows
+    // in one `.upsert(..., { onConflict: "task_id,discipline" })` call --
+    // Postgres rejects a multi-row upsert that targets the same
+    // ON CONFLICT key twice in a single statement ("ON CONFLICT DO UPDATE
+    // command cannot affect row a second time"). That is a real,
+    // Zod-legal-input-triggered, DB-level mid-batch failure reachable
+    // through the action's actual public API -- proving the whole batch
+    // (including the otherwise-valid "pm" row sharing the call) is rejected
+    // atomically rather than partially applied.
     it("test_AS_081_failed_multi_row_upsert_leaves_all_existing_rows_unchanged", async () => {
+      const { setDisciplineEstimatesBulk } = await import("@/lib/actions/architecture/estimates");
       const { getArchitectureNodeDetails } = await import("@/lib/queries/architecture-details");
 
       // Seed known-good baseline values directly, independent of whatever
@@ -334,39 +346,22 @@ describe.skipIf(!canRunLive)(
       );
       expect(seedError).toBeNull();
 
-      // One valid row (pm -> 99) and one row that violates the DB's
-      // `minutes > 0` check constraint (qa -> -5). Zod never sees this
-      // payload, so this is the only way to make the underlying multi-row
-      // upsert fail mid-batch.
-      const { error: failedBatchError } = await adminClient
-        .from("task_discipline_estimates")
-        .upsert(
-          [
-            {
-              task_id: taskId,
-              project_id: projectId,
-              discipline: "pm",
-              minutes: 99,
-              note: "pm should not land",
-              estimated_by: memberUserId,
-            },
-            {
-              task_id: taskId,
-              project_id: projectId,
-              discipline: "qa",
-              minutes: -5,
-              note: "qa should not land",
-              estimated_by: memberUserId,
-            },
-          ],
-          { onConflict: "task_id,discipline" },
-        );
+      // A batch that Zod fully accepts (every entry is a valid discipline
+      // with a valid positive-minutes input) but that lists "qa" twice.
+      // The otherwise-valid "pm" update rides along in the same batch --
+      // if the write were not atomic, "pm" could land while "qa" fails.
+      const writeResult = await setDisciplineEstimatesBulk(taskId, [
+        { discipline: "pm", input: "99m", note: "pm should not land" },
+        { discipline: "qa", input: "10m", note: "qa should not land (first)" },
+        { discipline: "qa", input: "20m", note: "qa should not land (second)" },
+      ]);
 
-      expect(failedBatchError).not.toBeNull();
+      expect(writeResult.success).toBe(false);
 
       // Re-read both rows through the real read path. Neither the valid
-      // "pm" row nor the invalid "qa" row should have changed -- proving the
-      // batch was rejected atomically, not partially applied.
+      // "pm" row nor the duplicated "qa" rows should have changed -- proving
+      // the batch was rejected atomically by the action's real call site,
+      // not partially applied.
       const readResult = await getArchitectureNodeDetails(projectId);
       expect(readResult.ok).toBe(true);
       if (!readResult.ok) return;
