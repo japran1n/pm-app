@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import { Boxes, Link2, MoreHorizontal, Unlink } from "lucide-react";
 
 import {
+  changeSectionKind,
   createComponentFromSection,
   unlinkComponentFromSection,
 } from "@/lib/actions/architecture";
@@ -27,6 +28,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { ComponentPicker } from "@/components/architecture/component-picker";
 import { DeleteSectionButton } from "@/components/architecture/delete-section-button";
 import { SectionClientVisibilityToggle } from "@/components/architecture/section-client-visibility-toggle";
+import {
+  SectionKindSelector,
+  type SectionKind,
+} from "@/components/architecture/section-kind-selector";
 import type { BoardComponent, BoardSection } from "@/lib/queries/architecture";
 
 function MenuRow({
@@ -59,6 +64,22 @@ export function SectionCardMenu({
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [isCreatingComponent, startCreatingComponent] = useTransition();
   const [isUnlinking, startUnlinking] = useTransition();
+  const [isChangingKind, startChangingKind] = useTransition();
+
+  // Mission 20260919-150607, F006 (AS-027, AS-028): mirrors
+  // page-kind-selector.tsx's changeKind pattern -- the section's `id` is
+  // a task ID, same as pages, so changeSectionKind takes it directly.
+  function handleKindChange(next: SectionKind) {
+    startChangingKind(async () => {
+      const result = await changeSectionKind(section.id, next);
+
+      if (result.success) {
+        router.refresh();
+      } else {
+        toast.error(result.error ?? "Something went wrong. Please try again.");
+      }
+    });
+  }
 
   // Mission 20260910-182104, F029 (AS-058, AS-059): unlink this one
   // section instance from its component. `unlinkComponentFromSection`
@@ -160,6 +181,13 @@ export function SectionCardMenu({
             </Button>
           </MenuRow>
         )}
+        <MenuRow label="Section kind">
+          <SectionKindSelector
+            value={section.kind}
+            onChange={handleKindChange}
+            disabled={isChangingKind}
+          />
+        </MenuRow>
         <MenuRow label="Client visibility">
           <SectionClientVisibilityToggle section={section} />
         </MenuRow>
