@@ -1,30 +1,39 @@
-// Mission 20260919-150607, F022 (AS-080, AS-081): atomicity test for
-// `setDisciplineEstimatesBulk`.
+// Mission 20260919-150607, F022 (AS-080, AS-081): atomicity-supporting test
+// for `setDisciplineEstimatesBulk`.
 //
 // `setDisciplineEstimatesBulk` (lib/actions/architecture/estimates.ts) sends
-// every "set" entry as a SINGLE multi-row `upsert()` call (one DB round
-// trip carrying an array of rows), relying on Postgres's guarantee that a
-// single multi-row INSERT ... ON CONFLICT statement is atomic: either every
-// row in that statement lands, or none of them do.
+// every "set"/"clear" entry as a SINGLE multi-row `upsert()` call (one DB
+// round trip carrying an array of rows). Full atomicity -- either every row
+// in that statement lands, or none of them do -- is a guarantee provided by
+// PostgreSQL itself for a single multi-row INSERT ... ON CONFLICT statement.
+// That DB-level guarantee cannot be proven by a unit test with a fake
+// in-memory table: only a live database can show a genuine partial-write
+// rollback. That coverage lives in
+// tests/integration/f017-new-discipline-estimates.test.ts (against a real
+// Supabase stack), not here.
 //
-// This test simulates that boundary with a fake in-memory table. The fake
-// only commits rows to its store once the whole upsert call has been
-// determined to succeed; if the simulated call fails partway (one bad row
-// in the batch), NOTHING from that call is written to the store -- exactly
-// how a real single-statement Postgres upsert would roll back on error.
+// What THIS unit test can honestly prove, and does prove, is the contract
+// that makes Postgres's atomicity guarantee applicable in the first place:
+// the whole batch (including any "clear" entries) is sent as exactly ONE
+// upsert() call, never as N per-discipline calls and never via a separate
+// delete() call. If the production code were changed to loop and issue one
+// upsert per discipline (no single wrapping statement), Postgres's
+// atomicity guarantee would no longer apply even though each individual
+// call might still "succeed" -- so this test's upsertCallCount assertion is
+// the real regression guard, not the mock's own commit/rollback logic.
 //
-// AS-080: a failure during the bulk write does not leave partial state in
-//         the DB -- either every discipline in the batch is written, or
-//         none are.
+// AS-080: a failure during the bulk write is surfaced from a single
+//         round-trip call (the mechanism that enables all-or-nothing
+//         semantics), not from multiple independent per-row calls.
 // AS-081: when the bulk write fails, the action surfaces an error result
 //         (success: false) instead of silently swallowing the failure.
 //
-// If a future change replaces the single array `upsert()` call with a loop
-// that issues one upsert per discipline (no wrapping transaction), this
-// test's fake store would show a nonzero number of committed rows after a
-// simulated failure mid-batch, and the AS-080 assertion below would fail --
-// which is the point: it catches a regression that reintroduces partial
-// writes.
+// IMPORTANT: the fake `upsert` below does NOT decide "commit vs. discard"
+// based on whether the batch contains a failing row -- it always records
+// every row it was handed, whether the call is later reported as succeeded
+// or failed. That is deliberate: the test must observe what the PRODUCTION
+// CODE did (how many calls, what error it returned), not re-assert a
+// commit/discard branch baked into the mock itself.
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const TASK_ID = "c6d92920-fa93-408d-91cb-87cb907b3fec";
@@ -36,11 +45,12 @@ const USER_ID = "01c5bd9a-c1da-41a4-ac0e-a4fab320a32a";
 // (e.g. a constraint violation surfaced by Postgres for that one row).
 const FAILING_DISCIPLINE = "qa";
 
-// Fake persisted table state. Only ever mutated by a "committed" call --
-// i.e. a call that resolves to `{ error: null }`. This is what a
-// downstream read of the DB would see after the action returns.
-let committedRows: Array<Record<string, unknown>> = [];
+// Records of every row ever passed to `upsert()`, and whether a `delete()`
+// call was ever made. Neither of these encodes an atomicity decision -- they
+// are plain observations of what the production code sent to the fake table.
+let attemptedRows: Array<Record<string, unknown>> = [];
 let upsertCallCount = 0;
+let deleteCallCount = 0;
 
 vi.mock("next/cache", () => ({
   revalidatePath: vi.fn(),
@@ -89,27 +99,33 @@ vi.mock("@/lib/supabase/admin", () => ({
       }
       if (table === "task_discipline_estimates") {
         return {
-          // Simulates a single multi-row `INSERT ... ON CONFLICT` statement.
-          // Postgres executes this as ONE atomic statement: if any row in
-          // the batch violates a constraint, the whole statement is rolled
-          // back and NOTHING in `payload` is persisted. We model that here:
-          // decide success/failure for the whole call up front, and only
-          // mutate `committedRows` in the success branch.
+          // Records every row it is asked to write, unconditionally, then
+          // reports success/failure for the WHOLE call based on whether any
+          // row in the batch is the designated failing discipline. It does
+          // NOT choose whether to record rows based on that condition --
+          // `attemptedRows` therefore only tells the test what was SENT in
+          // a call, never what a real DB would have committed. The
+          // assertions below rely on `upsertCallCount` (one round trip) and
+          // `result.success` / the error message (from the production code),
+          // not on `attemptedRows`, to make any atomicity-adjacent claim.
           upsert: async (payload: Array<Record<string, unknown>> | Record<string, unknown>) => {
             upsertCallCount += 1;
             const rows = Array.isArray(payload) ? payload : [payload];
-            const hasFailingRow = rows.some((row) => row.discipline === FAILING_DISCIPLINE);
+            attemptedRows.push(...rows);
 
+            const hasFailingRow = rows.some((row) => row.discipline === FAILING_DISCIPLINE);
             if (hasFailingRow) {
-              // Atomic rollback: nothing from this call is committed, no
-              // matter how many valid rows were in the same batch.
               return {
                 error: { message: `simulated constraint violation on ${FAILING_DISCIPLINE}` },
               };
             }
-
-            committedRows.push(...rows);
             return { error: null };
+          },
+          delete: () => {
+            deleteCallCount += 1;
+            return {
+              eq: () => ({ eq: async () => ({ error: null }) }),
+            };
           },
         };
       }
@@ -119,23 +135,21 @@ vi.mock("@/lib/supabase/admin", () => ({
 }));
 
 afterEach(() => {
-  committedRows = [];
+  attemptedRows = [];
   upsertCallCount = 0;
+  deleteCallCount = 0;
   loggerErrorSpy.mockClear();
   vi.clearAllMocks();
 });
 
-describe("setDisciplineEstimatesBulk atomicity (AS-080, AS-081)", () => {
-  it("test_AS_080_a_mid_batch_failure_leaves_no_partial_state_in_the_db", async () => {
+describe("setDisciplineEstimatesBulk atomicity-supporting contract (AS-080, AS-081)", () => {
+  it("test_AS_080_a_mid_batch_failure_is_reported_from_a_single_round_trip_call", async () => {
     const { setDisciplineEstimatesBulk } = await import(
       "@/lib/actions/architecture/estimates"
     );
 
-    // Five valid entries; "qa" is positioned in the middle of the batch and
-    // is the one the fake DB rejects. If the write were truly atomic (one
-    // statement for the whole array, as the implementation does), a
-    // rejection on "qa" must mean design/development/content_seo/pm were
-    // ALSO not written -- they were sent in the very same statement.
+    // Five entries; "qa" is positioned in the middle of the batch and is
+    // the one the fake DB rejects.
     const result = await setDisciplineEstimatesBulk(TASK_ID, [
       { discipline: "design", input: "1h" },
       { discipline: "development", input: "2h 30m" },
@@ -146,36 +160,34 @@ describe("setDisciplineEstimatesBulk atomicity (AS-080, AS-081)", () => {
 
     expect(result.success).toBe(false);
 
-    // The critical atomicity check: the DB shows ZERO committed rows, not
-    // four (the ones that would have "succeeded" if written independently).
-    // All-or-nothing -- here, nothing.
-    expect(committedRows).toHaveLength(0);
-    expect(committedRows.find((row) => row.discipline === "design")).toBeUndefined();
-    expect(committedRows.find((row) => row.discipline === "development")).toBeUndefined();
-    expect(committedRows.find((row) => row.discipline === "content_seo")).toBeUndefined();
-    expect(committedRows.find((row) => row.discipline === "pm")).toBeUndefined();
-
-    // Confirms the failure came from a single batched call, not five
-    // sequential per-discipline calls (which would make partial commits
-    // possible in the first place).
+    // The atomicity-enabling contract: exactly one upsert() call carried the
+    // entire batch. This is what makes Postgres's single-statement
+    // all-or-nothing guarantee applicable in the first place -- a
+    // regression to N sequential per-discipline calls would still pass a
+    // "committedRows === 0" style assertion against a naive mock while
+    // actually enabling partial commits against a real DB, which is why we
+    // assert the round-trip count instead.
     expect(upsertCallCount).toBe(1);
+    expect(attemptedRows).toHaveLength(5);
+
+    // No separate delete() path exists that could commit independently of
+    // the upsert and leave partial state.
+    expect(deleteCallCount).toBe(0);
   });
 
-  it("test_AS_080_a_later_successful_call_still_writes_only_when_the_whole_batch_is_clean", async () => {
+  it("test_AS_080_an_all_clean_batch_succeeds_via_a_single_round_trip_call", async () => {
     const { setDisciplineEstimatesBulk } = await import(
       "@/lib/actions/architecture/estimates"
     );
 
-    // Sanity companion to the failure case: an all-clean batch commits
-    // every row in the one call, proving the fake store's "all or nothing"
-    // semantics work correctly in both directions.
     const result = await setDisciplineEstimatesBulk(TASK_ID, [
       { discipline: "design", input: "1h" },
       { discipline: "development", input: "2h 30m" },
     ]);
 
     expect(result.success).toBe(true);
-    expect(committedRows).toHaveLength(2);
+    expect(upsertCallCount).toBe(1);
+    expect(attemptedRows).toHaveLength(2);
   });
 
   it("test_AS_081_bulk_write_failure_is_returned_as_an_error_result_not_swallowed", async () => {
@@ -201,19 +213,15 @@ describe("setDisciplineEstimatesBulk atomicity (AS-080, AS-081)", () => {
     expect(loggedMessage).toEqual(expect.stringContaining("setDisciplineEstimatesBulk"));
   });
 
-  it("test_AS_080_a_mid_batch_failure_including_a_clear_entry_leaves_no_partial_state", async () => {
+  it("test_AS_080_a_mid_batch_failure_including_a_clear_entry_is_sent_as_one_round_trip", async () => {
     const { setDisciplineEstimatesBulk } = await import(
       "@/lib/actions/architecture/estimates"
     );
 
-    // F073: clearing a discipline is now represented as a minutes: null row
-    // in the SAME upsert batch, not a separate delete() call. This exercises
+    // F073: clearing a discipline is represented as a minutes: null row in
+    // the SAME upsert batch, not a separate delete() call. This exercises
     // that branch: a batch mixing a "clear" (empty input -> minutes: null)
-    // and a "set" entry with the failing discipline. If cleared rows were
-    // still handled by a separate delete() call, a failure in the upsert
-    // portion could leave the delete already committed -- partial state.
-    // With everything folded into one upsert() call, the whole batch (clear
-    // included) must roll back together.
+    // and a "set" entry with the failing discipline.
     const result = await setDisciplineEstimatesBulk(TASK_ID, [
       { discipline: "design", input: "" }, // clear
       { discipline: "development", input: "2h" },
@@ -221,16 +229,15 @@ describe("setDisciplineEstimatesBulk atomicity (AS-080, AS-081)", () => {
     ]);
 
     expect(result.success).toBe(false);
-    expect(committedRows).toHaveLength(0);
-    expect(committedRows.find((row) => row.discipline === "design")).toBeUndefined();
-    expect(committedRows.find((row) => row.discipline === "development")).toBeUndefined();
     // Exactly one upsert call carried all three rows (including the clear
-    // row), proving there was no separate delete() call to roll back
-    // independently of the upsert.
+    // row), and no separate delete() call exists that could have committed
+    // independently of the failed upsert.
     expect(upsertCallCount).toBe(1);
+    expect(attemptedRows).toHaveLength(3);
+    expect(deleteCallCount).toBe(0);
   });
 
-  it("test_AS_080_a_clear_only_batch_commits_the_null_minutes_row_in_one_call", async () => {
+  it("test_AS_080_a_clear_only_batch_succeeds_via_a_single_round_trip_call", async () => {
     const { setDisciplineEstimatesBulk } = await import(
       "@/lib/actions/architecture/estimates"
     );
@@ -241,8 +248,9 @@ describe("setDisciplineEstimatesBulk atomicity (AS-080, AS-081)", () => {
 
     expect(result.success).toBe(true);
     expect(upsertCallCount).toBe(1);
-    expect(committedRows).toHaveLength(1);
-    expect(committedRows[0]).toMatchObject({ discipline: "design", minutes: null });
+    expect(deleteCallCount).toBe(0);
+    expect(attemptedRows).toHaveLength(1);
+    expect(attemptedRows[0]).toMatchObject({ discipline: "design", minutes: null });
   });
 
   it("test_AS_081_bulk_write_failure_never_resolves_to_success_true", async () => {
