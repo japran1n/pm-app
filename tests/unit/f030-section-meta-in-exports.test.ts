@@ -134,6 +134,10 @@ describe("F030 AS-105: discipline estimates never appear in either export", () =
     expect(md).not.toContain("user-123");
     expect(md).not.toMatch(/\b180\b/);
     expect(md).not.toMatch(/\b240\b/);
+    expect(md).not.toMatch(/\b30\b/);
+    expect(md).not.toMatch(/\b15\b/);
+    expect(md).not.toMatch(/\b10\b/);
+    expect(md).not.toMatch(/\b45\b/);
   });
 
   it("test_AS_105_json_excludes_estimate_fields_and_values", () => {
@@ -146,6 +150,10 @@ describe("F030 AS-105: discipline estimates never appear in either export", () =
     expect(json).not.toContain("user-123");
     expect(json).not.toMatch(/\b180\b/);
     expect(json).not.toMatch(/\b240\b/);
+    expect(json).not.toMatch(/\b30\b/);
+    expect(json).not.toMatch(/\b15\b/);
+    expect(json).not.toMatch(/\b10\b/);
+    expect(json).not.toMatch(/\b45\b/);
 
     const parsed = JSON.parse(json);
     for (const p of parsed) {
