@@ -217,6 +217,39 @@ export async function cappedBodyReader(
 // Webflow host allowlist predicate — pure, exported for tests (TH-054..057)
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Webflow staging password gate detector — pure, exported for tests (TH-069)
+// ---------------------------------------------------------------------------
+
+/**
+ * Webflow's staging password interstitial replaces the page with a small
+ * form: a `<input type="password">` inside a `<form>`, plus Webflow-specific
+ * markers (`data-wf-*` attributes, the `webflow.io` badge/copy, or the
+ * literal "password" prompt Webflow ships). Any single one of these signals
+ * is common enough to produce false positives on its own (password fields
+ * are everywhere; "webflow.io" appears in normal page HTML too), so this
+ * requires the form+password-field combination *and* at least one
+ * Webflow-specific gate marker before reporting a match.
+ */
+export function isWebflowPasswordGate(html: string): boolean {
+  const formMatches = html.match(/<form\b[^>]*>[\s\S]*?<\/form>/gi) ?? [];
+  const hasPasswordForm = formMatches.some((form) =>
+    /<input\b[^>]*\btype\s*=\s*["']?password["']?/i.test(form),
+  );
+  if (!hasPasswordForm) return false;
+
+  const gateMarkers = [
+    /data-wf-page-id/i,
+    /data-wf-site/i,
+    /w-password-page/i,
+    /this site is password protected/i,
+    /this page is password protected/i,
+    /enter the password to view this page/i,
+  ];
+
+  return gateMarkers.some((marker) => marker.test(html));
+}
+
 export function isWebflowHost(input: string): boolean {
   let parsed: URL;
   try {
