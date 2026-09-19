@@ -54,10 +54,16 @@ let metaByTaskId: Map<string, Row>;
 
 function taskRowFor(taskId: string): Row {
   // Every task (page or section) resolves to the same project/workspace --
-  // only task_id differs, which is exactly the thing under test.
+  // only task_id differs, which is exactly the thing under test. SECTION_A
+  // and SECTION_B are modelled as real siblings under PAGE_TASK_ID via
+  // parent_task_id, so the page->section relationship exists in the fixture
+  // (previously absent, which let page-derived keying bugs go undetected).
+  const parentTaskId =
+    taskId === SECTION_A_TASK_ID || taskId === SECTION_B_TASK_ID ? PAGE_TASK_ID : null;
   return {
     id: taskId,
     project_id: PROJECT_ID,
+    parent_task_id: parentTaskId,
     projects: { workspace_id: "ws-1", workspaces: { slug: "acme" } },
   };
 }
@@ -168,12 +174,18 @@ describe("F026 / AS-092: a page and its section can have independent meta", () =
   });
 });
 
-describe("F026 / AS-093: meta for section A doesn't appear on section B", () => {
-  it("test_AS_093_meta_for_section_a_does_not_appear_on_section_b", async () => {
-    await setNodeMeta(SECTION_A_TASK_ID, {
-      intent: "Only for A",
-      audience: "A's audience",
-    });
+describe("F026 / AS-093: section-to-section meta isolation is real, not clobbered by write order", () => {
+  it("test_AS_093_meta_for_section_a_does_not_appear_on_section_b_order_a_then_b", async () => {
+    // SECTION_A and SECTION_B are siblings under the SAME page (PAGE_TASK_ID)
+    // per taskRowFor's parent_task_id wiring. If setNodeMeta or
+    // getArchitectureNodeDetails ever resolved a section's meta via its
+    // parent page's task_id instead of section.id, both writes below would
+    // collide on PAGE_TASK_ID and B would read back A's values (or vice
+    // versa). Going through getArchitectureNodeDetails -- never
+    // metaByTaskId directly -- means this test exercises the real read
+    // path, not the test's own write mock.
+    await setNodeMeta(SECTION_A_TASK_ID, { intent: "Only for A", audience: "A's audience" });
+    await setNodeMeta(SECTION_B_TASK_ID, { intent: "Only for B", audience: "B's audience" });
 
     const result = await getArchitectureNodeDetails(PROJECT_ID);
     expect(result.ok).toBe(true);
@@ -183,26 +195,67 @@ describe("F026 / AS-093: meta for section A doesn't appear on section B", () => 
     const sectionBDetails = result.data.get(SECTION_B_TASK_ID);
 
     expect(sectionADetails?.meta?.intent).toBe("Only for A");
-    // Section B never had meta written -- it must not inherit or leak A's
-    // meta, and must not even appear in the details map.
-    expect(sectionBDetails).toBeUndefined();
+    expect(sectionADetails?.meta?.audience).toBe("A's audience");
+    expect(sectionBDetails?.meta?.intent).toBe("Only for B");
+    expect(sectionBDetails?.meta?.audience).toBe("B's audience");
+    expect(sectionADetails?.meta?.intent).not.toBe(sectionBDetails?.meta?.intent);
+    // The page itself never had meta written -- if either section's write
+    // had keyed on the shared parent, the page entry would exist.
+    expect(result.data.get(PAGE_TASK_ID)).toBeUndefined();
+  });
+
+  it("test_AS_093_meta_for_section_a_does_not_appear_on_section_b_order_b_then_a", async () => {
+    // Same assertion, reversed write order -- rules out a bug that only
+    // manifests depending on which sibling is written first (e.g. a naive
+    // "first write wins the shared key" implementation).
+    await setNodeMeta(SECTION_B_TASK_ID, { intent: "Only for B", audience: "B's audience" });
+    await setNodeMeta(SECTION_A_TASK_ID, { intent: "Only for A", audience: "A's audience" });
+
+    const result = await getArchitectureNodeDetails(PROJECT_ID);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const sectionADetails = result.data.get(SECTION_A_TASK_ID);
+    const sectionBDetails = result.data.get(SECTION_B_TASK_ID);
+
+    expect(sectionADetails?.meta?.intent).toBe("Only for A");
+    expect(sectionADetails?.meta?.audience).toBe("A's audience");
+    expect(sectionBDetails?.meta?.intent).toBe("Only for B");
+    expect(sectionBDetails?.meta?.audience).toBe("B's audience");
+    expect(sectionADetails?.meta?.intent).not.toBe(sectionBDetails?.meta?.intent);
   });
 });
 
-describe("F026 / AS-094: meta persists across re-fetches for the correct task_id", () => {
-  it("test_AS_094_meta_persists_across_refetches_for_the_correct_task_id", async () => {
-    await setNodeMeta(SECTION_A_TASK_ID, { intent: "Persisted intent", tone: "Direct" });
+describe("F026 / AS-094: page meta and its section's meta are independently retained", () => {
+  it("test_AS_094_page_and_section_meta_each_retain_their_own_intent_through_getArchitectureNodeDetails", async () => {
+    // PAGE_TASK_ID is the real parent of SECTION_A_TASK_ID (via
+    // parent_task_id in taskRowFor). Writing meta to both and reading back
+    // exclusively through getArchitectureNodeDetails would fail if the
+    // page's write ever overwrote the section's row (or vice versa) because
+    // of shared/derived keying.
+    await setNodeMeta(PAGE_TASK_ID, { intent: "Page intent" });
+    await setNodeMeta(SECTION_A_TASK_ID, { intent: "Section intent" });
 
-    const firstFetch = await getArchitectureNodeDetails(PROJECT_ID);
-    const secondFetch = await getArchitectureNodeDetails(PROJECT_ID);
+    const result = await getArchitectureNodeDetails(PROJECT_ID);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
 
-    expect(firstFetch.ok).toBe(true);
-    expect(secondFetch.ok).toBe(true);
-    if (!firstFetch.ok || !secondFetch.ok) return;
+    const pageDetails = result.data.get(PAGE_TASK_ID);
+    const sectionDetails = result.data.get(SECTION_A_TASK_ID);
 
-    expect(firstFetch.data.get(SECTION_A_TASK_ID)?.meta?.intent).toBe("Persisted intent");
-    expect(secondFetch.data.get(SECTION_A_TASK_ID)?.meta?.intent).toBe("Persisted intent");
-    expect(secondFetch.data.get(SECTION_A_TASK_ID)?.meta?.tone).toBe("Direct");
+    expect(pageDetails?.meta?.intent).toBe("Page intent");
+    expect(sectionDetails?.meta?.intent).toBe("Section intent");
+    expect(pageDetails?.meta?.intent).not.toBe(sectionDetails?.meta?.intent);
+
+    // Overwriting the page's meta afterwards must not touch the section's --
+    // and re-fetching must reflect the update for the page only.
+    await setNodeMeta(PAGE_TASK_ID, { intent: "Updated page intent" });
+    const refetched = await getArchitectureNodeDetails(PROJECT_ID);
+    expect(refetched.ok).toBe(true);
+    if (!refetched.ok) return;
+
+    expect(refetched.data.get(PAGE_TASK_ID)?.meta?.intent).toBe("Updated page intent");
+    expect(refetched.data.get(SECTION_A_TASK_ID)?.meta?.intent).toBe("Section intent");
   });
 });
 
