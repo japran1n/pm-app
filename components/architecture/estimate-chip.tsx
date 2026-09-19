@@ -24,11 +24,21 @@ export function EstimateChip({
   taskId,
   taskTitle,
   estimates,
+  loading,
   onDetailsInvalidate,
 }: {
   taskId: string;
   taskTitle: string;
   estimates: DisciplineEstimate[];
+  /**
+   * F084: true while the lazily-fetched details cache (owned by
+   * ArchitectureViewToggle) hasn't resolved yet. `estimates` reads as `[]`
+   * during that window too, so the chip must stay non-interactive instead
+   * of looking like a confirmed "no estimate" state -- opening the popover
+   * and saving in that window would wipe every real estimate/note
+   * (setDisciplineEstimatesBulk treats an empty input as "clear").
+   */
+  loading?: boolean;
   /**
    * Called after a successful save so the owner of the lazily-fetched
    * details cache (ArchitectureViewToggle) can drop it and refetch --
@@ -40,21 +50,23 @@ export function EstimateChip({
   const total = estimates.reduce((sum, e) => sum + e.minutes, 0);
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={loading ? false : open} onOpenChange={loading ? undefined : setOpen}>
       <PopoverTrigger
         render={
           <Button
             type="button"
             variant="ghost"
             size="sm"
+            disabled={loading}
             aria-label={`Estimate for ${taskTitle}`}
+            aria-busy={loading || undefined}
             className={
               total > 0
-                ? "h-6 rounded-md px-1.5 font-mono text-xs tabular-nums text-muted-foreground hover:text-foreground"
-                : "h-6 rounded-md px-1.5 font-mono text-xs tabular-nums text-muted-foreground/50 hover:text-foreground"
+                ? "h-6 rounded-md px-1.5 font-mono text-xs tabular-nums text-muted-foreground hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+                : "h-6 rounded-md px-1.5 font-mono text-xs tabular-nums text-muted-foreground/50 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
             }
           >
-            {total > 0 ? formatMinutes(total) : "+ estimate"}
+            {loading ? "…" : total > 0 ? formatMinutes(total) : "+ estimate"}
           </Button>
         }
       />

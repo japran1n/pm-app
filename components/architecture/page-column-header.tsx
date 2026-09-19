@@ -43,6 +43,7 @@ export function PageColumnHeader({
   showDetails,
   meta,
   estimates,
+  detailsLoading,
   onDetailsInvalidate,
   grip,
 }: {
@@ -50,6 +51,11 @@ export function PageColumnHeader({
   showDetails?: boolean;
   meta?: NodeMeta | null;
   estimates?: DisciplineEstimate[];
+  /** F084: true while `showDetails` is on but the lazily-fetched details
+   *  cache hasn't resolved yet (or was just invalidated). `estimates` is
+   *  `[]` in that window too, so without this flag the chip looks like a
+   *  confirmed "no estimate" state and Save would erase real data. */
+  detailsLoading?: boolean;
   /** Called after an estimate or copy brief is saved, so the owner of the
    *  lazily-fetched details cache can drop it and refetch. */
   onDetailsInvalidate?: () => void;
@@ -181,6 +187,7 @@ export function PageColumnHeader({
                 taskId={page.id}
                 taskTitle={page.title}
                 estimates={estimates ?? []}
+                loading={detailsLoading}
                 onDetailsInvalidate={onDetailsInvalidate}
               />
               <button
