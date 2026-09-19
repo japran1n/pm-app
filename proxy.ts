@@ -27,13 +27,14 @@ export function requiresAuth(pathname: string): boolean {
  * `updateSession`'s `supabaseResponse`) so the policy applies regardless of
  * which branch produced the response.
  */
-function applyCsp(response: NextResponse, nonce: string): NextResponse {
+export function applyCsp(response: NextResponse, nonce: string): NextResponse {
   const csp = [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`,
     `style-src 'self' 'nonce-${nonce}' https://fonts.googleapis.com`,
     "font-src 'self' https://fonts.gstatic.com",
     "img-src 'self' data: blob: https:",
+    "worker-src 'self' blob:",
     "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
     "frame-ancestors 'none'",
     "object-src 'none'",

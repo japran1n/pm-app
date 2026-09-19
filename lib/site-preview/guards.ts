@@ -164,6 +164,81 @@ export function readFramingPolicy(
 }
 
 // ---------------------------------------------------------------------------
+// Capped body reader (TH-062, TH-063, TH-070) — extracted from the HTML proxy
+// route so every caller shares one implementation. Streams `res.body`,
+// counting bytes as they arrive, and throws `BodyTooLargeError` the moment
+// the running total exceeds `maxBytes` — never buffers past the cap.
+// ---------------------------------------------------------------------------
+
+export class BodyTooLargeError extends Error {
+  constructor(maxBytes: number) {
+    super(`Response body exceeded ${maxBytes} bytes`);
+    this.name = "BodyTooLargeError";
+  }
+}
+
+export const DEFAULT_MAX_BODY_BYTES = 2 * 1024 * 1024;
+
+export async function cappedBodyReader(
+  res: Response,
+  maxBytes: number = DEFAULT_MAX_BODY_BYTES,
+): Promise<string> {
+  if (!res.body) {
+    throw new Error("Response has no body");
+  }
+
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!value) continue;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel();
+      throw new BodyTooLargeError(maxBytes);
+    }
+    chunks.push(value);
+  }
+
+  const buffer = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    buffer.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  return new TextDecoder("utf-8").decode(buffer);
+}
+
+// ---------------------------------------------------------------------------
+// Webflow host allowlist predicate — pure, exported for tests (TH-054..057)
+// ---------------------------------------------------------------------------
+
+export function isWebflowHost(input: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(input);
+  } catch {
+    return false;
+  }
+
+  if (parsed.protocol !== "https:") {
+    return false;
+  }
+
+  const labels = parsed.hostname.split(".");
+  if (labels.length < 2) {
+    return false;
+  }
+
+  const lastTwo = labels.slice(-2);
+  return lastTwo[0] === "webflow" && lastTwo[1] === "io";
+}
+
+// ---------------------------------------------------------------------------
 // The guard chain
 // ---------------------------------------------------------------------------
 

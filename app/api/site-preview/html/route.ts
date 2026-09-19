@@ -67,7 +67,9 @@ export const dynamic = "force-dynamic";
 import { NextResponse, type NextRequest } from "next/server";
 import {
   BLOCKED_ADDRESS_ERROR,
+  BodyTooLargeError,
   assertResolvableAndPublic,
+  cappedBodyReader,
   runPreviewGuards,
 } from "@/lib/site-preview/guards";
 import { injectBaseTag, injectNavInterceptor } from "@/lib/site-preview/inject";
@@ -121,38 +123,20 @@ export async function GET(request: NextRequest) {
 
   // SP-063 — streamed 2 MB cap: count bytes as they arrive and cancel the
   // stream the moment the limit is crossed, so we never buffer a huge body.
-  const reader = res.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-
+  // Shared with every other site-preview caller via `cappedBodyReader`.
+  let html: string;
   try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (!value) continue;
-      total += value.byteLength;
-      if (total > MAX_BYTES) {
-        await reader.cancel();
-        return NextResponse.json(
-          { error: "Response too large" },
-          { status: 502 },
-        );
-      }
-      chunks.push(value);
-    }
+    html = await cappedBodyReader(res, MAX_BYTES);
   } catch (err) {
+    if (err instanceof BodyTooLargeError) {
+      return NextResponse.json(
+        { error: "Response too large" },
+        { status: 502 },
+      );
+    }
     logger.warn("site-preview html stream failed", { error: err });
     return NextResponse.json({ error: "Upstream timed out" }, { status: 504 });
   }
-
-  const buffer = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    buffer.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-
-  let html = new TextDecoder("utf-8").decode(buffer);
 
   // Relative URLs must resolve against the staging origin, not the srcdoc base.
   html = injectBaseTag(html, guard.url.origin);
