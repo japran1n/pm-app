@@ -1,11 +1,13 @@
-// F012 (missions/20260919-150607, AS-048, AS-049, AS-050): `WORK_CATEGORIES`
+// F012/F066 (missions/20260919-150607, AS-048, AS-049, AS-050): `WORK_CATEGORIES`
 // must be derived from `workCategorySchema.options` (not hand-written), must
-// contain exactly the five values, and those values must match the
-// `time_entries_work_category_check` CHECK constraint that
-// supabase/migrations/20261010010000_f017_project_budgets_work_category_hours_rpcs.sql
-// defines on `time_entries.work_category` -- read directly from the
-// migration SQL so drift between the app-level enum and the DB constraint
-// fails this test instead of surfacing as a silent runtime rejection.
+// contain exactly the five values, and those values must match -- in the same
+// order -- the `discipline` CHECK constraint that
+// supabase/migrations/20261127011000_architecture_discipline_estimates.sql
+// defines on `task_discipline_estimates.discipline` (the discipline column
+// reuses the work_category vocabulary verbatim per that migration's own
+// comment) -- read directly from the migration SQL so drift between the
+// app-level enum and the DB constraint fails this test instead of surfacing
+// as a silent runtime rejection.
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -14,16 +16,16 @@ import { WORK_CATEGORIES, workCategorySchema } from "@/lib/validation/time-entri
 
 const MIGRATION_PATH = path.join(
   process.cwd(),
-  "supabase/migrations/20261010010000_f017_project_budgets_work_category_hours_rpcs.sql",
+  "supabase/migrations/20261127011000_architecture_discipline_estimates.sql",
 );
 
 function parseCheckValues(sql: string): string[] {
   const match = sql.match(
-    /time_entries_work_category_check\s+check\s*\(\s*work_category\s+in\s*\(([^)]+)\)/i,
+    /discipline\s+text\s+not\s+null\s+check\s*\(\s*discipline\s+in\s*\(([^)]+)\)\s*\)/i,
   );
   if (!match) {
     throw new Error(
-      "Could not find time_entries_work_category_check constraint in migration SQL",
+      "Could not find discipline CHECK constraint in migration SQL",
     );
   }
   return match[1]
@@ -43,12 +45,13 @@ describe("WORK_CATEGORIES (AS-048, AS-049, AS-050)", () => {
     expect(WORK_CATEGORIES).toHaveLength(5);
   });
 
-  it("test_AS_050_WORK_CATEGORIES_matches_time_entries_work_category_check_db_constraint", () => {
+  it("test_AS_050_WORK_CATEGORIES_matches_discipline_db_constraint_in_order", () => {
     const sql = readFileSync(MIGRATION_PATH, "utf8");
     const dbValues = parseCheckValues(sql);
 
-    expect(new Set(WORK_CATEGORIES)).toEqual(new Set(dbValues));
-    expect(dbValues.length).toBe(WORK_CATEGORIES.length);
+    // Ordered equality: this must fail if WORK_CATEGORIES is reordered
+    // relative to the SQL list, not just if the value sets differ.
+    expect([...WORK_CATEGORIES]).toEqual(dbValues);
   });
 
   it("test_AS_050_every_WORK_CATEGORIES_value_parses_via_workCategorySchema", () => {
