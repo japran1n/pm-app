@@ -25,7 +25,6 @@ function makePage(id: string, title: string): BoardPage {
     pageSlug: id,
     pageKind: null,
     position: 0,
-    description: null,
     sections: [],
   };
 }

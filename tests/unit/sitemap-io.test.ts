@@ -32,7 +32,6 @@ function page(overrides: Partial<BoardPage> & { pageSlug: string }): BoardPage {
     pageSlug: overrides.pageSlug,
     pageKind: overrides.pageKind ?? "static",
     position: overrides.position ?? 0,
-    description: null,
     sections: overrides.sections ?? [],
   };
 }

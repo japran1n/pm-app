@@ -27,7 +27,6 @@ function makePage(overrides: Partial<BoardPage>): BoardPage {
     pageSlug: "home",
     pageKind: "static",
     position: 0,
-    description: null,
     sections: [],
     clientVisible: false,
     ...overrides,
@@ -59,30 +58,18 @@ describe("F006 architecture board page column shell", () => {
     expect(screen.getByText("Dashboard")).toBeInTheDocument();
   });
 
-  it("AS-021: a page column shows the page description when one is set", () => {
+  // AS-021 (page description rendering) was retired by mission
+  // 20260919-150607 F035 (AS-119, AS-120): `description_text` is no longer
+  // loaded or rendered on the architecture board at all, so `BoardPage` no
+  // longer carries a `description` field -- see
+  // tests/unit/f035-no-description-text-query.test.ts for the current
+  // coverage (no SELECT re-adds it, no column ever renders it).
+  it("AS-119: a page column never renders a description line, even with matching text elsewhere", () => {
     const pages: BoardPage[] = [
       makePage({
         id: "page-1",
         title: "Dashboard",
         pageSlug: "dashboard",
-        description: "The signed-in landing page",
-      }),
-    ];
-
-    render(<ArchitectureBoard pages={pages} components={[]} projectId={"00000000-0000-4000-8000-000000000001"} />);
-
-    expect(
-      screen.getByText("The signed-in landing page"),
-    ).toBeInTheDocument();
-  });
-
-  it("AS-021: a page column shows no description when none is set", () => {
-    const pages: BoardPage[] = [
-      makePage({
-        id: "page-1",
-        title: "Dashboard",
-        pageSlug: "dashboard",
-        description: null,
       }),
     ];
 
@@ -91,6 +78,6 @@ describe("F006 architecture board page column shell", () => {
     // Only the page name paragraph renders in the header, no second
     // description line.
     expect(screen.getByText("Dashboard")).toBeInTheDocument();
-    expect(screen.queryByText(/./, { selector: "p.text-xs" })).toBeNull();
+    expect(screen.queryByText(/./, { selector: "p.text-xs.text-muted-foreground" })).toBeNull();
   });
 });

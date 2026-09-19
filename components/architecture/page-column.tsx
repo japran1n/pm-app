@@ -94,9 +94,6 @@ export function PageColumn({
             </button>
           }
         />
-        {page.description ? (
-          <p className="text-xs text-muted-foreground">{page.description}</p>
-        ) : null}
         <AddSectionButton pageTaskId={page.id} />
       </div>
       <div className="flex flex-col gap-2 p-3">

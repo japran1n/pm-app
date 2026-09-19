@@ -32,7 +32,6 @@ function makePage(overrides: Partial<BoardPage>): BoardPage {
     pageSlug: "home",
     pageKind: "static",
     position: 0,
-    description: null,
     sections: [],
     clientVisible: false,
     ...overrides,

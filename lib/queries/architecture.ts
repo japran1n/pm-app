@@ -70,8 +70,8 @@ export type ArchitectureBoard = {
   components: BoardComponent[];
 };
 
-// AS-120: description_text intentionally excluded from this column list --
-// it is no longer loaded for the architecture board.
+// AS-120: the task description-text column is intentionally excluded from
+// this column list -- it is no longer loaded for the architecture board.
 const TASK_COLUMNS =
   "id, title, page_slug, page_kind, section_kind, component_id, parent_task_id, position, client_visible";
 

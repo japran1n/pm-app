@@ -42,7 +42,6 @@ function page(id: string, title: string, sectionIds: string[]): BoardPage {
     pageSlug: `/${title.toLowerCase()}`,
     pageKind: "static",
     position: 0,
-    description: null,
     sections: sectionIds.map((sid, i) => ({
       id: sid,
       title: `Section ${i + 1}`,

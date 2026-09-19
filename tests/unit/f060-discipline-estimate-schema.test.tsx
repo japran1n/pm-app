@@ -301,7 +301,6 @@ describe("EstimateSummary read-back for distinct discipline values (AS-060, AS-0
         pageSlug: id,
         pageKind: null,
         position: 0,
-        description: null,
         sections: [],
       };
     }

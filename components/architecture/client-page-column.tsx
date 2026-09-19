@@ -36,9 +36,6 @@ export function ClientPageColumn({ page }: { page: BoardPage }) {
           <p className="min-w-0 flex-1 truncate text-sm font-medium">{page.title}</p>
           <PageKindBadge kind={page.pageKind} />
         </div>
-        {page.description ? (
-          <p className="text-xs text-muted-foreground">{page.description}</p>
-        ) : null}
       </div>
       <div className="flex flex-col gap-2 p-3">
         {page.sections.length === 0 ? (

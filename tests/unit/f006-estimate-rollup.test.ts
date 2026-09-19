@@ -29,7 +29,6 @@ function page(id: string, sectionIds: string[]): BoardPage {
     pageSlug: `/${id}`,
     pageKind: "static",
     position: 0,
-    description: null,
     sections: sectionIds.map((sid, i) => ({
       id: sid,
       title: sid,
