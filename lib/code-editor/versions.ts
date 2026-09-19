@@ -154,6 +154,16 @@ export function restoreVersion(versions: Version[], id: string): string | null {
 }
 
 /**
+ * R4-3/TH-219 — writes the current editor content back into a version's
+ * saved snapshot (e.g. on Cmd+S), so versions actually diverge in content
+ * instead of staying byte-identical to whatever they were forked/duplicated
+ * from. Returns a new array; a missing id is a no-op.
+ */
+export function updateVersionContent(versions: Version[], id: string, content: string): Version[] {
+  return versions.map((v) => (v.id === id ? { ...v, content } : v));
+}
+
+/**
  * Loads the version list for a block, initializing it (a single "Original"
  * entry) on first access. Corrupted persisted entries are discarded rather
  * than surfaced -- this never throws.
@@ -175,6 +185,66 @@ export function saveVersions(hostname: string, blockIndex: number, versions: Ver
     const store = readStore(hostname);
     store[blockKey(hostname, blockIndex)] = versions;
     writeStore(hostname, store);
+  } catch {
+    // Never throw from a persistence side-effect.
+  }
+}
+
+// TH-253 — which version is "active" for a block is persisted separately
+// from the version list itself (`ce-active-version-v1:{hostname}`), keyed
+// the same way (`${hostname}:${blockIndex}`), so a reload restores the
+// version the user actually had selected instead of always defaulting back
+// to "Original". Kept as its own store (rather than folded into the
+// existing `ce-versions-v1:*` entries) so the on-disk shape of
+// `ce-versions-v1:*` — a plain array of versions per block key — never
+// changes; other code and tests already depend on that shape.
+function activeIdStorageKey(hostname: string): string {
+  return `ce-active-version-v1:${hostname}`;
+}
+
+function readActiveIdStore(hostname: string): Record<string, string> {
+  try {
+    if (typeof window === "undefined" || typeof window.localStorage === "undefined") return {};
+    const raw = window.localStorage.getItem(activeIdStorageKey(hostname));
+    if (!raw) return {};
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return {};
+    const store: Record<string, string> = {};
+    for (const [key, id] of Object.entries(parsed as Record<string, unknown>)) {
+      if (typeof id === "string") store[key] = id;
+    }
+    return store;
+  } catch {
+    return {};
+  }
+}
+
+function writeActiveIdStore(hostname: string, store: Record<string, string>): void {
+  try {
+    if (typeof window === "undefined" || typeof window.localStorage === "undefined") return;
+    window.localStorage.setItem(activeIdStorageKey(hostname), JSON.stringify(store));
+  } catch {
+    // Storage unavailable or quota exceeded — silently no-op.
+  }
+}
+
+/** Returns the persisted active version id for a block, or null if none is stored. */
+export function loadActiveVersionId(hostname: string, blockIndex: number): string | null {
+  try {
+    const store = readActiveIdStore(hostname);
+    const id = store[blockKey(hostname, blockIndex)];
+    return typeof id === "string" ? id : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Persists which version id is active for a block. */
+export function saveActiveVersionId(hostname: string, blockIndex: number, id: string): void {
+  try {
+    const store = readActiveIdStore(hostname);
+    store[blockKey(hostname, blockIndex)] = id;
+    writeActiveIdStore(hostname, store);
   } catch {
     // Never throw from a persistence side-effect.
   }
