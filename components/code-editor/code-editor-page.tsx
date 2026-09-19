@@ -141,6 +141,15 @@ export function CodeEditorPage({
           <Button type="submit" variant="primary" disabled={url.trim().length === 0 || isFetching}>
             {isFetching ? "Fetching..." : "Fetch Site"}
           </Button>
+          {activeHostname ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleClearSavedState}
+            >
+              Clear saved state
+            </Button>
+          ) : null}
         </div>
         {error ? (
           <p role="alert" className="text-sm text-destructive">
