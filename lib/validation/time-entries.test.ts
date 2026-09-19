@@ -1,25 +1,35 @@
 // F012 (missions/20260919-150607, AS-048, AS-049, AS-050): `WORK_CATEGORIES`
 // must be derived from `workCategorySchema.options` (not hand-written), must
-// contain exactly the five values, and those values must match — in order
-// and content — the `discipline` CHECK constraint that
-// supabase/migrations/20261127011000_architecture_discipline_estimates.sql
-// defines for `task_discipline_estimates` (the same "work_category
-// vocabulary" the migration's own comment says it reuses verbatim from
-// `time_entries_work_category_check`).
+// contain exactly the five values, and those values must match the
+// `time_entries_work_category_check` CHECK constraint that
+// supabase/migrations/20261010010000_f017_project_budgets_work_category_hours_rpcs.sql
+// defines on `time_entries.work_category` -- read directly from the
+// migration SQL so drift between the app-level enum and the DB constraint
+// fails this test instead of surfacing as a silent runtime rejection.
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 
 import { WORK_CATEGORIES, workCategorySchema } from "@/lib/validation/time-entries";
 
-// The literal list from the CHECK constraint in
-// supabase/migrations/20261127011000_architecture_discipline_estimates.sql:
-//   check (discipline in ('design','development','content_seo','pm','qa'))
-const MIGRATION_20261127011000_CHECK_VALUES = [
-  "design",
-  "development",
-  "content_seo",
-  "pm",
-  "qa",
-] as const;
+const MIGRATION_PATH = path.join(
+  process.cwd(),
+  "supabase/migrations/20261010010000_f017_project_budgets_work_category_hours_rpcs.sql",
+);
+
+function parseCheckValues(sql: string): string[] {
+  const match = sql.match(
+    /time_entries_work_category_check\s+check\s*\(\s*work_category\s+in\s*\(([^)]+)\)/i,
+  );
+  if (!match) {
+    throw new Error(
+      "Could not find time_entries_work_category_check constraint in migration SQL",
+    );
+  }
+  return match[1]
+    .split(",")
+    .map((v) => v.trim().replace(/^'|'$/g, ""));
+}
 
 describe("WORK_CATEGORIES (AS-048, AS-049, AS-050)", () => {
   it("test_AS_048_WORK_CATEGORIES_is_derived_from_workCategorySchema_options_not_a_separate_literal", () => {
@@ -33,10 +43,12 @@ describe("WORK_CATEGORIES (AS-048, AS-049, AS-050)", () => {
     expect(WORK_CATEGORIES).toHaveLength(5);
   });
 
-  it("test_AS_050_WORK_CATEGORIES_matches_migration_20261127011000_check_constraint_order_and_content", () => {
-    expect(Array.from(WORK_CATEGORIES)).toEqual(
-      Array.from(MIGRATION_20261127011000_CHECK_VALUES),
-    );
+  it("test_AS_050_WORK_CATEGORIES_matches_time_entries_work_category_check_db_constraint", () => {
+    const sql = readFileSync(MIGRATION_PATH, "utf8");
+    const dbValues = parseCheckValues(sql);
+
+    expect(new Set(WORK_CATEGORIES)).toEqual(new Set(dbValues));
+    expect(dbValues.length).toBe(WORK_CATEGORIES.length);
   });
 
   it("test_AS_050_every_WORK_CATEGORIES_value_parses_via_workCategorySchema", () => {
