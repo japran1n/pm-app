@@ -4,6 +4,48 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { saveVersion, getVersions, restoreVersion } from "@/lib/code-editor/versions";
 
+// Node 26 + jsdom 30 only expose a global `localStorage` when the process
+// is launched with `--localstorage-file`, which the test runner does not
+// set, so `window.localStorage` comes back `undefined` here. Same gap as
+// tests/unit/th-storage.test.ts — install the same minimal in-memory
+// `Storage` polyfill so these tests exercise the real code paths in
+// lib/code-editor/versions.ts.
+class MemoryStorage implements Storage {
+  private store = new Map<string, string>();
+
+  get length(): number {
+    return this.store.size;
+  }
+
+  clear(): void {
+    this.store.clear();
+  }
+
+  getItem(key: string): string | null {
+    return this.store.has(key) ? (this.store.get(key) as string) : null;
+  }
+
+  key(index: number): string | null {
+    return Array.from(this.store.keys())[index] ?? null;
+  }
+
+  removeItem(key: string): void {
+    this.store.delete(key);
+  }
+
+  setItem(key: string, value: string): void {
+    this.store.set(key, String(value));
+  }
+}
+
+if (typeof window !== "undefined" && !window.localStorage) {
+  Object.defineProperty(window, "localStorage", {
+    value: new MemoryStorage(),
+    writable: true,
+    configurable: true,
+  });
+}
+
 describe("versions.ts", () => {
   beforeEach(() => {
     window.localStorage.clear();

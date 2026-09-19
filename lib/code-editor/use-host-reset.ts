@@ -7,6 +7,7 @@
 // alone here — only the in-memory working set (open blocks, dirty state)
 // resets.
 import { useEffect, useRef } from "react";
+import { clearEditorState } from "@/lib/webflow-editor/storage";
 
 /**
  * Fires `onReset` whenever `hostname` changes from a previously-seen,
@@ -28,6 +29,7 @@ export function useHostReset(hostname: string, onReset: () => void): void {
     }
 
     if (prev !== null && prev !== hostname) {
+      clearEditorState(prev);
       onResetRef.current();
     }
 
