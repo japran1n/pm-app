@@ -62,9 +62,15 @@ const estimateRows = [
 // no-op-ing, so a regression that stops filtering null minutes (or breaks
 // the .not chain entirely) is caught here rather than only surfacing as a
 // TypeError at runtime.
-function buildEstimatesQuery(rows: typeof estimateRows) {
+// AS-121: captured so the test below can assert on the literal columns
+// string passed to .select(...) -- the toEqual mapping assertions alone
+// don't catch a wider select string that re-adds estimated_by/updated_by,
+// because this stub ignores the select argument when producing rows.
+const estimatesSelectSpy = vi.fn((_columns: string) => buildFilterableQuery(estimateRows));
+
+function buildEstimatesQuery(_rows: typeof estimateRows) {
   return {
-    select: vi.fn(() => buildFilterableQuery(rows)),
+    select: estimatesSelectSpy,
   };
 }
 
@@ -199,5 +205,22 @@ describe("getArchitectureNodeDetails — AS-060/AS-061/AS-062 read-back mapping"
       note: "content_seo note",
     });
     expect(details!.estimates.some((e) => e.minutes === null)).toBe(false);
+  });
+
+  // AS-121: estimated_by/updated_by must never be loaded from the DB --
+  // not just excluded from the mapped shape (the toEqual assertions above
+  // only catch a mapping bug, not a wire-level select that still fetches
+  // them). This asserts on the literal columns string passed to
+  // .select(...) so widening it to re-add either column fails here even
+  // though this stub ignores the select argument when producing rows.
+  it("test_AS_121_estimated_by_and_updated_by_are_never_selected_on_the_wire", async () => {
+    await getArchitectureNodeDetails(PROJECT_ID);
+
+    expect(estimatesSelectSpy).toHaveBeenCalled();
+    for (const call of estimatesSelectSpy.mock.calls) {
+      const columns = call[0] as string;
+      expect(columns).not.toEqual(expect.stringContaining("estimated_by"));
+      expect(columns).not.toEqual(expect.stringContaining("updated_by"));
+    }
   });
 });

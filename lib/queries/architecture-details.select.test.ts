@@ -41,6 +41,15 @@ describe("AS-121: discipline_estimates queries never load estimated_by/updated_b
     }
   });
 
+  it("F103: estimated_by/updated_by do not appear anywhere in the source text", () => {
+    // Wider guard than the per-select-call checks above: catches the
+    // column names even if they're re-added outside a simple
+    // .select("...") literal (e.g. a template string, a comment-adjacent
+    // change, or a differently-formatted select call).
+    expect(source).not.toMatch(/estimated_by/);
+    expect(source).not.toMatch(/updated_by/);
+  });
+
   it("the DisciplineEstimate/NodeMeta types no longer declare these fields", () => {
     const typesSource = readFileSync(
       path.join(__dirname, "..", "architecture", "types.ts"),
