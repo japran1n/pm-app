@@ -169,7 +169,7 @@ function parseBarrelExports(source: string): string[] {
   // Remove every recognized re-export block (value and type-only) from the
   // stripped source, leaving behind only whatever the guard did NOT account
   // for.
-  let remainder = commentsOnly
+  const remainder = commentsOnly
     .replace(/export\s+type\s*\{[^}]*\}\s*from\s*["'][^"']+["'];?/g, "")
     .replace(/export\s*\{[^}]*\}\s*from\s*["'][^"']+["'];?/g, "");
 
