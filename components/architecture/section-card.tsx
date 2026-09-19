@@ -40,6 +40,23 @@ import type { BoardComponent, BoardSection } from "@/lib/queries/architecture";
 import { SectionCardMenu } from "@/components/architecture/section-card-menu";
 import { sectionKindAccentClassName } from "@/lib/architecture/section-tint";
 
+// Mission 20260919-150607, F007 (AS-029..AS-032): a small CMS badge on a
+// section card, mirroring PageKindBadge's anatomy (components/architecture/
+// page-kind-badge.tsx) -- pill, uppercase, 9px, tracking-[0.07em], 1px
+// border, 10% tint -- using the same --cms-* tokens as the existing
+// sectionKindAccentClassName tint so the two visually agree. Shown only
+// when section.kind === "cms"; coexists with (does not replace) the tint.
+function CmsSectionBadge() {
+  return (
+    <span
+      data-section-cms-badge=""
+      className="inline-flex w-fit shrink-0 items-center justify-center rounded-full border border-[var(--cms-border)] bg-[var(--cms)]/10 px-[5.5px] py-[3px] text-[9px] font-medium tracking-[0.07em] whitespace-nowrap text-[var(--cms-foreground)] uppercase"
+    >
+      CMS
+    </span>
+  );
+}
+
 export function SectionCard({
   section,
   components = [],
@@ -197,6 +214,7 @@ export function SectionCard({
             </p>
           )}
         </div>
+        {section.kind === "cms" && <CmsSectionBadge />}
         <SectionCardMenu section={section} components={components} />
       </div>
     </div>
