@@ -44,12 +44,17 @@ export function NodeMetaDialog({
   meta,
   open,
   onOpenChange,
+  onSaved,
 }: {
   taskId: string;
   taskTitle: string;
   meta: NodeMeta | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Fired after a successful save, so a caller holding a client-side
+   *  cache of node details can invalidate it (router.refresh() only
+   *  refreshes server components). */
+  onSaved?: () => void;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -88,6 +93,7 @@ export function NodeMetaDialog({
       });
       if (result.success) {
         router.refresh();
+        onSaved?.();
         onOpenChange(false);
       } else {
         toast.error(result.error ?? "Something went wrong. Please try again.");

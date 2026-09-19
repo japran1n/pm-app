@@ -44,19 +44,11 @@ import {
 import { CreatePageDialog } from "@/components/architecture/create-page-dialog";
 import { AddSectionButton } from "@/components/architecture/add-section-button";
 import { PageColumnHeader } from "@/components/architecture/page-column-header";
-import { PageKindSelector } from "@/components/architecture/page-kind-selector";
-import { DeletePageButton } from "@/components/architecture/delete-page-button";
 import { SectionCard } from "@/components/architecture/section-card";
 import { ComponentPanel } from "@/components/architecture/component-panel";
 import { useComponentHover } from "@/lib/architecture/use-component-hover";
 import { SitemapIoDialog } from "@/components/architecture/sitemap-io-dialog";
-import { EstimateChip } from "@/components/architecture/estimate-chip";
-import { computeRollups } from "@/lib/architecture/estimate-rollup";
-import type {
-  ArchitectureNodeDetails,
-  DisciplineEstimate,
-  EstimateRollup,
-} from "@/lib/architecture/types";
+import type { ArchitectureNodeDetails } from "@/lib/architecture/types";
 
 type NodeActions = {
   onAddChild: (parentSlug: string) => void;
@@ -64,6 +56,7 @@ type NodeActions = {
   onCreateAtPath: (path: string) => void;
   onComponentClick: (componentId: string) => void;
   onMeasure: (key: string, height: number) => void;
+  onDetailsInvalidate?: () => void;
 };
 
 type SitemapNodeData = {
@@ -71,7 +64,6 @@ type SitemapNodeData = {
   actions: NodeActions;
   components: BoardComponent[];
   showDetails?: boolean;
-  estimates?: DisciplineEstimate[];
   detailsData?: ArchitectureNodeDetails | null;
 };
 
@@ -146,19 +138,30 @@ function SitemapNode({ data }: NodeProps) {
         <>
           <div
             className={cn(
-              "flex items-center gap-1 border-b px-1.5 py-1",
+              "nodrag nopan border-b p-3",
               accent === "cms" ? "border-cms-border" : "border-border",
             )}
           >
-            <div className="nodrag nopan min-w-0 flex-1">
-              <PageColumnHeader page={page} />
-            </div>
-            <div className="nodrag nopan flex shrink-0 items-center gap-0.5">
-              <PageKindSelector taskId={page.id} kind={page.pageKind} />
-              <DeletePageButton page={page} />
-            </div>
+            {/* Exactly the header the column board renders (page-column.tsx),
+                minus the board-only drag grip -- one component, so the two
+                views cannot drift apart. */}
+            <PageColumnHeader
+              page={page}
+              showDetails={showDetails}
+              meta={
+                showDetails && detailsData
+                  ? (detailsData.get(page.id)?.meta ?? null)
+                  : undefined
+              }
+              estimates={
+                showDetails && detailsData
+                  ? (detailsData.get(page.id)?.estimates ?? [])
+                  : undefined
+              }
+              onDetailsInvalidate={actions.onDetailsInvalidate}
+            />
           </div>
-          <div className="nodrag nopan flex flex-col gap-1 p-1.5">
+          <div className="nodrag nopan flex flex-col gap-2 p-3">
             {page.sections.map((section) => (
               <SectionCard
                 key={section.id}
@@ -219,6 +222,7 @@ function SitemapCanvas({
   projectName,
   showDetails = false,
   detailsData,
+  onDetailsInvalidate,
 }: {
   pages: BoardPage[];
   components: BoardComponent[];
@@ -226,6 +230,7 @@ function SitemapCanvas({
   projectName: string;
   showDetails?: boolean;
   detailsData?: ArchitectureNodeDetails | null;
+  onDetailsInvalidate?: () => void;
 }) {
   const { fitBounds } = useReactFlow();
 
@@ -264,21 +269,14 @@ function SitemapCanvas({
         setPanelOpen(true);
       },
       onMeasure: handleMeasure,
+      onDetailsInvalidate,
     }),
-    [handleMeasure],
+    [handleMeasure, onDetailsInvalidate],
   );
 
   const layout = useMemo(
     () => layoutPageTree(pruneCollapsed(buildPageTree(pages), collapsed), DEFAULT_LAYOUT, heights),
     [pages, collapsed, heights],
-  );
-
-  // Rollups are computed once per pages/detailsData change, not per node --
-  // computeRollups walks every page/section once and returns a stable Map
-  // that every SitemapNode looks up by id.
-  const rollups = useMemo(
-    () => (showDetails && detailsData ? computeRollups(pages, detailsData) : null),
-    [showDetails, detailsData, pages],
   );
 
   const computedNodes = useMemo<Node[]>(
@@ -293,7 +291,6 @@ function SitemapCanvas({
           components,
           showDetails,
           detailsData: detailsData ?? null,
-          rollups,
         } as unknown as Record<string, unknown>,
         // React Flow keeps a node `visibility: hidden` until its box has
         // been measured; seeding the size the layout already computed
@@ -305,7 +302,7 @@ function SitemapCanvas({
         draggable: false,
         connectable: false,
       })),
-    [layout, actions, components, showDetails, detailsData, rollups],
+    [layout, actions, components, showDetails, detailsData],
   );
 
   const connectors = useMemo(() => buildConnectors(layout.nodes), [layout]);
@@ -507,6 +504,7 @@ export function CanvasBoard(props: {
   projectName: string;
   showDetails?: boolean;
   detailsData?: ArchitectureNodeDetails | null;
+  onDetailsInvalidate?: () => void;
 }) {
   return (
     <ReactFlowProvider>

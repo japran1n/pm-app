@@ -217,7 +217,7 @@ export type LayoutOptions = {
 // rename field, the static/CMS selector and the delete button, plus one
 // SectionCard per section and the "Add section" control underneath.
 export const DEFAULT_LAYOUT: LayoutOptions = {
-  nodeWidth: 244,
+  nodeWidth: 256,
   baseHeight: 84,
   sectionHeight: 38,
   horizontalGap: 36,

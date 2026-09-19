@@ -5,7 +5,7 @@
 // where clickable) and expose an accessible name (aria-label,
 // aria-labelledby, or visible text).
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 
@@ -172,15 +172,23 @@ describe("F085 accessible names", () => {
     }
   });
 
-  it("AS-178: delete page button exposes an aria-label naming the page", () => {
+  it("AS-178: delete page button exposes an aria-label naming the page", async () => {
     const pages: BoardPage[] = [
       makePage({ id: "page-1", title: "Pricing", pageSlug: "pricing" }),
     ];
 
     render(<ArchitectureBoard pages={pages} components={[]} projectId={"00000000-0000-4000-8000-000000000001"} />);
 
+    // Destructive and rarely-used page controls now live behind the page
+    // card's overflow menu, so the menu's own trigger is named too and the
+    // delete button is reachable one activation deeper.
+    const menuTrigger = screen.getByRole("button", {
+      name: "More actions for Pricing",
+    });
+    fireEvent.click(menuTrigger);
+
     expect(
-      screen.getByRole("button", { name: "Delete Pricing" })
+      await screen.findByRole("button", { name: "Delete Pricing" })
     ).toBeInTheDocument();
   });
 

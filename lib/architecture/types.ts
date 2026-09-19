@@ -36,11 +36,12 @@ export type ArchitectureNodeDetails = Map<
   }
 >;
 
+// Estimates are page-level only (a page's own per-discipline entries).
+// Sections carry no estimates, so there is nothing to sum and no
+// own-vs-sections precedence to resolve: `source` is simply whether this
+// page has any estimate of its own.
 export type EstimateRollup = {
   byDiscipline: Partial<Record<WorkCategory, number>>;
   total: number;
-  source: "own" | "rolled" | "none";
-  ownTotal: number | null;
-  sectionsTotal: number;
-  conflicts: boolean;
+  source: "own" | "none";
 };

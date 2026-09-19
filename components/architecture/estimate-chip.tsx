@@ -1,11 +1,11 @@
 "use client";
 
 // Mission 20260918-architecture-enrichment, F17 (uses F16's
-// DisciplineEstimatePopover): a small mono chip on a section card that
-// shows the total estimated minutes across disciplines for that section's
+// DisciplineEstimatePopover): a small mono chip on a PAGE card header that
+// shows the total estimated minutes across disciplines for that page's
 // task, and opens the per-discipline breakdown/edit popover on click.
-// Only rendered by SectionCard when `showDetails` is true (F17 scope) --
-// the chip must add zero height/width to the card in the collapsed view.
+// Estimates are page-level only; sections carry none. Only rendered when
+// `showDetails` is on.
 
 import { useState } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -24,10 +24,17 @@ export function EstimateChip({
   taskId,
   taskTitle,
   estimates,
+  onDetailsInvalidate,
 }: {
   taskId: string;
   taskTitle: string;
   estimates: DisciplineEstimate[];
+  /**
+   * Called after a successful save so the owner of the lazily-fetched
+   * details cache (ArchitectureViewToggle) can drop it and refetch --
+   * router.refresh() alone only re-renders server components.
+   */
+  onDetailsInvalidate?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const total = estimates.reduce((sum, e) => sum + e.minutes, 0);
@@ -40,13 +47,14 @@ export function EstimateChip({
             type="button"
             variant="ghost"
             size="sm"
+            aria-label={`Estimate for ${taskTitle}`}
             className={
               total > 0
-                ? "h-5 rounded px-1.5 font-mono text-xs tabular-nums text-muted-foreground hover:text-foreground"
-                : "h-5 rounded px-1.5 font-mono text-xs tabular-nums text-muted-foreground/0 hover:text-muted-foreground group-hover/card:text-muted-foreground/40"
+                ? "h-6 rounded-md px-1.5 font-mono text-xs tabular-nums text-muted-foreground hover:text-foreground"
+                : "h-6 rounded-md px-1.5 font-mono text-xs tabular-nums text-muted-foreground/50 hover:text-foreground"
             }
           >
-            {total > 0 ? formatMinutes(total) : "+"}
+            {total > 0 ? formatMinutes(total) : "+ estimate"}
           </Button>
         }
       />
@@ -55,6 +63,7 @@ export function EstimateChip({
           taskId={taskId}
           taskTitle={taskTitle}
           estimates={estimates}
+          onSaved={onDetailsInvalidate}
           onClose={() => setOpen(false)}
         />
       </PopoverContent>

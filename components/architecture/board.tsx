@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import {
   DndContext,
@@ -23,7 +23,6 @@ import { PageColumn } from "@/components/architecture/page-column";
 import { ComponentPanel } from "@/components/architecture/component-panel";
 import { CreatePageDialog } from "@/components/architecture/create-page-dialog";
 import { useComponentHover } from "@/lib/architecture/use-component-hover";
-import { computeRollups } from "@/lib/architecture/estimate-rollup";
 import {
   reorderSections,
   moveSectionToPage,
@@ -60,20 +59,15 @@ export function ArchitectureBoard({
   projectId,
   showDetails,
   detailsData,
+  onDetailsInvalidate,
 }: {
   pages: BoardPage[];
   components: BoardComponent[];
   projectId: string;
   showDetails?: boolean;
   detailsData?: import('@/lib/architecture/types').ArchitectureNodeDetails | null;
+  onDetailsInvalidate?: () => void;
 }) {
-  // F18: per-page estimate rollups, only computed when the caller has
-  // toggled "show details" on and fetched the detail data -- avoids the
-  // work entirely in the default (no details) view.
-  const rollups = useMemo(
-    () => (showDetails && detailsData ? computeRollups(pages, detailsData) : null),
-    [showDetails, detailsData, pages],
-  );
   // Local, client-side-only mirror of every page's section id order, keyed
   // by page id -- optimistically updated on drop, rolled back to the
   // pre-drop snapshot if the persisting Server Action (reorderSections or
@@ -372,8 +366,8 @@ export function ArchitectureBoard({
                 components={components}
                 onComponentClick={handleComponentClick}
                 showDetails={showDetails}
-                rollup={rollups?.get(page.id)}
                 detailsData={detailsData}
+                onDetailsInvalidate={onDetailsInvalidate}
               />
             ))}
             <div className="shrink-0 w-52">

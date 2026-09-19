@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { LayoutGrid, Loader2, Network, SlidersHorizontal } from "lucide-react";
 import { toast } from "sonner";
@@ -124,16 +124,21 @@ export function ArchitectureViewToggle({
       });
   }, [showDetails, detailsData, projectId]);
 
-  // NOTE (C-6, known limitation): detailsData is only invalidated by
-  // toggling off/on. Write actions deep in the board tree (estimate saved
-  // via DisciplineEstimatePopover, meta saved via NodeMetaDialog) call
-  // router.refresh() for the server-rendered board data, but that doesn't
-  // touch this client-side cache, so rollups can show stale numbers after
-  // a save until the user toggles details off and back on. Fixing this
-  // properly requires threading an onWriteSuccess callback (calling
-  // setDetailsData(null) here) down through ArchitectureBoard/CanvasBoard
-  // to estimate-chip.tsx's DisciplineEstimatePopover and node-meta-dialog.tsx
-  // -- out of scope for this fix; see handoff for the follow-up spec.
+  // Write actions deep in the board tree (an estimate saved via
+  // DisciplineEstimatePopover, a copy brief saved via NodeMetaDialog) call
+  // router.refresh() for the server-rendered board data, which does NOT
+  // touch this client-side cache. They also call `invalidateDetails` below,
+  // threaded down through ArchitectureBoard/CanvasBoard -> PageColumnHeader
+  // -> EstimateChip/NodeMetaDialog, so the summary table reflects the save
+  // immediately instead of waiting for the user to toggle details off/on.
+  //
+  // Dropping the cache while `showDetails` is true deliberately re-triggers
+  // the fetch effect above exactly once: the effect's guard is
+  // `detailsData !== null`, and `fetchIdRef` only advances per fetch, so the
+  // refetch resolves, sets data, and the effect goes quiet again. No loop.
+  const invalidateDetails = useCallback(() => {
+    setDetailsData(null);
+  }, []);
 
   function toggleDetails() {
     const next = !showDetails;
@@ -231,6 +236,7 @@ export function ArchitectureViewToggle({
           projectId={projectId}
           showDetails={showDetails}
           detailsData={detailsData}
+          onDetailsInvalidate={invalidateDetails}
         />
       ) : (
         <CanvasBoard
@@ -240,6 +246,7 @@ export function ArchitectureViewToggle({
           projectName={projectName}
           showDetails={showDetails}
           detailsData={detailsData}
+          onDetailsInvalidate={invalidateDetails}
         />
       )}
     </div>

@@ -2,6 +2,10 @@
 // discipline estimate rollup pure functions (lib/architecture/estimate-rollup.ts).
 // Fixtures build minimal BoardPage/ArchitectureNodeDetails shapes -- no
 // Supabase, no server imports.
+//
+// Estimates are PAGE-LEVEL ONLY: a page's rollup is exactly its own
+// per-discipline entries. Section estimate rows (legacy data still in the
+// database) are never summed and never surface on a page.
 
 import { describe, expect, it } from "vitest";
 import type { BoardPage } from "@/lib/queries/architecture";
@@ -37,22 +41,21 @@ function page(id: string, sectionIds: string[]): BoardPage {
 }
 
 describe("computeRollups", () => {
-  it("test_own_estimate_takes_precedence_over_sections", () => {
+  it("test_page_own_estimates_are_the_rollup", () => {
     const pages = [page(PAGE_A, [SECTION_A1])];
     const details: ArchitectureNodeDetails = new Map([
       [PAGE_A, { estimates: [estimate("design", 120)], meta: null }],
-      [SECTION_A1, { estimates: [estimate("design", 60)], meta: null }],
     ]);
 
     const rollups = computeRollups(pages, details);
     const r = rollups.get(PAGE_A)!;
 
     expect(r.byDiscipline.design).toBe(120);
+    expect(r.total).toBe(120);
     expect(r.source).toBe("own");
-    expect(r.conflicts).toBe(true);
   });
 
-  it("test_rolled_from_sections_when_no_page_own", () => {
+  it("test_section_estimates_are_ignored_entirely", () => {
     const pages = [page(PAGE_A, [SECTION_A1, SECTION_A2])];
     const details: ArchitectureNodeDetails = new Map([
       [SECTION_A1, { estimates: [estimate("development", 30)], meta: null }],
@@ -62,16 +65,30 @@ describe("computeRollups", () => {
     const rollups = computeRollups(pages, details);
     const r = rollups.get(PAGE_A)!;
 
-    expect(r.byDiscipline.development).toBe(120);
-    expect(r.source).toBe("rolled");
-    expect(r.conflicts).toBe(false);
+    expect(r.byDiscipline.development).toBeUndefined();
+    expect(r.total).toBe(0);
+    expect(r.source).toBe("none");
   });
 
-  it("test_per_discipline_precedence", () => {
+  it("test_legacy_section_rows_never_inflate_a_page_own_total", () => {
     const pages = [page(PAGE_A, [SECTION_A1])];
     const details: ArchitectureNodeDetails = new Map([
       [PAGE_A, { estimates: [estimate("design", 120)], meta: null }],
-      [SECTION_A1, { estimates: [estimate("development", 60)], meta: null }],
+      [SECTION_A1, { estimates: [estimate("design", 2820)], meta: null }],
+    ]);
+
+    const rollups = computeRollups(pages, details);
+    const r = rollups.get(PAGE_A)!;
+
+    expect(r.byDiscipline.design).toBe(120);
+    expect(r.total).toBe(120);
+    expect(r.source).toBe("own");
+  });
+
+  it("test_both_disciplines_are_kept_separately", () => {
+    const pages = [page(PAGE_A, [])];
+    const details: ArchitectureNodeDetails = new Map([
+      [PAGE_A, { estimates: [estimate("design", 120), estimate("development", 60)], meta: null }],
     ]);
 
     const rollups = computeRollups(pages, details);
@@ -79,21 +96,22 @@ describe("computeRollups", () => {
 
     expect(r.byDiscipline.design).toBe(120);
     expect(r.byDiscipline.development).toBe(60);
-    expect(r.conflicts).toBe(false);
+    expect(r.total).toBe(180);
   });
 
-  it("test_site_total_no_double_count", () => {
-    const pages = [page(PAGE_A, [SECTION_A1])];
+  it("test_site_total_sums_page_own_numbers_only", () => {
+    const pages = [page(PAGE_A, [SECTION_A1]), page(PAGE_B, [SECTION_B1])];
     const details: ArchitectureNodeDetails = new Map([
       [PAGE_A, { estimates: [estimate("design", 480)], meta: null }],
+      [PAGE_B, { estimates: [estimate("design", 60)], meta: null }],
       [SECTION_A1, { estimates: [estimate("design", 360)], meta: null }],
+      [SECTION_B1, { estimates: [estimate("design", 360)], meta: null }],
     ]);
 
     const rollups = computeRollups(pages, details);
     const totals = computeSiteTotals(rollups);
 
-    expect(totals.design).toBe(480);
-    expect(totals.design).not.toBe(840);
+    expect(totals.design).toBe(540);
   });
 
   it("test_empty_page_no_estimates", () => {
@@ -105,21 +123,6 @@ describe("computeRollups", () => {
 
     expect(r.source).toBe("none");
     expect(r.total).toBe(0);
-    expect(r.conflicts).toBe(false);
-  });
-
-  it("test_conflicts_false_when_same_value", () => {
-    const pages = [page(PAGE_A, [SECTION_A1])];
-    const details: ArchitectureNodeDetails = new Map([
-      [PAGE_A, { estimates: [estimate("design", 120)], meta: null }],
-      [SECTION_A1, { estimates: [estimate("design", 120)], meta: null }],
-    ]);
-
-    const rollups = computeRollups(pages, details);
-    const r = rollups.get(PAGE_A)!;
-
-    expect(r.byDiscipline.design).toBe(120);
-    expect(r.conflicts).toBe(false);
   });
 });
 

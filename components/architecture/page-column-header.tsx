@@ -1,7 +1,18 @@
 "use client";
 
-// Mission 20260910-182104, F014 (AS-006, AS-033, AS-039): the inline
-// rename affordance for a page column's header. A page IS a task
+// Mission 20260910-182104, F014 (AS-006, AS-033, AS-039): the page card
+// header -- the ONE header both the column board (page-column.tsx) and the
+// canvas (canvas-board.tsx) render, so the two views are identical by
+// construction rather than by two call sites staying in sync by hand. The
+// column board's drag grip is board-specific and is passed in through the
+// `grip` slot; everything else (title + inline rename, estimate chip,
+// copy-brief affordance, overflow menu) is shared.
+//
+// The body holds only what a reader scans: the page name, its estimate,
+// and the copy-brief affordance. Destructive and rarely-used controls
+// (page kind, client visibility, delete) live in PageCardMenu.
+//
+// The inline rename affordance: A page IS a task
 // (standing decision 1), so renaming it updates the same `title` column
 // the task list view reads (AS-006 falls out for free -- no separate
 // display name to keep in sync).
@@ -22,33 +33,29 @@ import { FileText } from "lucide-react";
 import { renamePage } from "@/lib/actions/architecture";
 import { Input } from "@/components/ui/input";
 import type { BoardPage } from "@/lib/queries/architecture";
-import type { DisciplineEstimate, EstimateRollup, NodeMeta } from "@/lib/architecture/types";
+import type { DisciplineEstimate, NodeMeta } from "@/lib/architecture/types";
 import { NodeMetaDialog } from "@/components/architecture/node-meta-dialog";
 import { EstimateChip } from "@/components/architecture/estimate-chip";
-
-// Mission 20260918-architecture-enrichment, F18 (AS estimate rollup
-// display): formats a minute count as compact hours/minutes text for the
-// rollup badge below the page title. Matches estimate-chip.tsx's own
-// formatting so the same number reads identically in both places.
-function formatMinutes(m: number): string {
-  if (m < 60) return `${m}m`;
-  const h = Math.floor(m / 60);
-  const rem = m % 60;
-  return rem === 0 ? `${h}h` : `${h}h ${rem}m`;
-}
+import { PageCardMenu } from "@/components/architecture/page-card-menu";
 
 export function PageColumnHeader({
   page,
   showDetails,
-  rollup,
   meta,
   estimates,
+  onDetailsInvalidate,
+  grip,
 }: {
   page: BoardPage;
   showDetails?: boolean;
-  rollup?: EstimateRollup;
   meta?: NodeMeta | null;
   estimates?: DisciplineEstimate[];
+  /** Called after an estimate or copy brief is saved, so the owner of the
+   *  lazily-fetched details cache can drop it and refetch. */
+  onDetailsInvalidate?: () => void;
+  /** Board-only drag handle. The canvas passes nothing, which is the one
+   *  difference between the two views' headers. */
+  grip?: React.ReactNode;
 }) {
   const router = useRouter();
   const [isEditing, setIsEditing] = useState(false);
@@ -108,83 +115,88 @@ export function PageColumnHeader({
     }
   }
 
-  if (isEditing) {
-    return (
-      <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <Input
-          ref={inputRef}
-          autoFocus
-          disabled={isPending}
-          value={value}
-          onChange={(changeEvent) => {
-            setValue(changeEvent.target.value);
-            if (error) setError(null);
-          }}
-          onKeyDown={handleKeyDown}
-          onBlur={save}
-          aria-label="Page name"
-          aria-invalid={error ? true : undefined}
-          aria-describedby={error ? "page-name-rename-error" : undefined}
-          className="h-7 text-sm"
-        />
-        {error && (
-          <p id="page-name-rename-error" role="alert" className="text-xs text-destructive">
-            {error}
-          </p>
-        )}
-      </div>
-    );
-  }
-
   return (
     <>
-    {showDetails && (
-      <NodeMetaDialog
-        taskId={page.id}
-        taskTitle={page.title}
-        meta={meta ?? null}
-        open={metaOpen}
-        onOpenChange={setMetaOpen}
-      />
-    )}
-    <div className="min-w-0 flex-1">
-      <div className="flex items-center gap-1">
-        <p
-          role="button"
-          tabIndex={0}
-          onClick={startEditing}
-          onDoubleClick={startEditing}
-          onKeyDown={(keyEvent) => {
-            if (keyEvent.key === "Enter" || keyEvent.key === " ") {
-              keyEvent.preventDefault();
-              startEditing();
-            }
-          }}
-          className="min-w-0 cursor-text truncate rounded-sm text-sm font-medium hover:bg-muted/50"
-        >
-          {page.title}
-        </p>
-        {showDetails && (
-          <button
-            type="button"
-            aria-label="Edit page brief"
-            onClick={() => setMetaOpen(true)}
-            className="shrink-0 rounded-sm p-0.5 text-muted-foreground/50 hover:text-muted-foreground"
-          >
-            <FileText size={12} aria-hidden="true" />
-          </button>
-        )}
-      </div>
       {showDetails && (
-        <div className="pt-1">
-          <EstimateChip
-            taskId={page.id}
-            taskTitle={page.title}
-            estimates={estimates ?? []}
-          />
-        </div>
+        <NodeMetaDialog
+          taskId={page.id}
+          taskTitle={page.title}
+          meta={meta ?? null}
+          open={metaOpen}
+          onOpenChange={setMetaOpen}
+          onSaved={onDetailsInvalidate}
+        />
       )}
-    </div>
+      <div className="flex items-start gap-1.5">
+        {grip}
+        <div className="min-w-0 flex-1">
+          {isEditing ? (
+            <div className="flex min-w-0 flex-col gap-1">
+              <Input
+                ref={inputRef}
+                autoFocus
+                disabled={isPending}
+                value={value}
+                onChange={(changeEvent) => {
+                  setValue(changeEvent.target.value);
+                  if (error) setError(null);
+                }}
+                onKeyDown={handleKeyDown}
+                onBlur={save}
+                aria-label="Page name"
+                aria-invalid={error ? true : undefined}
+                aria-describedby={error ? "page-name-rename-error" : undefined}
+                className="h-7 text-sm"
+              />
+              {error && (
+                <p
+                  id="page-name-rename-error"
+                  role="alert"
+                  className="text-xs text-destructive"
+                >
+                  {error}
+                </p>
+              )}
+            </div>
+          ) : (
+            <p
+              role="button"
+              tabIndex={0}
+              onClick={startEditing}
+              onDoubleClick={startEditing}
+              onKeyDown={(keyEvent) => {
+                if (keyEvent.key === "Enter" || keyEvent.key === " ") {
+                  keyEvent.preventDefault();
+                  startEditing();
+                }
+              }}
+              className="min-w-0 cursor-text truncate rounded-sm text-sm font-medium hover:bg-muted/50"
+            >
+              {page.title}
+            </p>
+          )}
+          {showDetails && !isEditing && (
+            <div className="flex items-center gap-1 pt-1.5">
+              <EstimateChip
+                taskId={page.id}
+                taskTitle={page.title}
+                estimates={estimates ?? []}
+                onDetailsInvalidate={onDetailsInvalidate}
+              />
+              <button
+                type="button"
+                aria-label={`Edit copy brief for ${page.title}`}
+                title="Copy brief"
+                onClick={() => setMetaOpen(true)}
+                className="shrink-0 rounded-md border border-transparent p-1 text-muted-foreground transition-colors hover:border-border-control-hover hover:text-foreground"
+              >
+                <FileText className="size-3.5" aria-hidden="true" />
+              </button>
+            </div>
+          )}
+        </div>
+        <PageCardMenu page={page} />
+      </div>
     </>
   );
 }

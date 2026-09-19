@@ -5,13 +5,10 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
 import type { BoardComponent, BoardPage, BoardSection } from "@/lib/queries/architecture";
-import { PageKindSelector } from "@/components/architecture/page-kind-selector";
 import { PageColumnHeader } from "@/components/architecture/page-column-header";
 import { SortableSectionList } from "@/components/architecture/sortable-section-list";
-import { DeletePageButton } from "@/components/architecture/delete-page-button";
 import { AddSectionButton } from "@/components/architecture/add-section-button";
-import { PageClientVisibilityToggle } from "@/components/architecture/page-client-visibility-toggle";
-import type { ArchitectureNodeDetails, EstimateRollup } from "@/lib/architecture/types";
+import type { ArchitectureNodeDetails } from "@/lib/architecture/types";
 
 // Mission 20260910-182104, F006 (AS-019, AS-020, AS-021): a single page
 // column on the Architecture board. One column per page (AS-019), showing
@@ -45,8 +42,8 @@ export function PageColumn({
   components,
   onComponentClick,
   showDetails,
-  rollup,
   detailsData,
+  onDetailsInvalidate,
 }: {
   page: BoardPage;
   orderedSectionIds: string[];
@@ -54,8 +51,8 @@ export function PageColumn({
   components: BoardComponent[];
   onComponentClick?: (componentId: string) => void;
   showDetails?: boolean;
-  rollup?: EstimateRollup;
   detailsData?: ArchitectureNodeDetails | null;
+  onDetailsInvalidate?: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: page.id, data: { type: "page" } });
@@ -72,28 +69,25 @@ export function PageColumn({
       style={style}
       className="flex w-64 shrink-0 flex-col rounded-md border bg-card shadow-xs"
     >
-      <div className="sticky top-0 z-10 flex flex-col gap-1 rounded-t-md border-b bg-card p-3">
-        <div className="flex items-center justify-between gap-2">
-          <button
-            type="button"
-            aria-label={`Reorder ${page.title}`}
-            className="cursor-grab touch-none rounded-sm p-1 text-muted-foreground/40 hover:text-muted-foreground active:cursor-grabbing"
-            {...attributes}
-            {...listeners}
-          >
-            <GripVertical className="size-3.5" aria-hidden="true" />
-          </button>
-          <PageColumnHeader
-            page={page}
-            showDetails={showDetails}
-            rollup={rollup}
-            meta={showDetails && detailsData ? (detailsData.get(page.id)?.meta ?? null) : undefined}
-            estimates={showDetails && detailsData ? (detailsData.get(page.id)?.estimates ?? []) : undefined}
-          />
-          <PageKindSelector taskId={page.id} kind={page.pageKind} />
-          <PageClientVisibilityToggle page={page} />
-          <DeletePageButton page={page} />
-        </div>
+      <div className="sticky top-0 z-10 flex flex-col gap-2 rounded-t-md border-b bg-card p-3">
+        <PageColumnHeader
+          page={page}
+          showDetails={showDetails}
+          meta={showDetails && detailsData ? (detailsData.get(page.id)?.meta ?? null) : undefined}
+          estimates={showDetails && detailsData ? (detailsData.get(page.id)?.estimates ?? []) : undefined}
+          onDetailsInvalidate={onDetailsInvalidate}
+          grip={
+            <button
+              type="button"
+              aria-label={`Reorder ${page.title}`}
+              className="mt-0.5 shrink-0 cursor-grab touch-none rounded-md p-1 text-muted-foreground/40 hover:text-muted-foreground active:cursor-grabbing"
+              {...attributes}
+              {...listeners}
+            >
+              <GripVertical className="size-3.5" aria-hidden="true" />
+            </button>
+          }
+        />
         {page.description ? (
           <p className="text-xs text-muted-foreground">{page.description}</p>
         ) : null}

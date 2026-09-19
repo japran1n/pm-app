@@ -37,7 +37,7 @@ export function EstimateSummary({
     return (
       <div className="rounded-md border border-border bg-muted/30 px-4 py-3">
         <p className="text-xs text-muted-foreground">
-          No estimates yet. Click on a section or page to add time estimates.
+          No estimates yet. Click a page&rsquo;s estimate chip to add time estimates.
         </p>
       </div>
     );
@@ -72,8 +72,7 @@ export function EstimateSummary({
                   {DISCIPLINE_LABELS[d]}
                 </th>
               ))}
-              <th className="pb-1.5 pr-3 text-xs font-medium text-muted-foreground">Total</th>
-              <th className="pb-1.5 text-xs font-medium text-muted-foreground">Source</th>
+              <th className="pb-1.5 text-xs font-medium text-muted-foreground">Total</th>
             </tr>
           </thead>
           <tbody>
@@ -87,19 +86,8 @@ export function EstimateSummary({
                       {rollup.byDiscipline[d] ? formatMinutes(rollup.byDiscipline[d]!) : "—"}
                     </td>
                   ))}
-                  <td className="py-1.5 pr-3 font-mono text-xs font-medium tabular-nums">
+                  <td className="py-1.5 font-mono text-xs font-medium tabular-nums">
                     {formatMinutes(rollup.total)}
-                  </td>
-                  <td className="py-1.5 text-xs text-muted-foreground">
-                    {rollup.source === "rolled" ? "Σ sections" : "own"}
-                    {rollup.conflicts && (
-                      <span
-                        className="ml-1 text-destructive"
-                        title={`Sections total: ${formatMinutes(rollup.sectionsTotal)}`}
-                      >
-                        !
-                      </span>
-                    )}
                   </td>
                 </tr>
               );

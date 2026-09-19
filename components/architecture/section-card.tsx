@@ -31,23 +31,13 @@
 //   depth).
 import { useState, useTransition } from "react";
 import { cn } from "@/lib/utils";
-import { useParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
-import { Boxes, Link2 } from "lucide-react";
-
-import {
-  renameSection,
-  createComponentFromSection,
-  unlinkComponentFromSection,
-} from "@/lib/actions/architecture";
-import { Button } from "@/components/ui/button";
+import { renameSection } from "@/lib/actions/architecture";
 import { Input } from "@/components/ui/input";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ComponentPicker } from "@/components/architecture/component-picker";
 import type { BoardComponent, BoardSection } from "@/lib/queries/architecture";
-import { DeleteSectionButton } from "@/components/architecture/delete-section-button";
-import { SectionClientVisibilityToggle } from "@/components/architecture/section-client-visibility-toggle";
+import { SectionCardMenu } from "@/components/architecture/section-card-menu";
 import { sectionKindAccentClassName } from "@/lib/architecture/section-tint";
 
 export function SectionCard({
@@ -60,50 +50,10 @@ export function SectionCard({
   onComponentClick?: (componentId: string) => void;
 }) {
   const router = useRouter();
-  // Same convention as AddSectionButton (F013): the board route is scoped
-  // to a single project, so the project id is read from the route params
-  // rather than threaded as a prop through ArchitectureBoard -> PageColumn
-  // -> SortableSectionList -> SortableSectionCard -- avoids widening every
-  // intermediate component's public contract just for this one action's
-  // second argument.
-  const params = useParams<{ projectId: string }>();
-  const projectId = params.projectId;
   const [isEditing, setIsEditing] = useState(false);
   const [value, setValue] = useState(section.title);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
-  const [isCreatingComponent, startCreatingComponent] = useTransition();
-  const [isPickerOpen, setIsPickerOpen] = useState(false);
-  const [isUnlinking, startUnlinking] = useTransition();
-
-  // Mission 20260910-182104, F029 (AS-058, AS-059): unlink this one
-  // section instance from its component. `unlinkComponentFromSection`
-  // only touches this section's row, so other instances of the same
-  // component are unaffected, and the section's own name (`title`) is
-  // never part of that update -- it survives unlinking untouched.
-  function handleUnlink() {
-    startUnlinking(async () => {
-      const result = await unlinkComponentFromSection(section.id);
-
-      if (result.success) {
-        router.refresh();
-      } else {
-        toast.error(result.error ?? "Something went wrong. Please try again.");
-      }
-    });
-  }
-
-  function handleCreateComponent() {
-    startCreatingComponent(async () => {
-      const result = await createComponentFromSection(section.id, projectId);
-
-      if (result.success) {
-        router.refresh();
-      } else {
-        toast.error(result.error ?? "Something went wrong. Please try again.");
-      }
-    });
-  }
 
   function startEditing() {
     setValue(section.title);
@@ -166,145 +116,89 @@ export function SectionCard({
       // "where does this content come from" is the more load-bearing fact
       // when reading a sitemap than "which component renders it".
       className={cn(
-        "group/card relative w-full rounded-md border bg-card p-3 shadow-xs transition-colors",
+        "group relative w-full rounded-md border bg-card p-3 shadow-xs transition-colors",
         sectionKindAccentClassName(section),
       )}
     >
-      <div className="absolute right-1 top-1 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-        {section.component === null ? (
-          <>
-            <Popover open={isPickerOpen} onOpenChange={setIsPickerOpen}>
-              <PopoverTrigger
-                render={
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    aria-label="Link component"
-                    title="Link component"
-                    className="shrink-0"
-                  >
-                    <Link2 className="size-4" aria-hidden="true" />
-                  </Button>
-                }
+      <div className="flex items-start gap-1.5">
+        <div className="min-w-0 flex-1">
+          {isEditing ? (
+            <div className="flex min-w-0 flex-col gap-1">
+              <Input
+                autoFocus
+                disabled={isPending}
+                value={value}
+                onChange={(changeEvent) => {
+                  setValue(changeEvent.target.value);
+                  if (error) setError(null);
+                }}
+                onKeyDown={handleKeyDown}
+                onBlur={save}
+                aria-label="Section name"
+                aria-invalid={error ? true : undefined}
+                aria-describedby={error ? "section-name-rename-error" : undefined}
+                className="h-7 text-sm"
               />
-              <PopoverContent align="end" className="w-64 p-0">
-                <ComponentPicker
-                  projectId={projectId}
-                  sectionId={section.id}
-                  currentComponentId={null}
-                  components={components}
-                  onClose={() => setIsPickerOpen(false)}
-                />
-              </PopoverContent>
-            </Popover>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              aria-label="Create component"
-              title="Create component"
-              className="shrink-0"
-              disabled={isCreatingComponent}
-              onClick={handleCreateComponent}
-            >
-              <Boxes className="size-4" aria-hidden="true" />
-            </Button>
-          </>
-        ) : (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            aria-label="Unlink component"
-            title="Unlink component"
-            className="shrink-0 text-xs text-muted-foreground"
-            disabled={isUnlinking}
-            onClick={handleUnlink}
-          >
-            Unlink
-          </Button>
-        )}
-        <SectionClientVisibilityToggle section={section} />
-        <DeleteSectionButton
-          sectionId={section.id}
-          sectionTitle={section.title}
-        />
-      </div>
-      {isEditing ? (
-        <div className="flex min-w-0 flex-col gap-1">
-          <Input
-            autoFocus
-            disabled={isPending}
-            value={value}
-            onChange={(changeEvent) => {
-              setValue(changeEvent.target.value);
-              if (error) setError(null);
-            }}
-            onKeyDown={handleKeyDown}
-            onBlur={save}
-            aria-label="Section name"
-            aria-invalid={error ? true : undefined}
-            aria-describedby={error ? "section-name-rename-error" : undefined}
-            className="h-7 text-sm"
-          />
-          {error && (
+              {error && (
+                <p
+                  id="section-name-rename-error"
+                  role="alert"
+                  className="text-xs text-destructive"
+                >
+                  {error}
+                </p>
+              )}
+            </div>
+          ) : section.component ? (
+            // F027 (AS-054, AS-055, AS-056): when a component is linked, its
+            // name is the primary label -- the section's own title becomes a
+            // secondary "local title" shown underneath in muted text. The
+            // local title stays the click-to-edit target so renaming the
+            // section (not the component) keeps working exactly as before.
+            <>
+              {/* F035 (AS-084): clicking the linked component's name opens
+                  that component's detail in the components panel. */}
+              <button
+                type="button"
+                onClick={() => onComponentClick?.(section.component!.id)}
+                className="block w-full truncate rounded-sm text-left text-sm font-medium hover:bg-muted/50"
+              >
+                {section.component.name}
+              </button>
+              <p
+                role="button"
+                tabIndex={0}
+                onClick={startEditing}
+                onKeyDown={(keyEvent) => {
+                  if (keyEvent.key === "Enter" || keyEvent.key === " ") {
+                    keyEvent.preventDefault();
+                    startEditing();
+                  }
+                }}
+                className="truncate rounded-sm text-xs text-muted-foreground hover:bg-muted/50"
+              >
+                {section.title}
+              </p>
+            </>
+          ) : (
             <p
-              id="section-name-rename-error"
-              role="alert"
-              className="text-xs text-destructive"
+              role="button"
+              tabIndex={0}
+              onClick={startEditing}
+              onKeyDown={(keyEvent) => {
+                if (keyEvent.key === "Enter" || keyEvent.key === " ") {
+                  keyEvent.preventDefault();
+                  startEditing();
+                }
+              }}
+              className="truncate rounded-sm text-sm font-medium hover:bg-muted/50"
             >
-              {error}
+              {section.title}
             </p>
           )}
         </div>
-      ) : section.component ? (
-        // F027 (AS-054, AS-055, AS-056): when a component is linked, its
-        // name is the primary label -- the section's own title becomes a
-        // secondary "local title" shown underneath in muted text. The
-        // local title stays the click-to-edit target so renaming the
-        // section (not the component) keeps working exactly as before.
-        <div className="min-w-0 pr-6">
-          {/* F035 (AS-084): clicking the linked component's name opens
-              that component's detail in the components panel. */}
-          <button
-            type="button"
-            onClick={() => onComponentClick?.(section.component!.id)}
-            className="block w-full truncate rounded-sm text-left text-sm font-medium hover:bg-muted/50"
-          >
-            {section.component.name}
-          </button>
-          <p
-            role="button"
-            tabIndex={0}
-            onClick={startEditing}
-            onKeyDown={(keyEvent) => {
-              if (keyEvent.key === "Enter" || keyEvent.key === " ") {
-                keyEvent.preventDefault();
-                startEditing();
-              }
-            }}
-            className="truncate rounded-sm text-xs text-muted-foreground hover:bg-muted/50"
-          >
-            {section.title}
-          </p>
-        </div>
-      ) : (
-        <p
-          role="button"
-          tabIndex={0}
-          onClick={startEditing}
-          onKeyDown={(keyEvent) => {
-            if (keyEvent.key === "Enter" || keyEvent.key === " ") {
-              keyEvent.preventDefault();
-              startEditing();
-            }
-          }}
-          className="truncate rounded-sm pr-6 text-sm font-medium hover:bg-muted/50"
-        >
-          {section.title}
-        </p>
-      )}
+        <SectionCardMenu section={section} components={components} />
+      </div>
     </div>
   );
 }

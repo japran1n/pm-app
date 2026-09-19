@@ -28,11 +28,16 @@ export function DisciplineEstimatePopover({
   taskId,
   taskTitle,
   estimates,
+  onSaved,
   onClose,
 }: {
   taskId: string;
   taskTitle: string;
   estimates: DisciplineEstimate[];
+  /** Fired after a successful save, so a caller holding a client-side
+   *  cache of node details can invalidate it (router.refresh() only
+   *  refreshes server components). */
+  onSaved?: () => void;
   onClose?: () => void;
 }) {
   const router = useRouter();
@@ -77,15 +82,22 @@ export function DisciplineEstimatePopover({
     startTransition(async () => {
       for (const d of WORK_CATEGORIES) {
         const input = inputs[d]?.trim() ?? "";
-        if (!input) {
-          if (estimateByDiscipline.has(d)) {
-            await clearDisciplineEstimate(taskId, d);
-          }
-        } else {
-          await setDisciplineEstimate(taskId, d, input);
+        const result = !input
+          ? estimateByDiscipline.has(d)
+            ? await clearDisciplineEstimate(taskId, d)
+            : null
+          : await setDisciplineEstimate(taskId, d, input);
+
+        // Abort on the first failure rather than pressing on: the
+        // remaining writes would likely fail the same way, and closing the
+        // popover would hide which value never landed.
+        if (result && !result.success) {
+          toast.error(result.error ?? "Something went wrong. Please try again.");
+          return;
         }
       }
       router.refresh();
+      onSaved?.();
       onClose?.();
     });
   }

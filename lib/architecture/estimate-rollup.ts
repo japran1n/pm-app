@@ -1,10 +1,12 @@
 // Mission 20260918-architecture-enrichment, F06: pure rollup functions for
-// discipline-level time estimates on the architecture board. A page's
-// "own" estimate (entered directly on the page node) always wins over the
-// sum of its sections' estimates for the same discipline -- section sums
-// are a fallback used only when the page has no own estimate for that
-// discipline. Site totals sum only the *effective* (post-precedence)
-// per-page numbers, never both own and rolled, to avoid double counting.
+// discipline-level time estimates on the architecture board.
+//
+// Estimates are PAGE-LEVEL ONLY. Sections no longer carry estimates, so a
+// page's rollup is exactly its own per-discipline entries -- there is no
+// summing across `page.sections` and no own-vs-sections precedence. (The
+// old section sum also surfaced stale legacy section rows still sitting in
+// the database as phantom "Σ sections" totals on pages nobody had
+// estimated.) Site totals are the plain sum of those per-page numbers.
 //
 // No server/React imports -- keep this pure so it's usable from both
 // server queries and client components without pulling in Supabase.
@@ -23,41 +25,20 @@ export function computeRollups(
     const pageNode = details.get(page.id);
     const pageEstimates = pageNode?.estimates ?? [];
 
-    const own: Partial<Record<WorkCategory, number>> = {};
-    for (const e of pageEstimates) {
-      own[e.discipline] = e.minutes;
-    }
-
-    const sectionsByDiscipline: Partial<Record<WorkCategory, number>> = {};
-    for (const section of page.sections) {
-      const sectionNode = details.get(section.id);
-      for (const e of sectionNode?.estimates ?? []) {
-        sectionsByDiscipline[e.discipline] = (sectionsByDiscipline[e.discipline] ?? 0) + e.minutes;
-      }
-    }
-
     const byDiscipline: Partial<Record<WorkCategory, number>> = {};
-    let conflicts = false;
-    for (const d of WORK_CATEGORIES) {
-      const o = own[d];
-      const s = sectionsByDiscipline[d];
-      if (o !== undefined) {
-        byDiscipline[d] = o;
-        if (s !== undefined && s !== o) conflicts = true;
-      } else if (s !== undefined) {
-        byDiscipline[d] = s;
+    for (const e of pageEstimates) {
+      // Only the disciplines the app still knows about -- a legacy row for
+      // a retired discipline must not leak into a total nothing can edit.
+      if (WORK_CATEGORIES.includes(e.discipline)) {
+        byDiscipline[e.discipline] = e.minutes;
       }
     }
 
     const total = Object.values(byDiscipline).reduce((sum, m) => sum + (m ?? 0), 0);
-    const ownTotal =
-      Object.keys(own).length > 0
-        ? Object.values(own).reduce((sum, m) => sum + (m ?? 0), 0)
-        : null;
-    const sectionsTotal = Object.values(sectionsByDiscipline).reduce((sum, m) => sum + (m ?? 0), 0);
-    const source: EstimateRollup["source"] = ownTotal !== null ? "own" : total > 0 ? "rolled" : "none";
+    const source: EstimateRollup["source"] =
+      Object.keys(byDiscipline).length > 0 ? "own" : "none";
 
-    result.set(page.id, { byDiscipline, total, source, ownTotal, sectionsTotal, conflicts });
+    result.set(page.id, { byDiscipline, total, source });
   }
 
   return result;
