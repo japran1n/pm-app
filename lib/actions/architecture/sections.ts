@@ -831,10 +831,10 @@ export async function setSectionClientVisibility(
 // requireActiveMembership below is the enforcement point for that case,
 // same as every other task-scoped action in this file.
 //
-// AS-021 (idempotent): re-applying the same kind is just another UPDATE
-// with an unchanged value -- Postgres has no "no-op" special case, so
-// this returns `{ success: true }` exactly like a real change, with no
-// extra branch needed.
+// AS-021 (idempotent): re-applying the same kind short-circuits before the
+// UPDATE and the audit write (see the `taskRow.section_kind ===
+// parsed.data.kind` check below) -- a no-op call returns `{ success: true }`
+// without touching the DB or writing a duplicate audit entry (AS-020).
 export async function changeSectionKind(
   taskId: string,
   kind: string,
@@ -902,6 +902,15 @@ export async function changeSectionKind(
       success: false,
       error: "Viewers don't have permission to change a section's kind.",
     };
+  }
+
+  // AS-020 (scrutiny remediation): a no-op call (kind already matches) is
+  // short-circuited before the UPDATE and audit write below -- otherwise a
+  // repeated call with the same kind fires an unnecessary UPDATE and, worse,
+  // a duplicate audit entry that misrepresents the section's kind as having
+  // just changed when it did not.
+  if (taskRow.section_kind === parsed.data.kind) {
+    return { success: true };
   }
 
   const { error: updateError } = await admin

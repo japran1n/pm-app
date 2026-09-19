@@ -83,9 +83,18 @@ vi.mock("@/lib/supabase/server", () => ({
   }),
 }));
 
+const requireActiveMembershipMock = vi.fn(
+  async (_admin: unknown, workspaceId: string, _userId: string) =>
+    membershipOk && workspaceId === WORKSPACE_ID
+      ? { ok: true, role: membershipRole }
+      : { ok: false },
+);
+
 vi.mock("@/lib/auth/require-membership", () => ({
-  requireActiveMembership: async () =>
-    membershipOk ? { ok: true, role: membershipRole } : { ok: false },
+  requireActiveMembership: (...args: unknown[]) =>
+    requireActiveMembershipMock(
+      ...(args as [unknown, string, string]),
+    ),
 }));
 
 vi.mock("@/lib/auth/permissions", () => ({
@@ -203,24 +212,26 @@ describe("F003 changeSectionKind", () => {
     expect(updateCallCount).toBe(0);
   });
 
-  it("AS-018: a task from a different project/workspace than the caller's is rejected", async () => {
-    // Caller is only an active member of WORKSPACE_ID (mock default);
-    // the target task belongs to OTHER_WORKSPACE_ID.
-    const { requireActiveMembership } = await import("@/lib/auth/require-membership");
-    vi.mocked(requireActiveMembership as unknown as (...a: unknown[]) => Promise<unknown>);
-
-    // Simulate: membership check fails specifically for the other workspace.
-    membershipOk = false;
-
+  it("AS-019: a task from a different project/workspace than the caller's is rejected", async () => {
+    // The mock grants membership only for WORKSPACE_ID (the caller's
+    // workspace). OTHER_PROJECT_TASK_ID belongs to OTHER_WORKSPACE_ID, a
+    // workspace the caller is NOT a member of. membershipOk stays true —
+    // this proves the rejection comes from workspace scoping, not from a
+    // globally-flipped "membership is broken" flag.
     const { changeSectionKind } = await import("@/lib/actions/architecture");
     const result = await changeSectionKind(OTHER_PROJECT_TASK_ID, "cms");
 
+    expect(requireActiveMembershipMock).toHaveBeenCalledWith(
+      expect.anything(),
+      OTHER_WORKSPACE_ID,
+      USER_ID,
+    );
     expect(result.success).toBe(false);
     expect(updateCallCount).toBe(0);
     expect(tasks[OTHER_PROJECT_TASK_ID].section_kind).toBe("static");
   });
 
-  it("AS-019: a valid call updates section_kind in the DB", async () => {
+  it("AS-016: a valid call updates section_kind in the DB", async () => {
     const { changeSectionKind } = await import("@/lib/actions/architecture");
 
     const result = await changeSectionKind(SECTION_ID, "cms");
@@ -251,6 +262,22 @@ describe("F003 changeSectionKind", () => {
     const second = await changeSectionKind(SECTION_ID, "cms");
     expect(second.success).toBe(true);
     expect(tasks[SECTION_ID].section_kind).toBe("cms");
+  });
+
+  it("AS-020: an idempotent (no-op) call produces no UPDATE and no audit entry", async () => {
+    const { changeSectionKind } = await import("@/lib/actions/architecture");
+
+    const first = await changeSectionKind(SECTION_ID, "cms");
+    expect(first.success).toBe(true);
+    expect(updateCallCount).toBe(1);
+    expect(auditCalls).toHaveLength(1);
+
+    const second = await changeSectionKind(SECTION_ID, "cms");
+    expect(second.success).toBe(true);
+    // No new UPDATE and no new audit entry should be produced for the
+    // no-op second call.
+    expect(updateCallCount).toBe(1);
+    expect(auditCalls).toHaveLength(1);
   });
 
   it("rejects invalid kind values before touching the DB (Zod validation)", async () => {
