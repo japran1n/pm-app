@@ -83,7 +83,12 @@ export function PageColumn({
           >
             <GripVertical className="size-3.5" aria-hidden="true" />
           </button>
-          <PageColumnHeader page={page} showDetails={showDetails} rollup={rollup} />
+          <PageColumnHeader
+            page={page}
+            showDetails={showDetails}
+            rollup={rollup}
+            meta={showDetails && detailsData ? (detailsData.get(page.id)?.meta ?? null) : undefined}
+          />
           <PageKindSelector taskId={page.id} kind={page.pageKind} />
           <PageClientVisibilityToggle page={page} />
           <DeletePageButton page={page} />

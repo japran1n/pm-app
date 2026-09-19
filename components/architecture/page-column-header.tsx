@@ -17,11 +17,13 @@
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { FileText } from "lucide-react";
 
 import { renamePage } from "@/lib/actions/architecture";
 import { Input } from "@/components/ui/input";
 import type { BoardPage } from "@/lib/queries/architecture";
-import type { EstimateRollup } from "@/lib/architecture/types";
+import type { EstimateRollup, NodeMeta } from "@/lib/architecture/types";
+import { NodeMetaDialog } from "@/components/architecture/node-meta-dialog";
 
 // Mission 20260918-architecture-enrichment, F18 (AS estimate rollup
 // display): formats a minute count as compact hours/minutes text for the
@@ -38,13 +40,16 @@ export function PageColumnHeader({
   page,
   showDetails,
   rollup,
+  meta,
 }: {
   page: BoardPage;
   showDetails?: boolean;
   rollup?: EstimateRollup;
+  meta?: NodeMeta | null;
 }) {
   const router = useRouter();
   const [isEditing, setIsEditing] = useState(false);
+  const [metaOpen, setMetaOpen] = useState(false);
   const [value, setValue] = useState(page.title);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -129,22 +134,44 @@ export function PageColumnHeader({
   }
 
   return (
+    <>
+    {showDetails && (
+      <NodeMetaDialog
+        taskId={page.id}
+        taskTitle={page.title}
+        meta={meta ?? null}
+        open={metaOpen}
+        onOpenChange={setMetaOpen}
+      />
+    )}
     <div className="min-w-0 flex-1">
-      <p
-        role="button"
-        tabIndex={0}
-        onClick={startEditing}
-        onDoubleClick={startEditing}
-        onKeyDown={(keyEvent) => {
-          if (keyEvent.key === "Enter" || keyEvent.key === " ") {
-            keyEvent.preventDefault();
-            startEditing();
-          }
-        }}
-        className="cursor-text truncate rounded-sm text-sm font-medium hover:bg-muted/50"
-      >
-        {page.title}
-      </p>
+      <div className="flex items-center gap-1">
+        <p
+          role="button"
+          tabIndex={0}
+          onClick={startEditing}
+          onDoubleClick={startEditing}
+          onKeyDown={(keyEvent) => {
+            if (keyEvent.key === "Enter" || keyEvent.key === " ") {
+              keyEvent.preventDefault();
+              startEditing();
+            }
+          }}
+          className="min-w-0 cursor-text truncate rounded-sm text-sm font-medium hover:bg-muted/50"
+        >
+          {page.title}
+        </p>
+        {showDetails && (
+          <button
+            type="button"
+            aria-label="Edit page brief"
+            onClick={() => setMetaOpen(true)}
+            className="shrink-0 rounded-sm p-0.5 text-muted-foreground/50 hover:text-muted-foreground"
+          >
+            <FileText size={12} aria-hidden="true" />
+          </button>
+        )}
+      </div>
       {showDetails && rollup && rollup.source !== "none" && (
         <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
           <span className="font-mono text-xs tabular-nums text-muted-foreground">
@@ -167,5 +194,6 @@ export function PageColumnHeader({
         </div>
       )}
     </div>
+    </>
   );
 }
