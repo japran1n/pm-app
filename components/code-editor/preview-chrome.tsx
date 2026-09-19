@@ -91,13 +91,19 @@ export const PreviewChrome = forwardRef<PreviewPaneHandle, PreviewChromeProps>(
           </div>
         )}
 
-        <div className="min-h-0 flex-1 overflow-auto">
-          <div
-            className="mx-auto h-full transition-[width] duration-200"
-            style={{ width: width ?? "100%" }}
-          >
-            <PreviewPane {...previewProps} ref={ref} />
-          </div>
+        <div className="flex min-h-0 flex-1 overflow-auto">
+          {width ? (
+            <div
+              className="mx-auto h-full transition-[width] duration-200"
+              style={{ width }}
+            >
+              <PreviewPane {...previewProps} ref={ref} />
+            </div>
+          ) : (
+            <div className="h-full w-full flex-1">
+              <PreviewPane {...previewProps} ref={ref} />
+            </div>
+          )}
         </div>
       </div>
     );

@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -52,34 +53,36 @@ export function VersionMenu({ versions, onRestore }: VersionMenuProps) {
         }
       />
       <DropdownMenuContent align="end">
-        <DropdownMenuLabel>Version history</DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        {versions.length === 0 ? (
-          <div className="px-2 py-1.5 text-sm text-muted-foreground">
-            No saved versions yet
-          </div>
-        ) : (
-          [...versions].reverse().map((version) => {
-            const originalIndex = versions.indexOf(version);
-            return (
-              <DropdownMenuItem
-                key={`${version.timestamp}-${originalIndex}`}
-                onClick={() => onRestore(version.content)}
-              >
-                <span className="flex flex-col">
-                  <span className="font-mono text-sm">
-                    {formatTimestamp(version.timestamp)}
-                  </span>
-                  {version.label ? (
-                    <span className="text-xs text-muted-foreground">
-                      {version.label}
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>Version history</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          {versions.length === 0 ? (
+            <div className="px-2 py-1.5 text-sm text-muted-foreground">
+              No saved versions yet
+            </div>
+          ) : (
+            [...versions].reverse().map((version) => {
+              const originalIndex = versions.indexOf(version);
+              return (
+                <DropdownMenuItem
+                  key={`${version.timestamp}-${originalIndex}`}
+                  onClick={() => onRestore(version.content)}
+                >
+                  <span className="flex flex-col">
+                    <span className="font-mono text-sm">
+                      {formatTimestamp(version.timestamp)}
                     </span>
-                  ) : null}
-                </span>
-              </DropdownMenuItem>
-            );
-          })
-        )}
+                    {version.label ? (
+                      <span className="text-xs text-muted-foreground">
+                        {version.label}
+                      </span>
+                    ) : null}
+                  </span>
+                </DropdownMenuItem>
+              );
+            })
+          )}
+        </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   );
