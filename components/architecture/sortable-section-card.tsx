@@ -13,15 +13,18 @@ import { CSS } from "@dnd-kit/utilities";
 
 import { SectionCard } from "@/components/architecture/section-card";
 import type { BoardComponent, BoardSection } from "@/lib/queries/architecture";
+import type { ArchitectureNodeDetails } from "@/lib/architecture/types";
 
 export function SortableSectionCard({
   section,
   components = [],
   onComponentClick,
+  detailsData,
 }: {
   section: BoardSection;
   components?: BoardComponent[];
   onComponentClick?: (componentId: string) => void;
+  detailsData?: ArchitectureNodeDetails | null;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: section.id, data: { type: "section" } });
@@ -47,6 +50,7 @@ export function SortableSectionCard({
         section={section}
         components={components}
         onComponentClick={onComponentClick}
+        detailsData={detailsData}
       />
     </div>
   );

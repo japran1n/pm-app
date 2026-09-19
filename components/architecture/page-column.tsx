@@ -75,6 +75,12 @@ export function PageColumn({
           showDetails={showDetails}
           meta={showDetails && detailsData ? (detailsData.get(page.id)?.meta ?? null) : undefined}
           estimates={showDetails && detailsData ? (detailsData.get(page.id)?.estimates ?? []) : undefined}
+          // F084: `detailsData` is null both before the lazy fetch resolves
+          // and momentarily after invalidation -- in either case the chip
+          // must not be clickable, otherwise Save on the stale/empty
+          // popover erases every real estimate (setDisciplineEstimatesBulk
+          // treats an empty input as "clear").
+          detailsLoading={Boolean(showDetails) && !detailsData}
           onDetailsInvalidate={onDetailsInvalidate}
           grip={
             <button
@@ -100,6 +106,7 @@ export function PageColumn({
           sectionsById={sectionsById}
           components={components}
           onComponentClick={onComponentClick}
+          detailsData={showDetails ? detailsData : undefined}
         />
       </div>
     </div>

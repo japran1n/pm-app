@@ -158,6 +158,10 @@ function SitemapNode({ data }: NodeProps) {
                   ? (detailsData.get(page.id)?.estimates ?? [])
                   : undefined
               }
+              // F084: see page-column.tsx -- disable the chip while the
+              // lazily-fetched details cache hasn't resolved yet, so an
+              // early Save can't wipe every real estimate.
+              detailsLoading={Boolean(showDetails) && !detailsData}
               onDetailsInvalidate={actions.onDetailsInvalidate}
             />
           </div>
@@ -168,6 +172,7 @@ function SitemapNode({ data }: NodeProps) {
                 section={section}
                 components={components}
                 onComponentClick={actions.onComponentClick}
+                detailsData={detailsData}
               />
             ))}
             <AddSectionButton pageTaskId={page.id} />

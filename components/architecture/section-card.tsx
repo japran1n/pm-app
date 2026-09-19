@@ -39,6 +39,7 @@ import { Input } from "@/components/ui/input";
 import type { BoardComponent, BoardSection } from "@/lib/queries/architecture";
 import { SectionCardMenu } from "@/components/architecture/section-card-menu";
 import { sectionKindAccentClassName } from "@/lib/architecture/section-tint";
+import type { ArchitectureNodeDetails } from "@/lib/architecture/types";
 
 // Mission 20260919-150607, F007 (AS-029..AS-032): a small CMS badge on a
 // section card, mirroring PageKindBadge's anatomy (components/architecture/
@@ -57,14 +58,24 @@ function CmsSectionBadge() {
   );
 }
 
+// F024 (AS-097): `detailsData` is the same lazily-fetched
+// ArchitectureNodeDetails map already threaded to page nodes (see
+// architecture-view-toggle.tsx / page-column.tsx / canvas-board.tsx) --
+// reused here rather than issuing a second `getArchitectureNodeDetails`
+// call. It is keyed by task_id, and a section IS a subtask of its page
+// task (standing decision 1), so `detailsData.get(section.id)` resolves
+// to that section's own copy-brief meta + estimates. Optional and unused
+// for now -- M4's NodeMetaDialog icon consumes it once it lands.
 export function SectionCard({
   section,
   components = [],
   onComponentClick,
+  detailsData,
 }: {
   section: BoardSection;
   components?: BoardComponent[];
   onComponentClick?: (componentId: string) => void;
+  detailsData?: ArchitectureNodeDetails | null;
 }) {
   const router = useRouter();
   const [isEditing, setIsEditing] = useState(false);

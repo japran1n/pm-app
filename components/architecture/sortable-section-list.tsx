@@ -30,18 +30,21 @@ import {
 
 import { SortableSectionCard } from "@/components/architecture/sortable-section-card";
 import type { BoardComponent, BoardSection } from "@/lib/queries/architecture";
+import type { ArchitectureNodeDetails } from "@/lib/architecture/types";
 export function SortableSectionList({
   pageId,
   orderedSectionIds,
   sectionsById,
   components = [],
   onComponentClick,
+  detailsData,
 }: {
   pageId: string;
   orderedSectionIds: string[];
   sectionsById: Map<string, BoardSection>;
   components?: BoardComponent[];
   onComponentClick?: (componentId: string) => void;
+  detailsData?: ArchitectureNodeDetails | null;
 }) {
   const { setNodeRef } = useDroppable({ id: pageId });
 
