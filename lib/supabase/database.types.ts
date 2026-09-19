@@ -4197,6 +4197,18 @@ export type Database = {
         Args: { p_days?: number; p_timezone?: string; p_workspace_id: string }
         Returns: number
       }
+      get_latest_task_activity: {
+        Args: { task_ids: string[] }
+        Returns: {
+          actor_id: string
+          created_at: string
+          field: string
+          kind: string
+          new_value: Json
+          old_value: Json
+          task_id: string
+        }[]
+      }
       get_open_task_counts: {
         Args: { project_ids: string[] }
         Returns: {
@@ -4260,6 +4272,14 @@ export type Database = {
           updated_at: string
         }[]
       }
+      get_project_estimate_and_logged_by_person: {
+        Args: { p_project_id: string }
+        Returns: {
+          estimated_minutes: number
+          logged_minutes: number
+          user_id: string
+        }[]
+      }
       get_project_time_totals: {
         Args: { p_project_id: string }
         Returns: {
@@ -4275,6 +4295,13 @@ export type Database = {
           color: string
           count: number
           name: string
+        }[]
+      }
+      get_task_logged_minutes: {
+        Args: { p_task_ids: string[] }
+        Returns: {
+          logged_minutes: number
+          task_id: string
         }[]
       }
       get_users_by_ids: {
@@ -4298,6 +4325,15 @@ export type Database = {
         Returns: {
           billable_minutes: number
           non_billable_minutes: number
+          user_id: string
+        }[]
+      }
+      get_workspace_time_by_person_and_day: {
+        Args: { p_from: string; p_to: string; p_workspace_id: string }
+        Returns: {
+          billable_minutes: number
+          entry_date: string
+          total_minutes: number
           user_id: string
         }[]
       }
@@ -4457,13 +4493,25 @@ export type Database = {
         Args: { p_from_date: string; p_rule: Json }
         Returns: string
       }
-      remove_workspace_member: {
-        Args: { p_membership_id: string; p_workspace_id: string }
-        Returns: {
-          deleted: boolean
-          reason: string
-        }[]
-      }
+      remove_workspace_member:
+        | {
+            Args: { p_membership_id: string; p_workspace_id: string }
+            Returns: {
+              deleted: boolean
+              reason: string
+            }[]
+          }
+        | {
+            Args: {
+              p_membership_id: string
+              p_reassign_to?: string
+              p_workspace_id: string
+            }
+            Returns: {
+              deleted: boolean
+              reason: string
+            }[]
+          }
       request_portal_task_changes_atomic: {
         Args: { p_task_id: string }
         Returns: {

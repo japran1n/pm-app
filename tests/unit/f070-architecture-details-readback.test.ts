@@ -21,6 +21,7 @@ const PROJECT_ID = "11111111-1111-4111-8111-111111111111";
 const estimateRows = [
   {
     task_id: TASK_ID,
+    project_id: PROJECT_ID,
     discipline: "content_seo",
     minutes: 111,
     note: "content_seo note",
@@ -28,6 +29,7 @@ const estimateRows = [
   },
   {
     task_id: TASK_ID,
+    project_id: PROJECT_ID,
     discipline: "pm",
     minutes: 222,
     note: "pm note",
@@ -35,22 +37,67 @@ const estimateRows = [
   },
   {
     task_id: TASK_ID,
+    project_id: PROJECT_ID,
     discipline: "qa",
     minutes: 333,
     note: "qa note",
     estimated_by: "user-qa",
   },
+  // F077 (AS-006): a cleared discipline is represented as a row with
+  // minutes: null (see F073). The query chains .not("minutes", "is", null)
+  // to filter these out -- this row must never appear in the result.
+  {
+    task_id: TASK_ID,
+    project_id: PROJECT_ID,
+    discipline: "content_seo",
+    minutes: null,
+    note: "cleared note",
+    estimated_by: "user-cleared",
+  },
 ];
+
+// Minimal query-builder stub with real filtering semantics for the two
+// operators this module actually chains: .eq(column, value) and
+// .not(column, "is", null). Both narrow the in-memory row set rather than
+// no-op-ing, so a regression that stops filtering null minutes (or breaks
+// the .not chain entirely) is caught here rather than only surfacing as a
+// TypeError at runtime.
+function buildEstimatesQuery(rows: typeof estimateRows) {
+  return {
+    select: vi.fn(() => buildFilterableQuery(rows)),
+  };
+}
+
+function buildFilterableQuery(rows: typeof estimateRows) {
+  const query: Record<string, unknown> = {
+    eq: vi.fn((column: string, value: unknown) =>
+      buildFilterableQuery(
+        rows.filter((row) => (row as Record<string, unknown>)[column] === value),
+      ),
+    ),
+    not: vi.fn((column: string, operator: string, value: unknown) => {
+      if (operator === "is" && value === null) {
+        return buildResolvedQuery(rows.filter((row) => (row as Record<string, unknown>)[column] !== null));
+      }
+      return buildResolvedQuery(rows);
+    }),
+  };
+  // Awaiting the query directly (without .not()) resolves with all rows
+  // matched so far, matching Supabase's thenable query builder behaviour.
+  (query as unknown as PromiseLike<unknown>).then = (resolve: (value: unknown) => unknown) =>
+    resolve({ data: rows, error: null });
+  return query;
+}
+
+function buildResolvedQuery(rows: typeof estimateRows) {
+  return Promise.resolve({ data: rows, error: null });
+}
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(async () => ({
     from: vi.fn((table: string) => {
       if (table === "task_discipline_estimates") {
-        return {
-          select: vi.fn(() => ({
-            eq: vi.fn(async () => ({ data: estimateRows, error: null })),
-          })),
-        };
+        return buildEstimatesQuery(estimateRows);
       }
       if (table === "architecture_node_meta") {
         return {
@@ -127,5 +174,25 @@ describe("getArchitectureNodeDetails — AS-060/AS-061/AS-062 read-back mapping"
     expect(minutesByDiscipline.get("content_seo")).not.toBe(minutesByDiscipline.get("pm"));
     expect(minutesByDiscipline.get("pm")).not.toBe(minutesByDiscipline.get("qa"));
     expect(minutesByDiscipline.get("content_seo")).not.toBe(minutesByDiscipline.get("qa"));
+  });
+
+  it("test_AS_006_cleared_discipline_row_with_null_minutes_is_excluded", async () => {
+    const result = await getArchitectureNodeDetails(PROJECT_ID);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const details = result.data.get(TASK_ID);
+    expect(details).toBeDefined();
+    const contentSeoEstimates = details!.estimates.filter((e) => e.discipline === "content_seo");
+    // Only the real (non-null minutes) content_seo row should survive the
+    // .not("minutes", "is", null) filter -- the cleared row must not appear.
+    expect(contentSeoEstimates).toHaveLength(1);
+    expect(contentSeoEstimates[0]).toEqual({
+      discipline: "content_seo",
+      minutes: 111,
+      note: "content_seo note",
+      estimatedBy: "user-content-seo",
+    });
+    expect(details!.estimates.some((e) => e.minutes === null)).toBe(false);
   });
 });
