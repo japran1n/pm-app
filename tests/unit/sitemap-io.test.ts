@@ -122,15 +122,16 @@ describe("toJson", () => {
     });
   });
 
-  it("AS-036: exported page object has a hasCmsSections field", () => {
+  it("AS-036: exported page object only has hasCmsSections when it has a CMS section", () => {
     const parsed = JSON.parse(toJson(PAGES));
     for (const page of parsed.pages) {
-      expect(page).toHaveProperty("hasCmsSections");
-      expect(typeof page.hasCmsSections).toBe("boolean");
+      if ("hasCmsSections" in page) {
+        expect(page.hasCmsSections).toBe(true);
+      }
     }
   });
 
-  it("AS-037: hasCmsSections is true iff page has >=1 section with kind='cms'", () => {
+  it("AS-037: hasCmsSections key is present (true) iff page has >=1 section with kind='cms', absent otherwise", () => {
     const pages: BoardPage[] = [
       page({ pageSlug: "no-sections", sections: [] }),
       page({
@@ -149,10 +150,10 @@ describe("toJson", () => {
     ];
     const parsed = JSON.parse(toJson(pages));
     const byPath = Object.fromEntries(
-      parsed.pages.map((p: { path: string; hasCmsSections: boolean }) => [p.path, p.hasCmsSections]),
+      parsed.pages.map((p: { path: string; hasCmsSections?: boolean }) => [p.path, p.hasCmsSections]),
     );
-    expect(byPath["no-sections"]).toBe(false);
-    expect(byPath["static-only"]).toBe(false);
+    expect(byPath["no-sections"]).toBeUndefined();
+    expect(byPath["static-only"]).toBeUndefined();
     expect(byPath["has-cms"]).toBe(true);
   });
 });
@@ -172,36 +173,31 @@ describe("F010 regression: non-CMS export byte-compatibility", () => {
     page({ pageSlug: "about/team", title: "Team", position: 2 }),
   ];
 
-  it("AS-038: a page with only static sections exports hasCmsSections=false and no other new fields", () => {
-    const parsed = JSON.parse(toJson(NON_CMS_PAGES));
+  it("AS-038: a page with only static sections is byte-identical to the pre-F009 JSON shape", () => {
+    const output = toJson(NON_CMS_PAGES);
 
-    // The only field F009 could have added is hasCmsSections. Every page
-    // object's key set must be exactly the pre-F009 shape plus that one
-    // boolean -- nothing else was introduced as a side effect.
-    const expectedKeys = ["path", "title", "kind", "sections", "hasCmsSections"].sort();
-    for (const entry of parsed.pages) {
-      expect(Object.keys(entry).sort()).toEqual(expectedKeys);
-      expect(entry.hasCmsSections).toBe(false);
-    }
-
-    // The envelope itself (version + pages) is unchanged.
-    expect(Object.keys(parsed).sort()).toEqual(["pages", "version"]);
-    expect(parsed.version).toBe(1);
-
-    // Byte-identical to the pre-F009 shape once hasCmsSections is stripped
-    // back out: every remaining field matches the source BoardPage data
-    // exactly, path/title/kind/sections computed the same way as before.
-    expect(parsed.pages).toEqual([
-      { path: "", title: "Home", kind: "static", sections: [], hasCmsSections: false },
+    // Non-CMS pages must never carry a hasCmsSections key at all -- the
+    // output must be byte-identical to the pre-F009 shape, not "the old
+    // shape plus an extra field".
+    const expected = JSON.stringify(
       {
-        path: "about",
-        title: "About",
-        kind: "static",
-        sections: ["Hero", "Grid"],
-        hasCmsSections: false,
+        version: 1,
+        pages: [
+          { path: "", title: "Home", kind: "static", sections: [] },
+          { path: "about", title: "About", kind: "static", sections: ["Hero", "Grid"] },
+          { path: "about/team", title: "Team", kind: "static", sections: [] },
+        ],
       },
-      { path: "about/team", title: "Team", kind: "static", sections: [], hasCmsSections: false },
-    ]);
+      null,
+      2,
+    );
+
+    expect(output).toEqual(expected);
+
+    const parsed = JSON.parse(output);
+    for (const entry of parsed.pages) {
+      expect(entry).not.toHaveProperty("hasCmsSections");
+    }
   });
 
   it("AS-039: markdown export is unchanged for pages without CMS sections", () => {
