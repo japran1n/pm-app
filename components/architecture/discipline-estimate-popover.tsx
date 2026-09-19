@@ -31,10 +31,12 @@ export function DisciplineEstimatePopover({
   taskId,
   taskTitle,
   estimates,
+  onClose,
 }: {
   taskId: string;
   taskTitle: string;
   estimates: DisciplineEstimate[];
+  onClose?: () => void;
 }) {
   const router = useRouter();
   const estimateByDiscipline = new Map(estimates.map((e) => [e.discipline, e]));
@@ -61,27 +63,33 @@ export function DisciplineEstimatePopover({
     return total;
   }
 
-  function handleSave(discipline: WorkCategory) {
-    const input = inputs[discipline]?.trim() ?? "";
-    if (!input) {
-      if (!estimateByDiscipline.has(discipline)) return;
-      startTransition(async () => {
-        const result = await clearDisciplineEstimate(taskId, discipline);
-        if (result.success) router.refresh();
-        else toast.error(result.error ?? "Something went wrong. Please try again.");
-      });
-      return;
+  function validate(): boolean {
+    const newErrors: Partial<Record<WorkCategory, string>> = {};
+    for (const d of WORK_CATEGORIES) {
+      const input = inputs[d]?.trim() ?? "";
+      if (input && parseEstimateInput(input) === null) {
+        newErrors[d] = 'Use "2h 30m", "90m", or "1.5h"';
+      }
     }
-    const minutes = parseEstimateInput(input);
-    if (minutes === null) {
-      setErrors((prev) => ({ ...prev, [discipline]: 'Use "2h 30m", "90m", or "1.5h"' }));
-      return;
-    }
-    setErrors((prev) => ({ ...prev, [discipline]: undefined }));
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  }
+
+  function handleSaveAll() {
+    if (!validate()) return;
     startTransition(async () => {
-      const result = await setDisciplineEstimate(taskId, discipline, input);
-      if (result.success) router.refresh();
-      else toast.error(result.error ?? "Something went wrong. Please try again.");
+      for (const d of WORK_CATEGORIES) {
+        const input = inputs[d]?.trim() ?? "";
+        if (!input) {
+          if (estimateByDiscipline.has(d)) {
+            await clearDisciplineEstimate(taskId, d);
+          }
+        } else {
+          await setDisciplineEstimate(taskId, d, input);
+        }
+      }
+      router.refresh();
+      onClose?.();
     });
   }
 
@@ -113,29 +121,21 @@ export function DisciplineEstimatePopover({
                   setInputs((prev) => ({ ...prev, [d]: e.target.value }));
                   setErrors((prev) => ({ ...prev, [d]: undefined }));
                 }}
-                onBlur={() => handleSave(d)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     e.preventDefault();
-                    handleSave(d);
+                    handleSaveAll();
                   }
                 }}
               />
-              {estimateByDiscipline.has(d) && (
+              {(inputs[d] || estimateByDiscipline.has(d)) && (
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
                   className="h-7 w-7 shrink-0 p-0"
                   disabled={isPending}
-                  onClick={() => {
-                    setInputs((prev) => ({ ...prev, [d]: "" }));
-                    startTransition(async () => {
-                      const result = await clearDisciplineEstimate(taskId, d);
-                      if (result.success) router.refresh();
-                      else toast.error(result.error ?? "Something went wrong. Please try again.");
-                    });
-                  }}
+                  onClick={() => setInputs((prev) => ({ ...prev, [d]: "" }))}
                 >
                   <X size={12} aria-hidden="true" />
                 </Button>
@@ -146,6 +146,11 @@ export function DisciplineEstimatePopover({
             )}
           </div>
         ))}
+      </div>
+      <div className="flex justify-end">
+        <Button type="button" size="sm" disabled={isPending} onClick={handleSaveAll}>
+          Save
+        </Button>
       </div>
     </div>
   );

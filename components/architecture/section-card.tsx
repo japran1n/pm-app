@@ -172,7 +172,7 @@ export function SectionCard({
       // "where does this content come from" is the more load-bearing fact
       // when reading a sitemap than "which component renders it".
       className={cn(
-        "group relative w-full rounded-md border bg-card p-3 shadow-xs transition-colors",
+        "group/card relative w-full rounded-md border bg-card p-3 shadow-xs transition-colors",
         sectionKindAccentClassName(section),
       )}
     >

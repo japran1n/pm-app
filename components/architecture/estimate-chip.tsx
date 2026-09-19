@@ -40,9 +40,13 @@ export function EstimateChip({
             type="button"
             variant="ghost"
             size="sm"
-            className="h-5 rounded px-1.5 font-mono text-xs tabular-nums text-muted-foreground hover:text-foreground"
+            className={
+              total > 0
+                ? "h-5 rounded px-1.5 font-mono text-xs tabular-nums text-muted-foreground hover:text-foreground"
+                : "h-5 rounded px-1.5 font-mono text-xs tabular-nums text-muted-foreground/0 hover:text-muted-foreground group-hover/card:text-muted-foreground/40"
+            }
           >
-            {total > 0 ? formatMinutes(total) : "—"}
+            {total > 0 ? formatMinutes(total) : "+"}
           </Button>
         }
       />
@@ -51,6 +55,7 @@ export function EstimateChip({
           taskId={taskId}
           taskTitle={taskTitle}
           estimates={estimates}
+          onClose={() => setOpen(false)}
         />
       </PopoverContent>
     </Popover>
