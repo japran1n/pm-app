@@ -3,14 +3,11 @@
 // lib/architecture/estimate-rollup.ts. Pure types, no server/React
 // imports.
 
-export type WorkCategory = "design" | "development" | "content_seo" | "pm" | "qa";
+export type WorkCategory = "design" | "development";
 
 export const WORK_CATEGORIES: WorkCategory[] = [
   "design",
   "development",
-  "content_seo",
-  "pm",
-  "qa",
 ];
 
 export type DisciplineEstimate = {

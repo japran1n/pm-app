@@ -15,9 +15,6 @@ import { Button } from "@/components/ui/button";
 const DISCIPLINE_LABELS: Record<WorkCategory, string> = {
   design: "Design",
   development: "Development",
-  content_seo: "Content & SEO",
-  pm: "PM",
-  qa: "QA",
 };
 
 function formatMinutes(m: number): string {

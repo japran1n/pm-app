@@ -165,8 +165,6 @@ function SitemapNode({ data }: NodeProps) {
                 section={section}
                 components={components}
                 onComponentClick={actions.onComponentClick}
-                showDetails={showDetails}
-                estimates={detailsData?.get(section.id)?.estimates}
               />
             ))}
             <AddSectionButton pageTaskId={page.id} />

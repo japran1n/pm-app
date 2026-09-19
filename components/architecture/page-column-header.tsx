@@ -22,8 +22,9 @@ import { FileText } from "lucide-react";
 import { renamePage } from "@/lib/actions/architecture";
 import { Input } from "@/components/ui/input";
 import type { BoardPage } from "@/lib/queries/architecture";
-import type { EstimateRollup, NodeMeta } from "@/lib/architecture/types";
+import type { DisciplineEstimate, EstimateRollup, NodeMeta } from "@/lib/architecture/types";
 import { NodeMetaDialog } from "@/components/architecture/node-meta-dialog";
+import { EstimateChip } from "@/components/architecture/estimate-chip";
 
 // Mission 20260918-architecture-enrichment, F18 (AS estimate rollup
 // display): formats a minute count as compact hours/minutes text for the
@@ -41,11 +42,13 @@ export function PageColumnHeader({
   showDetails,
   rollup,
   meta,
+  estimates,
 }: {
   page: BoardPage;
   showDetails?: boolean;
   rollup?: EstimateRollup;
   meta?: NodeMeta | null;
+  estimates?: DisciplineEstimate[];
 }) {
   const router = useRouter();
   const [isEditing, setIsEditing] = useState(false);
@@ -172,25 +175,13 @@ export function PageColumnHeader({
           </button>
         )}
       </div>
-      {showDetails && rollup && rollup.source !== "none" && (
-        <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-          <span className="font-mono text-xs tabular-nums text-muted-foreground">
-            {rollup.source === "rolled" && "Σ "}
-            {formatMinutes(rollup.total)}
-          </span>
-          {rollup.source === "rolled" && page.sections.length > 0 && (
-            <span className="text-xs text-muted-foreground/60">
-              ({page.sections.length} sections)
-            </span>
-          )}
-          {rollup.conflicts && (
-            <span
-              className="text-xs text-muted-foreground/60"
-              title={`Sections total: ${formatMinutes(rollup.sectionsTotal)}`}
-            >
-              · sections {formatMinutes(rollup.sectionsTotal)}
-            </span>
-          )}
+      {showDetails && (
+        <div className="pt-1">
+          <EstimateChip
+            taskId={page.id}
+            taskTitle={page.title}
+            estimates={estimates ?? []}
+          />
         </div>
       )}
     </div>

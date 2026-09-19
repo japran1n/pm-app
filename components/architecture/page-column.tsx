@@ -88,6 +88,7 @@ export function PageColumn({
             showDetails={showDetails}
             rollup={rollup}
             meta={showDetails && detailsData ? (detailsData.get(page.id)?.meta ?? null) : undefined}
+            estimates={showDetails && detailsData ? (detailsData.get(page.id)?.estimates ?? []) : undefined}
           />
           <PageKindSelector taskId={page.id} kind={page.pageKind} />
           <PageClientVisibilityToggle page={page} />
@@ -105,17 +106,6 @@ export function PageColumn({
           sectionsById={sectionsById}
           components={components}
           onComponentClick={onComponentClick}
-          showDetails={showDetails}
-          estimatesBySection={
-            showDetails && detailsData
-              ? new Map(
-                  orderedSectionIds.map((id) => [
-                    id,
-                    detailsData.get(id)?.estimates ?? [],
-                  ]),
-                )
-              : undefined
-          }
         />
       </div>
     </div>

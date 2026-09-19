@@ -78,7 +78,7 @@ describe("toCopyBriefMarkdown", () => {
       [
         PAGE_A,
         {
-          estimates: [estimate("design", 120), estimate("development", 60), estimate("qa", 30), estimate("pm", 15), estimate("content_seo", 45)],
+          estimates: [estimate("design", 120), estimate("development", 60)],
           meta: meta({ intent: "Convert visitors" }),
         },
       ],
