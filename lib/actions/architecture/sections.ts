@@ -858,11 +858,16 @@ export async function changeSectionKind(
   const admin = createAdminClient();
 
   // Look up the task's owning project/workspace server-side, and confirm
-  // it is actually a section (section_kind IS NOT NULL -- only sections
-  // ever get a non-null value for this column) before touching it.
+  // it is actually a section (parent_task_id IS NOT NULL -- section_kind
+  // is NOT NULL DEFAULT 'static' on every task row, so it can never be
+  // used to distinguish a section from a plain task; parent_task_id is
+  // the real "is this a section" predicate, same as every other action in
+  // this file) before touching it.
   const { data: taskRow, error: taskError } = await admin
     .from("tasks")
-    .select("id, project_id, section_kind, projects(workspace_id, workspaces(slug))")
+    .select(
+      "id, project_id, section_kind, parent_task_id, projects(workspace_id, workspaces(slug))",
+    )
     .eq("id", parsed.data.taskId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -870,7 +875,7 @@ export async function changeSectionKind(
   if (
     taskError ||
     !taskRow ||
-    !taskRow.section_kind ||
+    !taskRow.parent_task_id ||
     !(taskRow as { projects?: { workspace_id?: string } }).projects?.workspace_id
   ) {
     return { success: false, error: "Section not found." };
@@ -902,8 +907,7 @@ export async function changeSectionKind(
   const { error: updateError } = await admin
     .from("tasks")
     .update({ section_kind: parsed.data.kind })
-    .eq("id", parsed.data.taskId)
-    .not("section_kind", "is", null);
+    .eq("id", parsed.data.taskId);
 
   if (updateError) {
     logger.error("changeSectionKind: update failed", { error: updateError });

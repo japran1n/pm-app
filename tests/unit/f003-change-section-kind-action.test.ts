@@ -21,6 +21,7 @@ type TaskRow = {
   id: string;
   project_id: string;
   section_kind: string | null;
+  parent_task_id: string | null;
   deleted_at: string | null;
   projects: { workspace_id: string; workspaces: { slug: string } | null };
 };
@@ -40,13 +41,19 @@ function resetShared() {
       id: SECTION_ID,
       project_id: PROJECT_ID,
       section_kind: "static",
+      parent_task_id: "page-task-id",
       deleted_at: null,
       projects: { workspace_id: WORKSPACE_ID, workspaces: { slug: "acme" } },
     },
     [NON_SECTION_TASK_ID]: {
       id: NON_SECTION_TASK_ID,
       project_id: PROJECT_ID,
-      section_kind: null, // not a section
+      // Schema-legal: section_kind is NOT NULL DEFAULT 'static' in the DB,
+      // so it can never be null. A non-section task is one with no parent
+      // task (parent_task_id IS NULL) -- that's the real "is this a
+      // section" predicate.
+      section_kind: "static",
+      parent_task_id: null, // not a section
       deleted_at: null,
       projects: { workspace_id: WORKSPACE_ID, workspaces: { slug: "acme" } },
     },
@@ -54,6 +61,7 @@ function resetShared() {
       id: OTHER_PROJECT_TASK_ID,
       project_id: OTHER_PROJECT_ID,
       section_kind: "static",
+      parent_task_id: "page-task-id-2",
       deleted_at: null,
       projects: { workspace_id: OTHER_WORKSPACE_ID, workspaces: { slug: "other" } },
     },
@@ -124,17 +132,15 @@ vi.mock("@/lib/supabase/admin", () => ({
             }),
           }),
           update: (values: { section_kind?: string }) => ({
-            eq: (_col: string, id: string) => ({
-              not: async (_col2: string, _op: string, _val: unknown) => {
-                updateCallCount += 1;
-                const row = tasks[id];
-                if (row && row.section_kind !== null) {
-                  updatedKinds[id] = values.section_kind ?? "";
-                  row.section_kind = values.section_kind ?? row.section_kind;
-                }
-                return { error: null };
-              },
-            }),
+            eq: async (_col: string, id: string) => {
+              updateCallCount += 1;
+              const row = tasks[id];
+              if (row) {
+                updatedKinds[id] = values.section_kind ?? "";
+                row.section_kind = values.section_kind ?? row.section_kind;
+              }
+              return { error: null };
+            },
           }),
         };
       }
@@ -187,7 +193,7 @@ describe("F003 changeSectionKind", () => {
     expect(updateCallCount).toBe(0);
   });
 
-  it("AS-017: a task that is NOT a section (section_kind IS NULL) is rejected", async () => {
+  it("AS-017: a task that is NOT a section (parent_task_id IS NULL) is rejected", async () => {
     const { changeSectionKind } = await import("@/lib/actions/architecture");
 
     const result = await changeSectionKind(NON_SECTION_TASK_ID, "cms");
