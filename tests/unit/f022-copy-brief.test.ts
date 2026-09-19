@@ -74,26 +74,116 @@ describe("toCopyBriefMarkdown", () => {
 
   it("test_estimates_never_in_brief", () => {
     const pages = [page(PAGE_A, "Home", [SECTION_A1])];
+    // Fixture-driven: covers every discipline value plus minutes in the
+    // exact numeric form stored (no \b-bounded regex, so e.g. 180m/3h
+    // formats containing these digits would also be caught).
+    const ESTIMATES: DisciplineEstimate[] = [
+      estimate("design", 120),
+      estimate("development", 60),
+      estimate("qa", 30),
+      estimate("content_seo", 45),
+      estimate("pm", 90),
+    ];
     const details: ArchitectureNodeDetails = new Map([
       [
         PAGE_A,
         {
-          estimates: [estimate("design", 120), estimate("development", 60)],
+          estimates: [ESTIMATES[0], ESTIMATES[1]],
           meta: meta({ intent: "Convert visitors" }),
         },
       ],
-      [SECTION_A1, { estimates: [estimate("development", 90)], meta: null }],
+      [SECTION_A1, { estimates: [ESTIMATES[2], ESTIMATES[3], ESTIMATES[4]], meta: null }],
     ]);
 
     const md = toCopyBriefMarkdown(pages, details);
 
     expect(md).not.toMatch(/minutes/i);
-    expect(md).not.toMatch(/design/i);
-    expect(md).not.toMatch(/development/i);
-    expect(md).not.toMatch(/content_seo/i);
-    expect(md).not.toMatch(/\bpm\b/i);
-    expect(md).not.toMatch(/\bqa\b/i);
     expect(md).not.toMatch(/estimate/i);
+    for (const e of ESTIMATES) {
+      expect(md).not.toContain(String(e.minutes));
+      expect(md).not.toContain(e.discipline);
+      if (e.note != null) expect(md).not.toContain(e.note);
+      if (e.estimatedBy != null) expect(md).not.toContain(e.estimatedBy);
+    }
+  });
+
+  it("test_estimates_never_in_brief_json", () => {
+    const pages = [page(PAGE_A, "Home", [SECTION_A1])];
+    const ESTIMATES: DisciplineEstimate[] = [
+      estimate("design", 120),
+      estimate("development", 60),
+      estimate("qa", 30),
+      estimate("content_seo", 45),
+      estimate("pm", 90),
+    ];
+    const details: ArchitectureNodeDetails = new Map([
+      [
+        PAGE_A,
+        {
+          estimates: [ESTIMATES[0], ESTIMATES[1]],
+          meta: meta({ intent: "Convert visitors" }),
+        },
+      ],
+      [SECTION_A1, { estimates: [ESTIMATES[2], ESTIMATES[3], ESTIMATES[4]], meta: null }],
+    ]);
+
+    const json = toCopyBriefJson(pages, details);
+
+    expect(json).not.toMatch(/minutes/i);
+    expect(json).not.toMatch(/estimate/i);
+    for (const e of ESTIMATES) {
+      expect(json).not.toContain(String(e.minutes));
+      expect(json).not.toContain(e.discipline);
+      if (e.note != null) expect(json).not.toContain(e.note);
+      if (e.estimatedBy != null) expect(json).not.toContain(e.estimatedBy);
+    }
+  });
+
+  it("test_estimates_never_in_brief_under_pageSlug_filter", () => {
+    const pages = [page(PAGE_A, "Home", [SECTION_A1]), page(PAGE_B, "About")];
+    const ESTIMATES: DisciplineEstimate[] = [
+      estimate("design", 120),
+      estimate("qa", 30),
+    ];
+    const details: ArchitectureNodeDetails = new Map([
+      [SECTION_A1, { estimates: [ESTIMATES[1]], meta: meta({ keywords: ["hero"], copyStatus: "approved" }) }],
+      [PAGE_A, { estimates: [ESTIMATES[0]], meta: meta({ intent: "Convert visitors" }) }],
+    ]);
+
+    const md = toCopyBriefMarkdown(pages, details, { pageSlug: "/home" });
+    const json = toCopyBriefJson(pages, details, { pageSlug: "/home" });
+
+    for (const e of ESTIMATES) {
+      expect(md).not.toContain(String(e.minutes));
+      expect(md).not.toContain(e.discipline);
+      expect(json).not.toContain(String(e.minutes));
+      expect(json).not.toContain(e.discipline);
+    }
+    // Section meta is still present under the filter, proving exclusion
+    // isn't just because the section itself is missing.
+    expect(md).toContain("Keywords: hero");
+    const parsed = JSON.parse(json);
+    expect(parsed[0].sections[0].meta.keywords).toEqual(["hero"]);
+  });
+
+  // F029 (missions/20260919-150607), AS-104 markdown gap: exporting with a
+  // pageSlug filter still includes the meta of that page's own sections in
+  // the markdown output, not just the JSON output.
+  it("test_AS_104_pageslug_filter_includes_section_meta_markdown", () => {
+    const pages = [page(PAGE_A, "Home", [SECTION_A1]), page(PAGE_B, "About")];
+    const details: ArchitectureNodeDetails = new Map([
+      [
+        SECTION_A1,
+        { estimates: [], meta: meta({ keywords: ["hero"], copyStatus: "approved" }) },
+      ],
+    ]);
+
+    const md = toCopyBriefMarkdown(pages, details, { pageSlug: "/home" });
+
+    expect(md).toContain("Home");
+    expect(md).not.toContain("About");
+    expect(md).toContain("Keywords: hero");
+    expect(md).toContain("Copy status: approved");
   });
 
   it("test_scope_slug_filters_to_one_page", () => {

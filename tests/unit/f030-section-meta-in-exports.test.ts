@@ -87,6 +87,21 @@ describe("F030 AS-103: section meta appears in both exports", () => {
     expect(followingLines).not.toContain("Copy status:");
   });
 
+  it("test_AS_100_markdown_nests_meta_three_spaces_under_its_section", () => {
+    const md = toCopyBriefMarkdown(pages, details);
+    // Positionally-scoped window (mirrors the sitemap-io.test.ts AS-102
+    // pattern): the section-with-meta's numbered line is immediately
+    // followed by its
+    // three-space-indented meta lines, not a global substring check.
+    const lines = md.split("\n");
+    const sectionOneIndex = lines.findIndex((l) => l.includes("Section 1"));
+    expect(sectionOneIndex).toBeGreaterThan(-1);
+    const window = lines.slice(sectionOneIndex, sectionOneIndex + 3);
+    expect(window[0]).toMatch(/^1\.\s+\*\*Section 1\*\*/);
+    expect(window[1]).toBe("   - Keywords: pricing, conversion");
+    expect(window[2]).toBe("   - Copy status: drafted");
+  });
+
   it("test_AS_103_json_shows_meta_for_section_with_meta", () => {
     const parsed = JSON.parse(toCopyBriefJson(pages, details));
     const sections = parsed[0].sections;
@@ -106,54 +121,59 @@ describe("F030 AS-103: section meta appears in both exports", () => {
 
 describe("F030 AS-105: discipline estimates never appear in either export", () => {
   const pages = [page(PAGE_A, "Home", [SECTION_WITH_META, SECTION_WITHOUT_META])];
+
+  // Fixture-driven: covers minutes in any format (180, 30, 15, 10, 45 --
+  // including values that would slip past 180m/180min/3h-style formats
+  // since assertions below use plain substring checks, not \b-bounded
+  // regex) plus every discipline value and the note/estimatedBy fields.
+  const ESTIMATES: DisciplineEstimate[] = [
+    estimate("design", 180),
+    estimate("development", 240),
+    estimate("qa", 30),
+    estimate("content_seo", 15),
+    estimate("pm", 10),
+    estimate("development", 45),
+  ];
+
   const details: ArchitectureNodeDetails = new Map([
     [
       PAGE_A,
       {
-        estimates: [estimate("design", 180), estimate("development", 240)],
+        estimates: [ESTIMATES[0], ESTIMATES[1]],
         meta: meta({ keywords: ["home"], copyStatus: "approved" }),
       },
     ],
     [
       SECTION_WITH_META,
       {
-        estimates: [estimate("qa", 30), estimate("content_seo", 15), estimate("pm", 10)],
+        estimates: [ESTIMATES[2], ESTIMATES[3], ESTIMATES[4]],
         meta: meta({ keywords: ["pricing"], copyStatus: "in_review" }),
       },
     ],
-    [SECTION_WITHOUT_META, { estimates: [estimate("development", 45)], meta: null }],
+    [SECTION_WITHOUT_META, { estimates: [ESTIMATES[5]], meta: null }],
   ]);
+
+  function assertNoEstimateLeakage(output: string) {
+    expect(output).not.toMatch(/minutes/i);
+    expect(output).not.toMatch(/discipline/i);
+    expect(output).not.toMatch(/estimated_by/i);
+    expect(output).not.toMatch(/estimatedBy/i);
+    for (const e of ESTIMATES) {
+      expect(output).not.toContain(String(e.minutes));
+      expect(output).not.toContain(e.discipline);
+      if (e.note != null) expect(output).not.toContain(e.note);
+      if (e.estimatedBy != null) expect(output).not.toContain(e.estimatedBy);
+    }
+  }
 
   it("test_AS_105_markdown_excludes_estimate_fields_and_values", () => {
     const md = toCopyBriefMarkdown(pages, details);
-    expect(md).not.toMatch(/minutes/i);
-    expect(md).not.toMatch(/discipline/i);
-    expect(md).not.toMatch(/estimated_by/i);
-    expect(md).not.toMatch(/estimatedBy/i);
-    expect(md).not.toContain("Needs review");
-    expect(md).not.toContain("user-123");
-    expect(md).not.toMatch(/\b180\b/);
-    expect(md).not.toMatch(/\b240\b/);
-    expect(md).not.toMatch(/\b30\b/);
-    expect(md).not.toMatch(/\b15\b/);
-    expect(md).not.toMatch(/\b10\b/);
-    expect(md).not.toMatch(/\b45\b/);
+    assertNoEstimateLeakage(md);
   });
 
   it("test_AS_105_json_excludes_estimate_fields_and_values", () => {
     const json = toCopyBriefJson(pages, details);
-    expect(json).not.toMatch(/minutes/i);
-    expect(json).not.toMatch(/discipline/i);
-    expect(json).not.toMatch(/estimated_by/i);
-    expect(json).not.toMatch(/estimatedBy/i);
-    expect(json).not.toContain("Needs review");
-    expect(json).not.toContain("user-123");
-    expect(json).not.toMatch(/\b180\b/);
-    expect(json).not.toMatch(/\b240\b/);
-    expect(json).not.toMatch(/\b30\b/);
-    expect(json).not.toMatch(/\b15\b/);
-    expect(json).not.toMatch(/\b10\b/);
-    expect(json).not.toMatch(/\b45\b/);
+    assertNoEstimateLeakage(json);
 
     const parsed = JSON.parse(json);
     for (const p of parsed) {
@@ -162,5 +182,28 @@ describe("F030 AS-105: discipline estimates never appear in either export", () =
         expect(s).not.toHaveProperty("estimates");
       }
     }
+  });
+
+  it("test_AS_105_markdown_excludes_estimate_fields_and_values_under_pageSlug_filter", () => {
+    const md = toCopyBriefMarkdown(pages, details, { pageSlug: "/home" });
+    assertNoEstimateLeakage(md);
+    // Section meta is still present under the filter -- exclusion isn't
+    // just an artifact of the section being dropped entirely.
+    expect(md).toContain("Keywords: pricing");
+  });
+
+  it("test_AS_105_json_excludes_estimate_fields_and_values_under_pageSlug_filter", () => {
+    const json = toCopyBriefJson(pages, details, { pageSlug: "/home" });
+    assertNoEstimateLeakage(json);
+
+    const parsed = JSON.parse(json);
+    expect(parsed).toHaveLength(1);
+    for (const p of parsed) {
+      expect(p).not.toHaveProperty("estimates");
+      for (const s of p.sections) {
+        expect(s).not.toHaveProperty("estimates");
+      }
+    }
+    expect(parsed[0].sections[0].meta.keywords).toEqual(["pricing"]);
   });
 });
