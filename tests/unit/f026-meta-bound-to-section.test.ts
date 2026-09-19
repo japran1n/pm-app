@@ -10,6 +10,7 @@
 // standing decision that makes it tempting to key everything off the page).
 
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import React from "react";
 
 vi.mock("server-only", () => ({}));
 
@@ -236,7 +237,7 @@ describe("F025/AS-091 (render): NodeMetaDialog opens with the section's own task
     vi.doMock("@/components/architecture/node-meta-dialog", () => ({
       NodeMetaDialog: ({ taskId, open }: { taskId: string; open: boolean }) =>
         open ? (
-          require("react").createElement("div", {
+          React.createElement("div", {
             "data-testid": "node-meta-dialog-stub",
             "data-task-id": taskId,
           })
@@ -262,7 +263,7 @@ describe("F025/AS-091 (render): NodeMetaDialog opens with the section's own task
     const detailsData = new Map<string, { meta: null; estimates: [] }>();
 
     const { unmount } = render(
-      require("react").createElement(SectionCard, {
+      React.createElement(SectionCard, {
         section: makeSection("section-task-abc", "Hero"),
         detailsData,
       }),
@@ -278,7 +279,7 @@ describe("F025/AS-091 (render): NodeMetaDialog opens with the section's own task
     cleanup();
 
     render(
-      require("react").createElement(SectionCard, {
+      React.createElement(SectionCard, {
         section: makeSection("section-task-xyz", "Footer"),
         detailsData,
       }),

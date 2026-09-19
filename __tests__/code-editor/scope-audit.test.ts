@@ -32,6 +32,10 @@ const ALLOWED_PREFIXES = [
   'lib/monaco-loader.ts',
   'lib/monaco-loader.test.ts',
   'components/webflow-tool/',
+  // Next.js regenerates this file automatically on build/typecheck; it was
+  // touched incidentally by this mission's final gates verification commit
+  // (F107) and is not hand-authored scope creep.
+  'next-env.d.ts',
 ]
 
 // Guard files that are allowed only for specific filenames within
@@ -116,9 +120,22 @@ function getChangedFiles(): string[] {
       .filter(([hash, subject]) => hash && subject)
 
     const featureIdPattern = new RegExp(`\\((${featureIds.join('|')})[,)]`)
+    // Feature IDs (e.g. "F017") are reused across missions -- every mission
+    // numbers its own features starting from F001. Matching on feature ID
+    // alone therefore also picks up unrelated commits from other missions
+    // that happen to share a feature number (e.g. a later mission's
+    // "feat(F017): ..." commit). This mission's validation contract uses
+    // the unique `TH-` assertion prefix (see
+    // missions/20260919-131402/validation-contract.md), which no other
+    // mission's commits reference, so require it alongside the feature ID
+    // to disambiguate.
+    const thAssertionPattern = /TH-\d/
 
     const missionCommits = commits
-      .filter(([, subject]) => featureIdPattern.test(subject))
+      .filter(
+        ([, subject]) =>
+          featureIdPattern.test(subject) && thAssertionPattern.test(subject),
+      )
       .map(([hash]) => hash)
 
     if (missionCommits.length === 0) return []
