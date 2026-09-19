@@ -20,6 +20,15 @@ const USER_ID = "01c5bd9a-c1da-41a4-ac0e-a4fab320a32a";
 
 let deleteCalls: Array<{ filters: Record<string, unknown> }> = [];
 let tasksSelectCalls = 0;
+// Simulates the row that existed before the clear -- including its note --
+// so the assertion below can prove the note is gone afterwards, not just
+// that *a* delete call happened.
+let rowBeforeClear: { task_id: string; discipline: string; minutes: number; note: string | null } | null = {
+  task_id: TASK_ID,
+  discipline: "design",
+  minutes: 90,
+  note: "a note that must not survive the clear",
+};
 // Tracks any table other than task_discipline_estimates that the action
 // tries to mutate (insert/update/upsert/delete), so the side-effect
 // assertion can prove no adjacent table was touched.
@@ -87,6 +96,17 @@ vi.mock("@/lib/supabase/admin", () => ({
               },
               then(resolve: (result: { error: null }) => unknown) {
                 deleteCalls.push({ filters });
+                // Simulates the real DELETE: the row matching (task_id,
+                // discipline) -- including its `note` column -- is removed
+                // from the backing store entirely, so there is nothing left
+                // to carry a stale note.
+                if (
+                  rowBeforeClear &&
+                  rowBeforeClear.task_id === filters.task_id &&
+                  rowBeforeClear.discipline === filters.discipline
+                ) {
+                  rowBeforeClear = null;
+                }
                 return resolve({ error: null });
               },
             };
@@ -131,6 +151,12 @@ afterEach(() => {
   deleteCalls = [];
   adjacentTableMutations = [];
   tasksSelectCalls = 0;
+  rowBeforeClear = {
+    task_id: TASK_ID,
+    discipline: "design",
+    minutes: 90,
+    note: "a note that must not survive the clear",
+  };
   membershipOk = true;
   membershipRole = "member";
   canWriteResult = true;
@@ -161,6 +187,10 @@ describe("F020 — clearing a discipline estimate also deletes its note (AS-074)
       task_id: TASK_ID,
       discipline: "design",
     });
+    // AS-074's actual claim: the note is gone, not just that some delete
+    // call happened. The row (and its note column) no longer exists in the
+    // backing store for this (task_id, discipline).
+    expect(rowBeforeClear).toBeNull();
   });
 
   it("test_AS_074_clearDisciplineEstimate_leaves_no_adjacent_table_mutated", async () => {

@@ -181,7 +181,6 @@ export function DisciplineEstimatePopover({
             <Input
               className="ml-[120px] h-6 w-[calc(100%-120px)] text-xs"
               placeholder="Note (optional)"
-              maxLength={NOTE_MAX_LENGTH}
               aria-label={`${DISCIPLINE_LABELS[d]} note`}
               value={notes[d] ?? ""}
               disabled={isPending}
