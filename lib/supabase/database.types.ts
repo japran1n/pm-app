@@ -310,7 +310,6 @@ export type Database = {
       architecture_node_meta: {
         Row: {
           audience: string | null
-          client_visible: boolean
           copy_status: string
           created_at: string
           intent: string | null
@@ -324,7 +323,6 @@ export type Database = {
         }
         Insert: {
           audience?: string | null
-          client_visible?: boolean
           copy_status?: string
           created_at?: string
           intent?: string | null
@@ -338,7 +336,6 @@ export type Database = {
         }
         Update: {
           audience?: string | null
-          client_visible?: boolean
           copy_status?: string
           created_at?: string
           intent?: string | null
@@ -1748,7 +1745,6 @@ export type Database = {
       page_components: {
         Row: {
           created_at: string
-          description: string | null
           id: string
           name: string
           position: number
@@ -1757,7 +1753,6 @@ export type Database = {
         }
         Insert: {
           created_at?: string
-          description?: string | null
           id?: string
           name: string
           position?: number
@@ -1766,7 +1761,6 @@ export type Database = {
         }
         Update: {
           created_at?: string
-          description?: string | null
           id?: string
           name?: string
           position?: number

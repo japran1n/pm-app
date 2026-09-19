@@ -27,7 +27,6 @@ export type NodeMeta = {
   tone: string | null;
   keywords: string[];
   copyStatus: "not_started" | "brief_ready" | "drafted" | "in_review" | "approved";
-  clientVisible: boolean;
 };
 
 export type ArchitectureNodeDetails = Map<

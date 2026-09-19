@@ -37,7 +37,7 @@ export async function getArchitectureNodeDetails(
       .not("minutes", "is", null),
     supabase
       .from("architecture_node_meta")
-      .select("task_id, intent, audience, primary_cta, tone, keywords, copy_status, client_visible")
+      .select("task_id, intent, audience, primary_cta, tone, keywords, copy_status")
       .eq("project_id", projectId),
   ]);
 
@@ -75,7 +75,6 @@ export async function getArchitectureNodeDetails(
       tone: row.tone ?? null,
       keywords: (row.keywords as string[]) ?? [],
       copyStatus: row.copy_status as NodeMeta["copyStatus"],
-      clientVisible: row.client_visible ?? false,
     });
   }
 

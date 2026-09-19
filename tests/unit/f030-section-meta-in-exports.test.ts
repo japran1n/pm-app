@@ -27,7 +27,6 @@ function meta(overrides: Partial<NodeMeta>): NodeMeta {
     tone: null,
     keywords: [],
     copyStatus: "not_started",
-    clientVisible: true,
     ...overrides,
   };
 }
