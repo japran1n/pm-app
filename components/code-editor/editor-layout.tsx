@@ -186,6 +186,11 @@ export function EditorLayout({ initialBlocks, html, corpus, hostname, url }: Edi
     })(),
   });
 
+  // TH-209..TH-219 — per-block named version state. Initialized lazily (on
+  // first access of a block) as a single read-only "Original" snapshot of
+  // that block's initial content; the first edit forks a "Draft" off it.
+  const [versionsByBlock, setVersionsByBlock] = useState<Record<number, VersionEntry>>({});
+
   // TH-125 — a hostname change means the user fetched a different site;
   // discard whatever files are currently open and replace them with the
   // newly extracted (or restored, if any) blocks for the new host. Uses a
@@ -275,11 +280,6 @@ export function EditorLayout({ initialBlocks, html, corpus, hostname, url }: Edi
     },
     [renameBlock],
   );
-
-  // TH-209..TH-219 — per-block named version state. Initialized lazily (on
-  // first access of a block) as a single read-only "Original" snapshot of
-  // that block's initial content; the first edit forks a "Draft" off it.
-  const [versionsByBlock, setVersionsByBlock] = useState<Record<number, VersionEntry>>({});
 
   const ensureVersionEntry = useCallback(
     (index: number): VersionEntry => {
