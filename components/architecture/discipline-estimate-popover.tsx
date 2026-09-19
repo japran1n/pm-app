@@ -5,7 +5,7 @@ import { X } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 
-import { setDisciplineEstimate, clearDisciplineEstimate } from "@/lib/actions/architecture";
+import { setDisciplineEstimatesBulk } from "@/lib/actions/architecture";
 import { parseEstimateInput, NOTE_MAX_LENGTH } from "@/lib/validation/architecture";
 import type { DisciplineEstimate, WorkCategory } from "@/lib/architecture/types";
 import { WORK_CATEGORIES } from "@/lib/architecture/types";
@@ -101,38 +101,29 @@ export function DisciplineEstimatePopover({
   function handleSaveAll() {
     if (!validate()) return;
     startTransition(async () => {
-      for (const d of WORK_CATEGORIES) {
-        const input = inputs[d]?.trim() ?? "";
-        const note = notes[d]?.trim() ?? "";
-        try {
-          const result = !input
-            ? estimateByDiscipline.has(d)
-              ? await clearDisciplineEstimate(taskId, d)
-              : null
-            : await setDisciplineEstimate(taskId, d, input, note || undefined);
+      // AS-079: a single setDisciplineEstimatesBulk call handles all five
+      // disciplines (set + clear + notes) in one round-trip, instead of the
+      // previous per-discipline loop. An empty input for a discipline is
+      // sent through as-is; the action treats an empty `input` as "clear
+      // this discipline's estimate".
+      const entries = WORK_CATEGORIES.map((d) => ({
+        discipline: d,
+        input: inputs[d]?.trim() ?? "",
+        note: notes[d]?.trim() || undefined,
+      }));
 
-          // Abort on the first failure rather than pressing on: the
-          // remaining writes would likely fail the same way, and closing the
-          // popover would hide which value never landed.
-          if (result && !result.success) {
-            toast.error(result.error ?? "Something went wrong. Please try again.");
-            return;
-          }
-        } catch {
-          // A thrown/rejected server action (network drop, deserialisation
-          // failure, etc.) is just as much a "this discipline didn't save"
-          // event as a {success:false} result. We abort on the first error
-          // rather than collecting all of them: earlier disciplines in this
-          // loop have already been written server-side, so continuing after
-          // a failure only risks writing more rows the user can't see landed
-          // while masking which one broke. Stopping here keeps the visible
-          // error tied to the exact discipline that failed.
-          toast.error(
-            `Couldn't save ${DISCIPLINE_LABELS[d]}. Please try again.`,
-          );
+      try {
+        const result = await setDisciplineEstimatesBulk(taskId, entries);
+
+        if (!result.success) {
+          toast.error(result.error ?? "Something went wrong. Please try again.");
           return;
         }
+      } catch {
+        toast.error("Couldn't save estimates. Please try again.");
+        return;
       }
+
       router.refresh();
       onSaved?.();
       onClose?.();

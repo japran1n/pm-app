@@ -117,9 +117,19 @@ export const disciplineEstimateEntrySchema = z.object({
   note: disciplineEstimateNoteSchema,
 });
 
+// Bulk entries allow an empty `input` -- an empty string means "clear this
+// discipline's estimate" rather than "set it to an invalid value". This is
+// what lets the popover always send all five disciplines in a single call
+// (some set, some cleared) instead of looping per-discipline actions.
+export const bulkDisciplineEstimateEntrySchema = z.object({
+  discipline: workCategorySchema,
+  input: z.string().max(50),
+  note: disciplineEstimateNoteSchema,
+});
+
 export const setDisciplineEstimatesBulkSchema = z.object({
   taskId: z.string().uuid(),
-  entries: z.array(disciplineEstimateEntrySchema).min(1).max(5),
+  entries: z.array(bulkDisciplineEstimateEntrySchema).min(1).max(5),
 });
 
 export const clearDisciplineEstimateSchema = z.object({

@@ -17,8 +17,7 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn() }),
 }));
 vi.mock("@/lib/actions/architecture", () => ({
-  setDisciplineEstimate: vi.fn(),
-  clearDisciplineEstimate: vi.fn(),
+  setDisciplineEstimatesBulk: vi.fn(),
 }));
 vi.mock("sonner", () => ({
   toast: { error: (...args: unknown[]) => toastError(...args) },
@@ -26,7 +25,7 @@ vi.mock("sonner", () => ({
 
 import { DisciplineEstimatePopover } from "./discipline-estimate-popover";
 import { WORK_CATEGORIES } from "@/lib/architecture/types";
-import { setDisciplineEstimate, clearDisciplineEstimate } from "@/lib/actions/architecture";
+import { setDisciplineEstimatesBulk } from "@/lib/actions/architecture";
 
 afterEach(() => {
   cleanup();
@@ -63,12 +62,9 @@ describe("DisciplineEstimatePopover note field (AS-070, AS-071, AS-072)", () => 
   });
 
   it("test_AS_072_an_estimate_saves_with_no_note_when_the_note_field_is_left_blank", async () => {
-    const mockedSet = vi.mocked(setDisciplineEstimate);
-    mockedSet.mockReset();
-    mockedSet.mockResolvedValue({ success: true } as never);
-    const mockedClear = vi.mocked(clearDisciplineEstimate);
-    mockedClear.mockReset();
-    mockedClear.mockResolvedValue({ success: true } as never);
+    const mockedBulk = vi.mocked(setDisciplineEstimatesBulk);
+    mockedBulk.mockReset();
+    mockedBulk.mockResolvedValue({ success: true } as never);
 
     render(
       <DisciplineEstimatePopover taskId="task-1" taskTitle="Task 1" estimates={[]} />,
@@ -82,11 +78,16 @@ describe("DisciplineEstimatePopover note field (AS-070, AS-071, AS-072)", () => 
     fireEvent.click(saveButton);
 
     await waitFor(() => {
-      expect(mockedSet).toHaveBeenCalled();
+      expect(mockedBulk).toHaveBeenCalled();
     });
 
-    // Called with taskId, discipline, input, and an undefined/omitted note
+    // The single bulk call's "design" entry has an undefined/omitted note
     // -- the estimate persists even though no note was ever typed.
-    expect(mockedSet).toHaveBeenCalledWith("task-1", "design", "1h", undefined);
+    const [, entries] = mockedBulk.mock.calls[0] as [
+      string,
+      Array<{ discipline: string; input: string; note?: string }>,
+    ];
+    const designEntry = entries.find((e) => e.discipline === "design");
+    expect(designEntry).toEqual({ discipline: "design", input: "1h", note: undefined });
   });
 });

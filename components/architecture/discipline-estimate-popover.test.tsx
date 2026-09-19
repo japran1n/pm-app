@@ -16,8 +16,7 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn() }),
 }));
 vi.mock("@/lib/actions/architecture", () => ({
-  setDisciplineEstimate: vi.fn(),
-  clearDisciplineEstimate: vi.fn(),
+  setDisciplineEstimatesBulk: vi.fn(),
 }));
 vi.mock("sonner", () => ({
   toast: { error: (...args: unknown[]) => toastError(...args) },
@@ -25,7 +24,7 @@ vi.mock("sonner", () => ({
 
 import { DisciplineEstimatePopover } from "./discipline-estimate-popover";
 import { WORK_CATEGORIES } from "@/lib/architecture/types";
-import { setDisciplineEstimate } from "@/lib/actions/architecture";
+import { setDisciplineEstimatesBulk } from "@/lib/actions/architecture";
 
 afterEach(() => {
   cleanup();
@@ -59,25 +58,18 @@ describe("DisciplineEstimatePopover (AS-058, AS-059)", () => {
     expect(screen.getByText("QA")).toBeInTheDocument();
   });
 
-  it("test_F064_rejected_action_shows_error_and_stops_the_loop", async () => {
+  it("test_AS_079_handleSaveAll_calls_bulk_action_exactly_once", async () => {
     toastError.mockClear();
-    const mockedSet = vi.mocked(setDisciplineEstimate);
-    mockedSet.mockReset();
-
-    // WORK_CATEGORIES order is: design, development, content_seo, pm, qa.
-    // Resolve the first two, reject the third (content_seo), and never
-    // expect the fourth/fifth (pm, qa) to be called.
-    mockedSet
-      .mockResolvedValueOnce({ success: true } as never)
-      .mockResolvedValueOnce({ success: true } as never)
-      .mockRejectedValueOnce(new Error("network drop"));
+    const mockedBulk = vi.mocked(setDisciplineEstimatesBulk);
+    mockedBulk.mockReset();
+    mockedBulk.mockResolvedValue({ success: true } as never);
 
     render(
       <DisciplineEstimatePopover taskId="task-1" taskTitle="Task 1" estimates={[]} />,
     );
 
     const inputs = screen.getAllByPlaceholderText("—");
-    // Fill all five inputs so every discipline attempts a save.
+    // Fill all five inputs so every discipline is included in the payload.
     for (const input of inputs) {
       fireEvent.change(input, { target: { value: "1h" } });
     }
@@ -86,11 +78,47 @@ describe("DisciplineEstimatePopover (AS-058, AS-059)", () => {
     fireEvent.click(saveButton);
 
     await waitFor(() => {
-      expect(toastError).toHaveBeenCalledTimes(1);
+      expect(mockedBulk).toHaveBeenCalledTimes(1);
     });
 
-    // design, development, content_seo (rejected) -- exactly 3 calls, so
-    // pm and qa (4th and 5th) were never attempted.
-    expect(mockedSet).toHaveBeenCalledTimes(3);
+    // A single call carrying all five disciplines -- not a loop of five
+    // individual calls (the pre-F021 behaviour).
+    const [taskIdArg, entriesArg] = mockedBulk.mock.calls[0] as [
+      string,
+      Array<{ discipline: string; input: string }>,
+    ];
+    expect(taskIdArg).toBe("task-1");
+    expect(entriesArg).toHaveLength(WORK_CATEGORIES.length);
+  });
+
+  it("test_AS_078_rejected_bulk_call_shows_error_and_does_not_close", async () => {
+    toastError.mockClear();
+    const mockedBulk = vi.mocked(setDisciplineEstimatesBulk);
+    mockedBulk.mockReset();
+    mockedBulk.mockResolvedValue({ success: false, error: "boom" } as never);
+
+    const onClose = vi.fn();
+    render(
+      <DisciplineEstimatePopover
+        taskId="task-1"
+        taskTitle="Task 1"
+        estimates={[]}
+        onClose={onClose}
+      />,
+    );
+
+    const inputs = screen.getAllByPlaceholderText("—");
+    for (const input of inputs) {
+      fireEvent.change(input, { target: { value: "1h" } });
+    }
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(toastError).toHaveBeenCalledWith("boom");
+    });
+
+    expect(mockedBulk).toHaveBeenCalledTimes(1);
+    expect(onClose).not.toHaveBeenCalled();
   });
 });

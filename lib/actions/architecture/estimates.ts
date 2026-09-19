@@ -229,10 +229,22 @@ export async function setDisciplineEstimatesBulk(
     };
   }
 
-  const parsedEntries: Array<{ discipline: string; minutes: number; note: string | null }> = [];
+  // AS-083: every entry is validated up front -- both the "set" entries
+  // (must parse to a positive number of minutes) and the "clear" entries
+  // (empty input) -- before a single DB call is made. If any entry is
+  // invalid, we return without touching the database at all.
+  const toUpsert: Array<{ discipline: string; minutes: number; note: string | null }> = [];
+  const toClear: string[] = [];
 
   for (const entry of parsed.data.entries) {
-    const minutes = parseEstimateInput(entry.input);
+    const trimmed = entry.input.trim();
+
+    if (!trimmed) {
+      toClear.push(entry.discipline);
+      continue;
+    }
+
+    const minutes = parseEstimateInput(trimmed);
 
     if (minutes === null) {
       return {
@@ -241,7 +253,7 @@ export async function setDisciplineEstimatesBulk(
       };
     }
 
-    parsedEntries.push({
+    toUpsert.push({
       discipline: entry.discipline,
       minutes,
       note: entry.note ?? null,
@@ -279,24 +291,42 @@ export async function setDisciplineEstimatesBulk(
     };
   }
 
-  const { error: upsertError } = await admin.from("task_discipline_estimates").upsert(
-    parsedEntries.map((entry) => ({
-      task_id: parsed.data.taskId,
-      project_id: taskInfo.projectId,
-      discipline: entry.discipline,
-      minutes: entry.minutes,
-      note: entry.note,
-      estimated_by: user.id,
-    })),
-    { onConflict: "task_id,discipline" },
-  );
+  if (toClear.length > 0) {
+    const { error: deleteError } = await admin
+      .from("task_discipline_estimates")
+      .delete()
+      .eq("task_id", parsed.data.taskId)
+      .in("discipline", toClear);
 
-  if (upsertError) {
-    logger.error("setDisciplineEstimatesBulk: upsert failed", { error: upsertError });
-    return {
-      success: false,
-      error: "Something went wrong. Please try again in a moment.",
-    };
+    if (deleteError) {
+      logger.error("setDisciplineEstimatesBulk: clear failed", { error: deleteError });
+      return {
+        success: false,
+        error: "Something went wrong. Please try again in a moment.",
+      };
+    }
+  }
+
+  if (toUpsert.length > 0) {
+    const { error: upsertError } = await admin.from("task_discipline_estimates").upsert(
+      toUpsert.map((entry) => ({
+        task_id: parsed.data.taskId,
+        project_id: taskInfo.projectId,
+        discipline: entry.discipline,
+        minutes: entry.minutes,
+        note: entry.note,
+        estimated_by: user.id,
+      })),
+      { onConflict: "task_id,discipline" },
+    );
+
+    if (upsertError) {
+      logger.error("setDisciplineEstimatesBulk: upsert failed", { error: upsertError });
+      return {
+        success: false,
+        error: "Something went wrong. Please try again in a moment.",
+      };
+    }
   }
 
   try {
