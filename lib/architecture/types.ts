@@ -2,13 +2,17 @@
 // per-node estimates/meta and the rolled-up estimate shape used by
 // lib/architecture/estimate-rollup.ts. Pure types, no server/React
 // imports.
+//
+// F011 (missions/20260919-150607): WorkCategory/WORK_CATEGORIES used to be
+// declared locally here with only two values ("design"/"development"),
+// out of sync with the five-value vocabulary lib/validation/time-entries.ts
+// and the DB CHECK constraints actually enforce. Both are now re-exported
+// from there instead of redeclared, so there is exactly one WorkCategory
+// type in the repo and discipline estimates can use all five categories.
+import type { WorkCategory } from "@/lib/validation/time-entries";
 
-export type WorkCategory = "design" | "development";
-
-export const WORK_CATEGORIES: WorkCategory[] = [
-  "design",
-  "development",
-];
+export type { WorkCategory } from "@/lib/validation/time-entries";
+export { WORK_CATEGORIES } from "@/lib/validation/time-entries";
 
 export type DisciplineEstimate = {
   discipline: WorkCategory;

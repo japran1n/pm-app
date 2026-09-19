@@ -16,6 +16,14 @@ export const workCategorySchema = z.enum([
 
 export type WorkCategory = z.infer<typeof workCategorySchema>;
 
+// F011 (missions/20260919-150607): the single source of truth for "all
+// work category values, in canonical order" — derived from the schema's
+// own `.options` rather than a hand-written array, so it can never drift
+// out of sync with workCategorySchema (and, by the comment above, with
+// the `time_entries_work_category_check` / `task_discipline_estimates`
+// CHECK constraints both migrations define using this same order).
+export const WORK_CATEGORIES: readonly WorkCategory[] = workCategorySchema.options;
+
 // Validates logTimeEntry input (F110: AS-161, AS-162, AS-163). Mirrors the
 // file-layout convention established by lib/validation/tasks.ts and
 // lib/validation/comments.ts.

@@ -9,6 +9,9 @@ import { computeRollups, computeSiteTotals } from "@/lib/architecture/estimate-r
 const DISCIPLINE_LABELS: Record<WorkCategory, string> = {
   design: "Design",
   development: "Dev",
+  content_seo: "Content/SEO",
+  pm: "PM",
+  qa: "QA",
 };
 
 function formatMinutes(m: number): string {
