@@ -129,27 +129,26 @@ function stripCommentsAndStrings(src: string): string {
   return scanSource(src, false);
 }
 
+/**
+ * Parses the barrel's exported action names by checking the WHOLE stripped
+ * source, not line-by-line. Multi-line export forms — a bare `export {`
+ * block that wraps onto several lines, or `export async function foo() {}`
+ * spanning lines — must be caught even though no single line contains the
+ * complete offending construct.
+ *
+ * Approach: collect and remove every legitimate `export { ... } from "..."`
+ * (and `export type { ... } from "..."`) re-export block from the source,
+ * then scan whatever remains for any leftover `export` keyword. If one is
+ * found, the barrel contains something the guard cannot enumerate (a bare
+ * export, export*, export default, or an inline function/const export) and
+ * the test hard-fails with the offending context.
+ */
 function parseBarrelExports(source: string): string[] {
-  const stripped = stripCommentsAndStrings(source);
-
-  for (const line of stripped.split("\n")) {
-    if (/export\s*\*/.test(line) || /export\s+default/.test(line)) {
-      expect.fail(
-        `barrel uses export* or export default — guard cannot enumerate actions: ${line.trim()}`,
-      );
-    }
-    if (/export\s*\{[^}]+\}(?!\s*from)/.test(line)) {
-      expect.fail(
-        `barrel has an export without a "from" clause — guard cannot enumerate actions: ${line.trim()}`,
-      );
-    }
-  }
-
-  const names: string[] = [];
-  // Match `export { a, b, c } from "..."` blocks (value exports, not `export type { ... }`).
   // Comments are stripped (so a commented-out export doesn't count) but string
   // literals (the module specifier) are preserved so the "from" clause still matches.
   const commentsOnly = stripComments(source);
+
+  const names: string[] = [];
   const exportBlockRegex = /export\s*\{([^}]*)\}\s*from\s*["'][^"']+["'];?/g;
   let match: RegExpExecArray | null;
   while ((match = exportBlockRegex.exec(commentsOnly)) !== null) {
@@ -166,6 +165,29 @@ function parseBarrelExports(source: string): string[] {
       .filter((s) => /^\w+$/.test(s));
     names.push(...identifiers);
   }
+
+  // Remove every recognized re-export block (value and type-only) from the
+  // stripped source, leaving behind only whatever the guard did NOT account
+  // for.
+  let remainder = commentsOnly
+    .replace(/export\s+type\s*\{[^}]*\}\s*from\s*["'][^"']+["'];?/g, "")
+    .replace(/export\s*\{[^}]*\}\s*from\s*["'][^"']+["'];?/g, "");
+
+  // Now check the leftover source (with string literal contents also
+  // dropped, so a mention of the word "export" inside a string/comment
+  // doesn't false-fire) for any remaining `export` keyword. Anything left
+  // is a disallowed export form the guard cannot enumerate — export*,
+  // export default, a bare `export { ... }` without a "from" clause (single-
+  // or multi-line), or an inline `export function`/`export const`/`export
+  // async function` declaration.
+  const remainderNoStrings = stripCommentsAndStrings(remainder);
+  const leftoverExportMatch = remainderNoStrings.match(/[^\n]*\bexport\b[^\n]*/);
+  if (leftoverExportMatch) {
+    expect.fail(
+      `barrel has a disallowed export the guard cannot enumerate (export*, export default, a bare export without "from", or an inline declaration export): ${leftoverExportMatch[0].trim()}`,
+    );
+  }
+
   return names;
 }
 
