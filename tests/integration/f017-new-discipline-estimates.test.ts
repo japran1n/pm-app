@@ -1,7 +1,7 @@
 // F017 (missions/20260919-150607): integration tests proving the three
 // disciplines F011 added to the unified WorkCategory vocabulary
 // (content_seo, pm, qa) round-trip end to end through the real write path
-// (setDisciplineEstimate, lib/actions/architecture/estimates.ts) and the
+// (setDisciplineEstimatesBulk, lib/actions/architecture/estimates.ts) and the
 // real read path (getArchitectureNodeDetails,
 // lib/queries/architecture-details.ts) against the linked Supabase
 // project. Mirrors the loadDotEnv/vi.mock("@/lib/supabase/server")/
@@ -11,7 +11,7 @@
 // real query/action layer, assert the shape."
 //
 // AS-060: a project member can write a task_discipline_estimates row for
-//         discipline "content_seo" via setDisciplineEstimate and read it
+//         discipline "content_seo" via setDisciplineEstimatesBulk and read it
 //         back unchanged via getArchitectureNodeDetails.
 // AS-061: the same round trip holds for discipline "pm".
 // AS-062: the same round trip holds for discipline "qa".
@@ -50,7 +50,7 @@ const _haveAdminCreds = Boolean(SUPABASE_URL && SECRET_KEY && PUBLISHABLE_KEY);
 
 let memberClient: SupabaseClient | null = null;
 
-// setDisciplineEstimate/getArchitectureNodeDetails both call createClient()
+// setDisciplineEstimatesBulk/getArchitectureNodeDetails both call createClient()
 // from lib/supabase/server (cookie-based, only valid inside a real Next.js
 // request) via getCurrentUser() -- mocked the same way every other
 // integration test in this suite mocks it, to a real signed-in supabase-js
@@ -168,15 +168,12 @@ describe.skip(
     }, 30000);
 
     it("test_AS_060_content_seo_estimate_writes_and_reads_back", async () => {
-      const { setDisciplineEstimate } = await import("@/lib/actions/architecture/estimates");
+      const { setDisciplineEstimatesBulk } = await import("@/lib/actions/architecture/estimates");
       const { getArchitectureNodeDetails } = await import("@/lib/queries/architecture-details");
 
-      const writeResult = await setDisciplineEstimate(
-        taskId,
-        "content_seo",
-        "1.5h",
-        "content_seo note",
-      );
+      const writeResult = await setDisciplineEstimatesBulk(taskId, [
+        { discipline: "content_seo", input: "1.5h", note: "content_seo note" },
+      ]);
       expect(writeResult.success).toBe(true);
 
       const readResult = await getArchitectureNodeDetails(projectId);
@@ -192,10 +189,12 @@ describe.skip(
     });
 
     it("test_AS_061_pm_estimate_writes_and_reads_back", async () => {
-      const { setDisciplineEstimate } = await import("@/lib/actions/architecture/estimates");
+      const { setDisciplineEstimatesBulk } = await import("@/lib/actions/architecture/estimates");
       const { getArchitectureNodeDetails } = await import("@/lib/queries/architecture-details");
 
-      const writeResult = await setDisciplineEstimate(taskId, "pm", "45m", "pm note");
+      const writeResult = await setDisciplineEstimatesBulk(taskId, [
+        { discipline: "pm", input: "45m", note: "pm note" },
+      ]);
       expect(writeResult.success).toBe(true);
 
       const readResult = await getArchitectureNodeDetails(projectId);
@@ -210,10 +209,12 @@ describe.skip(
     });
 
     it("test_AS_062_qa_estimate_writes_and_reads_back", async () => {
-      const { setDisciplineEstimate } = await import("@/lib/actions/architecture/estimates");
+      const { setDisciplineEstimatesBulk } = await import("@/lib/actions/architecture/estimates");
       const { getArchitectureNodeDetails } = await import("@/lib/queries/architecture-details");
 
-      const writeResult = await setDisciplineEstimate(taskId, "qa", "2h", "qa note");
+      const writeResult = await setDisciplineEstimatesBulk(taskId, [
+        { discipline: "qa", input: "2h", note: "qa note" },
+      ]);
       expect(writeResult.success).toBe(true);
 
       const readResult = await getArchitectureNodeDetails(projectId);
@@ -228,14 +229,16 @@ describe.skip(
     });
 
     it("test_AS_060_AS_061_AS_062_writing_one_discipline_does_not_mutate_another_disciplines_row_or_adjacent_meta_table", async () => {
-      const { setDisciplineEstimate } = await import("@/lib/actions/architecture/estimates");
+      const { setDisciplineEstimatesBulk } = await import("@/lib/actions/architecture/estimates");
       const { getArchitectureNodeDetails } = await import("@/lib/queries/architecture-details");
 
       // All three disciplines have already been written by the prior tests
       // in this file (content_seo=90, pm=45, qa=120). Writing a fresh value
       // for "qa" only must leave content_seo and pm untouched, and must not
       // create any architecture_node_meta row as a side effect.
-      const writeResult = await setDisciplineEstimate(taskId, "qa", "10m", "qa updated");
+      const writeResult = await setDisciplineEstimatesBulk(taskId, [
+        { discipline: "qa", input: "10m", note: "qa updated" },
+      ]);
       expect(writeResult.success).toBe(true);
 
       const readResult = await getArchitectureNodeDetails(projectId);
@@ -250,10 +253,12 @@ describe.skip(
     });
 
     it("test_AS_060_AS_061_AS_062_invalid_discipline_is_rejected_by_validation_before_any_write", async () => {
-      const { setDisciplineEstimate } = await import("@/lib/actions/architecture/estimates");
+      const { setDisciplineEstimatesBulk } = await import("@/lib/actions/architecture/estimates");
       const { getArchitectureNodeDetails } = await import("@/lib/queries/architecture-details");
 
-      const writeResult = await setDisciplineEstimate(taskId, "not-a-real-discipline", "1h");
+      const writeResult = await setDisciplineEstimatesBulk(taskId, [
+        { discipline: "not-a-real-discipline", input: "1h" },
+      ]);
       expect(writeResult.success).toBe(false);
 
       // No row for the bogus discipline should have been written, and the

@@ -17,8 +17,6 @@ import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { canWrite } from "@/lib/auth/permissions";
 import { writeAudit } from "@/lib/activity/audit";
 import {
-  setDisciplineEstimateSchema,
-  clearDisciplineEstimateSchema,
   setDisciplineEstimatesBulkSchema,
   parseEstimateInput,
 } from "@/lib/validation/architecture";
@@ -55,175 +53,11 @@ async function loadTaskForEstimate(
   return { projectId: taskRow.project_id as string, workspaceId };
 }
 
-// NOTE (F023 / AS-082): `setDisciplineEstimatesBulk` is now the primary action
-// used by the discipline-estimate popover for multi-discipline edits. These
-// singular actions (`setDisciplineEstimate`, `clearDisciplineEstimate`) are
-// NOT deprecated — they are kept intentionally as a supported single-discipline
-// API surface for future callers (e.g. programmatic/API-driven updates or UI
-// contexts that only ever touch one discipline at a time). Do not remove
-// without re-checking for external callers first.
-export async function setDisciplineEstimate(
-  taskId: string,
-  discipline: string,
-  input: string,
-  note?: string,
-): Promise<MutationResult> {
-  const parsed = setDisciplineEstimateSchema.safeParse({
-    taskId,
-    discipline,
-    input,
-    note,
-  });
-
-  if (!parsed.success) {
-    return {
-      success: false,
-      error: parsed.error.issues[0]?.message ?? "Invalid estimate.",
-    };
-  }
-
-  const minutes = parseEstimateInput(parsed.data.input);
-
-  if (minutes === null) {
-    return {
-      success: false,
-      error: 'Invalid format. Use "2h 30m", "90m", or "1.5h".',
-    };
-  }
-
-  const { user } = await getCurrentUser();
-
-  if (!user) {
-    return { success: false, error: "You must be signed in to set an estimate." };
-  }
-
-  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
-  const admin = createAdminClient();
-
-  const taskInfo = await loadTaskForEstimate(admin, parsed.data.taskId);
-
-  if (!taskInfo) {
-    return { success: false, error: "Task not found." };
-  }
-
-  const membership = await requireActiveMembership(admin, taskInfo.workspaceId, user.id);
-
-  if (!membership.ok) {
-    return {
-      success: false,
-      error: "You don't have permission to set an estimate on this task.",
-    };
-  }
-
-  if (!canWrite({ role: membership.role })) {
-    return {
-      success: false,
-      error: "Viewers don't have permission to set estimates.",
-    };
-  }
-
-  const { error: upsertError } = await admin
-    .from("task_discipline_estimates")
-    .upsert(
-      {
-        task_id: parsed.data.taskId,
-        project_id: taskInfo.projectId,
-        discipline: parsed.data.discipline,
-        minutes,
-        note: parsed.data.note ?? null,
-        estimated_by: user.id,
-      },
-      { onConflict: "task_id,discipline" },
-    );
-
-  if (upsertError) {
-    logger.error("setDisciplineEstimate: upsert failed", { error: upsertError });
-    return {
-      success: false,
-      error: "Something went wrong. Please try again in a moment.",
-    };
-  }
-
-  try {
-    revalidatePath("/w", "layout");
-  } catch (revalidateError) {
-    logger.error("setDisciplineEstimate: revalidatePath failed (non-fatal)", {
-      error: revalidateError,
-    });
-  }
-
-  return { success: true };
-}
-
-export async function clearDisciplineEstimate(
-  taskId: string,
-  discipline: string,
-): Promise<MutationResult> {
-  const parsed = clearDisciplineEstimateSchema.safeParse({ taskId, discipline });
-
-  if (!parsed.success) {
-    return {
-      success: false,
-      error: parsed.error.issues[0]?.message ?? "Invalid estimate.",
-    };
-  }
-
-  const { user } = await getCurrentUser();
-
-  if (!user) {
-    return { success: false, error: "You must be signed in to clear an estimate." };
-  }
-
-  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
-  const admin = createAdminClient();
-
-  const taskInfo = await loadTaskForEstimate(admin, parsed.data.taskId);
-
-  if (!taskInfo) {
-    return { success: false, error: "Task not found." };
-  }
-
-  const membership = await requireActiveMembership(admin, taskInfo.workspaceId, user.id);
-
-  if (!membership.ok) {
-    return {
-      success: false,
-      error: "You don't have permission to clear an estimate on this task.",
-    };
-  }
-
-  if (!canWrite({ role: membership.role })) {
-    return {
-      success: false,
-      error: "Viewers don't have permission to clear estimates.",
-    };
-  }
-
-  const { error: deleteError } = await admin
-    .from("task_discipline_estimates")
-    .delete()
-    .eq("task_id", parsed.data.taskId)
-    .eq("discipline", parsed.data.discipline);
-
-  if (deleteError) {
-    logger.error("clearDisciplineEstimate: delete failed", { error: deleteError });
-    return {
-      success: false,
-      error: "Something went wrong. Please try again in a moment.",
-    };
-  }
-
-  try {
-    revalidatePath("/w", "layout");
-  } catch (revalidateError) {
-    logger.error("clearDisciplineEstimate: revalidatePath failed (non-fatal)", {
-      error: revalidateError,
-    });
-  }
-
-  return { success: true };
-}
-
+// F075 (AS-082/F023): the singular `setDisciplineEstimate` and
+// `clearDisciplineEstimate` actions were removed. They had no callers
+// outside the (now-deleted) popover per-discipline loop and a tautological
+// decision-record test; `setDisciplineEstimatesBulk` is the sole write path
+// for discipline estimates.
 export async function setDisciplineEstimatesBulk(
   taskId: string,
   entries: Array<{ discipline: string; input: string; note?: string }>,

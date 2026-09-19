@@ -1,15 +1,18 @@
-// F020 (missions/20260919-150607): when a discipline estimate is deleted,
-// the note stored alongside it must be deleted too. clearDisciplineEstimate
-// (lib/actions/architecture/estimates.ts) deletes the entire
-// task_discipline_estimates row for (task_id, discipline), which by
-// construction removes both `minutes` and `note` together -- there is no
-// row left to carry a stale note. This suite proves that end to end against
-// the real action + real validation schema, mocking only the I/O boundaries
-// (admin client, auth, membership, permissions, next/cache), following the
-// module-mock pattern established by
-// tests/unit/f060-discipline-estimate-schema.test.tsx.
+// F020 (missions/20260919-150607): when a discipline estimate is cleared,
+// the note stored alongside it must be cleared too.
 //
-// AS-074: Deleting an estimate also deletes its note.
+// F075 (AS-082/F023): the singular `clearDisciplineEstimate` action (which
+// used to `.delete()` the whole row) was removed. F073 folded "clear" into
+// `setDisciplineEstimatesBulk`: a clear entry (empty input) is sent as a row
+// with `minutes: null, note: null` in the same multi-row `upsert()` call as
+// any "set" entries, instead of a separate delete. This suite proves that
+// clearing via the bulk path produces a row with `note: null` -- mocking
+// only the I/O boundaries (admin client, auth, membership, permissions,
+// next/cache), following the module-mock pattern established by
+// tests/unit/f060-discipline-estimate-schema.test.tsx and
+// tests/unit/f022-atomicity-bulk-estimates.test.ts.
+//
+// AS-074: Clearing an estimate also clears its note.
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -18,37 +21,7 @@ const PROJECT_ID = "83a351f8-6762-498d-8c6e-a1683703c6f1";
 const WORKSPACE_ID = "73b61885-e883-48cb-b7fa-6477238ffc00";
 const USER_ID = "01c5bd9a-c1da-41a4-ac0e-a4fab320a32a";
 
-let deleteCalls: Array<{ filters: Record<string, unknown> }> = [];
-let tasksSelectCalls = 0;
-// Simulates the row that existed before the clear -- including its note --
-// so the assertion below can prove the note is gone afterwards, not just
-// that *a* delete call happened.
-let rowBeforeClear: { task_id: string; discipline: string; minutes: number; note: string | null } | null = {
-  task_id: TASK_ID,
-  discipline: "design",
-  minutes: 90,
-  note: "a note that must not survive the clear",
-};
-// Tracks any table other than task_discipline_estimates that the action
-// tries to mutate (insert/update/upsert/delete), so the side-effect
-// assertion can prove no adjacent table was touched.
-let adjacentTableMutations: string[] = [];
-
-let membershipOk = true;
-let membershipRole = "member";
-let canWriteResult = true;
-let currentUser: { id: string } | null = { id: USER_ID };
-let taskRow: {
-  id: string;
-  project_id: string;
-  deleted_at: string | null;
-  projects: { workspace_id: string } | null;
-} | null = {
-  id: TASK_ID,
-  project_id: PROJECT_ID,
-  deleted_at: null,
-  projects: { workspace_id: WORKSPACE_ID },
-};
+let upsertCalls: Array<{ payload: Array<Record<string, unknown>>; options: unknown }> = [];
 
 vi.mock("next/cache", () => ({
   revalidatePath: vi.fn(),
@@ -58,16 +31,23 @@ vi.mock("@/lib/observability/logger", () => ({
   logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
 }));
 
+vi.mock("@/lib/activity/audit", () => ({
+  writeAudit: vi.fn(),
+}));
+
 vi.mock("@/lib/auth/current-user", () => ({
-  getCurrentUser: async () => ({ user: currentUser }),
+  getCurrentUser: async () => ({
+    user: { id: USER_ID },
+    supabase: { fake: "session-client" },
+  }),
 }));
 
 vi.mock("@/lib/auth/require-membership", () => ({
-  requireActiveMembership: async () => ({ ok: membershipOk, role: membershipRole }),
+  requireActiveMembership: async () => ({ ok: true, role: "member" }),
 }));
 
 vi.mock("@/lib/auth/permissions", () => ({
-  canWrite: () => canWriteResult,
+  canWrite: () => true,
 }));
 
 vi.mock("@/lib/supabase/admin", () => ({
@@ -77,192 +57,64 @@ vi.mock("@/lib/supabase/admin", () => ({
         return {
           select: () => ({
             eq: () => ({
-              single: async () => {
-                tasksSelectCalls += 1;
-                return { data: taskRow, error: taskRow ? null : { message: "not found" } };
-              },
+              single: async () => ({
+                data: {
+                  id: TASK_ID,
+                  project_id: PROJECT_ID,
+                  deleted_at: null,
+                  projects: { workspace_id: WORKSPACE_ID },
+                },
+                error: null,
+              }),
             }),
           }),
         };
       }
       if (table === "task_discipline_estimates") {
         return {
-          delete: () => {
-            const filters: Record<string, unknown> = {};
-            const builder = {
-              eq(column: string, value: unknown) {
-                filters[column] = value;
-                return this;
-              },
-              then(resolve: (result: { error: null }) => unknown) {
-                deleteCalls.push({ filters });
-                // Simulates the real DELETE: the row matching (task_id,
-                // discipline) -- including its `note` column -- is removed
-                // from the backing store entirely, so there is nothing left
-                // to carry a stale note.
-                if (
-                  rowBeforeClear &&
-                  rowBeforeClear.task_id === filters.task_id &&
-                  rowBeforeClear.discipline === filters.discipline
-                ) {
-                  rowBeforeClear = null;
-                }
-                return resolve({ error: null });
-              },
-            };
-            return builder;
-          },
-          insert: () => {
-            adjacentTableMutations.push(`${table}.insert`);
-            return { error: null };
-          },
-          upsert: () => {
-            adjacentTableMutations.push(`${table}.upsert`);
+          upsert: async (payload: Array<Record<string, unknown>>, options: unknown) => {
+            upsertCalls.push({ payload, options });
             return { error: null };
           },
         };
       }
-      // Any other table (workspaces, workspace_members, projects, etc.)
-      // being written to is exactly the side effect AS-074's DoD forbids.
-      adjacentTableMutations.push(`${table}.unexpected-access`);
-      return {
-        insert: () => {
-          adjacentTableMutations.push(`${table}.insert`);
-          return { error: null };
-        },
-        upsert: () => {
-          adjacentTableMutations.push(`${table}.upsert`);
-          return { error: null };
-        },
-        update: () => {
-          adjacentTableMutations.push(`${table}.update`);
-          return { error: null };
-        },
-        delete: () => {
-          adjacentTableMutations.push(`${table}.delete`);
-          return { error: null };
-        },
-      };
+      throw new Error(`Unexpected table in mock: ${table}`);
     },
   }),
 }));
 
 afterEach(() => {
-  deleteCalls = [];
-  adjacentTableMutations = [];
-  tasksSelectCalls = 0;
-  rowBeforeClear = {
-    task_id: TASK_ID,
-    discipline: "design",
-    minutes: 90,
-    note: "a note that must not survive the clear",
-  };
-  membershipOk = true;
-  membershipRole = "member";
-  canWriteResult = true;
-  currentUser = { id: USER_ID };
-  taskRow = {
-    id: TASK_ID,
-    project_id: PROJECT_ID,
-    deleted_at: null,
-    projects: { workspace_id: WORKSPACE_ID },
-  };
+  upsertCalls = [];
   vi.clearAllMocks();
 });
 
-describe("F020 — clearing a discipline estimate also deletes its note (AS-074)", () => {
-  it("test_AS_074_clearDisciplineEstimate_deletes_the_whole_row_removing_minutes_and_note_together", async () => {
-    const { clearDisciplineEstimate } = await import(
+describe("F020 — clearing a discipline estimate also clears its note (AS-074)", () => {
+  it("test_AS_074_clearing_via_bulk_upsert_produces_a_row_with_a_null_note", async () => {
+    const { setDisciplineEstimatesBulk } = await import(
       "@/lib/actions/architecture/estimates"
     );
 
-    const result = await clearDisciplineEstimate(TASK_ID, "design");
+    // An empty `input` is how the popover/action represents "clear this
+    // discipline's estimate" in the bulk path (see setDisciplineEstimatesBulk's
+    // handling of `entry.input.trim()`). It must produce a row with both
+    // `minutes` and `note` null -- there is no way for a stale note to
+    // survive a clear, because the whole row (including its note) is
+    // rewritten to null in the same statement.
+    const result = await setDisciplineEstimatesBulk(TASK_ID, [
+      { discipline: "design", input: "" },
+    ]);
 
     expect(result.success).toBe(true);
-    // The delete targets the exact (task_id, discipline) row -- there is no
-    // partial delete of `minutes` only that could leave a stale `note`
-    // behind. Deleting the row is what guarantees the note is gone too.
-    expect(deleteCalls).toHaveLength(1);
-    expect(deleteCalls[0].filters).toEqual({
-      task_id: TASK_ID,
-      discipline: "design",
-    });
-    // AS-074's actual claim: the note is gone, not just that some delete
-    // call happened. The row (and its note column) no longer exists in the
-    // backing store for this (task_id, discipline).
-    expect(rowBeforeClear).toBeNull();
-  });
-
-  it("test_AS_074_clearDisciplineEstimate_leaves_no_adjacent_table_mutated", async () => {
-    const { clearDisciplineEstimate } = await import(
-      "@/lib/actions/architecture/estimates"
-    );
-
-    const result = await clearDisciplineEstimate(TASK_ID, "development");
-
-    expect(result.success).toBe(true);
-    expect(tasksSelectCalls).toBe(1);
-    // Only the delete on task_discipline_estimates happened -- no insert,
-    // upsert, update, or unexpected read/write on any other table.
-    expect(adjacentTableMutations).toEqual([]);
-  });
-
-  it("test_AS_074_unauthenticated_user_cannot_clear_an_estimate", async () => {
-    currentUser = null;
-    const { clearDisciplineEstimate } = await import(
-      "@/lib/actions/architecture/estimates"
-    );
-
-    const result = await clearDisciplineEstimate(TASK_ID, "design");
-
-    expect(result.success).toBe(false);
-    expect(deleteCalls).toHaveLength(0);
-  });
-
-  it("test_AS_074_a_task_that_does_not_exist_or_is_soft_deleted_blocks_the_clear", async () => {
-    taskRow = null;
-    const { clearDisciplineEstimate } = await import(
-      "@/lib/actions/architecture/estimates"
-    );
-
-    const result = await clearDisciplineEstimate(TASK_ID, "design");
-
-    expect(result.success).toBe(false);
-    expect(deleteCalls).toHaveLength(0);
-  });
-
-  it("test_AS_074_a_user_without_active_membership_cannot_clear_an_estimate", async () => {
-    membershipOk = false;
-    const { clearDisciplineEstimate } = await import(
-      "@/lib/actions/architecture/estimates"
-    );
-
-    const result = await clearDisciplineEstimate(TASK_ID, "design");
-
-    expect(result.success).toBe(false);
-    expect(deleteCalls).toHaveLength(0);
-  });
-
-  it("test_AS_074_a_viewer_role_without_write_permission_cannot_clear_an_estimate", async () => {
-    canWriteResult = false;
-    const { clearDisciplineEstimate } = await import(
-      "@/lib/actions/architecture/estimates"
-    );
-
-    const result = await clearDisciplineEstimate(TASK_ID, "design");
-
-    expect(result.success).toBe(false);
-    expect(deleteCalls).toHaveLength(0);
-  });
-
-  it("test_AS_074_an_invalid_discipline_is_rejected_before_any_delete_is_attempted", async () => {
-    const { clearDisciplineEstimate } = await import(
-      "@/lib/actions/architecture/estimates"
-    );
-
-    const result = await clearDisciplineEstimate(TASK_ID, "not-a-real-discipline");
-
-    expect(result.success).toBe(false);
-    expect(deleteCalls).toHaveLength(0);
+    expect(upsertCalls).toHaveLength(1);
+    expect(upsertCalls[0].payload).toMatchObject([
+      {
+        task_id: TASK_ID,
+        project_id: PROJECT_ID,
+        discipline: "design",
+        minutes: null,
+        note: null,
+        estimated_by: USER_ID,
+      },
+    ]);
   });
 });

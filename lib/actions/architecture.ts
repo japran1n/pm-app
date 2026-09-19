@@ -51,8 +51,4 @@ export {
   deleteComponent,
 } from "./architecture/components";
 
-export {
-  setDisciplineEstimate,
-  clearDisciplineEstimate,
-  setDisciplineEstimatesBulk,
-} from "./architecture/estimates";
+export { setDisciplineEstimatesBulk } from "./architecture/estimates";
