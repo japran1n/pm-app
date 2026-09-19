@@ -89,7 +89,7 @@ describe.each(SLUGS)("AppSidebar Webflow nav item (F003/F044) [slug=%s]", (slug)
     it("desktop <aside>: link has the correct href and visible label text (not merely present in the href)", () => {
       render(createElement(AppSidebar, { ...baseProps, isGuest: false }));
 
-      const link = screen.getByRole("link", { name: /^Webflow$/ });
+      const link = screen.getByRole("link", { name: /^HTML → Webflow$/ });
       expect(link).toHaveAttribute("href", expectedHref);
       // getByRole("link", {name}) already requires an accessible name
       // match against real text content, not the href -- this second
@@ -103,30 +103,50 @@ describe.each(SLUGS)("AppSidebar Webflow nav item (F003/F044) [slug=%s]", (slug)
       await openMobileSheet();
 
       const dialog = screen.getByRole("dialog");
-      const link = within(dialog).getByRole("link", { name: /^Webflow$/ });
+      const link = within(dialog).getByRole("link", { name: /^HTML → Webflow$/ });
       expect(link).toHaveAttribute("href", expectedHref);
       expect(link.textContent).toContain("Webflow");
     });
 
-    it("Webflow sits in the same ungrouped primary band as Dashboard/My Tasks/Projects/Chat, not under a labelled section like 'Team' or 'Other'", () => {
+    // F010 (TH-001, TH-002, TH-003): the item was moved out of the
+    // ungrouped primary band into its own labelled "Tools" section,
+    // positioned between "Team" and "Other".
+    it("HTML → Webflow sits under its own labelled 'Tools' section, not in the ungrouped primary band with Dashboard", () => {
       render(createElement(AppSidebar, { ...baseProps, isGuest: false }));
 
       const nav = screen.getByRole("navigation");
-      const link = within(nav).getByRole("link", { name: /^Webflow$/ });
+      const link = within(nav).getByRole("link", { name: /^HTML → Webflow$/ });
       // The group wrapper is the link's direct parent (`<div class="flex
       // flex-col gap-0.5">` holding an optional label <p> + the item
       // links directly as siblings).
       const groupWrapper = link.parentElement;
       expect(groupWrapper).not.toBeNull();
-      // A labelled group ("Plan"/"Team"/"Other") has a <p> heading as a
-      // child; the ungrouped "Work" band does not.
       const heading = groupWrapper!.querySelector("p");
-      expect(heading).toBeNull();
-      // And Webflow is a sibling of Dashboard within that same wrapper.
+      expect(heading).not.toBeNull();
+      expect(heading!.textContent).toBe("Tools");
+      // Dashboard is NOT a sibling of HTML → Webflow anymore -- it stayed
+      // behind in the ungrouped primary band.
       const dashboardLink = within(groupWrapper as HTMLElement).queryByRole("link", {
         name: /^Dashboard$/,
       });
-      expect(dashboardLink).not.toBeNull();
+      expect(dashboardLink).toBeNull();
+    });
+
+    // TH-003: "Tools" is positioned between "Team" and "Other" among the
+    // labelled group headings, in document order.
+    it("TH-003: the 'Tools' section heading appears after 'Team' and before 'Other' in the rendered nav", () => {
+      render(createElement(AppSidebar, { ...baseProps, isGuest: false }));
+
+      const nav = screen.getByRole("navigation");
+      const headings = within(nav)
+        .getAllByText(/^(Plan|Team|Tools|Other)$/)
+        .map((el) => el.textContent);
+      const teamIndex = headings.indexOf("Team");
+      const toolsIndex = headings.indexOf("Tools");
+      const otherIndex = headings.indexOf("Other");
+      expect(teamIndex).toBeGreaterThanOrEqual(0);
+      expect(toolsIndex).toBeGreaterThan(teamIndex);
+      expect(otherIndex).toBeGreaterThan(toolsIndex);
     });
   });
 
@@ -135,7 +155,7 @@ describe.each(SLUGS)("AppSidebar Webflow nav item (F003/F044) [slug=%s]", (slug)
       currentPath = `/w/${slug}/tools/webflow`;
       render(createElement(AppSidebar, { ...baseProps, isGuest: false }));
 
-      const link = screen.getByRole("link", { name: /^Webflow$/ });
+      const link = screen.getByRole("link", { name: /^HTML → Webflow$/ });
       expect(link).toHaveAttribute("aria-current", "page");
       // font-medium only appears on the isActive branch of the className
       // ternary in app-sidebar.tsx -- unlike "bg-accent", which the
@@ -156,7 +176,7 @@ describe.each(SLUGS)("AppSidebar Webflow nav item (F003/F044) [slug=%s]", (slug)
       await openMobileSheet();
 
       const dialog = screen.getByRole("dialog");
-      const link = within(dialog).getByRole("link", { name: /^Webflow$/ });
+      const link = within(dialog).getByRole("link", { name: /^HTML → Webflow$/ });
       expect(link).toHaveAttribute("aria-current", "page");
       expect(link).toHaveClass("font-medium");
       expect(link.classList.contains("text-muted-foreground")).toBe(false);
@@ -166,7 +186,7 @@ describe.each(SLUGS)("AppSidebar Webflow nav item (F003/F044) [slug=%s]", (slug)
       currentPath = `/w/${slug}`; // Dashboard's own route, not Webflow's
       render(createElement(AppSidebar, { ...baseProps, isGuest: false }));
 
-      const link = screen.getByRole("link", { name: /^Webflow$/ });
+      const link = screen.getByRole("link", { name: /^HTML → Webflow$/ });
       expect(link).not.toHaveAttribute("aria-current", "page");
       expect(link).not.toHaveClass("font-medium");
       expect(link.classList.contains("text-muted-foreground")).toBe(true);
@@ -183,7 +203,7 @@ describe.each(SLUGS)("AppSidebar Webflow nav item (F003/F044) [slug=%s]", (slug)
       currentPath = `${expectedHref}/results`;
       render(createElement(AppSidebar, { ...baseProps, isGuest: false }));
 
-      const link = screen.getByRole("link", { name: /^Webflow$/ });
+      const link = screen.getByRole("link", { name: /^HTML → Webflow$/ });
       expect(link).toHaveAttribute("aria-current", "page");
       expect(link).toHaveClass("font-medium");
       expect(link.classList.contains("text-muted-foreground")).toBe(false);
@@ -193,7 +213,7 @@ describe.each(SLUGS)("AppSidebar Webflow nav item (F003/F044) [slug=%s]", (slug)
       // Webflow active via its own sub-route.
       currentPath = `${expectedHref}/results`;
       const { unmount } = render(createElement(AppSidebar, { ...baseProps, isGuest: false }));
-      const webflowLink = screen.getByRole("link", { name: /^Webflow$/ });
+      const webflowLink = screen.getByRole("link", { name: /^HTML → Webflow$/ });
       const webflowActiveClasses = webflowLink.className;
       unmount();
 
@@ -212,7 +232,7 @@ describe.each(SLUGS)("AppSidebar Webflow nav item (F003/F044) [slug=%s]", (slug)
     it("desktop: still renders the Webflow link for a guest", () => {
       render(createElement(AppSidebar, { ...baseProps, isGuest: true }));
 
-      const link = screen.getByRole("link", { name: /^Webflow$/ });
+      const link = screen.getByRole("link", { name: /^HTML → Webflow$/ });
       expect(link).toHaveAttribute("href", expectedHref);
     });
 
@@ -221,7 +241,7 @@ describe.each(SLUGS)("AppSidebar Webflow nav item (F003/F044) [slug=%s]", (slug)
       await openMobileSheet();
 
       const dialog = screen.getByRole("dialog");
-      const link = within(dialog).getByRole("link", { name: /^Webflow$/ });
+      const link = within(dialog).getByRole("link", { name: /^HTML → Webflow$/ });
       expect(link).toHaveAttribute("href", expectedHref);
     });
 
@@ -232,7 +252,7 @@ describe.each(SLUGS)("AppSidebar Webflow nav item (F003/F044) [slug=%s]", (slug)
       // confirm the link is still present.
       render(createElement(AppSidebar, { ...baseProps, isGuest: false }));
 
-      const link = screen.getByRole("link", { name: /^Webflow$/ });
+      const link = screen.getByRole("link", { name: /^HTML → Webflow$/ });
       expect(link).toHaveAttribute("href", expectedHref);
     });
   });
@@ -241,7 +261,7 @@ describe.each(SLUGS)("AppSidebar Webflow nav item (F003/F044) [slug=%s]", (slug)
     it("desktop: renders an <svg> child inside the link, alongside the shared inactive token classes", () => {
       render(createElement(AppSidebar, { ...baseProps, isGuest: false }));
 
-      const link = screen.getByRole("link", { name: /^Webflow$/ });
+      const link = screen.getByRole("link", { name: /^HTML → Webflow$/ });
       const icon = link.querySelector("svg");
       expect(icon).not.toBeNull();
       expect(icon).toHaveAttribute("aria-hidden", "true");
@@ -255,7 +275,7 @@ describe.each(SLUGS)("AppSidebar Webflow nav item (F003/F044) [slug=%s]", (slug)
       await openMobileSheet();
 
       const dialog = screen.getByRole("dialog");
-      const link = within(dialog).getByRole("link", { name: /^Webflow$/ });
+      const link = within(dialog).getByRole("link", { name: /^HTML → Webflow$/ });
       const icon = link.querySelector("svg");
       expect(icon).not.toBeNull();
       expect(icon).toHaveAttribute("aria-hidden", "true");
@@ -265,7 +285,7 @@ describe.each(SLUGS)("AppSidebar Webflow nav item (F003/F044) [slug=%s]", (slug)
       currentPath = "/w/acme/tools/webflow";
       render(createElement(AppSidebar, { ...baseProps, isGuest: false }));
 
-      const link = screen.getByRole("link", { name: /^Webflow$/ });
+      const link = screen.getByRole("link", { name: /^HTML → Webflow$/ });
       const icon = link.querySelector("svg");
       expect(icon).not.toBeNull();
       expect(icon).toHaveClass("text-muted-foreground");

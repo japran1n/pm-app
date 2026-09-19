@@ -150,13 +150,18 @@ function navGroups(
     // unreadCount, which chat-nav-list.tsx already treats as the
     // source of truth for "unread" there).
     { href: `/w/${workspaceSlug}/chat`, label: "Chat", icon: MessageCircle, badge: chatUnreadBadge ?? countBadge(chatUnreadCount) },
-    // F003 (AS-001, AS-005, AS-006, AS-007): "Webflow" nav item linking to
-    // the converter tool (F002, app/(workspace)/w/[workspaceSlug]/tools/webflow).
-    // Placed at the same top-level tier as Dashboard/My Tasks/Projects/Chat
-    // per this feature's own Draft scope -- not gated on role/guest/hasClient
-    // (AS-007: always renders, no per-workspace conditional), same pattern
-    // as Dashboard/My Tasks/Projects/Chat above.
-    { href: `/w/${workspaceSlug}/tools/webflow`, label: "Webflow", icon: Code2 },
+  ];
+
+  // F010 (TH-001, TH-002, TH-003, TH-005, TH-007, TH-012): dedicated "Tools"
+  // band, positioned between "Team" and "Other" below. The HTML→Webflow
+  // converter (formerly "Webflow" in the top-level `work` band, F003/F002)
+  // now lives here under its clearer "HTML → Webflow" label -- same route
+  // (`/w/<slug>/tools/webflow`), not gated on role/guest/hasClient (TH-012:
+  // always renders for every workspace regardless of whether it has a
+  // client, same "no per-workspace conditional" convention this item
+  // already followed in its old home).
+  const tools: NavItem[] = [
+    { href: `/w/${workspaceSlug}/tools/webflow`, label: "HTML → Webflow", icon: Code2 },
   ];
 
   // F241: Calendar is a workspace-wide, RLS-scoped view with no guest gate
@@ -270,6 +275,10 @@ function navGroups(
     { label: null, items: work },
     { label: "Plan", items: filterGuest(plan) },
     { label: "Team", items: filterGuest(team) },
+    // F010 (TH-002, TH-012): "Tools" sits between "Team" and "Other" per
+    // this feature's own Draft scope, and is NOT run through `filterGuest`
+    // -- it always renders for every role/workspace (TH-012).
+    { label: "Tools", items: tools },
     { label: "Other", items: filterGuest(other) },
   ].filter((group) => group.items.length > 0);
 }
