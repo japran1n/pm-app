@@ -1,5 +1,6 @@
-// F023 (TH-050…TH-059, TH-064…TH-068), F024 (TH-060, TH-061),
-// F025 (TH-069) — /api/webflow-source route handler.
+// F023 (TH-050…TH-059, TH-062…TH-068), F024 (TH-060, TH-061),
+// F025 (TH-069), F027 (test gap fill for TH-062) —
+// /api/webflow-source route handler.
 
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -112,6 +113,19 @@ describe("GET /api/webflow-source", () => {
       finalUrl: "https://foo.webflow.io/",
       blocks: [],
     });
+  });
+
+  it("test_TH_062_oversized_body_stops_reading_and_returns_413", async () => {
+    const big = "a".repeat(2 * 1024 * 1024 + 1);
+    global.fetch = vi.fn(async () =>
+      htmlResponse(big, { url: "https://foo.webflow.io/" }),
+    ) as unknown as typeof fetch;
+
+    const res = await GET(makeRequest("https://foo.webflow.io/"));
+    // Shared `cappedBodyReader` (also used by the CSS proxy, TH-083) cancels
+    // the stream once the 2 MB cap is crossed rather than buffering the
+    // full upstream body, and this route surfaces that as 413.
+    expect(res.status).toBe(413);
   });
 
   it("test_TH_068_response_has_cache_control_no_store", async () => {
