@@ -49,8 +49,8 @@ import { ComponentPicker } from "@/components/architecture/component-picker";
 import type { BoardComponent } from "@/lib/queries/architecture";
 
 const COMPONENTS: BoardComponent[] = [
-  { id: "component-1", name: "Navbar", description: null, position: 1, instanceCount: 2 },
-  { id: "component-2", name: "Footer", description: null, position: 2, instanceCount: 1 },
+  { id: "component-1", name: "Navbar", position: 1, instanceCount: 2 },
+  { id: "component-2", name: "Footer", position: 2, instanceCount: 1 },
 ];
 
 afterEach(() => {

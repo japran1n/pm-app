@@ -32,7 +32,6 @@ function makePage(overrides: Partial<BoardPage>): BoardPage {
     pageSlug: "home",
     pageKind: "static",
     position: 0,
-    description: null,
     sections: [],
     ...overrides,
   };
@@ -42,7 +41,6 @@ function makeComponent(overrides: Partial<BoardComponent>): BoardComponent {
   return {
     id: "component-1",
     name: "Header",
-    description: null,
     position: 0,
     instanceCount: 1,
     ...overrides,

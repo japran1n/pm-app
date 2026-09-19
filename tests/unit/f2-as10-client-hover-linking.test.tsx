@@ -24,7 +24,6 @@ afterEach(() => {
 const componentA: BoardComponent = {
   id: "comp-a",
   name: "Navbar",
-  description: null,
   position: 0,
   instanceCount: 2,
 };
@@ -37,7 +36,6 @@ function makePages(): BoardPage[] {
       pageSlug: "home",
       pageKind: "static",
       position: 0,
-      description: null,
       sections: [
         { id: "section-1", title: "Nav 1", position: 0, kind: "static", component: componentA },
         { id: "section-2", title: "Plain", position: 1, kind: "static", component: null },
@@ -49,7 +47,6 @@ function makePages(): BoardPage[] {
       pageSlug: "about",
       pageKind: "static",
       position: 1,
-      description: null,
       sections: [{ id: "section-3", title: "Nav 2", position: 0, kind: "static", component: componentA }],
     },
   ];

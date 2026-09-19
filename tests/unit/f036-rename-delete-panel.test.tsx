@@ -33,7 +33,6 @@ function makeComponent(overrides: Partial<BoardComponent>): BoardComponent {
   return {
     id: "comp-1",
     name: "Header",
-    description: null,
     position: 1,
     instanceCount: 0,
     ...overrides,

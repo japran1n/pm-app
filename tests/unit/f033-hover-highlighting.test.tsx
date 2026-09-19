@@ -37,14 +37,12 @@ afterEach(() => {
 const componentA: BoardComponent = {
   id: "comp-a",
   name: "Navbar",
-  description: null,
   position: 0,
   instanceCount: 2,
 };
 const componentB: BoardComponent = {
   id: "comp-b",
   name: "Footer",
-  description: null,
   position: 1,
   instanceCount: 1,
 };

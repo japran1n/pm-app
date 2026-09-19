@@ -46,7 +46,6 @@ const SECTIONS_PER_PAGE = 12;
 const sharedComponent: BoardComponent = {
   id: "comp-shared",
   name: "SharedNav",
-  description: null,
   position: 0,
   instanceCount: PAGE_COUNT,
 };

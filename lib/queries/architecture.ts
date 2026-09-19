@@ -54,7 +54,6 @@ export type BoardPage = {
   pageSlug: string;
   pageKind: BoardPageKind | null;
   position: number;
-  description: string | null;
   sections: BoardSection[];
   clientVisible?: boolean;
 };
@@ -62,7 +61,6 @@ export type BoardPage = {
 export type BoardComponent = {
   id: string;
   name: string;
-  description: string | null;
   position: number;
   instanceCount: number;
 };
@@ -72,8 +70,10 @@ export type ArchitectureBoard = {
   components: BoardComponent[];
 };
 
+// AS-120: description_text intentionally excluded from this column list --
+// it is no longer loaded for the architecture board.
 const TASK_COLUMNS =
-  "id, title, page_slug, page_kind, section_kind, component_id, parent_task_id, position, description_text, client_visible";
+  "id, title, page_slug, page_kind, section_kind, component_id, parent_task_id, position, client_visible";
 
 type TaskRow = {
   id: string;
@@ -84,16 +84,15 @@ type TaskRow = {
   component_id: string | null;
   parent_task_id: string | null;
   position: number;
-  description_text: string | null;
   client_visible?: boolean | null;
 };
 
-const COMPONENT_COLUMNS = "id, name, description, position";
+// F032: description dropped from page_components (0 non-null rows; see F031).
+const COMPONENT_COLUMNS = "id, name, position";
 
 type ComponentRow = {
   id: string;
   name: string;
-  description: string | null;
   position: number;
 };
 
@@ -158,10 +157,6 @@ export function buildBoardFromRows(
       pageSlug: page.page_slug as string,
       pageKind: (page.page_kind as BoardPageKind | null) ?? null,
       position: page.position,
-      description:
-        page.description_text && page.description_text.length > 0
-          ? page.description_text
-          : null,
       sections,
       clientVisible: page.client_visible === true,
     };
@@ -172,7 +167,6 @@ export function buildBoardFromRows(
     .map((component) => ({
       id: component.id,
       name: component.name,
-      description: component.description,
       position: component.position,
       instanceCount: instanceCountByComponentId.get(component.id) ?? 0,
     }));

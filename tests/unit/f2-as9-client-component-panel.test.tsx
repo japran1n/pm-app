@@ -20,7 +20,6 @@ afterEach(() => {
 const componentA: BoardComponent = {
   id: "comp-a",
   name: "Navbar",
-  description: null,
   position: 0,
   instanceCount: 2,
 };
@@ -32,7 +31,6 @@ const pages: BoardPage[] = [
     pageSlug: "home",
     pageKind: "static",
     position: 0,
-    description: null,
     sections: [{ id: "s-1", title: "Nav", position: 0, kind: "static", component: componentA }],
   },
   {
@@ -41,7 +39,6 @@ const pages: BoardPage[] = [
     pageSlug: "about",
     pageKind: "static",
     position: 1,
-    description: null,
     sections: [{ id: "s-2", title: "Nav 2", position: 0, kind: "static", component: componentA }],
   },
   {
@@ -50,7 +47,6 @@ const pages: BoardPage[] = [
     pageSlug: "contact",
     pageKind: "static",
     position: 2,
-    description: null,
     sections: [{ id: "s-3", title: "Plain", position: 0, kind: "static", component: null }],
   },
 ];
