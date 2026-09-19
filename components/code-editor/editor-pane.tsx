@@ -18,6 +18,9 @@ import type { Block } from "@/lib/code-editor/compose";
 import type { Corpus } from "@/lib/code-editor/corpus";
 import { copyToClipboard, wrapForCopy } from "@/lib/code-editor/clipboard";
 import { formatCode } from "@/lib/code-editor/format";
+import { registerCssCompletionProvider } from "@/lib/code-editor/css-completion-provider";
+import { registerJsCompletionProvider } from "@/lib/code-editor/js-completion-provider";
+import type * as Monaco from "monaco-editor";
 
 // Configure the local Monaco loader once, at module load time, so it always
 // runs before the first <Editor /> mounts regardless of how many
@@ -52,7 +55,7 @@ function languageForBlock(file: Block): "css" | "javascript" {
 export function EditorPane({
   file,
   onChange,
-  corpus: _corpus,
+  corpus,
   isDirty = false,
   onSave,
 }: EditorPaneProps) {
@@ -63,6 +66,56 @@ export function EditorPane({
 
   const language = useMemo(() => languageForBlock(file), [file]);
   const monacoTheme = resolvedTheme === "dark" ? "vs-dark" : "light";
+
+  // Completion providers (F053, F035) — registered once per Monaco mount,
+  // disposed and re-registered whenever `corpus` changes so suggestions
+  // stay in sync with the latest fetched/merged corpus. Disposed on unmount
+  // so no stale providers accumulate across editor panes.
+  const corpusRef = useRef(corpus);
+  const monacoInstanceRef = useRef<typeof Monaco | null>(null);
+  const disposablesRef = useRef<Monaco.IDisposable[]>([]);
+  useEffect(() => {
+    corpusRef.current = corpus;
+  }, [corpus]);
+
+  const registerCompletionProviders = useCallback((monaco: typeof Monaco) => {
+    // Defensive: the `monaco` namespace passed to `onMount` always exposes
+    // `languages` in the real package, but test doubles that stub only
+    // `KeyMod`/`KeyCode` (e.g. tests/unit/th-monaco-editor.test.tsx) don't
+    // need completion providers registered at all.
+    if (!monaco?.languages?.registerCompletionItemProvider) return;
+
+    for (const d of disposablesRef.current) {
+      d.dispose();
+    }
+    disposablesRef.current = [];
+
+    const activeCorpus = corpusRef.current ?? {
+      classes: [],
+      cssVars: [],
+      dataAttrs: [],
+    };
+
+    disposablesRef.current.push(
+      registerCssCompletionProvider(monaco, activeCorpus),
+      registerJsCompletionProvider(monaco, activeCorpus),
+    );
+  }, []);
+
+  useEffect(() => {
+    if (monacoInstanceRef.current) {
+      registerCompletionProviders(monacoInstanceRef.current);
+    }
+  }, [corpus, registerCompletionProviders]);
+
+  useEffect(() => {
+    return () => {
+      for (const d of disposablesRef.current) {
+        d.dispose();
+      }
+      disposablesRef.current = [];
+    };
+  }, []);
 
   // The Ctrl+S command is registered once, in `onMount`, but must always
   // act on the *current* language/onChange/onSave -- keep them in refs so
@@ -110,17 +163,23 @@ export function EditorPane({
   // Prettier (F056), applies the formatted result back into the editor and
   // reports it via `onChange`, then calls `onSave` so the parent can clear
   // the dirty flag for this block.
-  const handleMount: OnMount = useCallback((editor, monaco) => {
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, async () => {
-      const current = editor.getValue();
-      const formatted = await formatCode(current, languageRef.current);
-      if (formatted !== current) {
-        editor.setValue(formatted);
-      }
-      onChangeRef.current(formatted);
-      onSaveRef.current?.();
-    });
-  }, []);
+  const handleMount: OnMount = useCallback(
+    (editor, monaco) => {
+      editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, async () => {
+        const current = editor.getValue();
+        const formatted = await formatCode(current, languageRef.current);
+        if (formatted !== current) {
+          editor.setValue(formatted);
+        }
+        onChangeRef.current(formatted);
+        onSaveRef.current?.();
+      });
+
+      monacoInstanceRef.current = monaco;
+      registerCompletionProviders(monaco);
+    },
+    [registerCompletionProviders],
+  );
 
   const handleRetry = useCallback(() => {
     setLoadError(null);

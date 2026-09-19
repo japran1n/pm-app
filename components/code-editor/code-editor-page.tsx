@@ -7,12 +7,55 @@
 // F103 (TH-290): empty state shown before a site is loaded (before any
 // blocks are available).
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Code2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useFetchSite } from "@/lib/code-editor/use-fetch-site";
+import { useHostReset } from "@/lib/code-editor/use-host-reset";
 import { clearEditorState } from "@/lib/webflow-editor/storage";
+import { EditorLayout } from "@/components/code-editor/editor-layout";
+import {
+  buildCorpusFromCss,
+  mergeCorpora,
+  type Corpus,
+} from "@/lib/code-editor/corpus";
+import type { EditableBlock } from "@/lib/code-editor/use-blocks";
+
+// F104 (TH-085) — finds `<link rel="stylesheet" href="...">` URLs so their
+// contents can be fetched (through our proxy) and merged into the
+// autocomplete corpus. Best-effort only: fetched for completion suggestions,
+// never surfaced as an editable file, and a failure to fetch any one
+// stylesheet never fails the page load.
+const STYLESHEET_LINK_RE =
+  /<link[^>]+rel\s*=\s*["']stylesheet["'][^>]*href\s*=\s*["']([^"']+)["'][^>]*>|<link[^>]+href\s*=\s*["']([^"']+)["'][^>]*rel\s*=\s*["']stylesheet["'][^>]*>/gi;
+
+function extractStylesheetUrls(html: string): string[] {
+  const urls = new Set<string>();
+  try {
+    let match: RegExpExecArray | null;
+    STYLESHEET_LINK_RE.lastIndex = 0;
+    while ((match = STYLESHEET_LINK_RE.exec(html ?? "")) !== null) {
+      const href = match[1] ?? match[2];
+      if (href && /^https:\/\//i.test(href)) {
+        urls.add(href);
+      }
+    }
+  } catch {
+    // Never throw: return whatever partial results were collected so far.
+  }
+  return Array.from(urls);
+}
+
+/** Extracts the hostname to key per-host storage/reset off of (F088). */
+function hostnameFromUrl(url: string | null): string {
+  if (!url) return "";
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return "";
+  }
+}
 
 const INVALID_URL_ERROR = "Please enter a valid .webflow.io URL";
 
@@ -80,6 +123,72 @@ export function CodeEditorPage({
   const isFetching = isFetchingProp ?? fetchState.loading;
   const hasSite = hasSiteProp ?? fetchState.blocks.length > 0;
   const fetchError = onFetch ? null : fetchState.error;
+
+  // F104 (TH-085): external stylesheets referenced by the fetched document
+  // are fetched through our proxy, best-effort, and merged into the
+  // autocomplete corpus. Never blocks/delays rendering the editor -- it
+  // resolves asynchronously after the page's own corpus is already usable.
+  const [externalCssCorpus, setExternalCssCorpus] = useState<Corpus | null>(null);
+
+  useEffect(() => {
+    if (onFetch) return; // caller owns fetch orchestration -- not our job.
+    const html = fetchState.html;
+    if (!html) {
+      setExternalCssCorpus(null);
+      return;
+    }
+
+    let cancelled = false;
+    setExternalCssCorpus(null);
+
+    async function loadExternalCss() {
+      const urls = extractStylesheetUrls(html!);
+      if (urls.length === 0) return;
+
+      const corpora: Corpus[] = [];
+      for (const href of urls) {
+        try {
+          const res = await fetch(
+            `/api/webflow-source/css?url=${encodeURIComponent(href)}`,
+            { credentials: "include" },
+          );
+          if (!res.ok) continue;
+          const cssText = await res.text();
+          corpora.push(buildCorpusFromCss(cssText));
+        } catch {
+          // TH-085: a failed external stylesheet fetch is logged/tolerated,
+          // never fails the page load.
+          continue;
+        }
+      }
+
+      if (!cancelled && corpora.length > 0) {
+        setExternalCssCorpus(mergeCorpora(...corpora));
+      }
+    }
+
+    void loadExternalCss();
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchState.html, onFetch]);
+
+  const mergedCorpus: Corpus | null = fetchState.corpus
+    ? externalCssCorpus
+      ? mergeCorpora(fetchState.corpus, externalCssCorpus)
+      : fetchState.corpus
+    : externalCssCorpus;
+
+  const activeHostnameResolved =
+    activeHostname ?? hostnameFromUrl(fetchState.finalUrl);
+
+  // F088/F088b (TH-125): when the loaded hostname changes, discard the
+  // in-memory working set (blocks/dirty state) and clear that host's
+  // persisted storage. Only relevant when this component owns fetch
+  // orchestration itself.
+  useHostReset(onFetch ? "" : activeHostnameResolved, () => {
+    setExternalCssCorpus(null);
+  });
 
   function handleClearSavedState() {
     if (!activeHostname) return;
@@ -172,6 +281,22 @@ export function CodeEditorPage({
           <p className="max-w-sm text-sm text-muted-foreground">
             Paste your .webflow.io staging URL above to load the site&apos;s CSS and JavaScript.
           </p>
+        </div>
+      ) : null}
+
+      {/* F102: self-orchestrated fetch (no `onFetch` prop) renders the
+          editor directly once blocks are available. When the parent owns
+          orchestration (`onFetch` supplied), it is responsible for
+          rendering `EditorLayout` itself with its own fetched data. */}
+      {!onFetch && hasSite ? (
+        <div className="min-h-[600px] flex-1">
+          <EditorLayout
+            initialBlocks={fetchState.blocks.map(
+              (b): EditableBlock => ({ ...b, isUserCreated: false }),
+            )}
+            html={fetchState.html ?? ""}
+            corpus={mergedCorpus}
+          />
         </div>
       ) : null}
     </div>

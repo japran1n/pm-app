@@ -21,6 +21,7 @@ import EditorLazy from "@/components/code-editor/editor-lazy";
 import { PreviewPane, type PreviewPaneHandle } from "@/components/code-editor/preview-pane";
 import { useBlocks, type EditableBlock } from "@/lib/code-editor/use-blocks";
 import { useLiveCss } from "@/lib/code-editor/use-live-css";
+import { useDirtyState } from "@/lib/code-editor/use-dirty-state";
 import { composeDocument } from "@/lib/code-editor/compose";
 import type { Corpus } from "@/lib/code-editor/corpus";
 
@@ -60,6 +61,11 @@ export function EditorLayout({ initialBlocks, html, corpus }: EditorLayoutProps)
   } = useBlocks(initialBlocks);
 
   const previewRef = useRef<PreviewPaneHandle | null>(null);
+
+  // F055/F055b — dirty-state tracking is owned here (per block index)
+  // rather than inside EditorPane, since it must survive across which
+  // block is active/selected.
+  const { isDirty, markDirty, markClean } = useDirtyState();
 
   const composedHtml = useMemo(
     () => composeDocument(html, composableBlocks(), { injectStyleAgent: true }),
@@ -114,9 +120,15 @@ export function EditorLayout({ initialBlocks, html, corpus }: EditorLayoutProps)
       if (activeIndex < 0) return;
       updateBlock(activeIndex, content);
       onBlockChange(activeIndex, content);
+      markDirty(activeIndex);
     },
-    [activeIndex, updateBlock, onBlockChange],
+    [activeIndex, updateBlock, onBlockChange, markDirty],
   );
+
+  const handleEditorSave = useCallback(() => {
+    if (activeIndex < 0) return;
+    markClean(activeIndex);
+  }, [activeIndex, markClean]);
 
   const activeBlock = activeIndex >= 0 ? blocks[activeIndex] : undefined;
 
@@ -131,7 +143,13 @@ export function EditorLayout({ initialBlocks, html, corpus }: EditorLayoutProps)
       />
       <div className="flex flex-1 flex-col">
         {activeBlock ? (
-          <EditorLazy file={activeBlock} onChange={handleEditorChange} corpus={corpus ?? undefined} />
+          <EditorLazy
+            file={activeBlock}
+            onChange={handleEditorChange}
+            corpus={corpus ?? undefined}
+            isDirty={isDirty(activeIndex)}
+            onSave={handleEditorSave}
+          />
         ) : null}
       </div>
       <PreviewPane ref={previewRef} composedHtml={composedHtml} />
