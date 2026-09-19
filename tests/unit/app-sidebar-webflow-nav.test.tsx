@@ -292,4 +292,72 @@ describe.each(SLUGS)("AppSidebar Webflow nav item (F003/F044) [slug=%s]", (slug)
       expect(icon!.classList.contains("text-tertiary-foreground")).toBe(false);
     });
   });
+
+  describe("F011 (TH-004, TH-006, TH-009, TH-010, TH-011): 'Webflow Code Editor' nav item", () => {
+    const editorHref = `/w/${slug}/tools/code-editor`;
+
+    it("TH-004: appears in the Tools section, below HTML → Webflow, with correct href", () => {
+      render(createElement(AppSidebar, { ...baseProps, isGuest: false }));
+
+      const nav = screen.getByRole("navigation");
+      const link = within(nav).getByRole("link", { name: /^Webflow Code Editor$/ });
+      expect(link).toHaveAttribute("href", editorHref);
+
+      const groupWrapper = link.parentElement;
+      expect(groupWrapper).not.toBeNull();
+      const heading = groupWrapper!.querySelector("p");
+      expect(heading!.textContent).toBe("Tools");
+
+      const itemLinks = within(groupWrapper as HTMLElement).getAllByRole("link");
+      const labels = itemLinks.map((el) => el.textContent);
+      expect(labels.indexOf("Webflow Code Editor")).toBeGreaterThan(
+        labels.indexOf("HTML → Webflow"),
+      );
+    });
+
+    it("TH-006: link href points to the code editor route for the given workspace slug", () => {
+      render(createElement(AppSidebar, { ...baseProps, isGuest: false }));
+      const link = screen.getByRole("link", { name: /^Webflow Code Editor$/ });
+      expect(link).toHaveAttribute("href", editorHref);
+    });
+
+    it("TH-009: shows active state (aria-current, font-medium) when current path is the code editor route", () => {
+      currentPath = editorHref;
+      render(createElement(AppSidebar, { ...baseProps, isGuest: false }));
+
+      const link = screen.getByRole("link", { name: /^Webflow Code Editor$/ });
+      expect(link).toHaveAttribute("aria-current", "page");
+      expect(link).toHaveClass("font-medium");
+      expect(link.classList.contains("text-muted-foreground")).toBe(false);
+    });
+
+    it("TH-009 (nested sub-route): still highlights active via prefix match", () => {
+      currentPath = `${editorHref}/some-file`;
+      render(createElement(AppSidebar, { ...baseProps, isGuest: false }));
+
+      const link = screen.getByRole("link", { name: /^Webflow Code Editor$/ });
+      expect(link).toHaveAttribute("aria-current", "page");
+      expect(link).toHaveClass("font-medium");
+    });
+
+    it("TH-010: does not show active state on other routes (e.g. HTML → Webflow's own route)", () => {
+      currentPath = `/w/${slug}/tools/webflow`;
+      render(createElement(AppSidebar, { ...baseProps, isGuest: false }));
+
+      const link = screen.getByRole("link", { name: /^Webflow Code Editor$/ });
+      expect(link).not.toHaveAttribute("aria-current", "page");
+      expect(link).not.toHaveClass("font-medium");
+      expect(link.classList.contains("text-muted-foreground")).toBe(true);
+    });
+
+    it("TH-011: existing nav items (e.g. HTML → Webflow, Dashboard) still render correctly alongside the new item", () => {
+      render(createElement(AppSidebar, { ...baseProps, isGuest: false }));
+
+      const webflowLink = screen.getByRole("link", { name: /^HTML → Webflow$/ });
+      expect(webflowLink).toHaveAttribute("href", `/w/${slug}/tools/webflow`);
+
+      const dashboardLink = screen.getByRole("link", { name: /^Dashboard$/ });
+      expect(dashboardLink).toHaveAttribute("href", `/w/${slug}`);
+    });
+  });
 });

@@ -162,6 +162,12 @@ function navGroups(
   // already followed in its old home).
   const tools: NavItem[] = [
     { href: `/w/${workspaceSlug}/tools/webflow`, label: "HTML → Webflow", icon: Code2 },
+    // F011 (TH-004, TH-006, TH-009, TH-010, TH-011): a second Tools-band
+    // item, below "HTML → Webflow" per this feature's own clarified
+    // implementation -- same no-gate, prefix-matched active-state
+    // convention as its sibling above (no `exact: true`), same route shape
+    // (`/w/<slug>/tools/code-editor`).
+    { href: `/w/${workspaceSlug}/tools/code-editor`, label: "Webflow Code Editor", icon: Code2 },
   ];
 
   // F241: Calendar is a workspace-wide, RLS-scoped view with no guest gate
