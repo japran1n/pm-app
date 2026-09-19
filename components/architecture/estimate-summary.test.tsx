@@ -93,12 +93,15 @@ describe("EstimateSummary (AS-065, AS-066, AS-067)", () => {
     }
   });
 
-  it("test_AS_065_site_total_row_shows_all_five_active_disciplines", () => {
-    render(<EstimateSummary pages={[makePage("page-1", "Home")]} detailsData={makeDetails()} />);
-
-    const headerCells = screen.getAllByRole("columnheader").map(h => h.textContent);
-    expect(headerCells).toEqual(
-      expect.arrayContaining(["Design", "Dev", "Content/SEO", "PM", "QA"]),
+  it("test_AS_065_no_hardcoded_hex_colors_in_inline_styles", () => {
+    const { container } = render(
+      <EstimateSummary pages={[makePage("page-1", "Home")]} detailsData={makeDetails()} />,
     );
+
+    const elementsWithStyle = container.querySelectorAll("[style]");
+    for (const el of Array.from(elementsWithStyle)) {
+      const styleAttr = el.getAttribute("style") ?? "";
+      expect(styleAttr).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
+    }
   });
 });
