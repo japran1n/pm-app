@@ -92,12 +92,22 @@ function defaultNameFor(type: "css" | "js"): string {
   return type === "css" ? `new-style${suffix}.css` : `new-script${suffix}.js`;
 }
 
-function toFileListEntries(blocks: EditableBlock[]): FileListEntry[] {
-  return blocks.map((block, index) => ({
-    index,
-    name: block.name ?? (block.type === "style" ? `style-${index}.css` : `script-${index}.js`),
-    type: block.type === "style" ? "css" : "js",
-  }));
+function toFileListEntries(
+  blocks: EditableBlock[],
+  versionsByBlock: Record<number, VersionEntry>,
+): FileListEntry[] {
+  return blocks.map((block, index) => {
+    const versionEntry = versionsByBlock[index];
+    const activeVer = versionEntry?.versions.find(
+      (v) => v.id === versionEntry.activeVersionId,
+    );
+    return {
+      index,
+      name: block.name ?? (block.type === "style" ? `style-${index}.css` : `script-${index}.js`),
+      type: block.type === "style" ? "css" : "js",
+      isModified: activeVer != null && !activeVer.isOriginal,
+    };
+  });
 }
 
 export function EditorLayout({ initialBlocks, html, corpus, hostname, url }: EditorLayoutProps) {
@@ -472,7 +482,7 @@ export function EditorLayout({ initialBlocks, html, corpus, hostname, url }: Edi
         left={
           <div className="flex h-full w-full">
             <FileList
-              blocks={toFileListEntries(blocks)}
+              blocks={toFileListEntries(blocks, versionsByBlock)}
               activeIndex={activeIndex}
               onSelect={setActiveIndex}
               onRename={handleRename}

@@ -26,6 +26,10 @@ export interface FileListEntry {
   name: string;
   type: "css" | "js";
   isDirty?: boolean;
+  /** True when the active version for this block is not the Original
+   * version (TH-218). Rendered as a distinct "modified" indicator from the
+   * unsaved-changes dirty dot. */
+  isModified?: boolean;
 }
 
 export interface FileListProps {
@@ -228,6 +232,16 @@ export function FileList({
                   className="flex-1 truncate font-mono"
                 >
                   {entry.name}
+                </span>
+              )}
+              {entry.isModified && (
+                <span
+                  data-testid={`modified-indicator-${entry.index}`}
+                  aria-label="modified from original"
+                  title="Modified from original"
+                  className="text-blue-400"
+                >
+                  •
                 </span>
               )}
               {entry.isDirty && (
