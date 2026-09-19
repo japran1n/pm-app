@@ -106,7 +106,12 @@ export function PageColumn({
           sectionsById={sectionsById}
           components={components}
           onComponentClick={onComponentClick}
-          detailsData={showDetails ? detailsData : undefined}
+          // F088 (AS-088): the copy-brief icon must render regardless of the
+          // `showDetails` toggle -- that toggle only hides discipline
+          // estimates. `detailsData` is threaded through unconditionally so
+          // SectionCard's copy-brief affordance stays available even when
+          // `showDetails` is false.
+          detailsData={detailsData}
         />
       </div>
     </div>
