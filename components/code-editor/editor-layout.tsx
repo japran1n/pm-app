@@ -193,6 +193,7 @@ export function EditorLayout({ initialBlocks, html, corpus, hostname, url }: Edi
   // latest effectiveInitialBlocks for the new host, not a stale closure.
   useHostReset(hostname ?? "", () => {
     resetBlocks(effectiveInitialBlocks);
+    setVersionsByBlock({});
   });
 
   // F089/F090 — persist the working set (blocks + content + which file is
