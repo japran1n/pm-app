@@ -97,7 +97,7 @@ export function SitemapIoDialog({
       case "csv":
         return toCsv(pages);
       case "md":
-        return toMarkdown(pages);
+        return toMarkdown(pages, detailsData ?? null);
       case "json":
         return toJson(pages);
       case "brief-md":

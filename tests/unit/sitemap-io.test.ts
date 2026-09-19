@@ -4,6 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { BoardPage } from "@/lib/queries/architecture";
+import type { ArchitectureNodeDetails, NodeMeta } from "@/lib/architecture/types";
 import {
   parseSitemap,
   toCsv,
@@ -11,6 +12,20 @@ import {
   toMarkdown,
   toSitemapXml,
 } from "@/lib/architecture/sitemap-io";
+
+function meta(overrides: Partial<NodeMeta> = {}): NodeMeta {
+  return {
+    intent: null,
+    audience: null,
+    primaryCta: null,
+    tone: null,
+    keywords: [],
+    copyStatus: "not_started",
+    clientVisible: false,
+    updatedBy: null,
+    ...overrides,
+  };
+}
 
 function page(overrides: Partial<BoardPage> & { pageSlug: string }): BoardPage {
   return {
@@ -104,6 +119,58 @@ describe("toMarkdown", () => {
       "    - Privacy `legal/privacy`",
     ]);
   });
+
+  it("AS-100: includes a meta block for a section that has node_meta", () => {
+    const home = page({
+      pageSlug: "",
+      title: "Home",
+      position: 0,
+      sections: [
+        { id: "sec-1", title: "Hero", position: 0, kind: "static", component: null },
+      ],
+    });
+    const details: ArchitectureNodeDetails = new Map([
+      ["sec-1", { estimates: [], meta: meta({ copyStatus: "approved", keywords: ["seo", "hero"] }) }],
+    ]);
+
+    const markdown = toMarkdown([home], details);
+
+    expect(markdown).toContain("Hero <!-- meta:");
+    expect(markdown).toContain("copy_status: approved");
+    expect(markdown).toContain("keywords: seo, hero");
+  });
+
+  it("AS-102: omits the meta block when a section has no node_meta", () => {
+    const home = page({
+      pageSlug: "",
+      title: "Home",
+      position: 0,
+      sections: [
+        { id: "sec-2", title: "Hero", position: 0, kind: "static", component: null },
+      ],
+    });
+    const details: ArchitectureNodeDetails = new Map();
+
+    const markdown = toMarkdown([home], details);
+
+    expect(markdown).toContain("- Hero");
+    expect(markdown).not.toContain("<!--");
+  });
+
+  it("AS-102: omits the meta block entirely when no details are passed at all", () => {
+    const home = page({
+      pageSlug: "",
+      title: "Home",
+      position: 0,
+      sections: [
+        { id: "sec-3", title: "Hero", position: 0, kind: "static", component: null },
+      ],
+    });
+
+    const markdown = toMarkdown([home]);
+
+    expect(markdown).not.toContain("<!--");
+  });
 });
 
 describe("toJson", () => {
@@ -120,6 +187,78 @@ describe("toJson", () => {
       path: "blogg",
       title: "Blogg",
     });
+  });
+
+  // F029 (missions/20260919-150607), AS-101: JSON export includes section
+  // meta (copyStatus, keywords) when a details map is supplied and the
+  // section has node_meta worth reporting.
+  it("test_AS_101_json_export_includes_section_meta_when_present", () => {
+    const pages: BoardPage[] = [
+      page({
+        pageSlug: "about",
+        title: "About",
+        sections: [
+          { id: "s1", title: "Hero", kind: "static", position: 0, component: null },
+          { id: "s2", title: "Grid", kind: "static", position: 1, component: null },
+        ],
+      }),
+    ];
+    const details: ArchitectureNodeDetails = new Map([
+      [
+        "s1",
+        {
+          estimates: [],
+          meta: meta({ keywords: ["welcome", "cta"], copyStatus: "drafted" }),
+        },
+      ],
+    ]);
+
+    const parsed = JSON.parse(toJson(pages, details));
+
+    expect(parsed.pages[0].sectionsMeta).toEqual([
+      { title: "Hero", copyStatus: "drafted", keywords: ["welcome", "cta"] },
+    ]);
+  });
+
+  it("does not add sectionsMeta when no details map is supplied", () => {
+    const pages: BoardPage[] = [
+      page({
+        pageSlug: "about",
+        sections: [{ id: "s1", title: "Hero", kind: "static", position: 0, component: null }],
+      }),
+    ];
+    const parsed = JSON.parse(toJson(pages));
+    expect(parsed.pages[0].sectionsMeta).toBeUndefined();
+  });
+
+  // F029, AS-104: filtering the JSON export by pageSlug returns only that
+  // page's sections, including that page's section meta -- not every page.
+  it("test_AS_104_pageslug_filter_returns_only_that_pages_sections_with_meta", () => {
+    const pages: BoardPage[] = [
+      page({
+        pageSlug: "home",
+        title: "Home",
+        sections: [{ id: "h1", title: "Hero", kind: "static", position: 0, component: null }],
+      }),
+      page({
+        pageSlug: "about",
+        title: "About",
+        sections: [{ id: "a1", title: "Team", kind: "static", position: 0, component: null }],
+      }),
+    ];
+    const details: ArchitectureNodeDetails = new Map([
+      ["h1", { estimates: [], meta: meta({ keywords: ["welcome"], copyStatus: "approved" }) }],
+      ["a1", { estimates: [], meta: meta({ keywords: ["team-bio"], copyStatus: "approved" }) }],
+    ]);
+
+    const parsed = JSON.parse(toJson(pages, details, { pageSlug: "home" }));
+
+    expect(parsed.pages).toHaveLength(1);
+    expect(parsed.pages[0].path).toBe("home");
+    expect(parsed.pages[0].sections).toEqual(["Hero"]);
+    expect(parsed.pages[0].sectionsMeta).toEqual([
+      { title: "Hero", copyStatus: "approved", keywords: ["welcome"] },
+    ]);
   });
 
   it("AS-036: a listing page (a CMS section) is recognised via hasCmsSections: true", () => {

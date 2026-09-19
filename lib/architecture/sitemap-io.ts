@@ -9,6 +9,7 @@
 import type { BoardPage } from "@/lib/queries/architecture";
 import { buildPageTree, type PageTreeNode } from "@/lib/architecture/page-tree";
 import { slugify } from "@/lib/utils/slugify";
+import type { ArchitectureNodeDetails, NodeMeta } from "@/lib/architecture/types";
 
 export type ParsedPage = {
   path: string;
@@ -20,15 +21,30 @@ export type ParsedSitemap =
   | { ok: true; pages: ParsedPage[] }
   | { ok: false; error: string };
 
+export type SitemapJsonSectionMeta = {
+  title: string;
+  copyStatus?: NodeMeta["copyStatus"];
+  keywords?: string[];
+};
+
 export type SitemapJson = {
   version: 1;
   pages: {
     path: string;
     title: string;
     kind: string | null;
+    // Section titles only -- unchanged since before F009, so JSON produced
+    // without a `details` map stays byte-identical (see AS-038).
     sections: string[];
+    // Present only when `toJson` is called with a `details` map and at
+    // least one of the page's sections has node_meta worth reporting.
+    sectionsMeta?: SitemapJsonSectionMeta[];
     hasCmsSections?: true;
   }[];
+};
+
+export type ToJsonOpts = {
+  pageSlug?: string; // export only the page with this slug
 };
 
 /**
@@ -145,13 +161,39 @@ export function toCsv(pages: BoardPage[]): string {
   return rows.map((row) => row.map(csvCell).join(",")).join("\n");
 }
 
-export function toMarkdown(pages: BoardPage[]): string {
+/** One-line `<!-- meta: ... -->` comment for a section's copy brief, or
+ *  null when the section has no node_meta -- callers must omit the block
+ *  entirely rather than render an empty comment. */
+function sectionMetaComment(meta: NodeMeta | null): string | null {
+  if (!meta) return null;
+  const parts: string[] = [];
+  if (meta.copyStatus) parts.push(`copy_status: ${meta.copyStatus}`);
+  if (meta.keywords.length > 0) parts.push(`keywords: ${meta.keywords.join(", ")}`);
+  if (parts.length === 0) return null;
+  return `meta: ${parts.join("; ")}`;
+}
+
+export function toMarkdown(pages: BoardPage[], details?: ArchitectureNodeDetails | null): string {
   const root = buildPageTree(pages);
   const lines: string[] = [];
 
   function walk(node: PageTreeNode, depth: number) {
     const indent = "  ".repeat(depth);
     lines.push(`${indent}- ${node.label} \`${node.key}\``);
+
+    if (details && node.page) {
+      for (const section of node.page.sections) {
+        const sectionMeta = details.get(section.id)?.meta ?? null;
+        const comment = sectionMetaComment(sectionMeta);
+        const sectionIndent = "  ".repeat(depth + 1);
+        if (comment) {
+          lines.push(`${sectionIndent}- ${section.title} <!-- ${comment} -->`);
+        } else {
+          lines.push(`${sectionIndent}- ${section.title}`);
+        }
+      }
+    }
+
     for (const child of node.children) walk(child, depth + 1);
   }
 
@@ -159,16 +201,39 @@ export function toMarkdown(pages: BoardPage[]): string {
   return lines.join("\n");
 }
 
-export function toJson(pages: BoardPage[]): string {
+export function toJson(
+  pages: BoardPage[],
+  details?: ArchitectureNodeDetails | null,
+  opts?: ToJsonOpts,
+): string {
+  const filteredPages = opts?.pageSlug
+    ? pages.filter((page) => page.pageSlug === opts.pageSlug)
+    : pages;
+
   const payload: SitemapJson = {
     version: 1,
-    pages: pages.map((page) => ({
-      path: pagePath(page),
-      title: page.title,
-      kind: page.pageKind ?? null,
-      sections: page.sections.map((section) => section.title),
-      ...(isListingPage(page) ? { hasCmsSections: true as const } : {}),
-    })),
+    pages: filteredPages.map((page) => {
+      const sectionsMeta: SitemapJsonSectionMeta[] = [];
+      if (details) {
+        for (const section of page.sections) {
+          const sectionMeta = details.get(section.id)?.meta ?? null;
+          if (!sectionMeta) continue;
+          const entry: SitemapJsonSectionMeta = { title: section.title };
+          if (sectionMeta.copyStatus) entry.copyStatus = sectionMeta.copyStatus;
+          if (sectionMeta.keywords.length > 0) entry.keywords = sectionMeta.keywords;
+          if (entry.copyStatus || entry.keywords) sectionsMeta.push(entry);
+        }
+      }
+
+      return {
+        path: pagePath(page),
+        title: page.title,
+        kind: page.pageKind ?? null,
+        sections: page.sections.map((section) => section.title),
+        ...(sectionsMeta.length > 0 ? { sectionsMeta } : {}),
+        ...(isListingPage(page) ? { hasCmsSections: true as const } : {}),
+      };
+    }),
   };
   return JSON.stringify(payload, null, 2);
 }
