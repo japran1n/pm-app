@@ -29,7 +29,12 @@ export async function getArchitectureNodeDetails(
     supabase
       .from("task_discipline_estimates")
       .select("task_id, discipline, minutes, note, estimated_by")
-      .eq("project_id", projectId),
+      .eq("project_id", projectId)
+      // F073 (AS-080/081): cleared disciplines are now upserted with
+      // minutes: null instead of being deleted (single atomic upsert covers
+      // both "set" and "clear"). Null-minutes rows are the "cleared" state
+      // and must never surface as a real (zero-length) estimate to readers.
+      .not("minutes", "is", null),
     supabase
       .from("architecture_node_meta")
       .select("task_id, intent, audience, primary_cta, tone, keywords, copy_status, client_visible, updated_by")

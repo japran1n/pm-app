@@ -3111,7 +3111,7 @@ export type Database = {
           created_at: string
           discipline: string
           estimated_by: string | null
-          minutes: number
+          minutes: number | null
           note: string | null
           project_id: string
           task_id: string
@@ -3121,7 +3121,7 @@ export type Database = {
           created_at?: string
           discipline: string
           estimated_by?: string | null
-          minutes: number
+          minutes?: number | null
           note?: string | null
           project_id: string
           task_id: string
@@ -3131,7 +3131,7 @@ export type Database = {
           created_at?: string
           discipline?: string
           estimated_by?: string | null
-          minutes?: number
+          minutes?: number | null
           note?: string | null
           project_id?: string
           task_id?: string

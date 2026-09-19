@@ -52,7 +52,11 @@ vi.mock("@/lib/observability/logger", () => ({
 }));
 
 vi.mock("@/lib/auth/current-user", () => ({
-  getCurrentUser: async () => ({ user: { id: USER_ID } }),
+  getCurrentUser: async () => ({ user: { id: USER_ID }, supabase: { fake: "session-client" } }),
+}));
+
+vi.mock("@/lib/activity/audit", () => ({
+  writeAudit: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/require-membership", () => ({
@@ -107,11 +111,6 @@ vi.mock("@/lib/supabase/admin", () => ({
             committedRows.push(...rows);
             return { error: null };
           },
-          delete: () => ({
-            eq: () => ({
-              in: async () => ({ error: null }),
-            }),
-          }),
         };
       }
       throw new Error(`Unexpected table in mock: ${table}`);
@@ -200,6 +199,50 @@ describe("setDisciplineEstimatesBulk atomicity (AS-080, AS-081)", () => {
     expect(loggerErrorSpy).toHaveBeenCalled();
     const loggedMessage = loggerErrorSpy.mock.calls[0]?.[0];
     expect(loggedMessage).toEqual(expect.stringContaining("setDisciplineEstimatesBulk"));
+  });
+
+  it("test_AS_080_a_mid_batch_failure_including_a_clear_entry_leaves_no_partial_state", async () => {
+    const { setDisciplineEstimatesBulk } = await import(
+      "@/lib/actions/architecture/estimates"
+    );
+
+    // F073: clearing a discipline is now represented as a minutes: null row
+    // in the SAME upsert batch, not a separate delete() call. This exercises
+    // that branch: a batch mixing a "clear" (empty input -> minutes: null)
+    // and a "set" entry with the failing discipline. If cleared rows were
+    // still handled by a separate delete() call, a failure in the upsert
+    // portion could leave the delete already committed -- partial state.
+    // With everything folded into one upsert() call, the whole batch (clear
+    // included) must roll back together.
+    const result = await setDisciplineEstimatesBulk(TASK_ID, [
+      { discipline: "design", input: "" }, // clear
+      { discipline: "development", input: "2h" },
+      { discipline: FAILING_DISCIPLINE, input: "1h" },
+    ]);
+
+    expect(result.success).toBe(false);
+    expect(committedRows).toHaveLength(0);
+    expect(committedRows.find((row) => row.discipline === "design")).toBeUndefined();
+    expect(committedRows.find((row) => row.discipline === "development")).toBeUndefined();
+    // Exactly one upsert call carried all three rows (including the clear
+    // row), proving there was no separate delete() call to roll back
+    // independently of the upsert.
+    expect(upsertCallCount).toBe(1);
+  });
+
+  it("test_AS_080_a_clear_only_batch_commits_the_null_minutes_row_in_one_call", async () => {
+    const { setDisciplineEstimatesBulk } = await import(
+      "@/lib/actions/architecture/estimates"
+    );
+
+    const result = await setDisciplineEstimatesBulk(TASK_ID, [
+      { discipline: "design", input: "" },
+    ]);
+
+    expect(result.success).toBe(true);
+    expect(upsertCallCount).toBe(1);
+    expect(committedRows).toHaveLength(1);
+    expect(committedRows[0]).toMatchObject({ discipline: "design", minutes: null });
   });
 
   it("test_AS_081_bulk_write_failure_never_resolves_to_success_true", async () => {

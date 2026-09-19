@@ -20,7 +20,7 @@ const WORKSPACE_ID = "73b61885-e883-48cb-b7fa-6477238ffc00";
 const USER_ID = "01c5bd9a-c1da-41a4-ac0e-a4fab320a32a";
 
 let upsertCalls: Array<{ payload: unknown; options: unknown }> = [];
-let deleteCalls: Array<{ taskId: unknown; disciplines: unknown }> = [];
+const writeAuditSpy = vi.fn();
 
 vi.mock("next/cache", () => ({
   revalidatePath: vi.fn(),
@@ -30,8 +30,12 @@ vi.mock("@/lib/observability/logger", () => ({
   logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
 }));
 
+vi.mock("@/lib/activity/audit", () => ({
+  writeAudit: (...args: unknown[]) => writeAuditSpy(...args),
+}));
+
 vi.mock("@/lib/auth/current-user", () => ({
-  getCurrentUser: async () => ({ user: { id: USER_ID } }),
+  getCurrentUser: async () => ({ user: { id: USER_ID }, supabase: { fake: "session-client" } }),
 }));
 
 vi.mock("@/lib/auth/require-membership", () => ({
@@ -68,14 +72,6 @@ vi.mock("@/lib/supabase/admin", () => ({
             upsertCalls.push({ payload, options });
             return { error: null };
           },
-          delete: () => ({
-            eq: (_col: string, taskId: unknown) => ({
-              in: async (_discCol: string, disciplines: unknown) => {
-                deleteCalls.push({ taskId, disciplines });
-                return { error: null };
-              },
-            }),
-          }),
         };
       }
       throw new Error(`Unexpected table in mock: ${table}`);
@@ -85,7 +81,7 @@ vi.mock("@/lib/supabase/admin", () => ({
 
 afterEach(() => {
   upsertCalls = [];
-  deleteCalls = [];
+  writeAuditSpy.mockClear();
   vi.clearAllMocks();
 });
 
@@ -135,12 +131,17 @@ describe("setDisciplineEstimatesBulk (AS-078, AS-083, AS-084)", () => {
     ]);
 
     expect(result.success).toBe(true);
-    expect(deleteCalls).toHaveLength(1);
-    expect(deleteCalls[0].disciplines).toEqual(["design"]);
+    // F073: cleared disciplines are folded into the SAME single upsert call
+    // as a minutes: null row -- no separate delete() call at all.
     expect(upsertCalls).toHaveLength(1);
     const payload = upsertCalls[0].payload as Array<Record<string, unknown>>;
-    expect(payload).toHaveLength(1);
-    expect(payload[0]).toMatchObject({ discipline: "development", minutes: 60 });
+    expect(payload).toHaveLength(2);
+    expect(payload).toContainEqual(
+      expect.objectContaining({ discipline: "design", minutes: null }),
+    );
+    expect(payload).toContainEqual(
+      expect.objectContaining({ discipline: "development", minutes: 60 }),
+    );
   });
 
   it("test_AS_083_an_invalid_entry_blocks_the_entire_batch_before_any_write", async () => {
@@ -159,7 +160,6 @@ describe("setDisciplineEstimatesBulk (AS-078, AS-083, AS-084)", () => {
 
     expect(result.success).toBe(false);
     expect(upsertCalls).toHaveLength(0);
-    expect(deleteCalls).toHaveLength(0);
   });
 
   it("test_AS_083_an_invalid_discipline_enum_value_blocks_the_entire_batch_before_any_write", async () => {
@@ -174,7 +174,27 @@ describe("setDisciplineEstimatesBulk (AS-078, AS-083, AS-084)", () => {
 
     expect(result.success).toBe(false);
     expect(upsertCalls).toHaveLength(0);
-    expect(deleteCalls).toHaveLength(0);
+  });
+
+  it("test_AS_083_bulk_write_records_exactly_one_audit_log_entry_not_one_per_discipline", async () => {
+    const { setDisciplineEstimatesBulk } = await import(
+      "@/lib/actions/architecture/estimates"
+    );
+
+    const result = await setDisciplineEstimatesBulk(TASK_ID, [
+      { discipline: "design", input: "1h" },
+      { discipline: "development", input: "2h" },
+      { discipline: "pm", input: "" },
+    ]);
+
+    expect(result.success).toBe(true);
+    // AS-083: the contract says ONE audit log entry for the whole batch,
+    // never one per discipline (which would be 3 calls here).
+    expect(writeAuditSpy).toHaveBeenCalledTimes(1);
+    expect(writeAuditSpy).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ targetId: TASK_ID, workspaceId: WORKSPACE_ID }),
+    );
   });
 
   it("test_AS_083_rbac_denial_blocks_the_write_with_no_db_call", async () => {
