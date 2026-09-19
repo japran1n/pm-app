@@ -20,11 +20,13 @@ export function SortableSectionCard({
   components = [],
   onComponentClick,
   detailsData,
+  onDetailsInvalidate,
 }: {
   section: BoardSection;
   components?: BoardComponent[];
   onComponentClick?: (componentId: string) => void;
   detailsData?: ArchitectureNodeDetails | null;
+  onDetailsInvalidate?: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: section.id, data: { type: "section" } });
@@ -51,6 +53,7 @@ export function SortableSectionCard({
         components={components}
         onComponentClick={onComponentClick}
         detailsData={detailsData}
+        onDetailsInvalidate={onDetailsInvalidate}
       />
     </div>
   );

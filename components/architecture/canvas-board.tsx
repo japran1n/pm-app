@@ -173,6 +173,7 @@ function SitemapNode({ data }: NodeProps) {
                 components={components}
                 onComponentClick={actions.onComponentClick}
                 detailsData={detailsData}
+                onDetailsInvalidate={actions.onDetailsInvalidate}
               />
             ))}
             <AddSectionButton pageTaskId={page.id} />

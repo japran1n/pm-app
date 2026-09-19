@@ -34,6 +34,20 @@ import { renamePage } from "@/lib/actions/architecture";
 import { Input } from "@/components/ui/input";
 import type { BoardPage } from "@/lib/queries/architecture";
 import type { DisciplineEstimate, NodeMeta } from "@/lib/architecture/types";
+
+// F094 (mirrors section-card.tsx's hasNodeMetaContent): the page-level
+// copy-brief affordance's aria-label must say "Add" when there is nothing
+// to edit yet, not "Edit" -- same rule as the section card icon.
+function hasNodeMetaContent(meta: NodeMeta | null | undefined): boolean {
+  if (!meta) return false;
+  return Boolean(
+    meta.intent ||
+      meta.audience ||
+      meta.primaryCta ||
+      meta.tone ||
+      meta.keywords.length > 0,
+  );
+}
 import { NodeMetaDialog } from "@/components/architecture/node-meta-dialog";
 import { EstimateChip } from "@/components/architecture/estimate-chip";
 import { PageCardMenu } from "@/components/architecture/page-card-menu";
@@ -192,7 +206,11 @@ export function PageColumnHeader({
               />
               <button
                 type="button"
-                aria-label={`Edit copy brief for ${page.title}`}
+                aria-label={
+                  hasNodeMetaContent(meta)
+                    ? `Edit copy brief for ${page.title}`
+                    : `Add copy brief for ${page.title}`
+                }
                 title="Copy brief"
                 onClick={() => setMetaOpen(true)}
                 className="shrink-0 rounded-md border border-transparent p-1 text-muted-foreground transition-colors hover:border-border-control-hover hover:text-foreground"

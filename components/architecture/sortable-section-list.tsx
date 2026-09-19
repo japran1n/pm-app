@@ -38,6 +38,7 @@ export function SortableSectionList({
   components = [],
   onComponentClick,
   detailsData,
+  onDetailsInvalidate,
 }: {
   pageId: string;
   orderedSectionIds: string[];
@@ -45,6 +46,7 @@ export function SortableSectionList({
   components?: BoardComponent[];
   onComponentClick?: (componentId: string) => void;
   detailsData?: ArchitectureNodeDetails | null;
+  onDetailsInvalidate?: () => void;
 }) {
   const { setNodeRef } = useDroppable({ id: pageId });
 
@@ -69,6 +71,7 @@ export function SortableSectionList({
             components={components}
             onComponentClick={onComponentClick}
             detailsData={detailsData}
+            onDetailsInvalidate={onDetailsInvalidate}
           />
         ))}
       </div>

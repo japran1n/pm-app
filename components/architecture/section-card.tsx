@@ -90,11 +90,19 @@ export function SectionCard({
   components = [],
   onComponentClick,
   detailsData,
+  onDetailsInvalidate,
 }: {
   section: BoardSection;
   components?: BoardComponent[];
   onComponentClick?: (componentId: string) => void;
   detailsData?: ArchitectureNodeDetails | null;
+  /** F094: called after NodeMetaDialog saves, so the board-wide lazily
+   *  fetched details cache (owned by architecture-view-toggle.tsx) drops
+   *  and refetches -- router.refresh() alone only re-renders server
+   *  components, it never re-runs the client-side details fetch, so
+   *  without this the icon stayed in its stale "empty" state until a
+   *  full page reload. */
+  onDetailsInvalidate?: () => void;
 }) {
   const router = useRouter();
   const [isEditing, setIsEditing] = useState(false);
@@ -290,7 +298,10 @@ export function SectionCard({
               meta={nodeMeta}
               open={metaOpen}
               onOpenChange={setMetaOpen}
-              onSaved={() => router.refresh()}
+              onSaved={() => {
+                router.refresh();
+                onDetailsInvalidate?.();
+              }}
             />
           </>
         )}

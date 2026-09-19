@@ -112,6 +112,7 @@ export function PageColumn({
           // SectionCard's copy-brief affordance stays available even when
           // `showDetails` is false.
           detailsData={detailsData}
+          onDetailsInvalidate={onDetailsInvalidate}
         />
       </div>
     </div>
