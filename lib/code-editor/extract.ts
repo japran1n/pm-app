@@ -11,6 +11,11 @@ const STYLE_TAG_RE = /<style([^>]*)>([\s\S]*?)<\/style>/gi;
 const SRC_ATTR_RE = /\bsrc\s*=/i;
 const NONCE_ATTR_RE = /\bnonce\s*=/i;
 const CDATA_WRAPPER_RE = /^\s*(?:\/\/\s*)?<!\[CDATA\[([\s\S]*?)(?:\/\/\s*)?\]\]>\s*$/;
+// Distinguishes the JS-comment CDATA form (`// <![CDATA[ ... // ]]>`, used
+// inside <script> so the markers don't break JS parsing) from the bare XML
+// form (`<![CDATA[ ... ]]>`) so compose.ts can restore the exact original
+// form on round-trip (F036 follow-up).
+const CDATA_COMMENT_WRAPPER_RE = /^\s*\/\/\s*<!\[CDATA\[[\s\S]*?\/\/\s*\]\]>\s*$/;
 
 /**
  * Strips a `<![CDATA[ ... ]]>` wrapper (with or without the `//` JS-comment
@@ -33,6 +38,13 @@ export interface ScriptBlock {
   content: string; // same as originalContent initially (edited by user later)
   name?: string; // filled by name heuristic (F033)
   hasCdata?: boolean; // true when originalContent was wrapped in <![CDATA[ ... ]]> (F036 round-trip)
+  /** Which CDATA wrapper form was used in the source, when hasCdata is true:
+   * 'bare' for `<![CDATA[...]]>`, 'comment' for the JS-comment form
+   * `// <![CDATA[\n...\n// ]]>`. Only meaningful for script blocks -- style
+   * blocks never use the comment form (CSS has no `//` line comments), so
+   * StyleBlock omits this field. Lets compose.ts restore the exact original
+   * form instead of always emitting the bare form (F036 follow-up fix). */
+  cdataStyle?: 'bare' | 'comment';
 }
 
 const SCRIPT_TAG_RE = /<script([^>]*)>([\s\S]*?)<\/script>/gi;
@@ -223,6 +235,7 @@ export function extractScriptBlocks(html: string): ScriptBlock[] {
         content: unwrapped,
         name: deriveJsName(unwrapped, index),
         hasCdata: CDATA_WRAPPER_RE.test(content ?? ''),
+        cdataStyle: CDATA_COMMENT_WRAPPER_RE.test(content ?? '') ? 'comment' : 'bare',
       });
       index += 1;
     }

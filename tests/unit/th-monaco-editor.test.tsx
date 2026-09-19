@@ -25,6 +25,15 @@ const mockAddCommand = vi.fn();
 let capturedSaveCommand: (() => void | Promise<void>) | null = null;
 let editorValue = "";
 
+// Stand-in for `monaco.languages.registerCompletionItemProvider`, shared by
+// the `monacoStub` passed into `onMount` below, so tests can drive
+// EditorPane's real disposal-before-re-register behaviour (not just the
+// underlying provider functions in isolation) and assert on real `dispose()`
+// calls from a real render/rerender cycle.
+const { mockRegisterCompletionItemProvider } = vi.hoisted(() => ({
+  mockRegisterCompletionItemProvider: vi.fn(() => ({ dispose: vi.fn() })),
+}));
+
 vi.mock("@monaco-editor/react", () => {
   return {
     __esModule: true,
@@ -49,6 +58,9 @@ vi.mock("@monaco-editor/react", () => {
       const monacoStub = {
         KeyMod: { CtrlCmd: 2048 },
         KeyCode: { KeyS: 49 },
+        languages: {
+          registerCompletionItemProvider: mockRegisterCompletionItemProvider,
+        },
       };
       // Fire onMount synchronously on first render, same as the real
       // package invoking it once the editor instance is ready.
@@ -128,6 +140,8 @@ beforeEach(() => {
   capturedSaveCommand = null;
   editorValue = "";
   formatCodeMock.mockImplementation((code: string) => Promise.resolve(code));
+  mockRegisterCompletionItemProvider.mockClear();
+  mockRegisterCompletionItemProvider.mockImplementation(() => ({ dispose: vi.fn() }));
 });
 
 afterEach(() => {
@@ -386,26 +400,55 @@ describe("completion provider disposal (B2)", () => {
   });
 
   test("EditorPane disposes previously-registered providers before re-registering on corpus change", () => {
-    const { monaco, disposeCss, disposeJs, registerCompletionItemProvider } =
-      fakeMonacoWithLanguages();
+    // Real render/rerender of EditorPane (not a manual simulation): the
+    // shared `mockRegisterCompletionItemProvider` (wired into the
+    // `monacoStub` passed to `onMount` above) hands back a fresh disposable
+    // -- with its own `dispose` spy -- on every call, so this test can
+    // capture the exact disposables EditorPane itself created for the first
+    // corpus and assert they were disposed before the second corpus's
+    // providers were registered. If EditorPane's disposal code were
+    // deleted, the first corpus's `dispose()` spies would never be called
+    // and this test would fail.
+    const corpusA = { classes: ["a"], cssVars: [], dataAttrs: [] };
+    const corpusB = { classes: ["b"], cssVars: [], dataAttrs: [] };
 
-    const cssDisposable = registerCssCompletionProvider(monaco, {
-      classes: [],
-      cssVars: [],
-      dataAttrs: [],
-    });
-    const jsDisposable = registerJsCompletionProvider(monaco, {
-      classes: [],
-      dataAttrs: [],
-    });
-    expect(registerCompletionItemProvider).toHaveBeenCalledTimes(2);
+    const { rerender } = render(
+      <EditorPane file={styleBlock()} onChange={() => {}} corpus={corpusA} />,
+    );
 
-    // Simulate EditorPane's own disposal-before-re-register behaviour
-    // (components/code-editor/editor-pane.tsx registerCompletionProviders):
-    // disposing prior disposables before registering the next pair.
-    cssDisposable.dispose();
-    jsDisposable.dispose();
-    expect(disposeCss()).toHaveBeenCalledTimes(1);
-    expect(disposeJs()).toHaveBeenCalledTimes(1);
+    // EditorPane registers a CSS + JS provider pair both from `onMount` and
+    // from the `corpus`-driven effect that fires right after the initial
+    // mount (disposing the `onMount` pair first), so by the time mount
+    // settles there have been two registration rounds (4 calls). Only the
+    // *last* pair registered is still active -- the first pair's `dispose`
+    // was already called by the second round's disposal-before-re-register
+    // step. Identify the currently-active pair as the most recent two
+    // registrations.
+    const callsAfterMount = mockRegisterCompletionItemProvider.mock.results.length;
+    expect(callsAfterMount).toBeGreaterThanOrEqual(2);
+    const activeAfterMount = mockRegisterCompletionItemProvider.mock.results
+      .slice(-2)
+      .map((r) => r.value as { dispose: ReturnType<typeof vi.fn> });
+    expect(activeAfterMount).toHaveLength(2);
+    for (const d of activeAfterMount) {
+      expect(d.dispose).not.toHaveBeenCalled();
+    }
+
+    rerender(<EditorPane file={styleBlock()} onChange={() => {}} corpus={corpusB} />);
+
+    // The corpus-A pair that was still active after mount must have been
+    // disposed before corpus-B's pair was registered.
+    for (const d of activeAfterMount) {
+      expect(d.dispose).toHaveBeenCalledTimes(1);
+    }
+    expect(mockRegisterCompletionItemProvider.mock.results.length).toBeGreaterThan(
+      callsAfterMount,
+    );
+    const activeAfterRerender = mockRegisterCompletionItemProvider.mock.results
+      .slice(-2)
+      .map((r) => r.value as { dispose: ReturnType<typeof vi.fn> });
+    for (const d of activeAfterRerender) {
+      expect(d.dispose).not.toHaveBeenCalled();
+    }
   });
 });

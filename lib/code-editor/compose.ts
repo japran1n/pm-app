@@ -94,7 +94,11 @@ function findBlockContentRange(
  * When a block's `originalContent` was `<![CDATA[ ... ]]>`-wrapped in the
  * source document (`block.hasCdata`), the wrapper is restored around the
  * edited content on the way back out, so CDATA-wrapped script/style bodies
- * round-trip instead of losing their wrapper.
+ * round-trip instead of losing their wrapper. For script blocks, the exact
+ * original wrapper form is restored via `block.cdataStyle`: the bare XML
+ * form `<![CDATA[...]]>` or the JS-comment form
+ * `// <![CDATA[\n...\n// ]]>` sometimes used inside <script> tags so the
+ * markers don't break JS parsing.
  *
  * When `opts.injectStyleAgent` is true, the style agent script (F038) is
  * injected into the result so live style patches keep working against the
@@ -114,7 +118,9 @@ export function composeDocument(
 
   for (const block of blocks) {
     const newContent = block.hasCdata
-      ? `<![CDATA[${block.content}]]>`
+      ? block.type === 'script' && block.cdataStyle === 'comment'
+        ? `// <![CDATA[\n${block.content}\n// ]]>`
+        : `<![CDATA[${block.content}]]>`
       : block.content;
 
     const range = isBlank(block.originalContent)

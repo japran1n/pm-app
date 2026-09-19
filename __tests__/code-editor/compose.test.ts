@@ -231,4 +231,39 @@ describe('composeDocument', () => {
       expect(result).not.toContain('CDATA');
     });
   });
+
+  // FU-5: the JS-comment CDATA form (`// <![CDATA[ ... // ]]>`) must be
+  // restored in its original comment form, not silently converted to the
+  // bare `<![CDATA[...]]>` XML form -- some downstream consumers/parsers
+  // rely on the `//` markers keeping the wrapper valid JS.
+  describe('FU-5 regression: comment-form CDATA round-trip', () => {
+    test('FU_5_comment_style_cdata_restores_the_original_comment_form', () => {
+      const html =
+        '<html><body><script>// <![CDATA[\nvar x = 1;\n// ]]></script></body></html>';
+      const block = scriptBlock({
+        originalContent: '// <![CDATA[\nvar x = 1;\n// ]]>',
+        content: 'var x = 2;',
+        hasCdata: true,
+        cdataStyle: 'comment',
+      });
+      const result = composeDocument(html, [block]);
+      expect(result).toContain('// <![CDATA[\nvar x = 2;\n// ]]>');
+      expect(result).not.toContain('var x = 1;');
+      // Must not have degraded to the bare form.
+      expect(result).not.toMatch(/<script>\s*<!\[CDATA\[/);
+    });
+
+    test('FU_5_bare_style_cdata_still_restores_the_bare_form', () => {
+      const html = '<html><body><script><![CDATA[var x = 1;]]></script></body></html>';
+      const block = scriptBlock({
+        originalContent: '<![CDATA[var x = 1;]]>',
+        content: 'var x = 2;',
+        hasCdata: true,
+        cdataStyle: 'bare',
+      });
+      const result = composeDocument(html, [block]);
+      expect(result).toContain('<![CDATA[var x = 2;]]>');
+      expect(result).not.toContain('// <![CDATA[');
+    });
+  });
 });
