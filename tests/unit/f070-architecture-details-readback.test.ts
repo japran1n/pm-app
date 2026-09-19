@@ -123,11 +123,12 @@ describe("getArchitectureNodeDetails — AS-060/AS-061/AS-062 read-back mapping"
     const details = result.data.get(TASK_ID);
     expect(details).toBeDefined();
     const contentSeo = details!.estimates.find((e) => e.discipline === "content_seo");
+    // Shape is deliberately {discipline, minutes, note} -- F036 removed
+    // estimatedBy from DisciplineEstimate.
     expect(contentSeo).toEqual({
       discipline: "content_seo",
       minutes: 111,
       note: "content_seo note",
-      estimatedBy: "user-content-seo",
     });
   });
 
@@ -138,11 +139,12 @@ describe("getArchitectureNodeDetails — AS-060/AS-061/AS-062 read-back mapping"
 
     const details = result.data.get(TASK_ID);
     const pm = details!.estimates.find((e) => e.discipline === "pm");
+    // Shape is deliberately {discipline, minutes, note} -- F036 removed
+    // estimatedBy from DisciplineEstimate.
     expect(pm).toEqual({
       discipline: "pm",
       minutes: 222,
       note: "pm note",
-      estimatedBy: "user-pm",
     });
   });
 
@@ -153,11 +155,12 @@ describe("getArchitectureNodeDetails — AS-060/AS-061/AS-062 read-back mapping"
 
     const details = result.data.get(TASK_ID);
     const qa = details!.estimates.find((e) => e.discipline === "qa");
+    // Shape is deliberately {discipline, minutes, note} -- F036 removed
+    // estimatedBy from DisciplineEstimate.
     expect(qa).toEqual({
       discipline: "qa",
       minutes: 333,
       note: "qa note",
-      estimatedBy: "user-qa",
     });
   });
 
@@ -188,11 +191,12 @@ describe("getArchitectureNodeDetails — AS-060/AS-061/AS-062 read-back mapping"
     // Only the real (non-null minutes) content_seo row should survive the
     // .not("minutes", "is", null) filter -- the cleared row must not appear.
     expect(contentSeoEstimates).toHaveLength(1);
+    // Shape is deliberately {discipline, minutes, note} -- F036 removed
+    // estimatedBy from DisciplineEstimate.
     expect(contentSeoEstimates[0]).toEqual({
       discipline: "content_seo",
       minutes: 111,
       note: "content_seo note",
-      estimatedBy: "user-content-seo",
     });
     expect(details!.estimates.some((e) => e.minutes === null)).toBe(false);
   });
