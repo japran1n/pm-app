@@ -122,13 +122,48 @@ describe("toJson", () => {
     });
   });
 
-  it("AS-036: exported page object only has hasCmsSections when it has a CMS section", () => {
-    const parsed = JSON.parse(toJson(PAGES));
-    for (const page of parsed.pages) {
-      if ("hasCmsSections" in page) {
-        expect(page.hasCmsSections).toBe(true);
-      }
-    }
+  it("AS-036: a listing page (a CMS section) is recognised via hasCmsSections: true", () => {
+    const pages: BoardPage[] = [
+      page({
+        pageSlug: "blogg",
+        title: "Blogg",
+        sections: [
+          { id: "1", title: "Feed", kind: "cms", position: 0, component: null },
+        ],
+      }),
+    ];
+    const parsed = JSON.parse(toJson(pages));
+    expect(parsed.pages[0].hasCmsSections).toBe(true);
+  });
+
+  it("AS-036: a static page with no CMS sections carries no hasCmsSections key", () => {
+    const pages: BoardPage[] = [
+      page({
+        pageSlug: "about",
+        title: "About",
+        sections: [
+          { id: "1", title: "Hero", kind: "static", position: 0, component: null },
+        ],
+      }),
+    ];
+    const parsed = JSON.parse(toJson(pages));
+    expect(parsed.pages[0]).not.toHaveProperty("hasCmsSections");
+  });
+
+  it("AS-036: a page with multiple non-CMS sections still carries no hasCmsSections key", () => {
+    const pages: BoardPage[] = [
+      page({
+        pageSlug: "landing",
+        title: "Landing",
+        sections: [
+          { id: "1", title: "Hero", kind: "static", position: 0, component: null },
+          { id: "2", title: "Features", kind: "static", position: 1, component: null },
+          { id: "3", title: "Footer", kind: "static", position: 2, component: null },
+        ],
+      }),
+    ];
+    const parsed = JSON.parse(toJson(pages));
+    expect(parsed.pages[0]).not.toHaveProperty("hasCmsSections");
   });
 
   it("AS-037: hasCmsSections key is present (true) iff page has >=1 section with kind='cms', absent otherwise", () => {

@@ -31,6 +31,15 @@ export type SitemapJson = {
   }[];
 };
 
+/**
+ * A page counts as a listing page when at least one of its sections is
+ * backed by a CMS collection (`kind === "cms"`) -- e.g. a blog index or a
+ * product grid, rather than static, hand-authored content.
+ */
+function isListingPage(page: { sections: Array<{ kind: string }> }): boolean {
+  return page.sections.some((section) => section.kind === "cms");
+}
+
 /** Extensions that are assets or feeds, never pages of the sitemap. */
 const NON_PAGE_EXTENSIONS = [".xml", ".json", ".jpg", ".png", ".pdf", ".css", ".js"];
 
@@ -158,9 +167,7 @@ export function toJson(pages: BoardPage[]): string {
       title: page.title,
       kind: page.pageKind ?? null,
       sections: page.sections.map((section) => section.title),
-      ...(page.sections.some((section) => section.kind === "cms")
-        ? { hasCmsSections: true as const }
-        : {}),
+      ...(isListingPage(page) ? { hasCmsSections: true as const } : {}),
     })),
   };
   return JSON.stringify(payload, null, 2);
