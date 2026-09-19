@@ -43,7 +43,7 @@ describe("AS-033: client board section cards show CMS tint when section.kind ===
 
     const card = screen.getByTestId("client-section-card-s-cms");
     expect(card.className).toContain("border-cms-border");
-    expect(card.className).toContain("bg-cms/5");
+    expect(card.className).toContain("hover:bg-cms/10");
   });
 
   it("does not apply the CMS tint to a non-CMS section card on the client board", () => {
@@ -55,6 +55,6 @@ describe("AS-033: client board section cards show CMS tint when section.kind ===
 
     const card = screen.getByTestId("client-section-card-s-static");
     expect(card.className).not.toContain("border-cms-border");
-    expect(card.className).not.toContain("bg-cms/5");
+    expect(card.className).not.toContain("hover:bg-cms/10");
   });
 });

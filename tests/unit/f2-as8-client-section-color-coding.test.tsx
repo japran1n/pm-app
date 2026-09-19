@@ -45,7 +45,7 @@ describe("F2 / AS-8: color coding on the portal's flat column cards", () => {
 
     const card = screen.getByTestId("client-section-card-s-cms");
     expect(card.className).toContain("border-cms-border");
-    expect(card.className).toContain("bg-cms/5");
+    expect(card.className).toContain("hover:bg-cms/10");
   });
 
   it("tints a component-linked section card with the component green classes", () => {
@@ -65,7 +65,7 @@ describe("F2 / AS-8: color coding on the portal's flat column cards", () => {
 
     const card = screen.getByTestId("client-section-card-s-comp");
     expect(card.className).toContain("border-component-border");
-    expect(card.className).toContain("bg-component/5");
+    expect(card.className).toContain("hover:bg-component/10");
   });
 
   it("CMS wins over component tint when a section is both", () => {

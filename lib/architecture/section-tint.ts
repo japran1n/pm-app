@@ -26,18 +26,14 @@ export function sectionKindAccentClassName(
   return "hover:border-border-control-hover";
 }
 
-// Same classification, but for the portal's non-interactive cards where a
-// subtle static tint reads better than a hover-only affordance (there is
-// nothing to hover-reveal on a read-only card, but the border color and a
-// faint background tint should still be visible at rest).
+// Mission 20260919-150607, F058 (AS-033): the client board's CMS tint must
+// match the team board's exactly -- border-only at rest, a hover fill, no
+// always-on background tint. This used to diverge from
+// sectionKindAccentClassName (an always-on bg-cms/5 / bg-component/5 fill),
+// which the M1 scrutiny validator flagged as a real visual mismatch. Now it
+// simply delegates to the same classnames as the team board.
 export function sectionKindStaticTintClassName(
   section: Pick<BoardSection, "kind" | "component">,
 ): string {
-  if (section.kind === "cms") {
-    return "border-cms-border bg-cms/5";
-  }
-  if (section.component) {
-    return "border-component-border bg-component/5";
-  }
-  return "border-border";
+  return sectionKindAccentClassName(section);
 }
