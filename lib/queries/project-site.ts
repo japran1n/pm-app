@@ -205,3 +205,73 @@ export async function getClientVisiblePortalAccounts(
 
   return { ok: true, data: (data ?? []).map(mapAccountRow) };
 }
+
+// SP-001–SP-004 (F01 — staging-preview): staging and live link helpers.
+//
+// WHY NOT `getProjectLinks(...).filter(...)` IN THE CALLER?
+// Filtering in JS instead of in the DB would pull every row, including rows
+// that are hidden from the client (`client_visible = false`), across the wire
+// before discarding them. SP-043 forbids that: a hidden row must never appear
+// in a client payload at any point in its lifecycle, not even temporarily.
+// `getClientVisibleStagingLinks` applies `.eq("client_visible", true)` in the
+// query for the same double-guard reason the file header documents for
+// `getClientVisiblePortalLinks`: the filter is this function's own explicit
+// contract, applied at the DB level, so it holds even for a team caller
+// previewing the portal where RLS would otherwise permit the hidden row.
+//
+// WHY IS `'live'` INCLUDED WITH `'staging'`?
+// After a project launches, the client views the same staging-preview frame —
+// only the URL changes (staging URL → live URL). Giving "live" its own tab
+// would be a different name for the same thing: one frame, one concept. Both
+// kinds therefore share the staging-preview surface so no information is
+// duplicated and no UI decision is leaked to the caller.
+
+export type StagingLinkKind = Extract<ProjectLinkKind, "staging" | "live">;
+
+// SP-001: all staging/live links for a project, in position order.
+// Unfiltered by client_visible — for team use (e.g. the preview panel on the
+// workspace side that shows both hidden and visible staging links).
+export async function getProjectStagingLinks(
+  projectId: string,
+): Promise<PortalQueryResult<ProjectLink[]>> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("project_links")
+    .select("id, project_id, kind, label, url, client_visible, position")
+    .eq("project_id", projectId)
+    .in("kind", ["staging", "live"])
+    .order("position", { ascending: true });
+
+  if (error) {
+    logger.error("getProjectStagingLinks: failed to load staging links", { error });
+    return { ok: false, error: error.message };
+  }
+
+  return { ok: true, data: (data ?? []).map(mapLinkRow) };
+}
+
+// SP-002: the portal's own double-guarded sibling — same query plus
+// `client_visible = true`, so hidden staging/live rows never cross the wire.
+// The staging-preview portal page calls this; getProjectStagingLinks above
+// stays unfiltered for team-side use.
+export async function getClientVisibleStagingLinks(
+  projectId: string,
+): Promise<PortalQueryResult<ProjectLink[]>> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("project_links")
+    .select("id, project_id, kind, label, url, client_visible, position")
+    .eq("project_id", projectId)
+    .in("kind", ["staging", "live"])
+    .eq("client_visible", true)
+    .order("position", { ascending: true });
+
+  if (error) {
+    logger.error("getClientVisibleStagingLinks: failed to load staging links", { error });
+    return { ok: false, error: error.message };
+  }
+
+  return { ok: true, data: (data ?? []).map(mapLinkRow) };
+}
