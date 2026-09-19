@@ -77,6 +77,7 @@ const STATIC_ROUTE_TITLES: Record<string, string> = {
   results: "Results",
   scope: "Scope & decisions",
   site: "Your site",
+  staging: "Preview",
   files: "Files",
   conversation: "Messages",
   architecture: "Site map",

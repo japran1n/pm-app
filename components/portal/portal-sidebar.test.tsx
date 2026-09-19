@@ -126,6 +126,26 @@ describe("buildPortalProjectNavItems (F008, AS-014, AS-015)", () => {
     expect(siteMap?.label).toBe("Site map");
     expect(siteMap?.href).toBe("/portal/acme/p/proj-1/architecture");
   });
+
+  // F06 (missions/20260919-staging-preview, SP-041): the "Preview" nav
+  // row is omitted by default -- a caller that forgets to pass
+  // `hasStagingPreview` hides the item rather than showing it wrongly.
+  it("test_SP_041_omits_preview_by_default", () => {
+    const items = buildPortalProjectNavItems("/portal/acme/p/proj-1", "fixed_price");
+    expect(items.map((item) => item.key)).not.toContain("staging");
+    expect(items).toHaveLength(7);
+  });
+
+  it("test_SP_041_includes_preview_labelled_between_site_map_and_your_site_when_flag_is_true", () => {
+    const items = buildPortalProjectNavItems("/portal/acme/p/proj-1", "fixed_price", true);
+    const keys = items.map((item) => item.key);
+    expect(keys.indexOf("architecture")).toBeLessThan(keys.indexOf("staging"));
+    expect(keys.indexOf("staging")).toBeLessThan(keys.indexOf("site"));
+
+    const preview = items.find((item) => item.key === "staging");
+    expect(preview?.label).toBe("Preview");
+    expect(preview?.href).toBe("/portal/acme/p/proj-1/staging");
+  });
 });
 
 describe("PortalSidebar (F008)", () => {
@@ -369,5 +389,30 @@ describe("PortalSidebar (F008)", () => {
     );
 
     expect(html).not.toContain(">0<");
+  });
+
+  // F06 (missions/20260919-staging-preview, SP-041)
+  it("test_SP_041_preview_row_is_absent_by_default", () => {
+    mockPathname = "/portal/acme/p/proj-1";
+    const html = renderToStaticMarkup(createElement(PortalSidebar, baseProps));
+    expect(anchorTags(html).some((tag) => tag.includes('href="/portal/acme/p/proj-1/staging"'))).toBe(
+      false,
+    );
+  });
+
+  it("test_SP_041_preview_row_renders_when_hasStagingPreview_is_true", () => {
+    // A project-group child route so the group is expanded and its rows
+    // (including "Preview") actually render -- same reason the "Hours"
+    // test above (`test_AS_014_hours_appears_only_for_hourly_projects`)
+    // points `mockPathname` at `/hours`/`/pages` rather than the
+    // top-level route.
+    mockPathname = "/portal/acme/p/proj-1/pages";
+    const html = renderToStaticMarkup(
+      createElement(PortalSidebar, { ...baseProps, hasStagingPreview: true }),
+    );
+    expect(anchorTags(html).some((tag) => tag.includes('href="/portal/acme/p/proj-1/staging"'))).toBe(
+      true,
+    );
+    expect(html).toContain(">Preview<");
   });
 });

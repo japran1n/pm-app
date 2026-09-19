@@ -5,7 +5,7 @@ import {
   getPortalProjects,
   isPortalProjectArchived,
 } from "@/lib/queries/portal";
-import { getClientVisiblePortalLinks } from "@/lib/queries/project-site";
+import { getClientVisiblePortalLinks, getClientVisibleStagingLinks } from "@/lib/queries/project-site";
 import { getWaitingOnYouCount } from "@/lib/portal/waiting-on-you-count";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { PortalSidebar, type PortalForYouBadge } from "@/components/portal/portal-sidebar";
@@ -63,11 +63,16 @@ export default async function PortalProjectLayout({
 
   const todayIso = new Date().toISOString().slice(0, 10);
 
-  const [projects, waitingOnYouResult, profile, keyLinksResult] = await Promise.all([
+  const [projects, waitingOnYouResult, profile, keyLinksResult, stagingLinksResult] = await Promise.all([
     getPortalProjects(workspace.id),
     getWaitingOnYouCount(projectId, todayIso),
     getPortalCurrentUserProfile(user.id),
     getClientVisiblePortalLinks(projectId),
+    // F06 (SP-041): the sidebar's "Preview" row only shows once there is
+    // at least one client-visible staging/live link -- same
+    // `getClientVisibleStagingLinks` the staging page itself reads
+    // (SP-040), never the unfiltered `getProjectStagingLinks`.
+    getClientVisibleStagingLinks(projectId),
   ]);
 
   const project = projects.find((p) => p.id === projectId);
@@ -102,6 +107,8 @@ export default async function PortalProjectLayout({
         .map((link) => ({ kind: link.kind as PortalKeyLink["kind"], label: link.label, url: link.url }))
     : [];
 
+  const hasStagingPreview = stagingLinksResult.ok && stagingLinksResult.data.length > 0;
+
   return (
     // F006e (missions/20260903-portal, AS-004): `PortalTitleProvider`
     // lets the task-detail page (nested several levels down inside
@@ -127,6 +134,7 @@ export default async function PortalProjectLayout({
           hasMultipleProjects={projects.length > 1}
           forYouBadge={forYouBadge}
           billingModel={project.billingModel}
+          hasStagingPreview={hasStagingPreview}
           currentUser={{
             id: user.id,
             name: profile?.displayName ?? null,

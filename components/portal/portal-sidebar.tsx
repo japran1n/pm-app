@@ -45,6 +45,7 @@ import {
   LayoutTemplate,
   ListChecks,
   MessageSquare,
+  Monitor,
   ScrollText,
   Sparkles,
   type LucideIcon,
@@ -113,15 +114,27 @@ export function buildPortalNavItems(
 // The "Project" group's children (AS-014/AS-015's own list, in order).
 // Hours is omitted entirely (not shown disabled/greyed) for a fixed-price
 // project -- same Paket B rule the old flat nav applied.
+// F06 (missions/20260919-staging-preview, SP-041): `hasStagingPreview`
+// gates the "Preview" row the same way `billingModel === "hourly"` gates
+// "Hours" just below -- `...(hasStagingPreview ? [item] : [])`. Default
+// `false` means a caller that forgets to pass the real flag hides the
+// item rather than showing it wrongly for a project with no staging/live
+// links.
 export function buildPortalProjectNavItems(
   basePath: string,
   billingModel: PortalBillingModel = "fixed_price",
+  hasStagingPreview: boolean = false,
 ): PortalNavItem[] {
   return [
     { key: "pages", label: "Pages", href: `${basePath}/pages`, icon: FileText },
     // "Architecture" is labelled "Site map" in the portal (user decision,
     // plan.md's own header) -- the route itself is unchanged.
     { key: "architecture", label: "Site map", href: `${basePath}/architecture`, icon: LayoutTemplate },
+    // SP-041: "Preview" sits between Site map and Your site -- Pages ->
+    // Site map -> Preview is the order a client most often walks through.
+    ...(hasStagingPreview
+      ? [{ key: "staging", label: "Preview", href: `${basePath}/staging`, icon: Monitor }]
+      : []),
     { key: "site", label: "Your site", href: `${basePath}/site`, icon: Globe },
     { key: "scope", label: "Scope & decisions", href: `${basePath}/scope`, icon: ScrollText },
     // AS-015: Results is now reachable from portal navigation (audit gap 3).
@@ -345,6 +358,7 @@ export function PortalSidebar({
   hasMultipleProjects,
   forYouBadge,
   billingModel,
+  hasStagingPreview = false,
   currentUser,
 }: {
   workspaceSlug: string;
@@ -356,12 +370,14 @@ export function PortalSidebar({
   hasMultipleProjects: boolean;
   forYouBadge: PortalForYouBadge;
   billingModel: PortalBillingModel;
+  /** SP-041: gates the "Preview" nav row -- see `buildPortalProjectNavItems`'s own note. */
+  hasStagingPreview?: boolean;
   currentUser: UserAvatarPerson;
 }) {
   const pathname = usePathname();
   const basePath = `/portal/${workspaceSlug}/p/${projectId}`;
   const items = buildPortalNavItems(basePath, forYouBadge);
-  const projectItems = buildPortalProjectNavItems(basePath, billingModel);
+  const projectItems = buildPortalProjectNavItems(basePath, billingModel, hasStagingPreview);
 
   // F016 (portal-simplify, AS-016): the Project group must expand on ANY
   // route under this project except the three top-level ones (Home
