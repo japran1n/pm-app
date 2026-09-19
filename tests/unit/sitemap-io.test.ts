@@ -157,6 +157,78 @@ describe("toJson", () => {
   });
 });
 
+describe("F010 regression: non-CMS export byte-compatibility", () => {
+  const NON_CMS_PAGES: BoardPage[] = [
+    page({ pageSlug: "", title: "Home", position: 0 }),
+    page({
+      pageSlug: "about",
+      title: "About",
+      position: 1,
+      sections: [
+        { id: "1", title: "Hero", kind: "static", position: 0, component: null },
+        { id: "2", title: "Grid", kind: "static", position: 1, component: null },
+      ],
+    }),
+    page({ pageSlug: "about/team", title: "Team", position: 2 }),
+  ];
+
+  it("AS-038: a page with only static sections exports hasCmsSections=false and no other new fields", () => {
+    const parsed = JSON.parse(toJson(NON_CMS_PAGES));
+
+    // The only field F009 could have added is hasCmsSections. Every page
+    // object's key set must be exactly the pre-F009 shape plus that one
+    // boolean -- nothing else was introduced as a side effect.
+    const expectedKeys = ["path", "title", "kind", "sections", "hasCmsSections"].sort();
+    for (const entry of parsed.pages) {
+      expect(Object.keys(entry).sort()).toEqual(expectedKeys);
+      expect(entry.hasCmsSections).toBe(false);
+    }
+
+    // The envelope itself (version + pages) is unchanged.
+    expect(Object.keys(parsed).sort()).toEqual(["pages", "version"]);
+    expect(parsed.version).toBe(1);
+
+    // Byte-identical to the pre-F009 shape once hasCmsSections is stripped
+    // back out: every remaining field matches the source BoardPage data
+    // exactly, path/title/kind/sections computed the same way as before.
+    expect(parsed.pages).toEqual([
+      { path: "", title: "Home", kind: "static", sections: [], hasCmsSections: false },
+      {
+        path: "about",
+        title: "About",
+        kind: "static",
+        sections: ["Hero", "Grid"],
+        hasCmsSections: false,
+      },
+      { path: "about/team", title: "Team", kind: "static", sections: [], hasCmsSections: false },
+    ]);
+  });
+
+  it("AS-039: markdown export is unchanged for pages without CMS sections", () => {
+    const markdown = toMarkdown(NON_CMS_PAGES);
+
+    // toMarkdown never reads section kind or the hasCmsSections flag at
+    // all -- it only walks the page tree by path/title -- so F009 could not
+    // have altered its output for any page, CMS or not.
+    expect(markdown.split("\n")).toEqual([
+      "- Home ``",
+      "  - About `about`",
+      "    - Team `about/team`",
+    ]);
+    expect(markdown).not.toMatch(/hasCmsSections|cms/i);
+  });
+
+  it("AS-038/AS-039: CSV and XML exports are likewise untouched by hasCmsSections for non-CMS pages", () => {
+    // Sibling exports (toCsv, toSitemapXml) never mention sections' kind or
+    // hasCmsSections either -- guard against regressions creeping into the
+    // shared BoardPage shape leaking into unrelated export formats.
+    const csv = toCsv(NON_CMS_PAGES);
+    const xml = toSitemapXml(NON_CMS_PAGES, "https://example.com");
+    expect(csv).not.toMatch(/hasCmsSections/i);
+    expect(xml).not.toMatch(/hasCmsSections/i);
+  });
+});
+
 describe("parseSitemap text input", () => {
   it("accepts bare and slash-prefixed paths", () => {
     const result = parseSitemap("/about\ncontact\nhttps://example.com/legal?x=1#y");
