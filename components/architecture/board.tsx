@@ -367,7 +367,7 @@ export function ArchitectureBoard({
                 onComponentClick={handleComponentClick}
                 showDetails={showDetails}
                 detailsData={detailsData}
-                onDetailsInvalidate={onDetailsInvalidate}
+                onDetailsInvalidate={onDetailsInvalidate ?? (() => {})}
               />
             ))}
             <div className="shrink-0 w-52">

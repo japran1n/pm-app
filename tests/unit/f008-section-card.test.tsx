@@ -32,7 +32,7 @@ function makeSection(overrides: Partial<BoardSection>): BoardSection {
 
 describe("F008 section card", () => {
   it("AS-025: renders the section title", () => {
-    render(<SectionCard section={makeSection({ title: "Hero" })} />);
+    render(<SectionCard section={makeSection({ title: "Hero" })} onDetailsInvalidate={vi.fn()} />);
 
     expect(screen.getByText("Hero")).toBeInTheDocument();
   });
@@ -45,6 +45,7 @@ describe("F008 section card", () => {
           kind: "static",
           component: { id: "comp-1", name: "Navbar" },
         })}
+        onDetailsInvalidate={vi.fn()}
       />,
     );
 
@@ -59,6 +60,7 @@ describe("F008 section card", () => {
           kind: "static",
           component: { id: "comp-1", name: "Navbar" },
         })}
+        onDetailsInvalidate={vi.fn()}
       />,
     );
 
@@ -69,7 +71,7 @@ describe("F008 section card", () => {
   });
 
   it("omits data-component when there is no linked component", () => {
-    render(<SectionCard section={makeSection({ title: "Plain" })} />);
+    render(<SectionCard section={makeSection({ title: "Plain" })} onDetailsInvalidate={vi.fn()} />);
 
     const card = screen.getByText("Plain").closest("div");
     expect(card).not.toHaveAttribute("data-component");

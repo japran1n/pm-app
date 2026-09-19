@@ -319,6 +319,7 @@ describe("F025/AS-091 (render): NodeMetaDialog opens with the section's own task
       React.createElement(SectionCard, {
         section: makeSection("section-task-abc", "Hero"),
         detailsData,
+        onDetailsInvalidate: vi.fn(),
       }),
     );
 
@@ -335,6 +336,7 @@ describe("F025/AS-091 (render): NodeMetaDialog opens with the section's own task
       React.createElement(SectionCard, {
         section: makeSection("section-task-xyz", "Footer"),
         detailsData,
+        onDetailsInvalidate: vi.fn(),
       }),
     );
 

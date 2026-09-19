@@ -66,6 +66,7 @@ describe("F020 reorder sections within a column", () => {
           pageId="page-1"
           orderedSectionIds={sections.map((section) => section.id)}
           sectionsById={sectionsById}
+          onDetailsInvalidate={vi.fn()}
         />
       </DndContext>,
     );
@@ -85,6 +86,7 @@ describe("F020 reorder sections within a column", () => {
           pageId="page-1"
           orderedSectionIds={[]}
           sectionsById={new Map()}
+          onDetailsInvalidate={vi.fn()}
         />
       </DndContext>,
     );

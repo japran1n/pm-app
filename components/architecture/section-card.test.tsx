@@ -70,10 +70,16 @@ describe("SectionCard copy-brief save (F094)", () => {
     expect(refreshMock).toHaveBeenCalled();
   });
 
-  it("test_F094_save_does_not_throw_when_onDetailsInvalidate_is_not_provided", async () => {
+  it("test_F094_save_does_not_throw_when_onDetailsInvalidate_is_a_noop", async () => {
     setNodeMetaMock.mockResolvedValue({ success: true });
 
-    render(<SectionCard section={section} detailsData={emptyDetailsData()} />);
+    render(
+      <SectionCard
+        section={section}
+        detailsData={emptyDetailsData()}
+        onDetailsInvalidate={() => {}}
+      />,
+    );
 
     fireEvent.click(
       screen.getByRole("button", { name: `Add copy brief for ${section.title}` }),

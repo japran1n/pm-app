@@ -42,6 +42,7 @@ describe("F027 instance display and local title", () => {
           kind: "static",
           component: { id: "comp-1", name: "Navbar" },
         })}
+        onDetailsInvalidate={vi.fn()}
       />,
     );
 
@@ -56,6 +57,7 @@ describe("F027 instance display and local title", () => {
           kind: "static",
           component: { id: "comp-1", name: "Navbar" },
         })}
+        onDetailsInvalidate={vi.fn()}
       />,
     );
 
@@ -71,6 +73,7 @@ describe("F027 instance display and local title", () => {
           kind: "static",
           component: { id: "comp-1", name: "Navbar" },
         })}
+        onDetailsInvalidate={vi.fn()}
       />,
     );
 
@@ -83,7 +86,7 @@ describe("F027 instance display and local title", () => {
   });
 
   it("renders only the section's own name when no component is linked", () => {
-    render(<SectionCard section={makeSection({ title: "Plain section" })} />);
+    render(<SectionCard section={makeSection({ title: "Plain section" })} onDetailsInvalidate={vi.fn()} />);
 
     expect(screen.getByText("Plain section")).toBeInTheDocument();
     expect(screen.queryByText("Navbar")).not.toBeInTheDocument();

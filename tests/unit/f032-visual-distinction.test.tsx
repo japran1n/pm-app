@@ -40,6 +40,7 @@ describe("F032 visual distinction for linked sections", () => {
           kind: "static",
           component: { id: "comp-1", name: "Navbar" },
         })}
+        onDetailsInvalidate={vi.fn()}
       />,
     );
 
@@ -48,7 +49,7 @@ describe("F032 visual distinction for linked sections", () => {
   });
 
   it("AS-069: omits data-component when the section has no linked component", () => {
-    render(<SectionCard section={makeSection({ title: "Plain" })} />);
+    render(<SectionCard section={makeSection({ title: "Plain" })} onDetailsInvalidate={vi.fn()} />);
 
     const card = screen.getByText("Plain").closest("div");
     expect(card).not.toHaveAttribute("data-component");
@@ -62,6 +63,7 @@ describe("F032 visual distinction for linked sections", () => {
           kind: "static",
           component: { id: "comp-1", name: "Navbar" },
         })}
+        onDetailsInvalidate={vi.fn()}
       />,
     );
 
@@ -70,7 +72,7 @@ describe("F032 visual distinction for linked sections", () => {
   });
 
   it("AS-069: an unlinked section's card does not carry the component border tint class", () => {
-    render(<SectionCard section={makeSection({ title: "Plain" })} />);
+    render(<SectionCard section={makeSection({ title: "Plain" })} onDetailsInvalidate={vi.fn()} />);
 
     const card = screen.getByText("Plain").closest("div");
     expect(card).not.toHaveClass("border-component-border");

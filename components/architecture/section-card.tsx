@@ -102,7 +102,7 @@ export function SectionCard({
    *  components, it never re-runs the client-side details fetch, so
    *  without this the icon stayed in its stale "empty" state until a
    *  full page reload. */
-  onDetailsInvalidate?: () => void;
+  onDetailsInvalidate: () => void;
 }) {
   const router = useRouter();
   const [isEditing, setIsEditing] = useState(false);
@@ -300,7 +300,7 @@ export function SectionCard({
               onOpenChange={setMetaOpen}
               onSaved={() => {
                 router.refresh();
-                onDetailsInvalidate?.();
+                onDetailsInvalidate();
               }}
             />
           </>

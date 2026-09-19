@@ -80,6 +80,7 @@ describe("F085 SortableSectionList forwards detailsData to SectionCard", () => {
           orderedSectionIds={["section-1"]}
           sectionsById={sectionsById}
           detailsData={detailsData}
+          onDetailsInvalidate={vi.fn()}
         />
       </DndContext>,
     );
@@ -101,6 +102,7 @@ describe("F085 SortableSectionList forwards detailsData to SectionCard", () => {
           pageId="page-1"
           orderedSectionIds={["section-1"]}
           sectionsById={sectionsById}
+          onDetailsInvalidate={vi.fn()}
         />
       </DndContext>,
     );

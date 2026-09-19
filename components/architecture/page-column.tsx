@@ -52,7 +52,7 @@ export function PageColumn({
   onComponentClick?: (componentId: string) => void;
   showDetails?: boolean;
   detailsData?: ArchitectureNodeDetails | null;
-  onDetailsInvalidate?: () => void;
+  onDetailsInvalidate: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: page.id, data: { type: "page" } });

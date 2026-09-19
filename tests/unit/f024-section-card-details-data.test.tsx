@@ -60,6 +60,7 @@ describe("F024 SectionCard detailsData prop", () => {
       <SectionCard
         section={makeSection({ title: "Hero" })}
         detailsData={detailsData}
+        onDetailsInvalidate={vi.fn()}
       />,
     );
 
@@ -70,7 +71,7 @@ describe("F024 SectionCard detailsData prop", () => {
   });
 
   it("AS-097: still renders correctly when detailsData is omitted or has no matching entry", () => {
-    render(<SectionCard section={makeSection({ title: "Hero" })} />);
+    render(<SectionCard section={makeSection({ title: "Hero" })} onDetailsInvalidate={vi.fn()} />);
     expect(screen.getByText("Hero")).toBeInTheDocument();
 
     cleanup();
@@ -79,6 +80,7 @@ describe("F024 SectionCard detailsData prop", () => {
       <SectionCard
         section={makeSection({ title: "Hero" })}
         detailsData={new Map()}
+        onDetailsInvalidate={vi.fn()}
       />,
     );
     expect(screen.getByText("Hero")).toBeInTheDocument();

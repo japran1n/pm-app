@@ -26,7 +26,7 @@ export function SortableSectionCard({
   components?: BoardComponent[];
   onComponentClick?: (componentId: string) => void;
   detailsData?: ArchitectureNodeDetails | null;
-  onDetailsInvalidate?: () => void;
+  onDetailsInvalidate: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: section.id, data: { type: "section" } });

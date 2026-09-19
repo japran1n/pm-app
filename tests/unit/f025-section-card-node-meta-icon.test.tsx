@@ -39,6 +39,7 @@ describe("F025 SectionCard NodeMetaDialog icon", () => {
       <SectionCard
         section={makeSection({})}
         detailsData={new Map()}
+        onDetailsInvalidate={vi.fn()}
       />,
     );
 
@@ -51,7 +52,7 @@ describe("F025 SectionCard NodeMetaDialog icon", () => {
   });
 
   it("does not render the icon while detailsData hasn't resolved yet", () => {
-    render(<SectionCard section={makeSection({})} />);
+    render(<SectionCard section={makeSection({})} onDetailsInvalidate={vi.fn()} />);
     expect(
       screen.queryByRole("button", { name: /copy brief/i }),
     ).not.toBeInTheDocument();
@@ -62,6 +63,7 @@ describe("F025 SectionCard NodeMetaDialog icon", () => {
       <SectionCard
         section={makeSection({})}
         detailsData={new Map()}
+        onDetailsInvalidate={vi.fn()}
       />,
     );
 
@@ -75,6 +77,7 @@ describe("F025 SectionCard NodeMetaDialog icon", () => {
       <SectionCard
         section={makeSection({})}
         detailsData={new Map()}
+        onDetailsInvalidate={vi.fn()}
       />,
     );
 
@@ -106,6 +109,7 @@ describe("F025 SectionCard NodeMetaDialog icon", () => {
       <SectionCard
         section={makeSection({})}
         detailsData={detailsData}
+        onDetailsInvalidate={vi.fn()}
       />,
     );
 

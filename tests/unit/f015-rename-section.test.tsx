@@ -142,7 +142,7 @@ describe("SectionCard (F015)", () => {
       component: null,
     };
 
-    render(<SectionCard section={section} />);
+    render(<SectionCard section={section} onDetailsInvalidate={vi.fn()} />);
 
     expect(screen.getByText("Hero")).toBeTruthy();
 

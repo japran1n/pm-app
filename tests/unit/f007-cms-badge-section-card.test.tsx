@@ -35,20 +35,20 @@ function makeSection(overrides: Partial<BoardSection>): BoardSection {
 
 describe("F007 CMS badge on section card", () => {
   it("AS-029: renders a CMS badge when section.kind is 'cms'", () => {
-    render(<SectionCard section={makeSection({ title: "Hero", kind: "cms" })} />);
+    render(<SectionCard section={makeSection({ title: "Hero", kind: "cms" })} onDetailsInvalidate={vi.fn()} />);
 
     expect(screen.getByText("CMS")).toBeInTheDocument();
   });
 
   it("AS-030: does not render a CMS badge when section.kind is 'static'", () => {
-    render(<SectionCard section={makeSection({ title: "Hero", kind: "static" })} />);
+    render(<SectionCard section={makeSection({ title: "Hero", kind: "static" })} onDetailsInvalidate={vi.fn()} />);
 
     expect(screen.queryByText("CMS")).not.toBeInTheDocument();
   });
 
   it("AS-031: the existing CMS tint is still applied alongside the badge", () => {
     const section = makeSection({ title: "Hero", kind: "cms" });
-    render(<SectionCard section={section} />);
+    render(<SectionCard section={section} onDetailsInvalidate={vi.fn()} />);
 
     expect(screen.getByText("CMS")).toBeInTheDocument();
 
@@ -62,7 +62,7 @@ describe("F007 CMS badge on section card", () => {
   });
 
   it("AS-032: the badge uses Supabase DS --cms-* tokens, not hardcoded colours", () => {
-    render(<SectionCard section={makeSection({ title: "Hero", kind: "cms" })} />);
+    render(<SectionCard section={makeSection({ title: "Hero", kind: "cms" })} onDetailsInvalidate={vi.fn()} />);
 
     const badge = screen.getByText("CMS");
     expect(badge).toHaveClass("border-[var(--cms-border)]");
