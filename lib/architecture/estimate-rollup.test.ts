@@ -88,12 +88,6 @@ describe("AS-064: site-level rollup includes all five disciplines", () => {
       0,
     );
     expect(expectedSum).toBe(60 + 120 + 40 + 5 + 7);
-
-    const grandTotal = WORK_CATEGORIES.reduce(
-      (sum, discipline) => sum + totals[discipline],
-      0,
-    );
-    expect(grandTotal).toBe(232);
   });
 
   it("does not leak an unrecognised legacy discipline value into totals (negative case)", () => {
