@@ -60,6 +60,21 @@ export const updatePageSchema = createPageSchema.partial();
 
 export type UpdatePageInput = z.infer<typeof updatePageSchema>;
 
+// AS-010..AS-014: sibling of changePageKind's validation above, for the
+// `tasks.section_kind` column. Values are derived from a single source
+// (this enum) rather than re-written per caller -- see tech-decisions.md
+// ("Enumi se ne pišu dvaput"). Must match the DB CHECK constraint exactly:
+// supabase/migrations/20261124010000_architecture_cms_template_and_section_kind.sql
+// (`tasks_section_kind_check`: 'static', 'cms').
+export const sectionKindEnum = z.enum(["static", "cms"]);
+
+export const changeSectionKindSchema = z.object({
+  taskId: z.string().uuid("Invalid task."),
+  kind: sectionKindEnum,
+});
+
+export type ChangeSectionKindInput = z.infer<typeof changeSectionKindSchema>;
+
 // --- Architecture enrichment (mission 20260918) ---
 
 export { workCategorySchema };
