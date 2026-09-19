@@ -46,7 +46,7 @@ describe("AS-114: TypeScript types no longer include description on PageComponen
       /export type BoardComponent = \{[\s\S]*?\};/,
     );
     expect(typeMatch).not.toBeNull();
-    expect(typeMatch?.[0]).not.toMatch(/description\s*\?\s*:/);
+    expect(typeMatch?.[0]).not.toMatch(/["']?description["']?\s*\??\s*:/);
   });
 
   it("ComponentRow type declaration does not declare a description field", () => {
@@ -54,19 +54,20 @@ describe("AS-114: TypeScript types no longer include description on PageComponen
       /type ComponentRow = \{[\s\S]*?\};/,
     );
     expect(typeMatch).not.toBeNull();
-    expect(typeMatch?.[0]).not.toMatch(/description\s*\?\s*:/);
+    expect(typeMatch?.[0]).not.toMatch(/["']?description["']?\s*\??\s*:/);
   });
 
-  it("generated database types no longer declare page_components.description", () => {
-    const dbTypesSource = readFileSync(
-      path.join(__dirname, "..", "supabase", "database.types.ts"),
-      "utf-8",
+  it("the identifier 'description' does not appear anywhere in the BoardComponent or ComponentRow type declarations, including via intersection/extends/Pick", () => {
+    const boardComponentMatch = architectureQuerySource.match(
+      /export type BoardComponent =[\s\S]*?;\n/,
     );
-    const pageComponentsMatch = dbTypesSource.match(
-      /page_components:\s*\{[\s\S]*?\n\s{6}\}\n/,
+    const componentRowMatch = architectureQuerySource.match(
+      /type ComponentRow =[\s\S]*?;\n/,
     );
-    expect(pageComponentsMatch).not.toBeNull();
-    expect(pageComponentsMatch?.[0]).not.toMatch(/description\s*:/);
+    expect(boardComponentMatch).not.toBeNull();
+    expect(componentRowMatch).not.toBeNull();
+    expect(boardComponentMatch?.[0]).not.toMatch(/description/);
+    expect(componentRowMatch?.[0]).not.toMatch(/description/);
   });
 });
 
@@ -81,5 +82,42 @@ describe("AS-112: migration dropping page_components.description exists", () => 
     const sql = readFileSync(path.join(migrationsDir, match as string), "utf-8");
     expect(sql).toMatch(/drop column if exists description/i);
     expect(sql).toMatch(/page_components/);
+  });
+
+  it("generated database types no longer declare page_components.description", () => {
+    const dbTypesSource = readFileSync(
+      path.join(__dirname, "..", "supabase", "database.types.ts"),
+      "utf-8",
+    );
+    const pageComponentsMatch = dbTypesSource.match(
+      /page_components:\s*\{[\s\S]*?\n\s{6}\}\n/,
+    );
+    expect(pageComponentsMatch).not.toBeNull();
+    expect(pageComponentsMatch?.[0]).not.toMatch(/["']?description["']?\s*\??\s*:/);
+  });
+});
+
+// F106 (AS-118): NodeMeta no longer carries clientVisible or updatedBy.
+// tsc can't catch excess properties inside `new Map([...])` fixtures, so
+// this is a static source check on the type declaration itself.
+describe("AS-118: NodeMeta type declaration does not include clientVisible or updatedBy", () => {
+  it("the NodeMeta type declaration does not declare a clientVisible field", () => {
+    const typesSource = readFileSync(
+      path.join(__dirname, "..", "architecture", "types.ts"),
+      "utf-8",
+    );
+    const typeMatch = typesSource.match(/export type NodeMeta = \{[\s\S]*?\};/);
+    expect(typeMatch).not.toBeNull();
+    expect(typeMatch?.[0]).not.toMatch(/["']?clientVisible["']?\s*\??\s*:/);
+  });
+
+  it("the NodeMeta type declaration does not declare an updatedBy field", () => {
+    const typesSource = readFileSync(
+      path.join(__dirname, "..", "architecture", "types.ts"),
+      "utf-8",
+    );
+    const typeMatch = typesSource.match(/export type NodeMeta = \{[\s\S]*?\};/);
+    expect(typeMatch).not.toBeNull();
+    expect(typeMatch?.[0]).not.toMatch(/["']?updatedBy["']?\s*\??\s*:/);
   });
 });

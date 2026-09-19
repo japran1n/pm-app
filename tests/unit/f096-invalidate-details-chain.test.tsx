@@ -79,8 +79,6 @@ describe("F096 onDetailsInvalidate is wired through the full SortableSectionList
             tone: null,
             keywords: [],
             copyStatus: "not_started",
-            clientVisible: false,
-            updatedBy: null,
           },
           estimates: [],
         },

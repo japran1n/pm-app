@@ -10,12 +10,12 @@ describe("F034: setNodeMetaClientVisibility removal", () => {
     expect((mod as Record<string, unknown>).setNodeMetaClientVisibility).toBeUndefined();
   });
 
-  it("AS-118: is not exported from the architecture actions barrel", async () => {
+  it("AS-117: is not exported from the architecture actions barrel", async () => {
     const mod = await import("@/lib/actions/architecture");
     expect((mod as Record<string, unknown>).setNodeMetaClientVisibility).toBeUndefined();
   });
 
-  it("AS-118: its validation schema is not exported from lib/validation/architecture", async () => {
+  it("AS-117: its validation schema is not exported from lib/validation/architecture", async () => {
     const mod = await import("@/lib/validation/architecture");
     expect((mod as Record<string, unknown>).setNodeMetaClientVisibilitySchema).toBeUndefined();
   });
