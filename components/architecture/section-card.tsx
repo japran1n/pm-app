@@ -33,13 +33,32 @@ import { useState, useTransition } from "react";
 import { cn } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { FileText } from "lucide-react";
 
 import { renameSection } from "@/lib/actions/architecture";
 import { Input } from "@/components/ui/input";
 import type { BoardComponent, BoardSection } from "@/lib/queries/architecture";
 import { SectionCardMenu } from "@/components/architecture/section-card-menu";
 import { sectionKindAccentClassName } from "@/lib/architecture/section-tint";
-import type { ArchitectureNodeDetails } from "@/lib/architecture/types";
+import type { ArchitectureNodeDetails, NodeMeta } from "@/lib/architecture/types";
+import { NodeMetaDialog } from "@/components/architecture/node-meta-dialog";
+
+// F025 (AS-090): "full" means the copy-brief meta actually carries
+// content worth reading -- any of the free-text/keyword fields set.
+// `copyStatus` alone starting at "not_started" doesn't count as empty by
+// itself (a brief can be drafted without moving that field), but with no
+// other field populated there is nothing to show, so it still reads as
+// empty.
+function hasNodeMetaContent(meta: NodeMeta | null | undefined): boolean {
+  if (!meta) return false;
+  return Boolean(
+    meta.intent ||
+      meta.audience ||
+      meta.primaryCta ||
+      meta.tone ||
+      meta.keywords.length > 0,
+  );
+}
 
 // Mission 20260919-150607, F007 (AS-029..AS-032): a small CMS badge on a
 // section card, mirroring PageKindBadge's anatomy (components/architecture/
@@ -82,6 +101,17 @@ export function SectionCard({
   const [value, setValue] = useState(section.title);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [metaOpen, setMetaOpen] = useState(false);
+
+  // F025 (AS-088..AS-090): `detailsData` is the lazily-fetched map threaded
+  // in by F024, keyed by task id -- a section IS a subtask of its page task
+  // (standing decision 1), so `detailsData.get(section.id)` resolves to
+  // this section's own copy-brief meta. `detailsData` itself being
+  // null/undefined means the details fetch hasn't resolved yet, so the
+  // icon is withheld entirely rather than guessing a state.
+  const sectionDetails = detailsData?.get(section.id);
+  const nodeMeta = sectionDetails?.meta ?? null;
+  const nodeMetaHasContent = hasNodeMetaContent(nodeMeta);
 
   function startEditing() {
     setValue(section.title);
@@ -137,6 +167,13 @@ export function SectionCard({
     <div
       data-component={section.component?.id ?? undefined}
       data-section-kind={section.kind}
+      data-node-meta-state={
+        detailsData !== null && detailsData !== undefined
+          ? nodeMetaHasContent
+            ? "full"
+            : "empty"
+          : undefined
+      }
       // F032 (AS-069): a section linked to a component is tinted with the
       // --component-* tokens, echoing Webflow's green component card.
       // CMS-driven sections take the --cms-* lilac instead, matching the
@@ -226,6 +263,37 @@ export function SectionCard({
           )}
         </div>
         {section.kind === "cms" && <CmsSectionBadge />}
+        {detailsData !== null && detailsData !== undefined && (
+          <>
+            <button
+              type="button"
+              aria-label={
+                nodeMetaHasContent
+                  ? `Edit copy brief for ${section.title}`
+                  : `Add copy brief for ${section.title}`
+              }
+              aria-haspopup="dialog"
+              title="Copy brief"
+              onClick={() => setMetaOpen(true)}
+              className="shrink-0 rounded-md border border-transparent p-1 text-muted-foreground transition-colors hover:border-border-control-hover hover:bg-muted/50 hover:text-foreground"
+            >
+              <FileText
+                className="size-3.5"
+                aria-hidden="true"
+                fill={nodeMetaHasContent ? "currentColor" : "none"}
+                data-node-meta-icon-state={nodeMetaHasContent ? "full" : "empty"}
+              />
+            </button>
+            <NodeMetaDialog
+              taskId={section.id}
+              taskTitle={section.title}
+              meta={nodeMeta}
+              open={metaOpen}
+              onOpenChange={setMetaOpen}
+              onSaved={() => router.refresh()}
+            />
+          </>
+        )}
         <SectionCardMenu section={section} components={components} />
       </div>
     </div>
