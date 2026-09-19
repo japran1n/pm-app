@@ -129,6 +129,14 @@ window.addEventListener('message', function (event) {
   target.textContent = data.content;
   window.scrollTo(scrollX, scrollY);
 });
+document.addEventListener('click', function (e) {
+  var a = e.target && e.target.closest ? e.target.closest('a') : null;
+  if (!a) return;
+  var href = a.getAttribute('href');
+  if (!href) return;
+  e.preventDefault();
+  parent.postMessage({ type: 'link-click', href: a.href }, '*');
+}, true);
 </script>`;
 
 /**

@@ -22,6 +22,7 @@
 
 import {
   forwardRef,
+  useEffect,
   useImperativeHandle,
   useRef,
 } from "react"
@@ -30,6 +31,14 @@ export interface PreviewPaneProps {
   composedHtml: string
   title?: string
   className?: string
+  /**
+   * TH-280…TH-289 — invoked when a link inside the sandboxed preview is
+   * clicked. The frame is opaque-origin and never navigates itself; it
+   * posts `{ type: 'link-click', href }` to the host, which is forwarded
+   * here after the origin guard below confirms the message came from this
+   * component's own iframe.
+   */
+  onLinkClick?: (href: string) => void
 }
 
 export interface PreviewPaneHandle {
@@ -43,8 +52,25 @@ export interface PreviewPaneHandle {
 }
 
 export const PreviewPane = forwardRef<PreviewPaneHandle, PreviewPaneProps>(
-  function PreviewPane({ composedHtml, title = "Preview", className }, ref) {
+  function PreviewPane({ composedHtml, title = "Preview", className, onLinkClick }, ref) {
     const iframeRef = useRef<HTMLIFrameElement>(null)
+
+    useEffect(() => {
+      if (!onLinkClick) return
+      const handleLinkClick = onLinkClick
+      function handleMessage(event: MessageEvent) {
+        // Origin guard: only accept messages that came from this
+        // component's own iframe, never from any other window.
+        if (event.source !== iframeRef.current?.contentWindow) return
+        const data = event.data
+        if (!data || typeof data !== "object") return
+        if (data.type !== "link-click") return
+        if (typeof data.href !== "string") return
+        handleLinkClick(data.href)
+      }
+      window.addEventListener("message", handleMessage)
+      return () => window.removeEventListener("message", handleMessage)
+    }, [onLinkClick])
 
     useImperativeHandle(
       ref,
