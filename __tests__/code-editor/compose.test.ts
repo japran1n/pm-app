@@ -10,6 +10,7 @@ function styleBlock(overrides: Partial<StyleBlock> = {}): StyleBlock {
     type: 'style',
     originalContent: 'body { color: red; }',
     content: 'body { color: red; }',
+    hasCdata: false,
     ...overrides,
   };
 }
@@ -21,6 +22,7 @@ function scriptBlock(overrides: Partial<ScriptBlock> = {}): ScriptBlock {
     originalContent: 'console.log("a")',
     content: 'console.log("a")',
     name: 'script-1.js',
+    hasCdata: false,
     ...overrides,
   };
 }
@@ -135,5 +137,98 @@ describe('composeDocument', () => {
     const html = '<html><body></body></html>';
     const result = composeDocument(html, [], { injectStyleAgent: false });
     expect(result).toBe(html);
+  });
+
+  // FU-4 bug 1: empty originalContent must never be treated as "found at
+  // index 0" -- it must fall through to the append path instead of
+  // corrupting the start of the document.
+  describe('FU-4 regression: empty originalContent', () => {
+    test('FU_4_empty_original_content_is_appended_not_spliced_at_index_zero', () => {
+      const html = '<html><head></head><body><p>keep me</p></body></html>';
+      const block = styleBlock({ originalContent: '', content: 'body{color:blue;}' });
+      const result = composeDocument(html, [block]);
+      // Must not have spliced new content in at the very start of the doc.
+      expect(result.startsWith('body{color:blue;}')).toBe(false);
+      expect(result).toContain('<p>keep me</p>');
+      // Appended as a new tag before </body> instead.
+      expect(result).toContain('<style>body{color:blue;}</style>');
+      const styleIdx = result.indexOf('<style>body{color:blue;}');
+      const bodyCloseIdx = result.indexOf('</body>');
+      expect(styleIdx).toBeLessThan(bodyCloseIdx);
+    });
+
+    test('FU_4_whitespace_only_original_content_is_appended_not_spliced', () => {
+      const html = '<html><body><p>keep me</p></body></html>';
+      const block = scriptBlock({ originalContent: '   \n  ', content: 'notpresent();' });
+      const result = composeDocument(html, [block]);
+      expect(result).toContain('<p>keep me</p>');
+      expect(result).toContain('<script>notpresent();</script>');
+    });
+  });
+
+  // FU-4 bug 2: a naked string search can be fooled by the target text
+  // appearing outside the real <style>/<script> tag body (e.g. as literal
+  // page text). Only the genuine tag body may be patched.
+  describe('FU-4 regression: first-occurrence-only false match', () => {
+    test('FU_4_css_text_appearing_outside_style_tag_is_not_patched', () => {
+      const html =
+        '<html><body><pre>a{color:red;}</pre><style>a{color:red;}</style></body></html>';
+      const block = styleBlock({ originalContent: 'a{color:red;}', content: 'a{color:blue;}' });
+      const result = composeDocument(html, [block]);
+      // The literal text inside <pre> must be untouched...
+      expect(result).toContain('<pre>a{color:red;}</pre>');
+      // ...while the real <style> tag body was updated.
+      expect(result).toContain('<style>a{color:blue;}</style>');
+      expect(result).not.toContain('<style>a{color:red;}</style>');
+    });
+  });
+
+  // FU-4 bug 3: two blocks that share identical originalContent must each
+  // resolve to their own distinct tag occurrence, not both hit the first one.
+  describe('FU-4 regression: duplicate-content blocks patch distinct locations', () => {
+    test('FU_4_two_identical_style_blocks_each_patch_their_own_occurrence', () => {
+      const html = '<style>dup{}</style><style>dup{}</style>';
+      const blocks: Block[] = [
+        styleBlock({ index: 0, originalContent: 'dup{}', content: 'first{}' }),
+        styleBlock({ index: 1, originalContent: 'dup{}', content: 'second{}' }),
+      ];
+      const result = composeDocument(html, blocks);
+      expect(result).toBe('<style>first{}</style><style>second{}</style>');
+    });
+
+    test('FU_4_two_identical_script_blocks_each_patch_their_own_occurrence', () => {
+      const html = '<script>dup();</script><script>dup();</script>';
+      const blocks: Block[] = [
+        scriptBlock({ index: 0, originalContent: 'dup();', content: 'first();' }),
+        scriptBlock({ index: 1, originalContent: 'dup();', content: 'second();' }),
+      ];
+      const result = composeDocument(html, blocks);
+      expect(result).toBe('<script>first();</script><script>second();</script>');
+    });
+  });
+
+  // FU-4: CDATA round-trip -- extract.ts strips the wrapper into `content`
+  // but keeps `originalContent` raw; compose must restore the wrapper
+  // around the edited content when hasCdata is true.
+  describe('FU-4 regression: CDATA wrapper round-trip', () => {
+    test('FU_4_cdata_wrapped_script_restores_wrapper_around_edited_content', () => {
+      const html = '<html><body><script>//<![CDATA[\nvar x = 1;\n//]]></script></body></html>';
+      const block = scriptBlock({
+        originalContent: '//<![CDATA[\nvar x = 1;\n//]]>',
+        content: 'var x = 2;',
+        hasCdata: true,
+      });
+      const result = composeDocument(html, [block]);
+      expect(result).toContain('<![CDATA[var x = 2;]]>');
+      expect(result).not.toContain('var x = 1;');
+    });
+
+    test('FU_4_non_cdata_block_never_gains_a_wrapper', () => {
+      const html = '<html><body><style>a{color:red;}</style></body></html>';
+      const block = styleBlock({ content: 'a{color:blue;}', hasCdata: false });
+      const result = composeDocument(html, [block]);
+      expect(result).toContain('<style>a{color:blue;}</style>');
+      expect(result).not.toContain('CDATA');
+    });
   });
 });

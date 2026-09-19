@@ -4,6 +4,7 @@ export interface StyleBlock {
   originalContent: string; // content as found in HTML
   content: string; // same as originalContent initially (edited by user later)
   name?: string; // filled by name heuristic (F033)
+  hasCdata?: boolean; // true when originalContent was wrapped in <![CDATA[ ... ]]> (F036 round-trip)
 }
 
 const STYLE_TAG_RE = /<style([^>]*)>([\s\S]*?)<\/style>/gi;
@@ -31,6 +32,7 @@ export interface ScriptBlock {
   originalContent: string; // content as found in HTML
   content: string; // same as originalContent initially (edited by user later)
   name?: string; // filled by name heuristic (F033)
+  hasCdata?: boolean; // true when originalContent was wrapped in <![CDATA[ ... ]]> (F036 round-trip)
 }
 
 const SCRIPT_TAG_RE = /<script([^>]*)>([\s\S]*?)<\/script>/gi;
@@ -167,6 +169,7 @@ export function extractStyleBlocks(html: string): StyleBlock[] {
         originalContent: content,
         content: unwrapped,
         name: deriveCssName(unwrapped, index),
+        hasCdata: CDATA_WRAPPER_RE.test(content ?? ''),
       });
       index += 1;
     }
@@ -219,6 +222,7 @@ export function extractScriptBlocks(html: string): ScriptBlock[] {
         originalContent: content,
         content: unwrapped,
         name: deriveJsName(unwrapped, index),
+        hasCdata: CDATA_WRAPPER_RE.test(content ?? ''),
       });
       index += 1;
     }
