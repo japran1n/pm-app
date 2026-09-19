@@ -19,12 +19,41 @@
 // AS-061: the same holds for discipline "pm".
 // AS-062: the same holds for discipline "qa".
 
+// @vitest-environment jsdom
+//
+// F065 (missions/20260919-150607): the tests above only exercise the write
+// side of AS-060/061/062 ("estimates can be written and READ BACK"). The
+// two suites below close the read-back/display gap:
+//   - DisciplinePrefillTest renders DisciplineEstimatePopover with an
+//     `estimates` prop that includes content_seo/pm/qa values and asserts
+//     each input is prefilled with the correct value (not just present).
+//   - EstimateSummaryReadBackTest renders EstimateSummary with all five
+//     disciplines set to *different* minute values and asserts each
+//     discipline's own value shows in its own column, so a column/discipline
+//     mis-mapping (e.g. content_seo showing pm's value) would fail.
+import "@testing-library/jest-dom/vitest";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
 import {
   workCategorySchema,
   WORK_CATEGORIES,
 } from "@/lib/validation/time-entries";
 import { setDisciplineEstimateSchema } from "@/lib/validation/architecture";
+import { DisciplineEstimatePopover } from "@/components/architecture/discipline-estimate-popover";
+import { EstimateSummary } from "@/components/architecture/estimate-summary";
+import type { BoardPage } from "@/lib/queries/architecture";
+import type { ArchitectureNodeDetails } from "@/lib/architecture/types";
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: vi.fn() }),
+}));
+vi.mock("@/lib/actions/architecture", () => ({
+  setDisciplineEstimate: vi.fn(),
+  clearDisciplineEstimate: vi.fn(),
+}));
+vi.mock("sonner", () => ({
+  toast: { error: vi.fn() },
+}));
 
 const TASK_ID = "c6d92920-fa93-408d-91cb-87cb907b3fec";
 const PROJECT_ID = "83a351f8-6762-498d-8c6e-a1683703c6f1";
@@ -212,5 +241,78 @@ describe("F060 — discipline estimate schema round trip for content_seo/pm/qa (
 
     expect(result.success).toBe(false);
     expect(upsertCalls).toHaveLength(0);
+  });
+});
+
+describe("DisciplineEstimatePopover prefill (AS-060, AS-061, AS-062 read-back)", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("test_AS_060_AS_061_AS_062_prefills_content_seo_pm_qa_inputs_from_the_estimates_prop", () => {
+    render(
+      <DisciplineEstimatePopover
+        taskId="task-1"
+        taskTitle="Task 1"
+        estimates={[
+          { discipline: "content_seo", minutes: 90, note: null, estimatedBy: null },
+          { discipline: "pm", minutes: 45, note: null, estimatedBy: null },
+          { discipline: "qa", minutes: 120, note: null, estimatedBy: null },
+        ]}
+      />,
+    );
+
+    // formatMinutes(90) === "1h 30m", formatMinutes(45) === "45m",
+    // formatMinutes(120) === "2h". Reading these back from the rendered
+    // <input value=...> is the prefill path the write-only F060 tests never
+    // touched.
+    expect(screen.getByDisplayValue("1h 30m")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("45m")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("2h")).toBeInTheDocument();
+  });
+});
+
+describe("EstimateSummary read-back for distinct discipline values (AS-060, AS-061, AS-062)", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("test_AS_060_AS_061_AS_062_renders_each_disciplines_own_stored_value_not_a_shared_or_swapped_one", () => {
+    function makePage(id: string, title: string): BoardPage {
+      return {
+        id,
+        title,
+        pageSlug: id,
+        pageKind: null,
+        position: 0,
+        description: null,
+        sections: [],
+      };
+    }
+
+    // Every discipline gets a distinct minute value. If content_seo/pm/qa
+    // were ever mis-mapped to the wrong column (or all fell back to the
+    // same value), this test -- unlike the F016 test which uses 60 for
+    // every discipline -- would catch it.
+    const details: ArchitectureNodeDetails = new Map();
+    details.set("page-1", {
+      estimates: [
+        { discipline: "design", minutes: 30, note: null, estimatedBy: null },
+        { discipline: "development", minutes: 60, note: null, estimatedBy: null },
+        { discipline: "content_seo", minutes: 90, note: null, estimatedBy: null },
+        { discipline: "pm", minutes: 45, note: null, estimatedBy: null },
+        { discipline: "qa", minutes: 120, note: null, estimatedBy: null },
+      ],
+      meta: null,
+    });
+
+    render(<EstimateSummary pages={[makePage("page-1", "Home")]} detailsData={details} />);
+
+    const cells = screen.getAllByRole("cell").map(c => c.textContent);
+    // design=30m, development=1h, content_seo=1h 30m, pm=45m, qa=2h,
+    // total=5h 45m.
+    expect(cells).toEqual(
+      expect.arrayContaining(["30m", "1h", "1h 30m", "45m", "2h", "5h 45m"]),
+    );
   });
 });
