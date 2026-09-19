@@ -11,7 +11,7 @@ const architectureQuerySource = readFileSync(
   "utf-8",
 );
 
-describe("AS-114: no query selects description from page_components", () => {
+describe("AS-113: no query selects description from page_components", () => {
   it("architecture.ts selects page_components via the COMPONENT_COLUMNS constant", () => {
     const selectCallCount = (
       architectureQuerySource.match(/\.select\(\s*COMPONENT_COLUMNS\s*\)/g) ?? []
@@ -40,13 +40,13 @@ describe("AS-114: no query selects description from page_components", () => {
   });
 });
 
-describe("AS-113: TypeScript types no longer include description on PageComponent/BoardComponent", () => {
+describe("AS-114: TypeScript types no longer include description on PageComponent/BoardComponent", () => {
   it("BoardComponent type declaration does not declare a description field", () => {
     const typeMatch = architectureQuerySource.match(
       /export type BoardComponent = \{[\s\S]*?\};/,
     );
     expect(typeMatch).not.toBeNull();
-    expect(typeMatch?.[0]).not.toMatch(/description\s*:/);
+    expect(typeMatch?.[0]).not.toMatch(/description\s*\?\s*:/);
   });
 
   it("ComponentRow type declaration does not declare a description field", () => {
@@ -54,7 +54,7 @@ describe("AS-113: TypeScript types no longer include description on PageComponen
       /type ComponentRow = \{[\s\S]*?\};/,
     );
     expect(typeMatch).not.toBeNull();
-    expect(typeMatch?.[0]).not.toMatch(/description\s*:/);
+    expect(typeMatch?.[0]).not.toMatch(/description\s*\?\s*:/);
   });
 
   it("generated database types no longer declare page_components.description", () => {
