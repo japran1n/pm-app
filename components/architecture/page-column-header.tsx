@@ -211,11 +211,19 @@ export function PageColumnHeader({
                     ? `Edit copy brief for ${page.title}`
                     : `Add copy brief for ${page.title}`
                 }
+                aria-haspopup="dialog"
                 title="Copy brief"
                 onClick={() => setMetaOpen(true)}
                 className="shrink-0 rounded-md border border-transparent p-1 text-muted-foreground transition-colors hover:border-border-control-hover hover:text-foreground"
               >
-                <FileText className="size-3.5" aria-hidden="true" />
+                <FileText
+                  className="size-3.5"
+                  aria-hidden="true"
+                  fill={hasNodeMetaContent(meta) ? "currentColor" : "none"}
+                  data-node-meta-icon-state={
+                    hasNodeMetaContent(meta) ? "full" : "empty"
+                  }
+                />
               </button>
             </div>
           )}
