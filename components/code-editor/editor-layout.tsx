@@ -15,17 +15,21 @@
 //   - PreviewPane renders the composed document; patchStyle is invoked via
 //     useLiveCss whenever a CSS block's content changes.
 
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FileList, type FileListEntry } from "@/components/code-editor/file-list";
 import EditorLazy from "@/components/code-editor/editor-lazy";
-import { PreviewPane, type PreviewPaneHandle } from "@/components/code-editor/preview-pane";
+import { type PreviewPaneHandle } from "@/components/code-editor/preview-pane";
+import { PreviewChrome } from "@/components/code-editor/preview-chrome";
+import { SplitLayout } from "@/components/code-editor/split-layout";
+import { VersionMenu } from "@/components/code-editor/version-menu";
 import { useBlocks, type EditableBlock } from "@/lib/code-editor/use-blocks";
+import { useHostReset } from "@/lib/code-editor/use-host-reset";
 import { useLiveCss } from "@/lib/code-editor/use-live-css";
 import { useDirtyState } from "@/lib/code-editor/use-dirty-state";
 import { composeDocument } from "@/lib/code-editor/compose";
 import type { Corpus } from "@/lib/code-editor/corpus";
 import { saveEditorState, loadEditorState, type EditorState } from "@/lib/webflow-editor/storage";
-import { saveVersion } from "@/lib/code-editor/versions";
+import { saveVersion, getVersions } from "@/lib/code-editor/versions";
 
 export interface EditorLayoutProps {
   /** Initial blocks, typically extracted from the fetched site (F102). */
@@ -88,7 +92,12 @@ export function EditorLayout({ initialBlocks, html, corpus, hostname, url }: Edi
     if (!hostname) return null;
     const state = loadEditorState(hostname) as unknown as PersistedState | null;
     if (!state) return null;
-    if (state.url && url && state.url !== url) return null;
+    // TH-251..255 — only restore when the saved state was captured against
+    // this exact page URL. A missing `state.url` (older/partial persisted
+    // state) is treated as "not safe to restore", not as an automatic
+    // match — restoring against the wrong page silently loses the user's
+    // actual current-page files.
+    if (state.url !== url) return null;
     return state;
     // Only recompute if the hostname changes (a fresh site load) -- not on
     // every render, so the user's own edits are never clobbered by a stale
@@ -97,14 +106,34 @@ export function EditorLayout({ initialBlocks, html, corpus, hostname, url }: Edi
   }, [hostname]);
 
   const effectiveInitialBlocks = useMemo<EditableBlock[]>(() => {
-    if (!restoredState) return initialBlocks;
-    const storedByIndex = new Map(restoredState.blocks.map((b) => [b.index, b]));
-    return initialBlocks.map((block) => {
-      const match = storedByIndex.get(block.index);
-      if (match && typeof match.content === "string") {
-        return { ...block, content: match.content };
+    if (!restoredState || restoredState.blocks.length === 0) return initialBlocks;
+    // TH-251..255 — the persisted state is the full working set (it may
+    // include user-created files that aren't part of the freshly extracted
+    // `initialBlocks`, and edited content for files that are). Use it as
+    // the source of truth for the initial block list rather than only
+    // patching content onto the extracted blocks, so a mount with a valid
+    // restored state actually reflects what the user had open.
+    const extractedByIndex = new Map(initialBlocks.map((b) => [b.index, b]));
+    return restoredState.blocks.map((stored): EditableBlock => {
+      const extracted = extractedByIndex.get(stored.index);
+      if (extracted) {
+        return {
+          ...extracted,
+          content: typeof stored.content === "string" ? stored.content : extracted.content,
+          name: stored.name ?? extracted.name,
+        };
       }
-      return block;
+      // No matching extracted block at this index -- this was a
+      // user-created file that only exists in the persisted state.
+      return {
+        type: stored.type,
+        index: stored.index,
+        name: stored.name,
+        content: stored.content,
+        originalContent: "",
+        hasCdata: false,
+        isUserCreated: true,
+      };
     });
   }, [initialBlocks, restoredState]);
 
@@ -116,7 +145,17 @@ export function EditorLayout({ initialBlocks, html, corpus, hostname, url }: Edi
     renameBlock,
     updateBlock,
     composableBlocks,
+    resetBlocks,
   } = useBlocks(effectiveInitialBlocks);
+
+  // TH-125 — a hostname change means the user fetched a different site;
+  // discard whatever files are currently open and replace them with the
+  // newly extracted (or restored, if any) blocks for the new host. Uses a
+  // ref-backed callback (see useHostReset) so the reset always sees the
+  // latest effectiveInitialBlocks for the new host, not a stale closure.
+  useHostReset(hostname ?? "", () => {
+    resetBlocks(effectiveInitialBlocks);
+  });
 
   // F089/F090 — persist the working set (blocks + content + which file is
   // selected) whenever it changes, so a page refresh doesn't lose edits.
@@ -220,27 +259,74 @@ export function EditorLayout({ initialBlocks, html, corpus, hostname, url }: Edi
 
   const activeBlock = activeIndex >= 0 ? blocks[activeIndex] : undefined;
 
+  const [lastLinkHref, setLastLinkHref] = useState<string | null>(null);
+  const handleLinkClick = useCallback((href: string) => {
+    setLastLinkHref(href);
+  }, []);
+
+  const handleReload = useCallback(() => {
+    // Force a recompose by re-reading the current composedHtml into the
+    // iframe. PreviewPane keys off `composedHtml` content changes, so
+    // nudging the ref's own patch machinery isn't needed here -- a simple
+    // re-render is sufficient since composedHtml is already memoized off
+    // the latest block content.
+    previewRef.current?.patchStyle(activeIndex, activeBlock?.content ?? "");
+  }, [activeIndex, activeBlock]);
+
+  const handleRestoreVersion = useCallback(
+    (content: string) => {
+      if (activeIndex < 0) return;
+      updateBlock(activeIndex, content);
+      onBlockChange(activeIndex, content);
+      markDirty(activeIndex);
+      if (hostname) {
+        saveVersion(hostname, activeIndex, content);
+      }
+    },
+    [activeIndex, updateBlock, onBlockChange, markDirty, hostname],
+  );
+
+  const activeVersions = hostname && activeIndex >= 0 ? getVersions(hostname, activeIndex) : [];
+
   return (
     <div className="flex h-full w-full">
-      <FileList
-        blocks={toFileListEntries(blocks)}
-        activeIndex={activeIndex}
-        onSelect={setActiveIndex}
-        onRename={handleRename}
-        onCreate={handleCreate}
-      />
-      <div className="flex flex-1 flex-col">
-        {activeBlock ? (
-          <EditorLazy
-            file={activeBlock}
-            onChange={handleEditorChange}
-            corpus={corpus ?? undefined}
-            isDirty={isDirty(activeIndex)}
-            onSave={handleEditorSave}
+      <SplitLayout
+        left={
+          <div className="flex h-full w-full">
+            <FileList
+              blocks={toFileListEntries(blocks)}
+              activeIndex={activeIndex}
+              onSelect={setActiveIndex}
+              onRename={handleRename}
+              onCreate={handleCreate}
+            />
+            <div className="flex min-w-0 flex-1 flex-col">
+              <div className="flex shrink-0 items-center justify-end border-b border-border px-2 py-1">
+                <VersionMenu versions={activeVersions} onRestore={handleRestoreVersion} />
+              </div>
+              {activeBlock ? (
+                <EditorLazy
+                  file={activeBlock}
+                  onChange={handleEditorChange}
+                  corpus={corpus ?? undefined}
+                  isDirty={isDirty(activeIndex)}
+                  onSave={handleEditorSave}
+                />
+              ) : null}
+            </div>
+          </div>
+        }
+        right={
+          <PreviewChrome
+            ref={previewRef}
+            url={url ?? ""}
+            composedHtml={composedHtml}
+            onLinkClick={handleLinkClick}
+            lastLinkHref={lastLinkHref}
+            onReload={handleReload}
           />
-        ) : null}
-      </div>
-      <PreviewPane ref={previewRef} composedHtml={composedHtml} />
+        }
+      />
     </div>
   );
 }

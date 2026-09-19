@@ -111,7 +111,7 @@ export function FileList({
   }
 
   return (
-    <div data-testid="file-list" className="flex flex-col gap-1">
+    <div data-testid="file-list" className="flex w-56 flex-shrink-0 flex-col gap-1 overflow-y-auto border-r border-border">
       <div className="flex items-center justify-between px-2">
         <span className="text-sm font-medium">Files</span>
         {onCreate && (
