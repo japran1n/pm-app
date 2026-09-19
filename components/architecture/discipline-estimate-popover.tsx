@@ -85,17 +85,32 @@ export function DisciplineEstimatePopover({
     startTransition(async () => {
       for (const d of WORK_CATEGORIES) {
         const input = inputs[d]?.trim() ?? "";
-        const result = !input
-          ? estimateByDiscipline.has(d)
-            ? await clearDisciplineEstimate(taskId, d)
-            : null
-          : await setDisciplineEstimate(taskId, d, input);
+        try {
+          const result = !input
+            ? estimateByDiscipline.has(d)
+              ? await clearDisciplineEstimate(taskId, d)
+              : null
+            : await setDisciplineEstimate(taskId, d, input);
 
-        // Abort on the first failure rather than pressing on: the
-        // remaining writes would likely fail the same way, and closing the
-        // popover would hide which value never landed.
-        if (result && !result.success) {
-          toast.error(result.error ?? "Something went wrong. Please try again.");
+          // Abort on the first failure rather than pressing on: the
+          // remaining writes would likely fail the same way, and closing the
+          // popover would hide which value never landed.
+          if (result && !result.success) {
+            toast.error(result.error ?? "Something went wrong. Please try again.");
+            return;
+          }
+        } catch {
+          // A thrown/rejected server action (network drop, deserialisation
+          // failure, etc.) is just as much a "this discipline didn't save"
+          // event as a {success:false} result. We abort on the first error
+          // rather than collecting all of them: earlier disciplines in this
+          // loop have already been written server-side, so continuing after
+          // a failure only risks writing more rows the user can't see landed
+          // while masking which one broke. Stopping here keeps the visible
+          // error tied to the exact discipline that failed.
+          toast.error(
+            `Couldn't save ${DISCIPLINE_LABELS[d]}. Please try again.`,
+          );
           return;
         }
       }
