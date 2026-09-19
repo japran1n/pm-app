@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 
 import { pageKindEnum, sectionKindEnum } from "@/lib/validation/architecture";
 
@@ -112,26 +113,6 @@ function extractStringLiterals(fragment: string): string[] {
   return values;
 }
 
-const FIXTURES_DIR = path.join(process.cwd(), "tests", "fixtures", "m6-check-guard");
-
-/**
- * Builds a temporary migrations-like directory containing only the given
- * fixture files (by filename, in order), so `findLastCheckConstraintValues`
- * can be exercised against a controlled, minimal SQL corpus instead of the
- * real (large, evolving) migrations directory. This is what actually proves
- * the parser reads and interprets SQL, rather than returning a hardcoded map.
- */
-function fixtureDir(...filenames: string[]): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "m6-check-fixture-"));
-  for (const filename of filenames) {
-    fs.copyFileSync(
-      path.join(FIXTURES_DIR, filename),
-      path.join(dir, filename),
-    );
-  }
-  return dir;
-}
-
 describe("m6 CHECK constraint vs Zod enum drift guard", () => {
   it("AS-127: parser reads SQL files — unknown constraint throws even with real migrations", () => {
     expect(() => findLastCheckConstraintValues("tasks_nonexistent_xyz_check")).toThrow(/nonexistent_xyz/i);
@@ -166,40 +147,73 @@ describe("m6 CHECK constraint vs Zod enum drift guard", () => {
   });
 });
 
-describe("parser fixtures", () => {
-  it("AS-127: parses IN(...) form from a single migration file", () => {
-    const dir = fixtureDir("01_initial.sql");
-    expect(findLastCheckConstraintValues("tasks_test_kind_check", dir)).toEqual([
-      "alpha",
-      "beta",
-    ]);
+describe("parser fixtures — runtime generated (AS-127)", () => {
+  // Generate unique names/values at runtime so no hardcoded lookup table can
+  // pass these tests -- only real SQL parsing can.
+  const constraintName = `tasks_test_${randomUUID().replace(/-/g, "").slice(0, 8)}_check`;
+  const v1 = `v_${randomUUID().slice(0, 8)}`;
+  const v2 = `v_${randomUUID().slice(0, 8)}`;
+  const v3 = `v_${randomUUID().slice(0, 8)}`;
+
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "m6-check-guard-"));
   });
 
-  it("AS-127: picks the latest migration's IN(...) redefinition (widen)", () => {
-    const dir = fixtureDir("01_initial.sql", "02_widen_in.sql");
-    expect(findLastCheckConstraintValues("tasks_test_kind_check", dir)).toEqual([
-      "alpha",
-      "beta",
-      "gamma",
-    ]);
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("AS-127: parses = ANY (ARRAY[...]) form, picks latest migration", () => {
-    const dir = fixtureDir("01_initial.sql", "03_any_form.sql");
-    expect(findLastCheckConstraintValues("tasks_test_kind_check", dir)).toEqual([
-      "alpha",
-      "beta",
-      "gamma",
-      "delta",
-    ]);
+  it("AS-127: parses IN(...) form from a single file", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "01_initial.sql"),
+      `alter table public.tasks add constraint ${constraintName} check (kind in ('${v1}', '${v2}'));`,
+    );
+    const result = findLastCheckConstraintValues(constraintName, tmpDir);
+    expect(new Set(result)).toEqual(new Set([v1, v2]));
+    expect(result.length).toBe(2);
   });
 
-  it("AS-127: throws when the constraint was dropped without a later re-add", () => {
-    const dir = fixtureDir("01_initial.sql", "04_drop.sql");
-    expect(() => findLastCheckConstraintValues("tasks_test_kind_check", dir)).toThrow();
+  it("AS-127: picks latest migration when redefined (widen via IN)", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "01_initial.sql"),
+      `alter table public.tasks add constraint ${constraintName} check (kind in ('${v1}', '${v2}'));`,
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, "02_widen.sql"),
+      `alter table public.tasks drop constraint if exists ${constraintName};
+       alter table public.tasks add constraint ${constraintName} check (kind in ('${v1}', '${v2}', '${v3}'));`,
+    );
+    const result = findLastCheckConstraintValues(constraintName, tmpDir);
+    expect(new Set(result)).toEqual(new Set([v1, v2, v3]));
+    expect(result.length).toBe(3);
   });
 
-  it("AS-127: throws on unknown constraint name against the real migrations dir", () => {
-    expect(() => findLastCheckConstraintValues("tasks_nonexistent_xyz_check")).toThrow();
+  it("AS-127: parses = ANY (ARRAY[...]) form", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "01_any.sql"),
+      `alter table public.tasks add constraint ${constraintName} check (kind = any (array['${v1}', '${v2}', '${v3}']));`,
+    );
+    const result = findLastCheckConstraintValues(constraintName, tmpDir);
+    expect(new Set(result)).toEqual(new Set([v1, v2, v3]));
+    expect(result.length).toBe(3);
+  });
+
+  it("AS-127: throws when last mention is a drop (drop without re-add)", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "01_initial.sql"),
+      `alter table public.tasks add constraint ${constraintName} check (kind in ('${v1}'));`,
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, "02_drop.sql"),
+      `alter table public.tasks drop constraint if exists ${constraintName};`,
+    );
+    expect(() => findLastCheckConstraintValues(constraintName, tmpDir)).toThrow();
+  });
+
+  it("AS-127: throws on unknown constraint name against real migrations dir", () => {
+    const unknownName = `tasks_nonexistent_${randomUUID().replace(/-/g, "").slice(0, 8)}_check`;
+    expect(() => findLastCheckConstraintValues(unknownName)).toThrow();
   });
 });
