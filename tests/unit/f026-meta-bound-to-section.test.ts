@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // F026 (missions/20260919-150607, AS-091..AS-094): node_meta rows are keyed
 // on a section's OWN task_id, not its parent page's task_id. F025 wired
 // NodeMetaDialog to open with `taskId={section.id}` (components/architecture/
@@ -201,5 +202,94 @@ describe("F026 / AS-094: meta persists across re-fetches for the correct task_id
     expect(firstFetch.data.get(SECTION_A_TASK_ID)?.meta?.intent).toBe("Persisted intent");
     expect(secondFetch.data.get(SECTION_A_TASK_ID)?.meta?.intent).toBe("Persisted intent");
     expect(secondFetch.data.get(SECTION_A_TASK_ID)?.meta?.tone).toBe("Direct");
+  });
+});
+
+// AS-091 (render coverage): the assertion is about the *saved meta being
+// keyed on the section's own task_id*, but F025 wires that key in purely
+// through a prop -- `<NodeMetaDialog taskId={section.id} ...>` in
+// components/architecture/section-card.tsx. Nothing above exercises that
+// wiring; a refactor that swapped `section.id` for e.g. a parent page id
+// would still pass every test above (they call setNodeMeta directly).
+// This block renders SectionCard for two different sections and asserts
+// the dialog actually receives each section's own id as `taskId`.
+describe("F025/AS-091 (render): NodeMetaDialog opens with the section's own task_id", () => {
+  it("test_AS_091_node_meta_dialog_receives_the_clicked_sections_own_task_id", async () => {
+    vi.resetModules();
+
+    vi.doMock("next/navigation", () => ({
+      useRouter: () => ({ push: vi.fn(), refresh: vi.fn(), replace: vi.fn() }),
+      useParams: () => ({ projectId: "project-1" }),
+    }));
+
+    vi.doMock("sonner", () => ({
+      toast: { error: vi.fn(), success: vi.fn() },
+    }));
+
+    vi.doMock("@/lib/actions/architecture", () => ({
+      renameSection: vi.fn(),
+    }));
+
+    // Replace the real NodeMetaDialog with a stub that just surfaces the
+    // `taskId` prop it was given as a data attribute, so the test can
+    // assert on it without depending on the dialog's own internals.
+    vi.doMock("@/components/architecture/node-meta-dialog", () => ({
+      NodeMetaDialog: ({ taskId, open }: { taskId: string; open: boolean }) =>
+        open ? (
+          require("react").createElement("div", {
+            "data-testid": "node-meta-dialog-stub",
+            "data-task-id": taskId,
+          })
+        ) : null,
+    }));
+
+    const { render, screen, cleanup, fireEvent } = await import("@testing-library/react");
+    await import("@testing-library/jest-dom/vitest");
+    const { SectionCard } = await import("@/components/architecture/section-card");
+    const detailsModule = await import("@/lib/architecture/types");
+    void detailsModule;
+
+    function makeSection(id: string, title: string) {
+      return {
+        id,
+        title,
+        position: 1,
+        kind: "static" as const,
+        component: null,
+      };
+    }
+
+    const detailsData = new Map<string, { meta: null; estimates: [] }>();
+
+    const { unmount } = render(
+      require("react").createElement(SectionCard, {
+        section: makeSection("section-task-abc", "Hero"),
+        detailsData,
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /copy brief for hero/i }));
+
+    const firstDialog = await screen.findByTestId("node-meta-dialog-stub");
+    expect(firstDialog.getAttribute("data-task-id")).toBe("section-task-abc");
+    expect(firstDialog.getAttribute("data-task-id")).not.toBe("wrong-id");
+
+    unmount();
+    cleanup();
+
+    render(
+      require("react").createElement(SectionCard, {
+        section: makeSection("section-task-xyz", "Footer"),
+        detailsData,
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /copy brief for footer/i }));
+
+    const secondDialog = await screen.findByTestId("node-meta-dialog-stub");
+    expect(secondDialog.getAttribute("data-task-id")).toBe("section-task-xyz");
+    expect(secondDialog.getAttribute("data-task-id")).not.toBe("section-task-abc");
+
+    cleanup();
   });
 });
