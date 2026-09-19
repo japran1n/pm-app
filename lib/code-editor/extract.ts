@@ -20,6 +20,44 @@ export interface ScriptBlock {
 
 const SCRIPT_TAG_RE = /<script([^>]*)>([\s\S]*?)<\/script>/gi;
 
+const FIRST_LINE_COMMENT_RE = /^\s*\/\/(.*)$/;
+const DECLARATION_RE = /\b(?:const|let|var|function)\s+([A-Za-z_$][\w$]*)/;
+const MAX_NAME_LENGTH = 60;
+
+function truncateName(name: string): string {
+  if (name.length <= MAX_NAME_LENGTH) {
+    return name;
+  }
+  return `${name.slice(0, MAX_NAME_LENGTH)}…`;
+}
+
+/**
+ * Derives a human-readable name for a JS script block.
+ *
+ * 1. If the first line of content is a `//` comment, use its text.
+ * 2. Otherwise use the name from the first const/let/var/function declaration.
+ * 3. Otherwise fall back to `script-${index + 1}.js`.
+ *
+ * Result is truncated to 60 chars (with a trailing … if truncated).
+ */
+export function deriveJsName(content: string, index: number): string {
+  const firstLine = (content ?? '').split('\n')[0] ?? '';
+  const commentMatch = firstLine.match(FIRST_LINE_COMMENT_RE);
+  if (commentMatch) {
+    const commentText = commentMatch[1].trim();
+    if (commentText) {
+      return truncateName(commentText);
+    }
+  }
+
+  const declMatch = (content ?? '').match(DECLARATION_RE);
+  if (declMatch) {
+    return truncateName(declMatch[1]);
+  }
+
+  return `script-${index + 1}.js`;
+}
+
 /**
  * Extracts all inline <style>...</style> blocks from an HTML document string
  * in document order. Pure string/regex implementation (no DOM, no jsdom/cheerio)
@@ -104,6 +142,7 @@ export function extractScriptBlocks(html: string): ScriptBlock[] {
         type: 'script',
         originalContent: content,
         content,
+        name: deriveJsName(content, index),
       });
       index += 1;
     }
