@@ -176,25 +176,24 @@ function parseBarrelExports(source: string): string[] {
 const EXPECTED_ACTION_COUNT = 23;
 
 /**
- * Returns true if `actionName` is referenced as a real import (from the
- * architecture actions barrel or its leaf modules) or as a function call
- * `actionName(...)` in the given (comment/string-stripped) source.
+ * Returns true only if a SINGLE file both (a) imports `actionName` from the
+ * architecture actions barrel (named or namespace import) and (b) contains a
+ * call/reference site for the binding that import introduces, in that same
+ * file. A file that merely has a same-named method on an unrelated object
+ * (e.g. a test helper) does not count, because it never satisfies (a) — the
+ * import/call must be bound to a verified architecture import, not just
+ * "some name that happens to match exists somewhere".
  */
 function hasRealReference(
   commentOnlyStrippedContent: string,
   callSiteContent: string,
   actionName: string
 ): boolean {
-  // 1. Function call site: actionName( — checked against the content with
-  // both comments and string literals stripped, so a call-shaped mention
-  // inside a string or comment doesn't count.
-  const callRegex = new RegExp(`\\b${actionName}\\s*\\(`);
-  if (callRegex.test(callSiteContent)) return true;
+  // Step (a): does this file import actionName from the architecture barrel?
+  let importsAction = false;
+  let namespaceBinding: string | null = null;
 
-  // 2. Import from the architecture actions barrel (or a leaf module under
-  // lib/actions/architecture/), where the import specifier list contains
-  // actionName as a named (possibly aliased) import. Checked against
-  // comment-only-stripped content so the quoted module specifier survives.
+  // Named import: `import { ... actionName ... } from "...lib/actions/architecture..."`
   const importBlockRegex = /import\s*\{([^}]*)\}\s*from\s*["']([^"']+)["'];?/g;
   let match: RegExpExecArray | null;
   while ((match = importBlockRegex.exec(commentOnlyStrippedContent)) !== null) {
@@ -206,7 +205,41 @@ function hasRealReference(
       .map((s) => s.trim())
       .filter(Boolean)
       .map((s) => s.split(/\s+as\s+/)[0].trim());
-    if (names.includes(actionName)) return true;
+    if (names.includes(actionName)) {
+      importsAction = true;
+      break;
+    }
+  }
+
+  // Namespace import: `import * as arch from "...lib/actions/architecture..."`
+  if (!importsAction) {
+    const namespaceRegex = /import\s*\*\s*as\s+(\w+)\s*from\s*["']([^"']+)["'];?/g;
+    let nsMatch: RegExpExecArray | null;
+    while ((nsMatch = namespaceRegex.exec(commentOnlyStrippedContent)) !== null) {
+      const specifier = nsMatch[2];
+      if (!/lib\/actions\/architecture/.test(specifier)) continue;
+      namespaceBinding = nsMatch[1];
+      break;
+    }
+  }
+
+  if (!importsAction && !namespaceBinding) return false;
+
+  // Step (b): only now check for a call/reference site, in the SAME file,
+  // against content with both comments and string literals stripped, so a
+  // call-shaped mention inside a string or comment doesn't count. The
+  // negative lookbehind prevents member access on an unrelated object (e.g.
+  // `fakeActions.createPage(`) from satisfying the check.
+  if (importsAction) {
+    const callRegex = new RegExp(`(?<![.\\w$])${actionName}\\s*\\(`);
+    if (callRegex.test(callSiteContent)) return true;
+  }
+
+  if (namespaceBinding) {
+    const nsCallRegex = new RegExp(
+      `(?<![.\\w$])${namespaceBinding}\\.${actionName}\\s*\\(`
+    );
+    if (nsCallRegex.test(callSiteContent)) return true;
   }
 
   return false;
@@ -221,7 +254,7 @@ describe("AS-130: architecture action barrel guard", () => {
   });
 
   it("every exported architecture action has at least one real import/call reference outside the barrel, leaf modules, and tests", () => {
-    const allFiles = collectFiles(ROOT);
+    const allFiles = collectScannableFiles(ROOT);
 
     const candidateFiles = allFiles.filter((filePath) => {
       const resolved = path.resolve(filePath);
