@@ -13,17 +13,13 @@ import { revalidatePath } from "next/cache";
 import { type z } from "zod";
 
 import { logger } from "@/lib/observability/logger";
-import {
-  revalidatePortalProject,
-  extractWorkspaceSlug,
-} from "@/lib/actions/portal-revalidate";
+import { extractWorkspaceSlug } from "@/lib/actions/portal-revalidate";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { canWrite } from "@/lib/auth/permissions";
 import {
   setNodeMetaSchema,
-  setNodeMetaClientVisibilitySchema,
   copyStatusSchema,
 } from "@/lib/validation/architecture";
 
@@ -173,63 +169,3 @@ export async function setNodeMeta(
   return { success: true };
 }
 
-export async function setNodeMetaClientVisibility(
-  taskId: string,
-  visible: boolean,
-): Promise<MutationResult> {
-  const parsed = setNodeMetaClientVisibilitySchema.safeParse({ taskId, visible });
-
-  if (!parsed.success) {
-    return {
-      success: false,
-      error: parsed.error.issues[0]?.message ?? "Invalid input.",
-    };
-  }
-
-  const { user } = await getCurrentUser();
-
-  if (!user) {
-    return { success: false, error: "You must be signed in to do this." };
-  }
-
-  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
-  const admin = createAdminClient();
-
-  const authz = await resolveTaskAndAuthorizeWrite(admin, parsed.data.taskId, user.id);
-
-  if (!authz.ok) {
-    return { success: false, error: authz.error };
-  }
-
-  const { error: upsertError } = await admin.from("architecture_node_meta").upsert(
-    {
-      task_id: parsed.data.taskId,
-      project_id: authz.projectId,
-      client_visible: parsed.data.visible,
-      updated_by: user.id,
-    },
-    { onConflict: "task_id" },
-  );
-
-  if (upsertError) {
-    logger.error("setNodeMetaClientVisibility: upsert failed", { error: upsertError });
-    return {
-      success: false,
-      error: "Something went wrong. Please try again in a moment.",
-    };
-  }
-
-  try {
-    revalidatePath("/w", "layout");
-  } catch (revalidateError) {
-    logger.error("setNodeMetaClientVisibility: revalidatePath failed (non-fatal)", {
-      error: revalidateError,
-    });
-  }
-
-  if (authz.workspaceSlug) {
-    revalidatePortalProject(authz.workspaceSlug, authz.projectId);
-  }
-
-  return { success: true };
-}

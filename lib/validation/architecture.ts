@@ -151,11 +151,6 @@ export const setNodeMetaSchema = z.object({
   }),
 });
 
-export const setNodeMetaClientVisibilitySchema = z.object({
-  taskId: z.string().uuid(),
-  visible: z.boolean(),
-});
-
 // Parses "2h 30m", "90m", "1.5h", "2h", "30" (treated as minutes) into a
 // minutes integer. Returns null if the string doesn't match any known
 // format so callers can surface a validation error instead of NaN.
