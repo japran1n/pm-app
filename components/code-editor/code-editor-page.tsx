@@ -1,16 +1,120 @@
 "use client";
 
-// F100 (TH-006): placeholder shell for the Webflow Code Editor tool. The
-// real three-pane editor/preview UI is built by F101+ (F050 milestone) --
-// this component exists only so the route at
-// /w/[workspaceSlug]/tools/code-editor renders without error today.
-export function CodeEditorPage() {
+// F100 (TH-006): placeholder shell for the Webflow Code Editor tool.
+// F101 (TH-291, TH-294, TH-295): URL form with client-side .webflow.io
+// validation, submitted via the `onFetch` prop -- actual fetch
+// orchestration lands in F102.
+// F103 (TH-290): empty state shown before a site is loaded (before any
+// blocks are available).
+
+import { useState } from "react";
+import { Code2 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+
+const INVALID_URL_ERROR = "Please enter a valid .webflow.io URL";
+
+// Client-side mirror of `isWebflowHost` (lib/site-preview/guards.ts):
+// https + hostname's last two labels are exactly "webflow.io". This is a
+// convenience check only -- the server route re-validates on submit, so it
+// is intentionally not imported from server-only guard code.
+export function isWebflowUrlClient(input: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(input);
+  } catch {
+    return false;
+  }
+
+  if (parsed.protocol !== "https:") {
+    return false;
+  }
+
+  const labels = parsed.hostname.split(".");
+  if (labels.length < 2) {
+    return false;
+  }
+
+  const lastTwo = labels.slice(-2);
+  return lastTwo[0] === "webflow" && lastTwo[1] === "io";
+}
+
+export interface CodeEditorPageProps {
+  /** Called with the validated URL when the form is submitted. */
+  onFetch?: (url: string) => void;
+  /** True while a fetch orchestrated by the parent is in flight. */
+  isFetching?: boolean;
+  /** True once a site's blocks are loaded -- hides the empty state. */
+  hasSite?: boolean;
+}
+
+export function CodeEditorPage({
+  onFetch,
+  isFetching = false,
+  hasSite = false,
+}: CodeEditorPageProps) {
+  const [url, setUrl] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const trimmed = url.trim();
+
+    if (!isWebflowUrlClient(trimmed)) {
+      setError(INVALID_URL_ERROR);
+      return;
+    }
+
+    setError(null);
+    onFetch?.(trimmed);
+  }
+
   return (
-    <div className="flex flex-col gap-2 p-6">
-      <h1 className="text-base font-medium text-foreground">Webflow Code Editor</h1>
-      <p className="text-sm text-muted-foreground">
-        The code editor is coming soon.
-      </p>
+    <div className="flex flex-col gap-6 p-6">
+      <div className="flex flex-col gap-2">
+        <h1 className="text-base font-medium text-foreground">Webflow Code Editor</h1>
+        <p className="text-sm text-muted-foreground">
+          Fetch a Webflow staging site&apos;s CSS and JavaScript to edit in place.
+        </p>
+      </div>
+
+      <form onSubmit={handleSubmit} className="flex flex-col gap-2">
+        <div className="flex gap-2">
+          <Input
+            type="text"
+            value={url}
+            onChange={(e) => {
+              setUrl(e.target.value);
+              if (error) setError(null);
+            }}
+            placeholder="https://yoursite.webflow.io"
+            disabled={isFetching}
+            aria-label="Webflow site URL"
+            aria-invalid={error ? true : undefined}
+            className="max-w-md"
+          />
+          <Button type="submit" variant="primary" disabled={url.trim().length === 0 || isFetching}>
+            {isFetching ? "Fetching..." : "Fetch Site"}
+          </Button>
+        </div>
+        {error ? (
+          <p role="alert" className="text-sm text-destructive">
+            {error}
+          </p>
+        ) : null}
+      </form>
+
+      {!hasSite ? (
+        <div className="flex flex-col items-center justify-center gap-3 rounded-md border border-dashed border-border py-16 text-center">
+          <Code2 className="size-8 text-muted-foreground" aria-hidden="true" />
+          <h2 className="text-sm font-medium text-foreground">
+            Enter a Webflow URL to start editing
+          </h2>
+          <p className="max-w-sm text-sm text-muted-foreground">
+            Paste your .webflow.io staging URL above to load the site&apos;s CSS and JavaScript.
+          </p>
+        </div>
+      ) : null}
     </div>
   );
 }
