@@ -84,8 +84,9 @@ function buildFilterableQuery(rows: typeof estimateRows) {
   };
   // Awaiting the query directly (without .not()) resolves with all rows
   // matched so far, matching Supabase's thenable query builder behaviour.
-  (query as unknown as PromiseLike<unknown>).then = (resolve: (value: unknown) => unknown) =>
-    resolve({ data: rows, error: null });
+  (query as unknown as PromiseLike<unknown>).then = ((
+    onfulfilled?: ((value: unknown) => unknown) | null,
+  ) => Promise.resolve(onfulfilled ? onfulfilled({ data: rows, error: null }) : { data: rows, error: null })) as PromiseLike<unknown>["then"];
   return query;
 }
 
