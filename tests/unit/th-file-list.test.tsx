@@ -266,3 +266,36 @@ describe("FileList type icons render distinctly (TH-200)", () => {
     expect(svgs.length).toBeGreaterThanOrEqual(2);
   });
 });
+
+describe("FileList modified indicator (TH-218)", () => {
+  const MODIFIED_BLOCKS: FileListEntry[] = [
+    { index: 0, name: "styles.css", type: "css", isModified: true },
+    { index: 1, name: "main.js", type: "js", isModified: false },
+  ];
+
+  it("test_TH_218_row_shows_modified_indicator_when_active_version_not_original", () => {
+    render(
+      <FileList blocks={MODIFIED_BLOCKS} activeIndex={0} onSelect={() => {}} />,
+    );
+    expect(screen.getByTestId("modified-indicator-0")).toBeInTheDocument();
+  });
+
+  it("test_TH_218_row_has_no_modified_indicator_when_active_version_is_original", () => {
+    render(
+      <FileList blocks={MODIFIED_BLOCKS} activeIndex={0} onSelect={() => {}} />,
+    );
+    expect(screen.queryByTestId("modified-indicator-1")).not.toBeInTheDocument();
+  });
+
+  it("test_TH_218_modified_indicator_is_visually_distinct_from_dirty_indicator", () => {
+    const BOTH: FileListEntry[] = [
+      { index: 0, name: "styles.css", type: "css", isModified: true, isDirty: true },
+    ];
+    render(<FileList blocks={BOTH} activeIndex={0} onSelect={() => {}} />);
+    const modified = screen.getByTestId("modified-indicator-0");
+    const dirty = screen.getByTestId("dirty-indicator-0");
+    expect(modified).toBeInTheDocument();
+    expect(dirty).toBeInTheDocument();
+    expect(modified.className).not.toBe(dirty.className);
+  });
+});
