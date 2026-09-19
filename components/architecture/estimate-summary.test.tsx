@@ -37,7 +37,6 @@ function makeDetails(): ArchitectureNodeDetails {
       discipline,
       minutes: 60,
       note: null,
-      estimatedBy: null,
     })),
     meta: null,
   });

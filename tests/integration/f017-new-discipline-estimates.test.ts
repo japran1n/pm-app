@@ -204,7 +204,6 @@ describe.skipIf(!canRunLive)(
       expect(estimate).toBeDefined();
       expect(estimate?.minutes).toBe(90);
       expect(estimate?.note).toBe("content_seo note");
-      expect(estimate?.estimatedBy).toBe(memberUserId);
     });
 
     it("test_AS_061_pm_estimate_writes_and_reads_back", async () => {

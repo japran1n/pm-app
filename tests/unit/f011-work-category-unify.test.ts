@@ -62,7 +62,6 @@ describe("F011 work category unification", () => {
         discipline: category,
         minutes: 60,
         note: null,
-        estimatedBy: null,
       };
       expect(estimate.discipline).toBe(category);
     }

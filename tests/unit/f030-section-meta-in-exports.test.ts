@@ -28,13 +28,12 @@ function meta(overrides: Partial<NodeMeta>): NodeMeta {
     keywords: [],
     copyStatus: "not_started",
     clientVisible: true,
-    updatedBy: null,
     ...overrides,
   };
 }
 
 function estimate(discipline: DisciplineEstimate["discipline"], minutes: number): DisciplineEstimate {
-  return { discipline, minutes, note: "Needs review", estimatedBy: "user-123" };
+  return { discipline, minutes, note: "Needs review" };
 }
 
 function page(id: string, title: string, sectionIds: string[]): BoardPage {
@@ -162,7 +161,6 @@ describe("F030 AS-105: discipline estimates never appear in either export", () =
       expect(output).not.toContain(String(e.minutes));
       expect(output).not.toContain(e.discipline);
       if (e.note != null) expect(output).not.toContain(e.note);
-      if (e.estimatedBy != null) expect(output).not.toContain(e.estimatedBy);
     }
   }
 

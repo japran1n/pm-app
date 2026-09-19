@@ -47,7 +47,7 @@ describe("DisciplineEstimatePopover note field (AS-070, AS-071, AS-072)", () => 
         taskId="task-1"
         taskTitle="Task 1"
         estimates={[
-          { discipline: "design", minutes: 60, note: "Needs a moodboard first", estimatedBy: null },
+          { discipline: "design", minutes: 60, note: "Needs a moodboard first" },
         ]}
       />,
     );

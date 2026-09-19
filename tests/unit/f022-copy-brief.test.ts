@@ -22,13 +22,13 @@ function meta(overrides: Partial<NodeMeta>): NodeMeta {
     keywords: [],
     copyStatus: "not_started",
     clientVisible: true,
-    updatedBy: null,
+
     ...overrides,
   };
 }
 
 function estimate(discipline: DisciplineEstimate["discipline"], minutes: number): DisciplineEstimate {
-  return { discipline, minutes, note: null, estimatedBy: null };
+  return { discipline, minutes, note: null };
 }
 
 function page(id: string, title: string, sectionIds: string[] = []): BoardPage {
@@ -103,7 +103,6 @@ describe("toCopyBriefMarkdown", () => {
       expect(md).not.toContain(String(e.minutes));
       expect(md).not.toContain(e.discipline);
       if (e.note != null) expect(md).not.toContain(e.note);
-      if (e.estimatedBy != null) expect(md).not.toContain(e.estimatedBy);
     }
   });
 
@@ -135,7 +134,6 @@ describe("toCopyBriefMarkdown", () => {
       expect(json).not.toContain(String(e.minutes));
       expect(json).not.toContain(e.discipline);
       if (e.note != null) expect(json).not.toContain(e.note);
-      if (e.estimatedBy != null) expect(json).not.toContain(e.estimatedBy);
     }
   });
 

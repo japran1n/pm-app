@@ -19,7 +19,7 @@ const SECTION_A2 = "00000000-0000-4000-8000-0000000000b2";
 const SECTION_B1 = "00000000-0000-4000-8000-0000000000b3";
 
 function estimate(discipline: DisciplineEstimate["discipline"], minutes: number): DisciplineEstimate {
-  return { discipline, minutes, note: null, estimatedBy: null };
+  return { discipline, minutes, note: null };
 }
 
 function page(id: string, sectionIds: string[]): BoardPage {

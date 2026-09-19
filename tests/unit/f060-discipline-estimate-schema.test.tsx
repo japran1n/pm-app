@@ -271,9 +271,9 @@ describe("DisciplineEstimatePopover prefill (AS-060, AS-061, AS-062 read-back)",
         taskId="task-1"
         taskTitle="Task 1"
         estimates={[
-          { discipline: "content_seo", minutes: 90, note: null, estimatedBy: null },
-          { discipline: "pm", minutes: 45, note: null, estimatedBy: null },
-          { discipline: "qa", minutes: 120, note: null, estimatedBy: null },
+          { discipline: "content_seo", minutes: 90, note: null },
+          { discipline: "pm", minutes: 45, note: null },
+          { discipline: "qa", minutes: 120, note: null },
         ]}
       />,
     );
@@ -313,11 +313,11 @@ describe("EstimateSummary read-back for distinct discipline values (AS-060, AS-0
     const details: ArchitectureNodeDetails = new Map();
     details.set("page-1", {
       estimates: [
-        { discipline: "design", minutes: 30, note: null, estimatedBy: null },
-        { discipline: "development", minutes: 60, note: null, estimatedBy: null },
-        { discipline: "content_seo", minutes: 90, note: null, estimatedBy: null },
-        { discipline: "pm", minutes: 45, note: null, estimatedBy: null },
-        { discipline: "qa", minutes: 120, note: null, estimatedBy: null },
+        { discipline: "design", minutes: 30, note: null },
+        { discipline: "development", minutes: 60, note: null },
+        { discipline: "content_seo", minutes: 90, note: null },
+        { discipline: "pm", minutes: 45, note: null },
+        { discipline: "qa", minutes: 120, note: null },
       ],
       meta: null,
     });

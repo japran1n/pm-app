@@ -28,7 +28,7 @@ export async function getArchitectureNodeDetails(
   const [estimatesResult, metaResult] = await Promise.all([
     supabase
       .from("task_discipline_estimates")
-      .select("task_id, discipline, minutes, note, estimated_by")
+      .select("task_id, discipline, minutes, note")
       .eq("project_id", projectId)
       // F073 (AS-080/081): cleared disciplines are now upserted with
       // minutes: null instead of being deleted (single atomic upsert covers
@@ -37,7 +37,7 @@ export async function getArchitectureNodeDetails(
       .not("minutes", "is", null),
     supabase
       .from("architecture_node_meta")
-      .select("task_id, intent, audience, primary_cta, tone, keywords, copy_status, client_visible, updated_by")
+      .select("task_id, intent, audience, primary_cta, tone, keywords, copy_status, client_visible")
       .eq("project_id", projectId),
   ]);
 
@@ -62,7 +62,6 @@ export async function getArchitectureNodeDetails(
       discipline: row.discipline as DisciplineEstimate["discipline"],
       minutes: row.minutes,
       note: row.note ?? null,
-      estimatedBy: row.estimated_by ?? null,
     });
     estimatesByTask.set(row.task_id, existing);
   }
@@ -77,7 +76,6 @@ export async function getArchitectureNodeDetails(
       keywords: (row.keywords as string[]) ?? [],
       copyStatus: row.copy_status as NodeMeta["copyStatus"],
       clientVisible: row.client_visible ?? false,
-      updatedBy: row.updated_by ?? null,
     });
   }
 

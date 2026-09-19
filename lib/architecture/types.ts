@@ -18,7 +18,6 @@ export type DisciplineEstimate = {
   discipline: WorkCategory;
   minutes: number;
   note: string | null;
-  estimatedBy: string | null;
 };
 
 export type NodeMeta = {
@@ -29,7 +28,6 @@ export type NodeMeta = {
   keywords: string[];
   copyStatus: "not_started" | "brief_ready" | "drafted" | "in_review" | "approved";
   clientVisible: boolean;
-  updatedBy: string | null;
 };
 
 export type ArchitectureNodeDetails = Map<
