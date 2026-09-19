@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { pageKindEnum, sectionKindEnum } from "@/lib/validation/architecture";
 
-// F037 (AS-126..AS-129): guards against drift between the DB CHECK
+// F037/F108 (AS-126..AS-129): guards against drift between the DB CHECK
 // constraints on public.tasks.page_kind / section_kind and the Zod enums
 // (pageKindEnum, sectionKindEnum) in lib/validation/architecture.ts that
 // mirror them. If a future migration widens/narrows a CHECK constraint
@@ -15,11 +15,19 @@ import { pageKindEnum, sectionKindEnum } from "@/lib/validation/architecture";
 const MIGRATIONS_DIR = path.join(process.cwd(), "supabase", "migrations");
 
 /**
- * Extracts the string values inside an `... in ('a', 'b', 'c')` list for a
- * given CHECK constraint name, from the LAST migration file (in filename /
- * chronological order) that defines that constraint. Handles multi-line
- * IN(...) lists and both single- and double-quoted SQL string literals
- * (Postgres uses single quotes, but we tolerate '' escaped quotes too).
+ * Finds the current (last-applied) definition of a named CHECK constraint by
+ * scanning all migration files in chronological order, tracking both
+ * `drop constraint <name>` and `constraint <name> check (...)` occurrences.
+ *
+ * Uses parenthesis balancing to find the full CHECK expression body (instead
+ * of a lazy regex that can cross statement/semicolon boundaries), and
+ * understands both Postgres value-list renderings:
+ *   - `col in ('a', 'b', 'c')`
+ *   - `col = any (array['a', 'b', 'c'])`
+ *
+ * Throws if the constraint is unknown, was dropped without a later re-add,
+ * or if its CHECK expression doesn't match either known shape (rather than
+ * silently falling back to stale/incorrect data).
  */
 function findLastCheckConstraintValues(constraintName: string): string[] {
   const files = fs
@@ -27,50 +35,66 @@ function findLastCheckConstraintValues(constraintName: string): string[] {
     .filter((f) => f.endsWith(".sql"))
     .sort(); // filenames are timestamp-prefixed, so lexical sort == chronological
 
-  let lastMatchValues: string[] | null = null;
-  let lastMatchFile: string | null = null;
+  let lastDefinition: string[] | null = null;
+  let lastWasDrop = false;
 
   for (const file of files) {
     const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, file), "utf8");
 
-    // Find every occurrence of the constraint name, then look for the
-    // nearest `in (...)` list following it (allowing the column name and
-    // whitespace/newlines in between, e.g.:
-    //   alter table public.tasks add constraint tasks_page_kind_check check (
-    //     page_kind is null or page_kind in ('static', 'cms', ...)
-    //   );
-    // Anchor specifically to the "add constraint <name> check (...)" clause
-    // that defines the constraint, not any later mention of the constraint
-    // name (e.g. in a `comment on constraint` statement), which would let
-    // the search wander into an unrelated `in (...)` list further down the
-    // file.
-    const constraintRegex = new RegExp(
-      `add\\s+constraint\\s+${constraintName}\\b[\\s\\S]*?\\bin\\s*\\(([\\s\\S]*?)\\)`,
-      "g",
+    const dropRe = new RegExp(
+      `drop\\s+constraint\\s+(?:if\\s+exists\\s+)?${constraintName}\\b`,
+      "gi",
     );
+    if (dropRe.test(sql)) {
+      lastWasDrop = true;
+      lastDefinition = null;
+    }
 
+    const defRe = new RegExp(`constraint\\s+${constraintName}\\s+check\\s*\\(`, "gi");
     let match: RegExpExecArray | null;
-    while ((match = constraintRegex.exec(sql)) !== null) {
-      const listBody = match[1];
-      const values = extractStringLiterals(listBody);
-      if (values.length > 0) {
-        lastMatchValues = values;
-        lastMatchFile = file;
+    while ((match = defRe.exec(sql)) !== null) {
+      lastWasDrop = false;
+
+      // Balance parens starting right after the opening "(" already consumed
+      // by the regex, to find the exact end of the CHECK expression body —
+      // this prevents the search from crossing into unrelated SQL that
+      // follows (e.g. a semicolon-terminated next statement).
+      let depth = 1;
+      let i = match.index + match[0].length;
+      while (i < sql.length && depth > 0) {
+        if (sql[i] === "(") depth++;
+        else if (sql[i] === ")") depth--;
+        i++;
       }
+      const checkExpr = sql.slice(match.index + match[0].length, i - 1);
+
+      const inMatch = checkExpr.match(/\bin\s*\(\s*([\s\S]+?)\s*\)/i);
+      if (inMatch) {
+        lastDefinition = extractStringLiterals(inMatch[1]);
+        continue;
+      }
+
+      const anyMatch = checkExpr.match(
+        /=\s*any\s*\(\s*array\s*\[\s*([\s\S]+?)\s*\]\s*\)/i,
+      );
+      if (anyMatch) {
+        lastDefinition = extractStringLiterals(anyMatch[1]);
+        continue;
+      }
+
+      throw new Error(
+        `Cannot parse CHECK expression for constraint "${constraintName}" in ${file}: ${checkExpr.slice(0, 200)}`,
+      );
     }
   }
 
-  if (!lastMatchValues) {
+  if (lastWasDrop || lastDefinition === null) {
     throw new Error(
-      `Could not find any migration defining CHECK constraint "${constraintName}" in ${MIGRATIONS_DIR}`,
+      `Constraint "${constraintName}" was dropped without a later re-add, or was never defined, in ${MIGRATIONS_DIR}`,
     );
   }
 
-  // Sanity note for debugging test failures (not asserted on, just context
-  // if someone reads a failure message with --reporter=verbose).
-  void lastMatchFile;
-
-  return lastMatchValues;
+  return lastDefinition;
 }
 
 /** Extracts single-quoted SQL string literals from a fragment of SQL. */
@@ -85,31 +109,33 @@ function extractStringLiterals(fragment: string): string[] {
 }
 
 describe("m6 CHECK constraint vs Zod enum drift guard", () => {
-  it("AS-126: tasks_page_kind_check DB values match pageKindEnum exactly", () => {
+  it("AS-127: parser throws on unknown constraint name (proves filesystem read)", () => {
+    expect(() => findLastCheckConstraintValues("tasks_nonexistent_xyz_check")).toThrow();
+  });
+
+  it("AS-128: pageKindEnum matches tasks_page_kind_check", () => {
     const dbValues = findLastCheckConstraintValues("tasks_page_kind_check");
     const zodValues = pageKindEnum.options;
 
-    expect(new Set(zodValues)).toEqual(new Set(dbValues));
+    const onlyInDb = dbValues.filter((v) => !zodValues.includes(v as never));
+    const onlyInZod = zodValues.filter((v) => !dbValues.includes(v));
+
+    expect(
+      new Set(zodValues),
+      `Drift between tasks_page_kind_check and pageKindEnum. onlyInDb=${JSON.stringify(onlyInDb)} onlyInZod=${JSON.stringify(onlyInZod)}`,
+    ).toEqual(new Set(dbValues));
   });
 
-  it("AS-127: pageKindEnum has no extra values beyond the DB CHECK constraint", () => {
-    const dbValues = new Set(findLastCheckConstraintValues("tasks_page_kind_check"));
-    for (const value of pageKindEnum.options) {
-      expect(dbValues.has(value)).toBe(true);
-    }
-  });
-
-  it("AS-128: tasks_section_kind_check DB values match sectionKindEnum exactly", () => {
+  it("AS-129: sectionKindEnum matches tasks_section_kind_check", () => {
     const dbValues = findLastCheckConstraintValues("tasks_section_kind_check");
     const zodValues = sectionKindEnum.options;
 
-    expect(new Set(zodValues)).toEqual(new Set(dbValues));
-  });
+    const onlyInDb = dbValues.filter((v) => !zodValues.includes(v as never));
+    const onlyInZod = zodValues.filter((v) => !dbValues.includes(v));
 
-  it("AS-129: sectionKindEnum has no extra values beyond the DB CHECK constraint", () => {
-    const dbValues = new Set(findLastCheckConstraintValues("tasks_section_kind_check"));
-    for (const value of sectionKindEnum.options) {
-      expect(dbValues.has(value)).toBe(true);
-    }
+    expect(
+      new Set(zodValues),
+      `Drift between tasks_section_kind_check and sectionKindEnum. onlyInDb=${JSON.stringify(onlyInDb)} onlyInZod=${JSON.stringify(onlyInZod)}`,
+    ).toEqual(new Set(dbValues));
   });
 });
