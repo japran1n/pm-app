@@ -1,74 +1,31 @@
 // @vitest-environment jsdom
 //
-// Mission 20260919-150607, F088 (AS-088):
-// `PageColumn` previously gated `detailsData` on the `showDetails` toggle
-// before forwarding it to `SortableSectionList`, so hiding discipline
-// estimates also hid the copy-brief trigger icon on section cards -- an
-// inconsistency with the canvas view, which never gated on `showDetails`.
-// This test renders `PageColumn` with `showDetails={false}` and asserts the
-// copy-brief icon is still present, since that toggle should only affect
-// discipline estimates, not the copy-brief affordance.
+// Mission 20260919-150607, F090 (AS-088):
+// `ArchitectureViewToggle` gated its details fetch on `showDetails`
+// (`if (!showDetails) return;` in the fetch effect), so with the toggle
+// off by default on a fresh page load, `detailsData` never populated and
+// the copy-brief icon on section cards never appeared -- even though
+// downstream components (PageColumn, SortableSectionList, SectionCard)
+// correctly forward `detailsData` unconditionally.
+//
+// This test exercises `ArchitectureViewToggle` itself with the toggle OFF
+// and a mocked `getNodeDetailsForToggle`, asserting the copy-brief icon
+// eventually appears on a section card -- it fails against the buggy
+// gate-on-showDetails fetch effect regardless of how the fix is
+// implemented downstream.
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
+import userEvent from "@testing-library/user-event";
 
 vi.mock("@/lib/actions/architecture", () => ({
   reorderSections: vi.fn(async () => ({ success: true })),
   renameSection: vi.fn(async () => ({ success: true })),
-}));
-
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ refresh: vi.fn() }),
-  useParams: () => ({ projectId: "test-project-id" }),
-}));
-
-vi.mock("sonner", () => ({
-  toast: { error: vi.fn(), success: vi.fn() },
-}));
-
-import { DndContext } from "@dnd-kit/core";
-import { SortableContext } from "@dnd-kit/sortable";
-
-import { PageColumn } from "@/components/architecture/page-column";
-import type { BoardPage, BoardSection } from "@/lib/queries/architecture";
-import type { ArchitectureNodeDetails } from "@/lib/architecture/types";
-
-afterEach(() => {
-  cleanup();
-});
-
-function makePage(overrides: Partial<BoardPage>): BoardPage {
-  return {
-    id: "page-1",
-    title: "Home",
-    description: null,
-    position: 1,
-    kind: "static",
-    sections: [],
-    ...overrides,
-  } as BoardPage;
-}
-
-function makeSection(overrides: Partial<BoardSection>): BoardSection {
-  return {
-    id: "section-1",
-    title: "Hero",
-    position: 1,
-    kind: "static",
-    component: null,
-    ...overrides,
-  };
-}
-
-describe("F088 PageColumn shows copy-brief icon regardless of showDetails", () => {
-  it("AS-088: renders the copy-brief icon even when showDetails is false", () => {
-    const page = makePage({ id: "page-1", title: "Home" });
-    const sections: BoardSection[] = [
-      makeSection({ id: "section-1", title: "Hero", position: 1 }),
-    ];
-    const sectionsById = new Map(sections.map((section) => [section.id, section]));
-
-    const detailsData: ArchitectureNodeDetails = new Map([
+  moveSectionToPage: vi.fn(async () => ({ success: true })),
+  reorderPages: vi.fn(async () => ({ success: true })),
+  getNodeDetailsForToggle: vi.fn(async () => ({
+    ok: true,
+    data: new Map([
       [
         "section-1",
         {
@@ -85,25 +42,77 @@ describe("F088 PageColumn shows copy-brief icon regardless of showDetails", () =
           estimates: [],
         },
       ],
-    ]);
+    ]),
+  })),
+}));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: vi.fn() }),
+  useParams: () => ({ projectId: "test-project-id" }),
+}));
+
+vi.mock("sonner", () => ({
+  toast: { error: vi.fn(), success: vi.fn() },
+}));
+
+import { ArchitectureViewToggle } from "@/components/architecture/architecture-view-toggle";
+import type { BoardPage, BoardComponent } from "@/lib/queries/architecture";
+
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
+
+function makePages(): BoardPage[] {
+  return [
+    {
+      id: "page-1",
+      title: "Home",
+      description: null,
+      position: 1,
+      kind: "static",
+      pageSlug: "home",
+      pageKind: "static",
+      sections: [
+        {
+          id: "section-1",
+          title: "Hero",
+          position: 1,
+          kind: "static",
+          component: null,
+        },
+      ],
+    } as BoardPage,
+  ];
+}
+
+describe("F090 ArchitectureViewToggle fetches details on mount regardless of toggle state", () => {
+  it("AS-088: shows the copy-brief icon on a section card with the details toggle OFF", async () => {
+    const pages = makePages();
+    const components: BoardComponent[] = [];
 
     render(
-      <DndContext>
-        <SortableContext items={["page-1"]}>
-          <PageColumn
-            page={page}
-            orderedSectionIds={["section-1"]}
-            sectionsById={sectionsById}
-            components={[]}
-            showDetails={false}
-            detailsData={detailsData}
-          />
-        </SortableContext>
-      </DndContext>,
+      <ArchitectureViewToggle
+        pages={pages}
+        components={components}
+        projectId="test-project-id"
+        projectName="Test Project"
+      />,
     );
 
+    // Switch to the column/board view so SectionCard renders synchronously
+    // (the canvas view is lazily loaded via next/dynamic).
+    await userEvent.click(screen.getByTitle("Column view"));
+
+    // Toggle stays OFF the entire test -- never clicked.
     expect(
-      screen.getByLabelText(/(Edit|Add) copy brief for Hero/),
+      screen.getByTitle("Show estimates & copy brief"),
+    ).toBeInTheDocument();
+
+    // The copy-brief icon must appear once the mocked fetch resolves, even
+    // though the details toggle was never turned on.
+    expect(
+      await screen.findByLabelText(/(Edit|Add) copy brief for Hero/),
     ).toBeInTheDocument();
   });
 });

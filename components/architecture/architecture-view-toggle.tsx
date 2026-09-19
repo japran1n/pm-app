@@ -82,18 +82,20 @@ export function ArchitectureViewToggle({
     // Only run on mount / when the project changes.
   }, [storageKey]);
 
-  // Fetch once when toggle turns on, never again in this session (until
-  // detailsData is invalidated, e.g. after a write — see refreshDetails).
-  // FIX (react-hooks/set-state-in-effect): the "turn off" cleanup (bump
-  // fetchIdRef, clear the loading flag) used to live in this effect's own
-  // `if (!showDetails)` branch, calling setState synchronously every time
-  // the toggle flipped off. That's user-triggered, not something that
-  // needs to react to a committed render, so it now runs directly in the
-  // `toggleDetails` event handler below instead. The "turn on" branch's
-  // `setDetailsLoading(true)` is likewise guarded so it never fires
-  // unconditionally on every render this effect re-runs for.
+  // AS-088 FIX: details (used for the copy-brief icon and the estimates
+  // summary) must be available on first load regardless of whether the
+  // toggle is on. `showDetails` is a *display* gate only (whether the
+  // estimates panel/summary is shown) -- it must never gate the fetch
+  // itself, otherwise `detailsData` stays null forever on a fresh page
+  // load with the toggle off by default, and consumers relying on
+  // `detailsData` (e.g. the copy-brief icon in page-column-header) never
+  // render even though the underlying data exists.
+  //
+  // Fetches once on mount (and once per project change), and again
+  // whenever `detailsData` is invalidated (see `invalidateDetails` below)
+  // -- independent of `showDetails`. Toggling the details panel on/off no
+  // longer starts, cancels, or restarts this fetch.
   useEffect(() => {
-    if (!showDetails) return;
     if (detailsData !== null) return;
 
     const fetchId = ++fetchIdRef.current;
@@ -108,8 +110,10 @@ export function ArchitectureViewToggle({
           setDetailsData(result.data);
         } else {
           // FIX C-7: a failed server action used to be swallowed silently
-          // -- the toggle just showed nothing. Surface the error and
-          // revert the toggle so the button doesn't look "on" with no data.
+          // -- the toggle just showed nothing. Surface the error; if the
+          // toggle happened to be on, revert it so the button doesn't look
+          // "on" with no data. The fetch itself is not tied to the toggle,
+          // so there's nothing else to roll back here.
           toast.error(result.error ?? "Failed to load details.");
           setShowDetails(false);
         }
@@ -122,7 +126,7 @@ export function ArchitectureViewToggle({
       .finally(() => {
         if (fetchId === fetchIdRef.current) setDetailsLoading(false);
       });
-  }, [showDetails, detailsData, projectId]);
+  }, [detailsData, projectId]);
 
   // Write actions deep in the board tree (an estimate saved via
   // DisciplineEstimatePopover, a copy brief saved via NodeMetaDialog) call
@@ -141,17 +145,13 @@ export function ArchitectureViewToggle({
   }, []);
 
   function toggleDetails() {
+    // AS-088 FIX: the fetch effect above is no longer tied to `showDetails`
+    // (it runs on mount / on invalidation, independent of the toggle), so
+    // toggling no longer needs to cancel an in-flight fetch or touch
+    // `fetchIdRef`/`detailsLoading` -- this is purely a display-gate flip
+    // plus persistence of the user's preference.
     const next = !showDetails;
     setShowDetails(next);
-    if (!next) {
-      // FIX C-8: turning the toggle off must always release the button,
-      // even if a fetch was in flight — otherwise a rapid on/off toggle
-      // permanently disables it because the in-flight promise's
-      // setDetailsLoading(false) never runs (its `cancelled` guard skips
-      // it, and the fetch id changing below skips it again).
-      fetchIdRef.current += 1;
-      setDetailsLoading(false);
-    }
     try {
       localStorage.setItem(storageKey, String(next));
     } catch {}
