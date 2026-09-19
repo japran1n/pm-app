@@ -37,7 +37,6 @@ vi.mock("@/lib/actions/architecture", () => ({
             keywords: [],
             copyStatus: "drafted",
             clientVisible: false,
-            updatedBy: null,
           },
           estimates: [],
         },

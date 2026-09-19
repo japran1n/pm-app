@@ -50,7 +50,6 @@ describe("F024 SectionCard detailsData prop", () => {
             keywords: [],
             copyStatus: "drafted",
             clientVisible: false,
-            updatedBy: null,
           },
           estimates: [],
         },

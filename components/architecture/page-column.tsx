@@ -10,9 +10,9 @@ import { SortableSectionList } from "@/components/architecture/sortable-section-
 import { AddSectionButton } from "@/components/architecture/add-section-button";
 import type { ArchitectureNodeDetails } from "@/lib/architecture/types";
 
-// Mission 20260910-182104, F006 (AS-019, AS-020, AS-021): a single page
+// Mission 20260910-182104, F006 (AS-019, AS-020): a single page
 // column on the Architecture board. One column per page (AS-019), showing
-// the page name (AS-020) and, when set, the page description (AS-021).
+// the page name (AS-020).
 //
 // The static/CMS badge (F007) and "Add section" trigger (F013) are left as
 // empty placeholder slots in the sticky header so those features only need

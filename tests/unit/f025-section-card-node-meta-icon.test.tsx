@@ -96,7 +96,6 @@ describe("F025 SectionCard NodeMetaDialog icon", () => {
             keywords: [],
             copyStatus: "drafted",
             clientVisible: false,
-            updatedBy: null,
           },
           estimates: [],
         },

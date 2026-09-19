@@ -67,7 +67,6 @@ describe("F085 SortableSectionList forwards detailsData to SectionCard", () => {
             keywords: [],
             copyStatus: "drafted",
             clientVisible: false,
-            updatedBy: null,
           },
           estimates: [],
         },
