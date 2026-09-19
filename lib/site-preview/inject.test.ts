@@ -15,7 +15,13 @@ import React from "react";
 
 vi.mock("server-only", () => ({}));
 
-import { injectBaseTag, injectNavInterceptor, NAV_INTERCEPTOR_SCRIPT } from "@/lib/site-preview/inject";
+import {
+  injectBaseTag,
+  injectNavInterceptor,
+  injectStyleAgent,
+  NAV_INTERCEPTOR_SCRIPT,
+  STYLE_AGENT_SCRIPT,
+} from "@/lib/site-preview/inject";
 
 // ---------------------------------------------------------------------------
 // Group 1 — injectBaseTag (SP-080)
@@ -301,5 +307,135 @@ describe("injectNavInterceptor + NAV_INTERCEPTOR_SCRIPT", () => {
     const html = "<html>no body close";
     const result = injectNavInterceptor(html);
     expect(result.endsWith(NAV_INTERCEPTOR_SCRIPT)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Group 5 — injectStyleAgent + STYLE_AGENT_SCRIPT (TH-137, TH-153..TH-156)
+// ---------------------------------------------------------------------------
+
+describe("injectStyleAgent + STYLE_AGENT_SCRIPT (TH-137)", () => {
+  it("adds the style agent script before </body> when a body tag is present", () => {
+    const html = "<html><body>hello</body></html>";
+    const result = injectStyleAgent(html);
+    const scriptIndex = result.indexOf(STYLE_AGENT_SCRIPT);
+    const bodyCloseIndex = result.indexOf("</body>");
+    expect(scriptIndex).toBeGreaterThan(-1);
+    expect(bodyCloseIndex).toBeGreaterThan(-1);
+    expect(scriptIndex).toBeLessThan(bodyCloseIndex);
+  });
+
+  it("appends at the end of the document when there is no closing body tag", () => {
+    const html = "<html>no body close";
+    const result = injectStyleAgent(html);
+    expect(result.endsWith(STYLE_AGENT_SCRIPT)).toBe(true);
+  });
+
+  it("registers a postMessage listener on the window (TH-137)", () => {
+    expect(STYLE_AGENT_SCRIPT).toContain("addEventListener('message'");
+  });
+
+  it("script contains a 'style-patch' message handler", () => {
+    expect(STYLE_AGENT_SCRIPT).toContain("style-patch");
+  });
+
+  it("script guards every message with an event.source check against window.parent (TH-156)", () => {
+    expect(STYLE_AGENT_SCRIPT).toContain("event.source !== window.parent");
+  });
+});
+
+describe("STYLE_AGENT_SCRIPT runtime behaviour (TH-153, TH-154, TH-155, TH-156)", () => {
+  function loadAgent(win: Window) {
+    // Extract the inline JS body from the <script>...</script> wrapper and
+    // run it against a fake `window` (backed by the real jsdom `document`)
+    // so we can drive `message` events directly, the same way the real
+    // sandboxed iframe would receive them from the host.
+    const body = STYLE_AGENT_SCRIPT.replace(/^<script>/, "").replace(/<\/script>$/, "");
+    const fn = new Function("window", "document", body);
+    fn(win, document);
+  }
+
+  function makeFakeWindow() {
+    const listeners: Array<(e: MessageEvent) => void> = [];
+    const parentWindow = { name: "parent" } as unknown as Window;
+    let scrollX = 0;
+    let scrollY = 0;
+    const win = {
+      parent: parentWindow,
+      get scrollX() {
+        return scrollX;
+      },
+      get scrollY() {
+        return scrollY;
+      },
+      scrollTo: (x: number, y: number) => {
+        scrollX = x;
+        scrollY = y;
+      },
+      addEventListener: (type: string, listener: (e: MessageEvent) => void) => {
+        if (type === "message") listeners.push(listener);
+      },
+    } as unknown as Window;
+    return {
+      win,
+      parentWindow,
+      dispatch: (data: unknown, source: unknown = parentWindow) => {
+        for (const l of listeners) {
+          l({ source, data } as MessageEvent);
+        }
+      },
+      setScroll: (x: number, y: number) => {
+        scrollX = x;
+        scrollY = y;
+      },
+      getScroll: () => ({ x: scrollX, y: scrollY }),
+    };
+  }
+
+  it("style-patch updates the targeted style block's content (TH-153)", () => {
+    document.body.innerHTML = "<style>a{color:red}</style><style>b{color:blue}</style>";
+    const { win, dispatch } = makeFakeWindow();
+    loadAgent(win);
+
+    dispatch({ type: "style-patch", index: 1, content: "b{color:green}" });
+
+    const styles = document.querySelectorAll("style");
+    expect(styles[0].textContent).toBe("a{color:red}");
+    expect(styles[1].textContent).toBe("b{color:green}");
+  });
+
+  it("out-of-bounds index is a no-op (TH-154)", () => {
+    document.body.innerHTML = "<style>a{color:red}</style>";
+    const { win, dispatch } = makeFakeWindow();
+    loadAgent(win);
+
+    expect(() => {
+      dispatch({ type: "style-patch", index: 5, content: "z{color:pink}" });
+      dispatch({ type: "style-patch", index: -1, content: "z{color:pink}" });
+    }).not.toThrow();
+
+    expect(document.querySelectorAll("style")[0].textContent).toBe("a{color:red}");
+  });
+
+  it("scroll position is preserved across a patch (TH-155)", () => {
+    document.body.innerHTML = "<style>a{color:red}</style>";
+    const { win, dispatch, setScroll, getScroll } = makeFakeWindow();
+    loadAgent(win);
+
+    setScroll(42, 137);
+    dispatch({ type: "style-patch", index: 0, content: "a{color:green}" });
+
+    expect(getScroll()).toEqual({ x: 42, y: 137 });
+  });
+
+  it("ignores messages whose source is not window.parent (TH-156)", () => {
+    document.body.innerHTML = "<style>a{color:red}</style>";
+    const { win, dispatch } = makeFakeWindow();
+    loadAgent(win);
+
+    const foreignWindow = { name: "foreign" } as unknown as Window;
+    dispatch({ type: "style-patch", index: 0, content: "a{color:green}" }, foreignWindow);
+
+    expect(document.querySelectorAll("style")[0].textContent).toBe("a{color:red}");
   });
 });

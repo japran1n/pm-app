@@ -78,3 +78,71 @@ export function injectNavInterceptor(html: string): string {
     html.slice(bodyClose.index)
   );
 }
+
+/**
+ * TH-137, TH-153, TH-154, TH-155, TH-156 — style agent injected into the
+ * composed document.
+ *
+ * The sandbox iframe runs with `allow-scripts` but WITHOUT
+ * `allow-same-origin` (see Group 3 in inject.test.ts), which means the host
+ * page cannot reach into `contentDocument` to patch styles directly. This
+ * script is the only channel: it lives inside the sandboxed document and
+ * listens for `postMessage` from the host to apply live CSS edits.
+ *
+ * Security:
+ * - Every handler checks `event.source === window.parent` first (TH-156).
+ *   A message from any other window (e.g. a nested foreign iframe, or a
+ *   malicious script that also holds a reference to this window) is
+ *   ignored entirely — no-op, no error, no leak of state back out.
+ * - The script never touches anything outside `document` — no
+ *   `document.domain`, no attempt to read the parent's origin, nothing that
+ *   would require `allow-same-origin`.
+ *
+ * Message contract:
+ * - `{ type: 'style-patch', index: number, content: string }` — replaces
+ *   the `textContent` of `document.querySelectorAll('style')[index]`.
+ *   An out-of-bounds `index` (negative, too large, or the document has no
+ *   `<style>` tags at all) is a safe no-op (TH-154) — the agent never
+ *   throws back at the host.
+ * - `nav` messages are handled by NAV_INTERCEPTOR_SCRIPT already injected
+ *   by `injectNavInterceptor`; this script does not duplicate that logic.
+ *
+ * Scroll preservation (TH-155): patching a `<style>` block can reflow the
+ * page (e.g. a change in element height above the fold) and cause the
+ * browser to auto-adjust scroll position. The agent records `scrollX`/
+ * `scrollY` immediately before mutating `textContent` and restores them
+ * synchronously afterward so the preview does not visibly jump.
+ */
+export const STYLE_AGENT_SCRIPT = `<script>
+window.addEventListener('message', function (event) {
+  if (event.source !== window.parent) return;
+  var data = event.data;
+  if (!data || typeof data !== 'object') return;
+  if (data.type !== 'style-patch') return;
+  var styles = document.querySelectorAll('style');
+  var index = data.index;
+  if (typeof index !== 'number' || index < 0 || index >= styles.length) return;
+  var target = styles[index];
+  if (!target) return;
+  var scrollX = window.scrollX;
+  var scrollY = window.scrollY;
+  target.textContent = data.content;
+  window.scrollTo(scrollX, scrollY);
+});
+</script>`;
+
+/**
+ * Inserts STYLE_AGENT_SCRIPT immediately before `</body>`; appends it at the
+ * end of the document when there is no closing body tag.
+ */
+export function injectStyleAgent(html: string): string {
+  const bodyClose = /<\/body\s*>/i.exec(html);
+  if (!bodyClose) {
+    return html + STYLE_AGENT_SCRIPT;
+  }
+  return (
+    html.slice(0, bodyClose.index) +
+    STYLE_AGENT_SCRIPT +
+    html.slice(bodyClose.index)
+  );
+}
