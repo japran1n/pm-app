@@ -117,4 +117,51 @@ describe("toCopyBriefJson", () => {
 
     expect(parsed[0].meta).toBeNull();
   });
+
+  // F029 (missions/20260919-150607), AS-101: a section's meta (keywords,
+  // copyStatus, etc.) appears under that section in toCopyBriefJson, not
+  // merged into or overwritten by the page's own meta.
+  it("test_AS_101_section_meta_appears_under_that_section", () => {
+    const pages = [page(PAGE_A, "Home", [SECTION_A1])];
+    const details: ArchitectureNodeDetails = new Map([
+      [PAGE_A, { estimates: [], meta: meta({ intent: "Page intent" }) }],
+      [
+        SECTION_A1,
+        {
+          estimates: [],
+          meta: meta({ keywords: ["hero", "signup"], copyStatus: "drafted" }),
+        },
+      ],
+    ]);
+
+    const parsed = JSON.parse(toCopyBriefJson(pages, details));
+
+    expect(parsed[0].meta.intent).toBe("Page intent");
+    expect(parsed[0].sections[0].meta.keywords).toEqual(["hero", "signup"]);
+    expect(parsed[0].sections[0].meta.copyStatus).toBe("drafted");
+    // The section's meta must not leak onto the page's own meta.
+    expect(parsed[0].meta.keywords).toEqual([]);
+  });
+
+  // F029, AS-104: exporting with a pageSlug filter still includes the
+  // meta of that page's own sections (not just the page-level meta).
+  it("test_AS_104_pageslug_filter_includes_section_meta", () => {
+    const pages = [
+      page(PAGE_A, "Home", [SECTION_A1]),
+      page(PAGE_B, "About"),
+    ];
+    const details: ArchitectureNodeDetails = new Map([
+      [
+        SECTION_A1,
+        { estimates: [], meta: meta({ keywords: ["hero"], copyStatus: "approved" }) },
+      ],
+    ]);
+
+    const parsed = JSON.parse(toCopyBriefJson(pages, details, { pageSlug: "/home" }));
+
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0].slug).toBe("/home");
+    expect(parsed[0].sections[0].meta.keywords).toEqual(["hero"]);
+    expect(parsed[0].sections[0].meta.copyStatus).toBe("approved");
+  });
 });
