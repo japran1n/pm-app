@@ -94,14 +94,19 @@ describe("F020 — clearing a discipline estimate also clears its note (AS-074)"
       "@/lib/actions/architecture/estimates"
     );
 
-    // An empty `input` is how the popover/action represents "clear this
-    // discipline's estimate" in the bulk path (see setDisciplineEstimatesBulk's
-    // handling of `entry.input.trim()`). It must produce a row with both
-    // `minutes` and `note` null -- there is no way for a stale note to
-    // survive a clear, because the whole row (including its note) is
-    // rewritten to null in the same statement.
+    // AS-074 falsifiability: the clear entry below carries a non-empty
+    // `note`. If estimates.ts:91's clear-branch push ever changed from
+    // `note: null` to `note: entry.note ?? null`, this note would survive
+    // the clear (since `entry.note` is truthy here, not undefined), and the
+    // assertion below would fail. A clear entry with no `note` key at all
+    // cannot detect this bug, because `entry.note ?? null` evaluates to
+    // `null` regardless when `entry.note` is undefined.
     const result = await setDisciplineEstimatesBulk(TASK_ID, [
-      { discipline: "design", input: "" },
+      {
+        discipline: "design",
+        input: "",
+        note: "stale note that must not survive",
+      },
     ]);
 
     expect(result.success).toBe(true);
@@ -113,6 +118,50 @@ describe("F020 — clearing a discipline estimate also clears its note (AS-074)"
         discipline: "design",
         minutes: null,
         note: null,
+        estimated_by: USER_ID,
+      },
+    ]);
+  });
+
+  it("test_AS_074_clear_with_note_and_set_with_note_in_same_bulk_call_are_independent", async () => {
+    const { setDisciplineEstimatesBulk } = await import(
+      "@/lib/actions/architecture/estimates"
+    );
+
+    // Mixed batch: a "clear" entry (empty input) carrying a stale note, and
+    // a "set" entry (non-empty input) carrying a note that must be kept.
+    // Proves the clear branch nulls its note independently of the set
+    // branch, which is expected to preserve its note via `entry.note ?? null`.
+    const result = await setDisciplineEstimatesBulk(TASK_ID, [
+      {
+        discipline: "design",
+        input: "",
+        note: "stale note that must not survive",
+      },
+      {
+        discipline: "development",
+        input: "2h",
+        note: "keep this note",
+      },
+    ]);
+
+    expect(result.success).toBe(true);
+    expect(upsertCalls).toHaveLength(1);
+    expect(upsertCalls[0].payload).toMatchObject([
+      {
+        task_id: TASK_ID,
+        project_id: PROJECT_ID,
+        discipline: "design",
+        minutes: null,
+        note: null,
+        estimated_by: USER_ID,
+      },
+      {
+        task_id: TASK_ID,
+        project_id: PROJECT_ID,
+        discipline: "development",
+        minutes: 120,
+        note: "keep this note",
         estimated_by: USER_ID,
       },
     ]);
