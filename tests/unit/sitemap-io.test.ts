@@ -121,6 +121,40 @@ describe("toJson", () => {
       title: "Blogg",
     });
   });
+
+  it("AS-036: exported page object has a hasCmsSections field", () => {
+    const parsed = JSON.parse(toJson(PAGES));
+    for (const page of parsed.pages) {
+      expect(page).toHaveProperty("hasCmsSections");
+      expect(typeof page.hasCmsSections).toBe("boolean");
+    }
+  });
+
+  it("AS-037: hasCmsSections is true iff page has >=1 section with kind='cms'", () => {
+    const pages: BoardPage[] = [
+      page({ pageSlug: "no-sections", sections: [] }),
+      page({
+        pageSlug: "static-only",
+        sections: [
+          { id: "1", title: "Hero", kind: "static", position: 0, component: null },
+        ],
+      }),
+      page({
+        pageSlug: "has-cms",
+        sections: [
+          { id: "1", title: "Hero", kind: "static", position: 0, component: null },
+          { id: "2", title: "Feed", kind: "cms", position: 1, component: null },
+        ],
+      }),
+    ];
+    const parsed = JSON.parse(toJson(pages));
+    const byPath = Object.fromEntries(
+      parsed.pages.map((p: { path: string; hasCmsSections: boolean }) => [p.path, p.hasCmsSections]),
+    );
+    expect(byPath["no-sections"]).toBe(false);
+    expect(byPath["static-only"]).toBe(false);
+    expect(byPath["has-cms"]).toBe(true);
+  });
 });
 
 describe("parseSitemap text input", () => {

@@ -27,6 +27,7 @@ export type SitemapJson = {
     title: string;
     kind: string | null;
     sections: string[];
+    hasCmsSections: boolean;
   }[];
 };
 
@@ -157,6 +158,7 @@ export function toJson(pages: BoardPage[]): string {
       title: page.title,
       kind: page.pageKind ?? null,
       sections: page.sections.map((section) => section.title),
+      hasCmsSections: page.sections.some((section) => section.kind === "cms"),
     })),
   };
   return JSON.stringify(payload, null, 2);
