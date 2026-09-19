@@ -46,7 +46,31 @@ loadDotEnv();
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 const SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
-const _haveAdminCreds = Boolean(SUPABASE_URL && SECRET_KEY && PUBLISHABLE_KEY);
+const haveAdminCreds = Boolean(SUPABASE_URL && SECRET_KEY && PUBLISHABLE_KEY);
+
+// F065/F081 (missions/20260919-150607): `haveAdminCreds` only checks that
+// env vars exist -- in a sandboxed/offline worker environment creds can be
+// present but there is no network route to the project, and every test
+// would fail with fetch-failed/ECONNREFUSED instead of skipping cleanly.
+// This probes actual reachability (short-timeout HEAD against the auth
+// health endpoint) so the suite skips in that environment and only runs
+// for real where the project is genuinely reachable (CI with network
+// access, or `supabase start`).
+async function isSupabaseReachable(url: string | undefined): Promise<boolean> {
+  if (!url) return false;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 2500);
+  try {
+    await fetch(`${url}/auth/v1/health`, { signal: controller.signal });
+    return true;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+const canRunLive = haveAdminCreds && (await isSupabaseReachable(SUPABASE_URL));
 
 let memberClient: SupabaseClient | null = null;
 
@@ -59,20 +83,15 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => memberClient,
 }));
 
-// F065 (missions/20260919-150607): this suite needs a *reachable* Supabase
-// project, not just present credentials -- `haveAdminCreds` only checks that
-// env vars exist, so in a sandboxed/offline worker environment (creds set,
-// but no network route to the project) every test here fails with
-// fetch-failed/ECONNREFUSED instead of skipping cleanly. That's an
-// environment failure, not a regression in the code under test: AS-060,
-// AS-061 and AS-062 (the write path for content_seo/pm/qa) are exercised
-// without any real I/O by tests/unit/f060-discipline-estimate-schema.test.ts,
-// and the read-back/display half is covered by the popover-prefill and
-// estimate-summary tests added alongside this change. Skip unconditionally
-// here; re-enable (revert to `describe.skipIf(!haveAdminCreds)`) once this
-// suite runs against a genuinely reachable Supabase instance (e.g. in a CI
-// job with network access to the project, or against `supabase start`).
-describe.skip(
+// F081 (missions/20260919-150607, AS-081): reverted to a conditional skip
+// per the scrutiny report -- AS-081's atomicity guarantee (either every row
+// in a bulk upsert lands or none do) cannot be proven by a unit test with a
+// mocked client; it needs a real Postgres statement to fail mid-batch and a
+// real re-read afterwards. Gated on `canRunLive` (creds present AND the
+// project is actually reachable, see isSupabaseReachable above) so it skips
+// cleanly in a sandboxed/offline worker environment and runs for real
+// wherever the project can genuinely be reached.
+describe.skipIf(!canRunLive)(
   "F017 — content_seo/pm/qa discipline estimates round-trip through write + read",
   () => {
     let adminClient: SupabaseClient;
@@ -274,6 +293,92 @@ describe.skip(
         ),
       ).toBeUndefined();
       expect(details?.estimates.length).toBe(3);
+    });
+
+    // AS-081: setDisciplineEstimatesBulk writes its whole batch through a
+    // single multi-row `upsert()` call specifically so that Postgres's
+    // single-statement guarantee makes the write all-or-nothing -- either
+    // every row in the batch lands, or none do. Zod pre-validates every
+    // client-reachable bad input (minutes must be a positive number), so a
+    // mid-batch DB failure can never be provoked through the action's public
+    // API. To exercise the actual atomicity mechanism, this test calls the
+    // admin Supabase client's `.upsert()` directly -- the same client and
+    // the same call shape the action uses -- with one row that satisfies the
+    // DB's `minutes > 0` check constraint and one that deliberately violates
+    // it (bypassing Zod entirely, since Zod is not in the call path here).
+    it("test_AS_081_failed_multi_row_upsert_leaves_all_existing_rows_unchanged", async () => {
+      const { getArchitectureNodeDetails } = await import("@/lib/queries/architecture-details");
+
+      // Seed known-good baseline values directly, independent of whatever
+      // the earlier tests in this file left behind.
+      const { error: seedError } = await adminClient.from("task_discipline_estimates").upsert(
+        [
+          {
+            task_id: taskId,
+            project_id: projectId,
+            discipline: "pm",
+            minutes: 45,
+            note: "pm baseline",
+            estimated_by: memberUserId,
+          },
+          {
+            task_id: taskId,
+            project_id: projectId,
+            discipline: "qa",
+            minutes: 120,
+            note: "qa baseline",
+            estimated_by: memberUserId,
+          },
+        ],
+        { onConflict: "task_id,discipline" },
+      );
+      expect(seedError).toBeNull();
+
+      // One valid row (pm -> 99) and one row that violates the DB's
+      // `minutes > 0` check constraint (qa -> -5). Zod never sees this
+      // payload, so this is the only way to make the underlying multi-row
+      // upsert fail mid-batch.
+      const { error: failedBatchError } = await adminClient
+        .from("task_discipline_estimates")
+        .upsert(
+          [
+            {
+              task_id: taskId,
+              project_id: projectId,
+              discipline: "pm",
+              minutes: 99,
+              note: "pm should not land",
+              estimated_by: memberUserId,
+            },
+            {
+              task_id: taskId,
+              project_id: projectId,
+              discipline: "qa",
+              minutes: -5,
+              note: "qa should not land",
+              estimated_by: memberUserId,
+            },
+          ],
+          { onConflict: "task_id,discipline" },
+        );
+
+      expect(failedBatchError).not.toBeNull();
+
+      // Re-read both rows through the real read path. Neither the valid
+      // "pm" row nor the invalid "qa" row should have changed -- proving the
+      // batch was rejected atomically, not partially applied.
+      const readResult = await getArchitectureNodeDetails(projectId);
+      expect(readResult.ok).toBe(true);
+      if (!readResult.ok) return;
+
+      const details = readResult.data.get(taskId);
+      const pmEstimate = details?.estimates.find((e) => e.discipline === "pm");
+      const qaEstimate = details?.estimates.find((e) => e.discipline === "qa");
+
+      expect(pmEstimate?.minutes).toBe(45);
+      expect(pmEstimate?.note).toBe("pm baseline");
+      expect(qaEstimate?.minutes).toBe(120);
+      expect(qaEstimate?.note).toBe("qa baseline");
     });
   },
 );
