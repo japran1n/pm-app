@@ -132,9 +132,9 @@ describe.each(SLUGS)("AppSidebar Webflow nav item (F003/F044) [slug=%s]", (slug)
       expect(dashboardLink).toBeNull();
     });
 
-    // TH-003: "Tools" is positioned between "Team" and "Other" among the
-    // labelled group headings, in document order.
-    it("TH-003: the 'Tools' section heading appears after 'Team' and before 'Other' in the rendered nav", () => {
+    // TH-003 / TH-007: "Tools" is positioned between "Team" and "Other"
+    // among the labelled group headings, in document order.
+    it("TH-003/TH-007: the 'Tools' section heading appears after 'Team' and before 'Other' in the rendered nav", () => {
       render(createElement(AppSidebar, { ...baseProps, isGuest: false }));
 
       const nav = screen.getByRole("navigation");
