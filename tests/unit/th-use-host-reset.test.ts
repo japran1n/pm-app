@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
-// F088b — lib/code-editor/use-host-reset.ts calls clearEditorState on the
-// previous hostname's persisted state when the hostname changes.
+// F088b — lib/code-editor/use-host-reset.ts resets the in-memory working
+// set when the hostname changes, but must NOT clear the previous
+// hostname's persisted localStorage state (TH-254/TH-255) -- per-host
+// state should survive a host switch so returning to it restores it.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook } from "@testing-library/react";
@@ -53,7 +55,7 @@ describe("useHostReset", () => {
     window.localStorage.clear();
   });
 
-  it("test_AS_host_reset_clears_previous_host_storage_on_change", () => {
+  it("test_TH_254_host_switch_preserves_previous_host_storage", () => {
     const clearSpy = vi.spyOn(storage, "clearEditorState");
     const onReset = vi.fn();
 
@@ -67,7 +69,9 @@ describe("useHostReset", () => {
 
     rerender({ hostname: "b.webflow.io" });
 
-    expect(clearSpy).toHaveBeenCalledWith("a.webflow.io");
+    // TH-254/TH-255: switching hosts must reset the in-memory working set
+    // but must never clear the previous host's persisted storage.
+    expect(clearSpy).not.toHaveBeenCalled();
     expect(onReset).toHaveBeenCalledTimes(1);
 
     clearSpy.mockRestore();

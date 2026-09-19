@@ -229,4 +229,37 @@ describe("useHostReset", () => {
     expect(onReset).toHaveBeenCalledTimes(1);
     expect(currentBlocks).toBe(newBlocks);
   });
+
+  // TH-252
+  test("TH_252_initialActiveIndex_restores_persisted_selection", () => {
+    const blocks: EditableBlock[] = [
+      makeBlock({ index: 0, name: "a.css" }),
+      makeBlock({ index: 1, name: "b.js", type: "script" }),
+      makeBlock({ index: 2, name: "c.css" }),
+    ];
+    const { result } = renderHook(() =>
+      useBlocks(blocks, { initialActiveIndex: 2 }),
+    );
+    expect(result.current.activeIndex).toBe(2);
+  });
+
+  test("TH_252_initialActiveIndex_out_of_range_falls_back_to_first_block", () => {
+    const blocks: EditableBlock[] = [
+      makeBlock({ index: 0, name: "a.css" }),
+      makeBlock({ index: 1, name: "b.js", type: "script" }),
+    ];
+    const { result } = renderHook(() =>
+      useBlocks(blocks, { initialActiveIndex: 99 }),
+    );
+    expect(result.current.activeIndex).toBe(0);
+  });
+
+  test("TH_252_omitted_initialActiveIndex_defaults_to_first_block", () => {
+    const blocks: EditableBlock[] = [
+      makeBlock({ index: 0, name: "a.css" }),
+      makeBlock({ index: 1, name: "b.js", type: "script" }),
+    ];
+    const { result } = renderHook(() => useBlocks(blocks));
+    expect(result.current.activeIndex).toBe(0);
+  });
 });

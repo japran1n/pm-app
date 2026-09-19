@@ -18,7 +18,7 @@
 // `onCreate`; this component only reports which type was requested.
 
 import { useRef, useState } from "react";
-import { Braces, Palette, Plus } from "lucide-react";
+import { Braces, Palette, Plus, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export interface FileListEntry {
@@ -34,6 +34,9 @@ export interface FileListProps {
   onSelect: (index: number) => void;
   onRename?: (index: number, newName: string) => void;
   onCreate?: (type: "css" | "js") => void;
+  /** Deletes the file at `index`. Returns true if the deletion happened
+   * (TH-207). Omitted entirely disables the delete control. */
+  onDelete?: (index: number) => boolean;
 }
 
 const MAX_NAME_LENGTH = 60;
@@ -49,6 +52,7 @@ export function FileList({
   onSelect,
   onRename,
   onCreate,
+  onDelete,
 }: FileListProps) {
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [draftName, setDraftName] = useState("");
@@ -234,6 +238,22 @@ export function FileList({
                 >
                   •
                 </span>
+              )}
+              {onDelete && (
+                <button
+                  type="button"
+                  aria-label={`Delete ${entry.name}`}
+                  data-testid={`delete-file-${entry.index}`}
+                  disabled={blocks.length <= 1}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (blocks.length <= 1) return;
+                    onDelete(entry.index);
+                  }}
+                  className="shrink-0 rounded-sm p-0.5 text-muted-foreground hover:bg-muted/50 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
               )}
             </li>
           );

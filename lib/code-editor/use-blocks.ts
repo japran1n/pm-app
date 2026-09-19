@@ -25,6 +25,10 @@ export interface UseBlocksOptions {
   /** Called to confirm a deletion. Defaults to window.confirm when
    * available. Return true to proceed with deletion. */
   onConfirmDelete?: (block: EditableBlock, index: number) => boolean;
+  /** Initial active index to use instead of defaulting to the first block
+   * (0). Used to restore a persisted selection (TH-252). Falls back to 0
+   * when out of range or omitted. */
+  initialActiveIndex?: number;
 }
 
 export interface UseBlocksResult {
@@ -63,9 +67,18 @@ export function useBlocks(
   options?: UseBlocksOptions,
 ): UseBlocksResult {
   const [blocks, setBlocks] = useState<EditableBlock[]>(initialBlocks);
-  const [activeIndex, setActiveIndex] = useState<number>(
-    initialBlocks.length > 0 ? 0 : -1,
-  );
+  const [activeIndex, setActiveIndex] = useState<number>(() => {
+    if (initialBlocks.length === 0) return -1;
+    const requested = options?.initialActiveIndex;
+    if (
+      typeof requested === "number" &&
+      requested >= 0 &&
+      requested < initialBlocks.length
+    ) {
+      return requested;
+    }
+    return 0;
+  });
 
   const addBlock = useCallback((block: EditableBlock) => {
     setBlocks((prev) => {

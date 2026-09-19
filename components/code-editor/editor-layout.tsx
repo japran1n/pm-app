@@ -29,7 +29,21 @@ import { useDirtyState } from "@/lib/code-editor/use-dirty-state";
 import { composeDocument } from "@/lib/code-editor/compose";
 import type { Corpus } from "@/lib/code-editor/corpus";
 import { saveEditorState, loadEditorState, type EditorState } from "@/lib/webflow-editor/storage";
-import { saveVersion, getVersions } from "@/lib/code-editor/versions";
+import {
+  initVersions,
+  loadVersions,
+  saveVersions,
+  forkFromOriginal,
+  renameVersion,
+  duplicateVersion,
+  deleteVersion,
+  restoreVersion as restoreVersionContent,
+  type Version,
+} from "@/lib/code-editor/versions";
+
+/** Per-block version state: the full named-version list plus which one is
+ * currently active (TH-209..TH-219). */
+type VersionEntry = { versions: Version[]; activeVersionId: string };
 
 export interface EditorLayoutProps {
   /** Initial blocks, typically extracted from the fetched site (F102). */
@@ -142,11 +156,22 @@ export function EditorLayout({ initialBlocks, html, corpus, hostname, url }: Edi
     activeIndex,
     setActiveIndex,
     addBlock,
+    deleteBlock,
     renameBlock,
     updateBlock,
     composableBlocks,
     resetBlocks,
-  } = useBlocks(effectiveInitialBlocks);
+  } = useBlocks(effectiveInitialBlocks, {
+    // TH-252 — restore the previously-selected file (by persisted id) on
+    // mount, falling back to the first block when there's no match.
+    initialActiveIndex: (() => {
+      if (!restoredState?.selectedBlockId) return undefined;
+      const match = effectiveInitialBlocks.findIndex(
+        (block) => String(block.index) === String(restoredState.selectedBlockId),
+      );
+      return match >= 0 ? match : undefined;
+    })(),
+  });
 
   // TH-125 — a hostname change means the user fetched a different site;
   // discard whatever files are currently open and replace them with the
@@ -237,19 +262,64 @@ export function EditorLayout({ initialBlocks, html, corpus, hostname, url }: Edi
     [renameBlock],
   );
 
+  // TH-209..TH-219 — per-block named version state. Initialized lazily (on
+  // first access of a block) as a single read-only "Original" snapshot of
+  // that block's initial content; the first edit forks a "Draft" off it.
+  const [versionsByBlock, setVersionsByBlock] = useState<Record<number, VersionEntry>>({});
+
+  const ensureVersionEntry = useCallback(
+    (index: number): VersionEntry => {
+      const existing = versionsByBlock[index];
+      if (existing) return existing;
+      const block = blocks[index];
+      const initialContent = block ? (block.originalContent ?? block.content) : "";
+      const versions = hostname
+        ? loadVersions(hostname, index, initialContent)
+        : initVersions(initialContent);
+      const entry: VersionEntry = { versions, activeVersionId: versions[0]?.id ?? "" };
+      return entry;
+    },
+    [versionsByBlock, blocks, hostname],
+  );
+
+  // Lazily seed version state for the active block the first time it's
+  // touched (selected or edited), without clobbering state that already
+  // exists for it.
+  useEffect(() => {
+    if (activeIndex < 0) return;
+    if (versionsByBlock[activeIndex]) return;
+    const entry = ensureVersionEntry(activeIndex);
+    setVersionsByBlock((prev) => (prev[activeIndex] ? prev : { ...prev, [activeIndex]: entry }));
+    // Only re-run when the active block changes or its entry disappears --
+    // `ensureVersionEntry` is intentionally excluded to avoid re-seeding on
+    // every keystroke (it depends on `blocks`, which changes on every edit).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeIndex, versionsByBlock]);
+
   const handleEditorChange = useCallback(
     (content: string) => {
       if (activeIndex < 0) return;
       updateBlock(activeIndex, content);
       onBlockChange(activeIndex, content);
       markDirty(activeIndex);
-      // TH-209..TH-219 — record a version snapshot per edit so the user can
-      // recover an earlier revision of this block later (F091).
-      if (hostname) {
-        saveVersion(hostname, activeIndex, content);
-      }
+      // TH-211 — the first edit against a read-only ("Original"-only)
+      // version list forks a new, editable "Draft" version and makes it
+      // active. Subsequent edits just keep the editor content ahead of the
+      // active version's saved snapshot (surfaced as "(modified)").
+      setVersionsByBlock((prev) => {
+        const entry = prev[activeIndex] ?? ensureVersionEntry(activeIndex);
+        const active = entry.versions.find((v) => v.id === entry.activeVersionId);
+        if (!active?.isOriginal) {
+          return prev[activeIndex] ? prev : { ...prev, [activeIndex]: entry };
+        }
+        const forked = forkFromOriginal(entry.versions);
+        const draft = forked[forked.length - 1];
+        const nextEntry: VersionEntry = { versions: forked, activeVersionId: draft.id };
+        if (hostname) saveVersions(hostname, activeIndex, forked);
+        return { ...prev, [activeIndex]: nextEntry };
+      });
     },
-    [activeIndex, updateBlock, onBlockChange, markDirty, hostname],
+    [activeIndex, updateBlock, onBlockChange, markDirty, hostname, ensureVersionEntry],
   );
 
   const handleEditorSave = useCallback(() => {
@@ -274,19 +344,73 @@ export function EditorLayout({ initialBlocks, html, corpus, hostname, url }: Edi
   }, [activeIndex, activeBlock]);
 
   const handleRestoreVersion = useCallback(
-    (content: string) => {
+    (id: string) => {
       if (activeIndex < 0) return;
+      const entry = versionsByBlock[activeIndex] ?? ensureVersionEntry(activeIndex);
+      const content = restoreVersionContent(entry.versions, id);
+      if (content === null) return;
       updateBlock(activeIndex, content);
       onBlockChange(activeIndex, content);
       markDirty(activeIndex);
-      if (hostname) {
-        saveVersion(hostname, activeIndex, content);
-      }
+      setVersionsByBlock((prev) => ({
+        ...prev,
+        [activeIndex]: { ...entry, activeVersionId: id },
+      }));
     },
-    [activeIndex, updateBlock, onBlockChange, markDirty, hostname],
+    [activeIndex, versionsByBlock, ensureVersionEntry, updateBlock, onBlockChange, markDirty],
   );
 
-  const activeVersions = hostname && activeIndex >= 0 ? getVersions(hostname, activeIndex) : [];
+  const handleRenameVersion = useCallback(
+    (id: string, name: string) => {
+      if (activeIndex < 0) return;
+      const entry = versionsByBlock[activeIndex] ?? ensureVersionEntry(activeIndex);
+      const versions = renameVersion(entry.versions, id, name);
+      if (hostname) saveVersions(hostname, activeIndex, versions);
+      setVersionsByBlock((prev) => ({ ...prev, [activeIndex]: { ...entry, versions } }));
+    },
+    [activeIndex, versionsByBlock, ensureVersionEntry, hostname],
+  );
+
+  const handleDuplicateVersion = useCallback(
+    (id: string) => {
+      if (activeIndex < 0) return;
+      const entry = versionsByBlock[activeIndex] ?? ensureVersionEntry(activeIndex);
+      const versions = duplicateVersion(entry.versions, id);
+      if (hostname) saveVersions(hostname, activeIndex, versions);
+      setVersionsByBlock((prev) => ({ ...prev, [activeIndex]: { ...entry, versions } }));
+    },
+    [activeIndex, versionsByBlock, ensureVersionEntry, hostname],
+  );
+
+  const handleDeleteVersion = useCallback(
+    (id: string) => {
+      if (activeIndex < 0) return;
+      const entry = versionsByBlock[activeIndex] ?? ensureVersionEntry(activeIndex);
+      const versions = deleteVersion(entry.versions, id);
+      if (versions === entry.versions) return; // no-op (Original or missing)
+      if (hostname) saveVersions(hostname, activeIndex, versions);
+      // TH-216 — deleting the active version makes "Original" active.
+      let nextActiveId = entry.activeVersionId;
+      if (entry.activeVersionId === id) {
+        const original = versions.find((v) => v.isOriginal);
+        nextActiveId = original ? original.id : (versions[0]?.id ?? "");
+        if (original) {
+          updateBlock(activeIndex, original.content);
+          onBlockChange(activeIndex, original.content);
+          markDirty(activeIndex);
+        }
+      }
+      setVersionsByBlock((prev) => ({
+        ...prev,
+        [activeIndex]: { versions, activeVersionId: nextActiveId },
+      }));
+    },
+    [activeIndex, versionsByBlock, ensureVersionEntry, hostname, updateBlock, onBlockChange, markDirty],
+  );
+
+  const activeVersionEntry = activeIndex >= 0 ? versionsByBlock[activeIndex] : undefined;
+  const activeVersions = activeVersionEntry?.versions ?? [];
+  const activeVersionId = activeVersionEntry?.activeVersionId ?? null;
 
   return (
     <div className="flex h-full w-full">
@@ -299,10 +423,19 @@ export function EditorLayout({ initialBlocks, html, corpus, hostname, url }: Edi
               onSelect={setActiveIndex}
               onRename={handleRename}
               onCreate={handleCreate}
+              onDelete={deleteBlock}
             />
             <div className="flex min-w-0 flex-1 flex-col">
               <div className="flex shrink-0 items-center justify-end border-b border-border px-2 py-1">
-                <VersionMenu versions={activeVersions} onRestore={handleRestoreVersion} />
+                <VersionMenu
+                  versions={activeVersions}
+                  activeVersionId={activeVersionId}
+                  currentContent={activeBlock?.content ?? ""}
+                  onRestore={handleRestoreVersion}
+                  onRename={handleRenameVersion}
+                  onDuplicate={handleDuplicateVersion}
+                  onDelete={handleDeleteVersion}
+                />
               </div>
               {activeBlock ? (
                 <EditorLazy

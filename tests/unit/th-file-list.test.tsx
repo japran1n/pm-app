@@ -216,6 +216,46 @@ describe("FileList create user files (TH-205, TH-206)", () => {
   });
 });
 
+describe("FileList delete (TH-207)", () => {
+  it("test_TH_207_delete_button_not_rendered_without_onDelete", () => {
+    render(<FileList blocks={BLOCKS} activeIndex={0} onSelect={() => {}} />);
+    expect(screen.queryByTestId("delete-file-0")).not.toBeInTheDocument();
+  });
+
+  it("test_TH_207_clicking_delete_calls_onDelete_with_index", () => {
+    const onDelete = vi.fn(() => true);
+    render(
+      <FileList
+        blocks={BLOCKS}
+        activeIndex={0}
+        onSelect={() => {}}
+        onDelete={onDelete}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("delete-file-1"));
+    expect(onDelete).toHaveBeenCalledWith(1);
+  });
+
+  it("test_TH_207_delete_button_disabled_when_only_one_block_remains", () => {
+    const onDelete = vi.fn(() => true);
+    const singleBlock: FileListEntry[] = [
+      { index: 0, name: "only.css", type: "css" },
+    ];
+    render(
+      <FileList
+        blocks={singleBlock}
+        activeIndex={0}
+        onSelect={() => {}}
+        onDelete={onDelete}
+      />,
+    );
+    const deleteButton = screen.getByTestId("delete-file-0");
+    expect(deleteButton).toBeDisabled();
+    fireEvent.click(deleteButton);
+    expect(onDelete).not.toHaveBeenCalled();
+  });
+});
+
 describe("FileList type icons render distinctly (TH-200)", () => {
   it("test_TH_200_css_and_js_rows_both_render_icons", () => {
     const { container } = render(

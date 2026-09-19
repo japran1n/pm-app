@@ -2,12 +2,13 @@
 // changes.
 //
 // Fetching a different host must discard the currently open files and
-// start fresh from the new document's blocks (TH-125). Version history is
-// per-host persisted state (F089/storage.ts) and is intentionally left
-// alone here — only the in-memory working set (open blocks, dirty state)
-// resets.
+// start fresh from the new document's blocks (TH-125). This only resets
+// the in-memory working set (open blocks, dirty state) for the new host --
+// it must NOT clear the previous host's persisted localStorage entry
+// (TH-254/TH-255). Per-host state should survive until the user explicitly
+// clears it or the storage quota is exceeded, so navigating back to a
+// previously visited host still restores what was there.
 import { useEffect, useRef } from "react";
-import { clearEditorState } from "@/lib/webflow-editor/storage";
 
 /**
  * Fires `onReset` whenever `hostname` changes from a previously-seen,
@@ -31,7 +32,6 @@ export function useHostReset(hostname: string, onReset: () => void): void {
     }
 
     if (prev !== null && prev !== hostname) {
-      clearEditorState(prev);
       onResetRef.current();
     }
 
