@@ -1,8 +1,17 @@
 // @vitest-environment jsdom
-// TH-209..TH-219 (version model) — lib/code-editor/versions.ts
+// TH-209..TH-219 (named version model) — lib/code-editor/versions.ts
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { saveVersion, getVersions, restoreVersion } from "@/lib/code-editor/versions";
+import {
+  initVersions,
+  forkFromOriginal,
+  renameVersion,
+  duplicateVersion,
+  deleteVersion,
+  restoreVersion,
+  loadVersions,
+  saveVersions,
+} from "@/lib/code-editor/versions";
 
 // Node 26 + jsdom 30 only expose a global `localStorage` when the process
 // is launched with `--localstorage-file`, which the test runner does not
@@ -51,103 +60,168 @@ describe("versions.ts", () => {
     window.localStorage.clear();
   });
 
-  it("test_TH_209_saveVersion_and_getVersions_round_trip", () => {
-    saveVersion("example.com", 0, "body { color: red; }");
-    const versions = getVersions("example.com", 0);
+  it("test_TH_209_initVersions_returns_single_original_version", () => {
+    const versions = initVersions("body { color: red; }");
     expect(versions).toHaveLength(1);
+    expect(versions[0].name).toBe("Original");
+    expect(versions[0].isOriginal).toBe(true);
     expect(versions[0].content).toBe("body { color: red; }");
-    expect(typeof versions[0].timestamp).toBe("number");
   });
 
-  it("test_TH_211_saveVersion_stores_optional_label", () => {
-    saveVersion("example.com", 0, "content-a", "my label");
-    const versions = getVersions("example.com", 0);
-    expect(versions[0].label).toBe("my label");
+  it("test_TH_210_original_version_cannot_be_renamed", () => {
+    const versions = initVersions("content");
+    const renamed = renameVersion(versions, versions[0].id, "New name");
+    expect(renamed[0].name).toBe("Original");
   });
 
-  it("test_TH_211_saveVersion_without_label_has_no_label_field", () => {
-    saveVersion("example.com", 0, "content-a");
-    const versions = getVersions("example.com", 0);
-    expect(versions[0].label).toBeUndefined();
+  it("test_TH_210_original_version_cannot_be_deleted", () => {
+    const versions = initVersions("content");
+    const afterDelete = deleteVersion(versions, versions[0].id);
+    expect(afterDelete).toHaveLength(1);
+    expect(afterDelete[0].isOriginal).toBe(true);
   });
 
-  it("test_TH_217_no_cap_below_ten_versions_are_all_kept", () => {
-    for (let i = 0; i < 5; i++) {
-      saveVersion("example.com", 1, `content-${i}`);
+  it("test_TH_209_210_forkFromOriginal_creates_a_named_editable_draft", () => {
+    const versions = initVersions("original content");
+    const forked = forkFromOriginal(versions);
+    expect(forked).toHaveLength(2);
+    const draft = forked[1];
+    expect(draft.name).toBe("Draft");
+    expect(draft.isOriginal).toBe(false);
+    expect(draft.content).toBe("original content");
+    // Original is untouched and still read-only.
+    expect(forked[0].isOriginal).toBe(true);
+    expect(forked[0].name).toBe("Original");
+  });
+
+  it("test_TH_212_a_non_original_version_can_be_renamed", () => {
+    const forked = forkFromOriginal(initVersions("content"));
+    const draftId = forked[1].id;
+    const renamed = renameVersion(forked, draftId, "My draft");
+    expect(renamed.find((v) => v.id === draftId)?.name).toBe("My draft");
+  });
+
+  it("test_TH_213_a_version_can_be_duplicated", () => {
+    const forked = forkFromOriginal(initVersions("content"));
+    const draft = forked[1];
+    const duplicated = duplicateVersion(forked, draft.id);
+    expect(duplicated).toHaveLength(3);
+    const copy = duplicated[2];
+    expect(copy.name).toBe(`Copy of ${draft.name}`);
+    expect(copy.content).toBe(draft.content);
+    expect(copy.isOriginal).toBe(false);
+    expect(copy.id).not.toBe(draft.id);
+  });
+
+  it("test_TH_213_duplicating_the_original_produces_an_editable_copy", () => {
+    const versions = initVersions("content");
+    const duplicated = duplicateVersion(versions, versions[0].id);
+    expect(duplicated).toHaveLength(2);
+    expect(duplicated[1].isOriginal).toBe(false);
+    expect(duplicated[1].name).toBe("Copy of Original");
+  });
+
+  it("test_TH_214_a_non_original_version_can_be_deleted", () => {
+    const forked = forkFromOriginal(initVersions("content"));
+    const draftId = forked[1].id;
+    const afterDelete = deleteVersion(forked, draftId);
+    expect(afterDelete).toHaveLength(1);
+    expect(afterDelete.find((v) => v.id === draftId)).toBeUndefined();
+  });
+
+  it("test_TH_214_deleting_the_original_is_a_no_op", () => {
+    const forked = forkFromOriginal(initVersions("content"));
+    const originalId = forked[0].id;
+    const afterDelete = deleteVersion(forked, originalId);
+    expect(afterDelete).toHaveLength(2);
+    expect(afterDelete.find((v) => v.id === originalId)).toBeDefined();
+  });
+
+  it("test_TH_217_no_limit_on_number_of_versions", () => {
+    let versions = initVersions("content");
+    for (let i = 0; i < 25; i++) {
+      versions = duplicateVersion(versions, versions[0].id);
     }
-    expect(getVersions("example.com", 1)).toHaveLength(5);
+    expect(versions).toHaveLength(26);
   });
 
-  it("test_TH_217_evicts_oldest_when_exceeding_ten_versions", () => {
-    for (let i = 0; i < 12; i++) {
-      saveVersion("example.com", 2, `content-${i}`);
-    }
-    const versions = getVersions("example.com", 2);
-    expect(versions).toHaveLength(10);
-    // Oldest two (content-0, content-1) were evicted; oldest remaining is content-2.
-    expect(versions[0].content).toBe("content-2");
-    expect(versions[versions.length - 1].content).toBe("content-11");
+  it("test_TH_217_persisted_versions_survive_a_round_trip_via_storage", () => {
+    let versions = forkFromOriginal(initVersions("content"));
+    versions = duplicateVersion(versions, versions[1].id);
+    saveVersions("example.com", 0, versions);
+    const loaded = loadVersions("example.com", 0, "content");
+    expect(loaded).toHaveLength(3);
+    expect(loaded.map((v) => v.name)).toEqual(versions.map((v) => v.name));
   });
 
-  it("test_TH_209_versions_are_scoped_per_block_within_a_host", () => {
-    saveVersion("example.com", 0, "block-0-content");
-    saveVersion("example.com", 1, "block-1-content");
-    expect(getVersions("example.com", 0)).toHaveLength(1);
-    expect(getVersions("example.com", 1)).toHaveLength(1);
-    expect(getVersions("example.com", 0)[0].content).toBe("block-0-content");
+  it("test_TH_218_restoreVersion_returns_content_for_a_version_id", () => {
+    const forked = forkFromOriginal(initVersions("original content"));
+    const draft = forked[1];
+    expect(restoreVersion(forked, draft.id)).toBe("original content");
   });
 
-  it("test_TH_250_versions_are_scoped_per_hostname", () => {
-    saveVersion("host-a.com", 0, "content-a");
-    saveVersion("host-b.com", 0, "content-b");
-    expect(getVersions("host-a.com", 0)).toHaveLength(1);
-    expect(getVersions("host-b.com", 0)).toHaveLength(1);
-    expect(getVersions("host-a.com", 0)[0].content).toBe("content-a");
+  it("test_TH_218_restoreVersion_returns_null_for_unknown_id", () => {
+    const versions = initVersions("content");
+    expect(restoreVersion(versions, "does-not-exist")).toBeNull();
   });
 
-  it("test_TH_218_restoreVersion_returns_content_at_index", () => {
-    saveVersion("example.com", 0, "v0");
-    saveVersion("example.com", 0, "v1");
-    saveVersion("example.com", 0, "v2");
-    expect(restoreVersion("example.com", 0, 1)).toBe("v1");
+  it("test_loadVersions_initializes_a_single_original_when_nothing_persisted", () => {
+    const versions = loadVersions("example.com", 0, "fresh content");
+    expect(versions).toHaveLength(1);
+    expect(versions[0].name).toBe("Original");
+    expect(versions[0].content).toBe("fresh content");
   });
 
-  it("test_TH_218_restoreVersion_returns_null_for_missing_block", () => {
-    expect(restoreVersion("example.com", 99, 0)).toBeNull();
+  it("test_versions_are_scoped_per_block_within_a_host", () => {
+    saveVersions("example.com", 0, initVersions("block-0-content"));
+    saveVersions("example.com", 1, initVersions("block-1-content"));
+    expect(loadVersions("example.com", 0, "")[0].content).toBe("block-0-content");
+    expect(loadVersions("example.com", 1, "")[0].content).toBe("block-1-content");
   });
 
-  it("test_TH_218_restoreVersion_returns_null_for_out_of_range_index", () => {
-    saveVersion("example.com", 0, "v0");
-    expect(restoreVersion("example.com", 0, 5)).toBeNull();
+  it("test_versions_are_scoped_per_hostname", () => {
+    saveVersions("host-a.com", 0, initVersions("content-a"));
+    saveVersions("host-b.com", 0, initVersions("content-b"));
+    expect(loadVersions("host-a.com", 0, "")[0].content).toBe("content-a");
+    expect(loadVersions("host-b.com", 0, "")[0].content).toBe("content-b");
   });
 
-  it("test_TH_219_getVersions_returns_empty_array_when_nothing_saved", () => {
-    expect(getVersions("example.com", 0)).toEqual([]);
-  });
-
-  it("test_TH_211_saveVersion_does_not_throw_when_localStorage_setItem_fails", () => {
+  it("test_saveVersions_does_not_throw_when_localStorage_setItem_fails", () => {
     const spy = vi
       .spyOn(window.Storage.prototype, "setItem")
       .mockImplementation(() => {
         throw new Error("QuotaExceededError");
       });
-    expect(() => saveVersion("example.com", 0, "content")).not.toThrow();
+    expect(() => saveVersions("example.com", 0, initVersions("content"))).not.toThrow();
     spy.mockRestore();
   });
 
-  it("test_TH_218_getVersions_does_not_throw_when_localStorage_getItem_fails", () => {
+  it("test_loadVersions_does_not_throw_when_localStorage_getItem_fails", () => {
     const spy = vi
       .spyOn(window.Storage.prototype, "getItem")
       .mockImplementation(() => {
         throw new Error("SecurityError");
       });
-    expect(() => getVersions("example.com", 0)).not.toThrow();
-    expect(getVersions("example.com", 0)).toEqual([]);
+    expect(() => loadVersions("example.com", 0, "fallback")).not.toThrow();
+    expect(loadVersions("example.com", 0, "fallback")[0].content).toBe("fallback");
     spy.mockRestore();
   });
 
-  it("test_TH_218_getVersions_returns_empty_array_for_corrupt_json", () => {
+  it("test_loadVersions_falls_back_to_original_for_corrupt_json", () => {
     window.localStorage.setItem("ce-versions-v1:example.com", "not-json{{{");
-    expect(getVersions("example.com", 0)).toEqual([]);
+    const versions = loadVersions("example.com", 0, "fallback content");
+    expect(versions).toHaveLength(1);
+    expect(versions[0].content).toBe("fallback content");
+  });
+
+  it("test_loadVersions_discards_corrupted_entries_within_an_otherwise_valid_store", () => {
+    const valid = initVersions("good content");
+    window.localStorage.setItem(
+      "ce-versions-v1:example.com",
+      JSON.stringify({ "example.com:0": [...valid, { garbage: true }] }),
+    );
+    const versions = loadVersions("example.com", 0, "fallback");
+    expect(versions).toHaveLength(1);
+    expect(versions[0].content).toBe("good content");
   });
 });
