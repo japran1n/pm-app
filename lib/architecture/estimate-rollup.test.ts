@@ -37,6 +37,7 @@ describe("AS-063: page-level rollup includes all five disciplines", () => {
         discipline,
         minutes: (i + 1) * 10,
         note: null,
+        estimatedBy: null,
       })),
     });
 
@@ -59,11 +60,11 @@ describe("AS-064: site-level rollup includes all five disciplines", () => {
     const pageA = makePage("page-a");
     const pageB = makePage("page-b");
     const details = makeDetails({
-      [pageA.id]: [{ discipline: "content_seo", minutes: 15, note: null }],
+      [pageA.id]: [{ discipline: "content_seo", minutes: 15, note: null, estimatedBy: null }],
       [pageB.id]: [
-        { discipline: "content_seo", minutes: 25, note: null },
-        { discipline: "pm", minutes: 5, note: null },
-        { discipline: "qa", minutes: 7, note: null },
+        { discipline: "content_seo", minutes: 25, note: null, estimatedBy: null },
+        { discipline: "pm", minutes: 5, note: null, estimatedBy: null },
+        { discipline: "qa", minutes: 7, note: null, estimatedBy: null },
       ],
     });
 
@@ -84,7 +85,7 @@ describe("AS-064: site-level rollup includes all five disciplines", () => {
     const page = makePage("page-legacy");
     const details = makeDetails({
       [page.id]: [
-        { discipline: "legacy-discipline" as unknown as DisciplineEstimate["discipline"], minutes: 999, note: null },
+        { discipline: "legacy-discipline" as unknown as DisciplineEstimate["discipline"], minutes: 999, note: null, estimatedBy: null },
       ],
     });
     const rollups = computeRollups([page], details);
