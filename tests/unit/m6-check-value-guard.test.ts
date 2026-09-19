@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 import { pageKindEnum, sectionKindEnum } from "@/lib/validation/architecture";
@@ -29,9 +30,12 @@ const MIGRATIONS_DIR = path.join(process.cwd(), "supabase", "migrations");
  * or if its CHECK expression doesn't match either known shape (rather than
  * silently falling back to stale/incorrect data).
  */
-function findLastCheckConstraintValues(constraintName: string): string[] {
+function findLastCheckConstraintValues(
+  constraintName: string,
+  migrationsDir: string = MIGRATIONS_DIR,
+): string[] {
   const files = fs
-    .readdirSync(MIGRATIONS_DIR)
+    .readdirSync(migrationsDir)
     .filter((f) => f.endsWith(".sql"))
     .sort(); // filenames are timestamp-prefixed, so lexical sort == chronological
 
@@ -39,7 +43,7 @@ function findLastCheckConstraintValues(constraintName: string): string[] {
   let lastWasDrop = false;
 
   for (const file of files) {
-    const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, file), "utf8");
+    const sql = fs.readFileSync(path.join(migrationsDir, file), "utf8");
 
     const dropRe = new RegExp(
       `drop\\s+constraint\\s+(?:if\\s+exists\\s+)?${constraintName}\\b`,
@@ -90,7 +94,7 @@ function findLastCheckConstraintValues(constraintName: string): string[] {
 
   if (lastWasDrop || lastDefinition === null) {
     throw new Error(
-      `Constraint "${constraintName}" was dropped without a later re-add, or was never defined, in ${MIGRATIONS_DIR}`,
+      `Constraint "${constraintName}" was dropped without a later re-add, or was never defined, in ${migrationsDir}`,
     );
   }
 
@@ -108,9 +112,29 @@ function extractStringLiterals(fragment: string): string[] {
   return values;
 }
 
+const FIXTURES_DIR = path.join(process.cwd(), "tests", "fixtures", "m6-check-guard");
+
+/**
+ * Builds a temporary migrations-like directory containing only the given
+ * fixture files (by filename, in order), so `findLastCheckConstraintValues`
+ * can be exercised against a controlled, minimal SQL corpus instead of the
+ * real (large, evolving) migrations directory. This is what actually proves
+ * the parser reads and interprets SQL, rather than returning a hardcoded map.
+ */
+function fixtureDir(...filenames: string[]): string {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "m6-check-fixture-"));
+  for (const filename of filenames) {
+    fs.copyFileSync(
+      path.join(FIXTURES_DIR, filename),
+      path.join(dir, filename),
+    );
+  }
+  return dir;
+}
+
 describe("m6 CHECK constraint vs Zod enum drift guard", () => {
-  it("AS-127: parser throws on unknown constraint name (proves filesystem read)", () => {
-    expect(() => findLastCheckConstraintValues("tasks_nonexistent_xyz_check")).toThrow();
+  it("AS-127: parser reads SQL files — unknown constraint throws even with real migrations", () => {
+    expect(() => findLastCheckConstraintValues("tasks_nonexistent_xyz_check")).toThrow(/nonexistent_xyz/i);
   });
 
   it("AS-128: pageKindEnum matches tasks_page_kind_check", () => {
@@ -124,6 +148,7 @@ describe("m6 CHECK constraint vs Zod enum drift guard", () => {
       new Set(zodValues),
       `Drift between tasks_page_kind_check and pageKindEnum. onlyInDb=${JSON.stringify(onlyInDb)} onlyInZod=${JSON.stringify(onlyInZod)}`,
     ).toEqual(new Set(dbValues));
+    expect(dbValues.length).toBe(zodValues.length);
   });
 
   it("AS-129: sectionKindEnum matches tasks_section_kind_check", () => {
@@ -137,5 +162,44 @@ describe("m6 CHECK constraint vs Zod enum drift guard", () => {
       new Set(zodValues),
       `Drift between tasks_section_kind_check and sectionKindEnum. onlyInDb=${JSON.stringify(onlyInDb)} onlyInZod=${JSON.stringify(onlyInZod)}`,
     ).toEqual(new Set(dbValues));
+    expect(dbValues.length).toBe(zodValues.length);
+  });
+});
+
+describe("parser fixtures", () => {
+  it("AS-127: parses IN(...) form from a single migration file", () => {
+    const dir = fixtureDir("01_initial.sql");
+    expect(findLastCheckConstraintValues("tasks_test_kind_check", dir)).toEqual([
+      "alpha",
+      "beta",
+    ]);
+  });
+
+  it("AS-127: picks the latest migration's IN(...) redefinition (widen)", () => {
+    const dir = fixtureDir("01_initial.sql", "02_widen_in.sql");
+    expect(findLastCheckConstraintValues("tasks_test_kind_check", dir)).toEqual([
+      "alpha",
+      "beta",
+      "gamma",
+    ]);
+  });
+
+  it("AS-127: parses = ANY (ARRAY[...]) form, picks latest migration", () => {
+    const dir = fixtureDir("01_initial.sql", "03_any_form.sql");
+    expect(findLastCheckConstraintValues("tasks_test_kind_check", dir)).toEqual([
+      "alpha",
+      "beta",
+      "gamma",
+      "delta",
+    ]);
+  });
+
+  it("AS-127: throws when the constraint was dropped without a later re-add", () => {
+    const dir = fixtureDir("01_initial.sql", "04_drop.sql");
+    expect(() => findLastCheckConstraintValues("tasks_test_kind_check", dir)).toThrow();
+  });
+
+  it("AS-127: throws on unknown constraint name against the real migrations dir", () => {
+    expect(() => findLastCheckConstraintValues("tasks_nonexistent_xyz_check")).toThrow();
   });
 });

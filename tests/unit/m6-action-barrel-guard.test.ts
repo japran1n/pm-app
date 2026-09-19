@@ -12,6 +12,8 @@ function isTestFile(filePath: string): boolean {
   return /\.(test|spec)\.(ts|tsx)$/.test(filePath);
 }
 
+const SCAN_DIRS = ["app", "components", "lib"];
+
 function collectFiles(dir: string, out: string[] = []): string[] {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
   for (const entry of entries) {
@@ -25,38 +27,132 @@ function collectFiles(dir: string, out: string[] = []): string[] {
   return out;
 }
 
+// Only scan app/, components/, lib/ — test helpers, scripts, missions docs,
+// and the extension package must never count as a "real reference".
+function collectScannableFiles(root: string): string[] {
+  const out: string[] = [];
+  for (const dirName of SCAN_DIRS) {
+    const dirPath = path.join(root, dirName);
+    if (fs.existsSync(dirPath)) {
+      collectFiles(dirPath, out);
+    }
+  }
+  return out;
+}
+
+/**
+ * Single left-to-right scan that tracks comment/string context together,
+ * rather than stripping comments and strings with independent regexes.
+ * Two independent-regex approaches are both unsound on real source:
+ *
+ * - Stripping `//...` comments before scanning strings mis-parses a URL
+ *   inside a string literal (e.g. `useState("https://example.com")`): the
+ *   `//` is treated as a comment start, truncating the string and eating its
+ *   closing quote, which corrupts all subsequent quote pairing in the file.
+ * - Stripping each quote type independently mis-parses a contraction like
+ *   "don't" inside a double-quoted string: the lone apostrophe is treated as
+ *   opening a single-quoted string that only closes at some unrelated
+ *   apostrophe far later in the file.
+ *
+ * `keepStrings` controls whether string literal contents (including the
+ * quotes) are preserved in the output — needed when the caller still wants
+ * to read a quoted module specifier (e.g. barrel export parsing) — or
+ * dropped entirely, which is what real call-site/import detection wants.
+ */
+function scanSource(src: string, keepStrings: boolean): string {
+  let out = "";
+  let quote: "'" | '"' | "`" | null = null;
+  let inLineComment = false;
+  let inBlockComment = false;
+
+  for (let i = 0; i < src.length; i++) {
+    const ch = src[i];
+    const next = src[i + 1];
+
+    if (inLineComment) {
+      if (ch === "\n") {
+        inLineComment = false;
+        out += ch;
+      }
+      continue;
+    }
+
+    if (inBlockComment) {
+      if (ch === "*" && next === "/") {
+        inBlockComment = false;
+        i++;
+      }
+      continue;
+    }
+
+    if (quote) {
+      if (keepStrings) out += ch;
+      if (ch === "\\") {
+        if (keepStrings) out += next ?? "";
+        i++; // skip escaped char
+        continue;
+      }
+      if (ch === quote) {
+        quote = null;
+      }
+      continue;
+    }
+
+    // Not in a comment or string: comment/string starts take priority over
+    // treating '/' as division.
+    if (ch === "/" && next === "/") {
+      inLineComment = true;
+      i++;
+      continue;
+    }
+    if (ch === "/" && next === "*") {
+      inBlockComment = true;
+      i++;
+      continue;
+    }
+    if (ch === "'" || ch === '"' || ch === "`") {
+      quote = ch;
+      if (keepStrings) out += ch;
+      continue;
+    }
+
+    out += ch;
+  }
+  return out;
+}
+
 function stripComments(src: string): string {
-  // Strip block comments /* ... */
-  src = src.replace(/\/\*[\s\S]*?\*\//g, " ");
-  // Strip line comments // ...
-  src = src.replace(/\/\/[^\n]*/g, " ");
-  return src;
+  return scanSource(src, true);
 }
 
 function stripCommentsAndStrings(src: string): string {
-  src = stripComments(src);
-  // Strip string literals (simple approximation — single, double, template)
-  src = src.replace(/'(?:[^'\\]|\\.)*'/g, "''");
-  src = src.replace(/"(?:[^"\\]|\\.)*"/g, '""');
-  src = src.replace(/`(?:[^`\\]|\\.)*`/g, "``");
-  return src;
+  return scanSource(src, false);
 }
 
 function parseBarrelExports(source: string): string[] {
-  if (/export\s*\*/.test(stripCommentsAndStrings(source))) {
-    expect.fail("barrel uses export * — guard cannot enumerate actions");
+  const stripped = stripCommentsAndStrings(source);
+
+  for (const line of stripped.split("\n")) {
+    if (/export\s*\*/.test(line) || /export\s+default/.test(line)) {
+      expect.fail(
+        `barrel uses export* or export default — guard cannot enumerate actions: ${line.trim()}`,
+      );
+    }
+    if (/export\s*\{[^}]+\}(?!\s*from)/.test(line)) {
+      expect.fail(
+        `barrel has an export without a "from" clause — guard cannot enumerate actions: ${line.trim()}`,
+      );
+    }
   }
 
   const names: string[] = [];
-  // Match `export { a, b, c } from "..."` blocks (value exports, not `export type { ... }`)
+  // Match `export { a, b, c } from "..."` blocks (value exports, not `export type { ... }`).
+  // Comments are stripped (so a commented-out export doesn't count) but string
+  // literals (the module specifier) are preserved so the "from" clause still matches.
+  const commentsOnly = stripComments(source);
   const exportBlockRegex = /export\s*\{([^}]*)\}\s*from\s*["'][^"']+["'];?/g;
   let match: RegExpExecArray | null;
-  while ((match = exportBlockRegex.exec(source)) !== null) {
-    // Skip if this is actually preceded by "export type" (check the block start)
-    const fullMatchStart = match.index;
-    const precedingText = source.slice(Math.max(0, fullMatchStart - 6), fullMatchStart);
-    if (/type\s*$/.test(precedingText)) continue;
-
+  while ((match = exportBlockRegex.exec(commentsOnly)) !== null) {
     const inner = match[1];
     const identifiers = inner
       .split(",")
