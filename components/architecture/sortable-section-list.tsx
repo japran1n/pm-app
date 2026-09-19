@@ -68,6 +68,7 @@ export function SortableSectionList({
             section={section}
             components={components}
             onComponentClick={onComponentClick}
+            detailsData={detailsData}
           />
         ))}
       </div>
