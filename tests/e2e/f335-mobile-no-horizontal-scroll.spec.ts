@@ -405,6 +405,7 @@ test.describe("AS-517: no primary view scrolls horizontally on a phone", () => {
       { label: "dashboard", path: `/w/${workspaceSlug}` },
       { label: "projects", path: `/w/${workspaceSlug}/projects` },
       { label: "board", path: `/w/${workspaceSlug}/projects/${projectId}/board` },
+      { label: "architecture", path: `/w/${workspaceSlug}/projects/${projectId}/architecture` },
       { label: "list", path: `/w/${workspaceSlug}/projects/${projectId}/list` },
       { label: "my-tasks", path: `/w/${workspaceSlug}/my-tasks` },
       { label: "calendar", path: `/w/${workspaceSlug}/calendar` },
@@ -448,6 +449,42 @@ test.describe("AS-517: no primary view scrolls horizontally on a phone", () => {
     ).toBeVisible();
 
     await assertNoHorizontalPageScroll(page, "dashboard with mobile nav open");
+  });
+
+  // AS-065 (F072): EstimateSummary only mounts once the architecture
+  // view's details toggle is switched on -- it's absent from the DOM on
+  // first load, so the plain route visit above never actually renders its
+  // five-column layout. This case opens that toggle explicitly and
+  // re-measures scrollWidth <= innerWidth with EstimateSummary visible,
+  // proving the five-column summary table doesn't force page-level
+  // horizontal scroll on a 375px viewport.
+  test("architecture estimate summary (details toggle open) does not cause page-level horizontal scroll", async ({
+    page,
+    baseURL,
+  }) => {
+    test.setTimeout(60_000);
+    await page.setViewportSize({ width: 375, height: 812 });
+    await login(page, baseURL!);
+
+    const architecturePath = `/w/${workspaceSlug}/projects/${projectId}/architecture`;
+    await page.goto(`${baseURL}${architecturePath}`);
+    await page.waitForURL(`**${architecturePath}**`, { timeout: 15_000 });
+
+    const detailsToggle = page.getByTitle("Show estimates & copy brief");
+    await expect(detailsToggle).toBeVisible();
+    await detailsToggle.click();
+
+    // Wait for the summary table to actually mount before measuring --
+    // the toggle fetches details data first, so give it a moment.
+    await page
+      .getByTitle("Hide details")
+      .waitFor({ state: "visible", timeout: 10_000 })
+      .catch(() => {});
+
+    await assertNoHorizontalPageScroll(
+      page,
+      "architecture with estimate summary details open",
+    );
   });
 
   // P2-39: extend the scroll guard to portal routes. Uses a CLIENT session
