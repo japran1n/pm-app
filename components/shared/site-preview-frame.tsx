@@ -43,7 +43,7 @@
 // adding `allow-same-origin` back.
 
 import { useEffect, useRef, useState } from "react"
-import { RotateCw } from "lucide-react"
+import { ArrowLeft, RotateCw } from "lucide-react"
 
 import type { ProjectLink } from "@/lib/queries/project-site"
 import { Badge } from "@/components/ui/badge"
@@ -88,6 +88,14 @@ function hostnameOf(url: string): string {
   }
 }
 
+function pathnameOf(url: string): string {
+  try {
+    return new URL(url).pathname || "/"
+  } catch {
+    return url
+  }
+}
+
 export function SitePreviewFrame({
   links,
   projectId,
@@ -101,17 +109,34 @@ export function SitePreviewFrame({
   const [state, setState] = useState<LoadState>({ status: "loading" })
   const iframeRef = useRef<HTMLIFrameElement>(null)
 
+  // SP-070…SP-074 — internal navigation inside srcdoc mode. `currentUrl`
+  // starts as the selected link and moves forward on same-host link clicks;
+  // `history` is the back stack of previously-visited URLs in this session.
+  const [currentUrl, setCurrentUrl] = useState<string | undefined>(selectedLink?.url)
+  const [history, setHistory] = useState<string[]>([])
+
+  // Selecting a different link resets navigation state — the back stack and
+  // current path belong to the previously selected site, not this one.
+  // Adjusting state during render (rather than in an effect) avoids the
+  // extra render-then-effect-then-render cascade for this derived reset.
+  const lastSelectedIdRef = useRef(selectedLink?.id)
+  if (lastSelectedIdRef.current !== selectedLink?.id) {
+    lastSelectedIdRef.current = selectedLink?.id
+    setCurrentUrl(selectedLink?.url)
+    setHistory([])
+  }
+
   useEffect(() => {
-    if (!selectedLink) return
+    if (!selectedLink || !currentUrl) return
 
     let cancelled = false
 
     async function load() {
-      if (!selectedLink) return
+      if (!selectedLink || !currentUrl) return
       setState({ status: "loading" })
       try {
         const probeRes = await fetch(
-          `/api/site-preview/probe?url=${encodeURIComponent(selectedLink.url)}&projectId=${encodeURIComponent(projectId)}`,
+          `/api/site-preview/probe?url=${encodeURIComponent(currentUrl)}&projectId=${encodeURIComponent(projectId)}`,
         )
         const probe = (await probeRes.json()) as {
           embeddable?: boolean
@@ -130,7 +155,7 @@ export function SitePreviewFrame({
         // branch as embeddable: true.
         if (probe.embeddable === false) {
           const htmlRes = await fetch(
-            `/api/site-preview/html?url=${encodeURIComponent(selectedLink.url)}&projectId=${encodeURIComponent(projectId)}`,
+            `/api/site-preview/html?url=${encodeURIComponent(currentUrl)}&projectId=${encodeURIComponent(projectId)}`,
           )
           if (cancelled) return
           if (!htmlRes.ok) {
@@ -160,8 +185,62 @@ export function SitePreviewFrame({
       cancelled = true
     }
     // reloadKey deliberately re-runs the whole load (including the srcdoc
-    // re-fetch) on manual reload — SP-022.
-  }, [selectedLink, projectId, reloadKey])
+    // re-fetch) on manual reload — SP-022. currentUrl re-runs it on
+    // in-frame navigation (SP-070).
+  }, [selectedLink, currentUrl, projectId, reloadKey])
+
+  // SP-070/SP-071 — handle a navigation request coming from inside the
+  // proxied frame (see NAV_INTERCEPTOR_SCRIPT in lib/site-preview/inject.ts).
+  function handleNavigate(next: string, options: { pushHistory: boolean }) {
+    if (!currentUrl) return
+    let nextUrl: URL
+    let curUrl: URL
+    try {
+      nextUrl = new URL(next)
+      curUrl = new URL(currentUrl)
+    } catch {
+      return
+    }
+
+    if (nextUrl.host !== curUrl.host) {
+      // Different host: never change the frame, open a new tab instead
+      // (SP-071).
+      window.open(next, "_blank", "noopener,noreferrer")
+      return
+    }
+
+    if (options.pushHistory) {
+      setHistory((prev) => [...prev, currentUrl])
+    }
+    setCurrentUrl(next)
+  }
+
+  useEffect(() => {
+    function onMessage(e: MessageEvent) {
+      // The frame is in an opaque origin, so e.origin is "null" — we cannot
+      // check origin. Instead we verify the message comes from OUR frame
+      // (e.source === iframeRef.current?.contentWindow) and that the
+      // payload has exactly the expected shape. Without these two checks
+      // any tab could send us a navigation.
+      if (e.source !== iframeRef.current?.contentWindow) return
+      const next = (e.data as { __sitePreviewNav?: unknown } | null)?.__sitePreviewNav
+      if (typeof next !== "string") return
+      handleNavigate(next, { pushHistory: true })
+    }
+    window.addEventListener("message", onMessage)
+    return () => window.removeEventListener("message", onMessage)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUrl])
+
+  function handleBack() {
+    setHistory((prev) => {
+      if (prev.length === 0) return prev
+      const next = [...prev]
+      const target = next.pop() as string
+      setCurrentUrl(target)
+      return next
+    })
+  }
 
   if (links.length === 0) {
     return (
@@ -197,9 +276,25 @@ export function SitePreviewFrame({
           </Select>
         )}
 
+        {mode === "srcdoc" && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Nazad"
+            disabled={history.length === 0}
+            onClick={handleBack}
+          >
+            <ArrowLeft />
+          </Button>
+        )}
+
         {selectedLink && (
           <span className="font-mono text-sm text-muted-foreground">
             {hostnameOf(selectedLink.url)}
+            {mode === "srcdoc" && currentUrl && (
+              <span>{pathnameOf(currentUrl)}</span>
+            )}
           </span>
         )}
 
@@ -241,7 +336,7 @@ export function SitePreviewFrame({
 
         {selectedLink && (
           <a
-            href={selectedLink.url}
+            href={currentUrl ?? selectedLink.url}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex h-[34px] items-center rounded-md border border-border bg-secondary px-3 text-sm font-medium text-secondary-foreground transition-colors duration-200 hover:bg-accent hover:border-border-control-hover"
@@ -265,7 +360,7 @@ export function SitePreviewFrame({
               <p className="max-w-sm text-sm text-muted-foreground">{state.message}</p>
               {selectedLink && (
                 <a
-                  href={selectedLink.url}
+                  href={currentUrl ?? selectedLink.url}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex h-[34px] items-center rounded-md border border-border bg-transparent px-3 text-sm font-medium text-foreground transition-colors duration-200 hover:bg-accent hover:border-border-control-hover"
