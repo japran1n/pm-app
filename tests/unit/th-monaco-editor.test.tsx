@@ -18,18 +18,48 @@ import type { StyleBlock, ScriptBlock } from "@/lib/code-editor/extract";
 const mockInit = vi.fn();
 const mockConfig = vi.fn();
 
+// Minimal stand-in for the Monaco editor instance + `monaco` namespace
+// passed into `onMount`, capturing whatever command `editor.addCommand`
+// registers so tests can invoke it directly (simulating Ctrl+S).
+const mockAddCommand = vi.fn();
+let capturedSaveCommand: (() => void | Promise<void>) | null = null;
+let editorValue = "";
+
 vi.mock("@monaco-editor/react", () => {
   return {
     __esModule: true,
-    default: (props: any) => (
-      <div data-testid="monaco-editor" data-language={props.language} data-theme={props.theme}>
-        <textarea
-          aria-label="monaco-value"
-          value={props.value}
-          onChange={(e) => props.onChange?.(e.target.value)}
-        />
-      </div>
-    ),
+    default: (props: any) => {
+      editorValue = props.value ?? "";
+      const editorStub = {
+        getValue: () => editorValue,
+        setValue: (v: string) => {
+          editorValue = v;
+        },
+        addCommand: (_keybinding: number, handler: () => void | Promise<void>) => {
+          mockAddCommand(_keybinding, handler);
+          capturedSaveCommand = handler;
+        },
+      };
+      const monacoStub = {
+        KeyMod: { CtrlCmd: 2048 },
+        KeyCode: { KeyS: 49 },
+      };
+      // Fire onMount synchronously on first render, same as the real
+      // package invoking it once the editor instance is ready.
+      props.onMount?.(editorStub, monacoStub);
+      return (
+        <div data-testid="monaco-editor" data-language={props.language} data-theme={props.theme}>
+          <textarea
+            aria-label="monaco-value"
+            value={props.value}
+            onChange={(e) => {
+              editorValue = e.target.value;
+              props.onChange?.(e.target.value);
+            }}
+          />
+        </div>
+      );
+    },
     loader: {
       config: (...args: unknown[]) => mockConfig(...args),
       init: (...args: unknown[]) => mockInit(...args),
@@ -79,11 +109,19 @@ function scriptBlock(overrides: Partial<ScriptBlock> = {}): ScriptBlock {
   };
 }
 
+const { formatCodeMock } = vi.hoisted(() => ({ formatCodeMock: vi.fn() }));
+vi.mock("@/lib/code-editor/format", () => ({
+  formatCode: (...args: unknown[]) => formatCodeMock(...args),
+}));
+
 beforeEach(() => {
   vi.clearAllMocks();
   mockInit.mockReturnValue(
     Object.assign(Promise.resolve({}), { cancel: vi.fn() }),
   );
+  capturedSaveCommand = null;
+  editorValue = "";
+  formatCodeMock.mockImplementation((code: string) => Promise.resolve(code));
 });
 
 afterEach(() => {
@@ -199,5 +237,78 @@ describe("EditorPane", () => {
     const textarea = screen.getByLabelText("monaco-value") as HTMLTextAreaElement;
     expect(textarea.value).toBe("");
     expect(screen.getByTestId("monaco-editor")).toBeInTheDocument();
+  });
+
+  test("TH-181: Ctrl+S registers a save command that formats content and reports it via onChange", async () => {
+    formatCodeMock.mockResolvedValue(".a { color: red; }");
+    const onChange = vi.fn();
+    render(
+      <EditorPane file={styleBlock({ content: ".a{color:red}" })} onChange={onChange} />,
+    );
+
+    expect(capturedSaveCommand).toBeInstanceOf(Function);
+    await capturedSaveCommand!();
+
+    expect(formatCodeMock).toHaveBeenCalledWith(".a{color:red}", "css");
+    expect(onChange).toHaveBeenCalledWith(".a { color: red; }");
+  });
+
+  test("TH-181: Ctrl+S calls onSave after the save completes", async () => {
+    formatCodeMock.mockResolvedValue("console.log(1);");
+    const onSave = vi.fn();
+    render(
+      <EditorPane
+        file={scriptBlock({ content: "console.log(1)" })}
+        onChange={() => {}}
+        onSave={onSave}
+      />,
+    );
+
+    await capturedSaveCommand!();
+
+    expect(formatCodeMock).toHaveBeenCalledWith("console.log(1)", "javascript");
+    expect(onSave).toHaveBeenCalledTimes(1);
+  });
+
+  test("TH-182: an unsaved change is indicated in the editor header when isDirty is true", () => {
+    render(
+      <EditorPane file={styleBlock()} onChange={() => {}} isDirty />,
+    );
+    expect(screen.getByTestId("editor-dirty-indicator")).toHaveTextContent("•");
+  });
+
+  test("TH-182: no dirty indicator is shown when isDirty is false (default)", () => {
+    render(<EditorPane file={styleBlock()} onChange={() => {}} />);
+    expect(screen.getByTestId("editor-dirty-indicator")).toHaveTextContent("");
+  });
+
+  test("TH-183: the unsaved indicator clears after a save (parent flips isDirty to false via onSave)", async () => {
+    formatCodeMock.mockResolvedValue(".a{color:red}");
+    const onSave = vi.fn();
+    const { rerender } = render(
+      <EditorPane
+        file={styleBlock({ content: ".a{color:red}" })}
+        onChange={() => {}}
+        onSave={onSave}
+        isDirty
+      />,
+    );
+    expect(screen.getByTestId("editor-dirty-indicator")).toHaveTextContent("•");
+
+    await capturedSaveCommand!();
+    expect(onSave).toHaveBeenCalledTimes(1);
+
+    // Parent reacts to onSave by clearing dirty state (see
+    // lib/code-editor/use-dirty-state.ts markClean) and re-renders with
+    // isDirty=false.
+    rerender(
+      <EditorPane
+        file={styleBlock({ content: ".a{color:red}" })}
+        onChange={() => {}}
+        onSave={onSave}
+        isDirty={false}
+      />,
+    );
+    expect(screen.getByTestId("editor-dirty-indicator")).toHaveTextContent("");
   });
 });

@@ -29,6 +29,15 @@ export interface EditorPaneProps {
   file: Block;
   onChange: (content: string) => void;
   corpus?: Corpus;
+  /** Whether the current file has unsaved edits (TH-182). Shown as a `•`
+   * prefix in the pane's title bar. Owned by the parent (see
+   * `lib/code-editor/use-dirty-state.ts`) since dirtiness is tracked per
+   * block index across the whole multi-file editor, not just this pane. */
+  isDirty?: boolean;
+  /** Called after Ctrl+S/Cmd+S finishes formatting and applying the saved
+   * content (TH-181, TH-183) -- the parent uses this to call
+   * `markClean(index)`. */
+  onSave?: () => void;
 }
 
 function languageForBlock(file: Block): "css" | "javascript" {
@@ -40,7 +49,13 @@ function languageForBlock(file: Block): "css" | "javascript" {
  * block's content, reporting edits via `onChange`. Language mode follows
  * the block type; theme follows the app's light/dark ThemeProvider state.
  */
-export function EditorPane({ file, onChange, corpus: _corpus }: EditorPaneProps) {
+export function EditorPane({
+  file,
+  onChange,
+  corpus: _corpus,
+  isDirty = false,
+  onSave,
+}: EditorPaneProps) {
   const { resolvedTheme } = useTheme();
   const [loadError, setLoadError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
@@ -48,6 +63,17 @@ export function EditorPane({ file, onChange, corpus: _corpus }: EditorPaneProps)
 
   const language = useMemo(() => languageForBlock(file), [file]);
   const monacoTheme = resolvedTheme === "dark" ? "vs-dark" : "light";
+
+  // The Ctrl+S command is registered once, in `onMount`, but must always
+  // act on the *current* language/onChange/onSave -- keep them in refs so
+  // the command closure never goes stale across re-renders (e.g. switching
+  // the selected block without remounting Monaco).
+  const languageRef = useRef(language);
+  languageRef.current = language;
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const onSaveRef = useRef(onSave);
+  onSaveRef.current = onSave;
 
   // Guard against a failed Monaco load (e.g. the locally-configured runtime
   // fails to initialize) so the user sees a retry option instead of a
@@ -79,6 +105,22 @@ export function EditorPane({ file, onChange, corpus: _corpus }: EditorPaneProps)
     [onChange],
   );
 
+  // TH-181/TH-183 — Ctrl+S/Cmd+S formats the current content through
+  // Prettier (F056), applies the formatted result back into the editor and
+  // reports it via `onChange`, then calls `onSave` so the parent can clear
+  // the dirty flag for this block.
+  const handleMount: OnMount = useCallback((editor, monaco) => {
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, async () => {
+      const current = editor.getValue();
+      const formatted = await formatCode(current, languageRef.current);
+      if (formatted !== current) {
+        editor.setValue(formatted);
+      }
+      onChangeRef.current(formatted);
+      onSaveRef.current?.();
+    });
+  }, []);
+
   const handleRetry = useCallback(() => {
     setLoadError(null);
     setRetryKey((k) => k + 1);
@@ -106,7 +148,11 @@ export function EditorPane({ file, onChange, corpus: _corpus }: EditorPaneProps)
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-end gap-2 p-2">
+      <div className="flex items-center justify-between gap-2 p-2">
+        <span data-testid="editor-dirty-indicator" className="text-xs">
+          {isDirty ? "•" : ""}
+        </span>
+        <div className="flex items-center gap-2">
         <button type="button" onClick={handleCopy}>
           Copy
         </button>
@@ -120,6 +166,7 @@ export function EditorPane({ file, onChange, corpus: _corpus }: EditorPaneProps)
             Copy failed
           </span>
         )}
+        </div>
       </div>
       <Editor
         key={retryKey}
@@ -127,6 +174,7 @@ export function EditorPane({ file, onChange, corpus: _corpus }: EditorPaneProps)
         theme={monacoTheme}
         value={file.content}
         onChange={handleChange}
+        onMount={handleMount}
         onValidate={() => {}}
         loading={<div>Loading editor…</div>}
       />
