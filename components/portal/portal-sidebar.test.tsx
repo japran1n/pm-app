@@ -415,4 +415,27 @@ describe("PortalSidebar (F008)", () => {
     );
     expect(html).toContain(">Preview<");
   });
+
+  // F07 (missions/20260919-staging-preview, SP-052): the rendered sidebar
+  // markup -- not just the `buildPortalProjectNavItems` array -- must put
+  // "Preview" after "Site map" and before "Your site".
+  it("test_SP_052_preview_row_renders_between_site_map_and_your_site", () => {
+    mockPathname = "/portal/acme/p/proj-1/pages";
+    const html = renderToStaticMarkup(
+      createElement(PortalSidebar, { ...baseProps, hasStagingPreview: true }),
+    );
+    const anchors = anchorTags(html);
+    const hrefIndex = (href: string) =>
+      anchors.findIndex((tag) => tag.includes(`href="${href}"`));
+
+    const architectureIndex = hrefIndex("/portal/acme/p/proj-1/architecture");
+    const stagingIndex = hrefIndex("/portal/acme/p/proj-1/staging");
+    const siteIndex = hrefIndex("/portal/acme/p/proj-1/site");
+
+    expect(architectureIndex).toBeGreaterThan(-1);
+    expect(stagingIndex).toBeGreaterThan(-1);
+    expect(siteIndex).toBeGreaterThan(-1);
+    expect(architectureIndex).toBeLessThan(stagingIndex);
+    expect(stagingIndex).toBeLessThan(siteIndex);
+  });
 });
