@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 
 import { setDisciplineEstimate, clearDisciplineEstimate } from "@/lib/actions/architecture";
-import { parseEstimateInput } from "@/lib/validation/architecture";
+import { parseEstimateInput, NOTE_MAX_LENGTH } from "@/lib/validation/architecture";
 import type { DisciplineEstimate, WorkCategory } from "@/lib/architecture/types";
 import { WORK_CATEGORIES } from "@/lib/architecture/types";
 import { Input } from "@/components/ui/input";
@@ -53,6 +53,17 @@ export function DisciplineEstimatePopover({
     }
     return init;
   });
+  // AS-070/AS-071: one note per discipline, seeded from the estimate's
+  // persisted `note` column so a previously saved note reads back after the
+  // popover is reopened/refreshed. AS-072: a discipline with no note simply
+  // has no key here -- optional, not required.
+  const [notes, setNotes] = useState<Partial<Record<WorkCategory, string>>>(() => {
+    const init: Partial<Record<WorkCategory, string>> = {};
+    for (const e of estimates) {
+      if (e.note) init[e.discipline] = e.note;
+    }
+    return init;
+  });
   const [errors, setErrors] = useState<Partial<Record<WorkCategory, string>>>({});
   const [isPending, startTransition] = useTransition();
 
@@ -74,6 +85,13 @@ export function DisciplineEstimatePopover({
       const input = inputs[d]?.trim() ?? "";
       if (input && parseEstimateInput(input) === null) {
         newErrors[d] = 'Use "2h 30m", "90m", or "1.5h"';
+        continue;
+      }
+      const note = notes[d]?.trim() ?? "";
+      if (note.length > NOTE_MAX_LENGTH) {
+        newErrors[d] = `Note is ${note.length - NOTE_MAX_LENGTH} character${
+          note.length - NOTE_MAX_LENGTH === 1 ? "" : "s"
+        } over the ${NOTE_MAX_LENGTH}-character limit.`;
       }
     }
     setErrors(newErrors);
@@ -85,12 +103,13 @@ export function DisciplineEstimatePopover({
     startTransition(async () => {
       for (const d of WORK_CATEGORIES) {
         const input = inputs[d]?.trim() ?? "";
+        const note = notes[d]?.trim() ?? "";
         try {
           const result = !input
             ? estimateByDiscipline.has(d)
               ? await clearDisciplineEstimate(taskId, d)
               : null
-            : await setDisciplineEstimate(taskId, d, input);
+            : await setDisciplineEstimate(taskId, d, input, note || undefined);
 
           // Abort on the first failure rather than pressing on: the
           // remaining writes would likely fail the same way, and closing the
@@ -168,6 +187,18 @@ export function DisciplineEstimatePopover({
                 </Button>
               )}
             </div>
+            <Input
+              className="ml-[120px] h-6 w-[calc(100%-120px)] text-xs"
+              placeholder="Note (optional)"
+              maxLength={NOTE_MAX_LENGTH}
+              aria-label={`${DISCIPLINE_LABELS[d]} note`}
+              value={notes[d] ?? ""}
+              disabled={isPending}
+              onChange={(e) => {
+                setNotes((prev) => ({ ...prev, [d]: e.target.value }));
+                setErrors((prev) => ({ ...prev, [d]: undefined }));
+              }}
+            />
             {errors[d] && (
               <p className="pl-[120px] text-xs text-destructive">{errors[d]}</p>
             )}

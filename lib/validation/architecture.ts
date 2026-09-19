@@ -87,17 +87,34 @@ export const estimateInputSchema = z.string().min(1).max(50);
 
 export const estimateMinutesSchema = z.number().int().min(1, "Estimate must be at least 1 minute");
 
+// Discipline estimate note: capped at 200 characters (AS-073). The error
+// message reports exactly how many characters over the limit the input is,
+// so it can be shown inline in the estimate popover without further
+// formatting by the caller.
+export const NOTE_MAX_LENGTH = 200;
+
+export const disciplineEstimateNoteSchema = z
+  .string()
+  .optional()
+  .refine((value) => !value || value.length <= NOTE_MAX_LENGTH, {
+    error: (issue) => {
+      const value = issue.input as string | undefined;
+      const over = (value?.length ?? 0) - NOTE_MAX_LENGTH;
+      return `Note is ${over} character${over === 1 ? "" : "s"} over the ${NOTE_MAX_LENGTH}-character limit.`;
+    },
+  });
+
 export const setDisciplineEstimateSchema = z.object({
   taskId: z.string().uuid(),
   discipline: workCategorySchema,
   input: estimateInputSchema,
-  note: z.string().max(500).optional(),
+  note: disciplineEstimateNoteSchema,
 });
 
 export const disciplineEstimateEntrySchema = z.object({
   discipline: workCategorySchema,
   input: estimateInputSchema,
-  note: z.string().max(500).optional(),
+  note: disciplineEstimateNoteSchema,
 });
 
 export const setDisciplineEstimatesBulkSchema = z.object({
