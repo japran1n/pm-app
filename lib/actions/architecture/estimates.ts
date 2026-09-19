@@ -54,6 +54,13 @@ async function loadTaskForEstimate(
   return { projectId: taskRow.project_id as string, workspaceId };
 }
 
+// NOTE (F023 / AS-082): `setDisciplineEstimatesBulk` is now the primary action
+// used by the discipline-estimate popover for multi-discipline edits. These
+// singular actions (`setDisciplineEstimate`, `clearDisciplineEstimate`) are
+// NOT deprecated — they are kept intentionally as a supported single-discipline
+// API surface for future callers (e.g. programmatic/API-driven updates or UI
+// contexts that only ever touch one discipline at a time). Do not remove
+// without re-checking for external callers first.
 export async function setDisciplineEstimate(
   taskId: string,
   discipline: string,
