@@ -6,6 +6,7 @@
 // "meta does not exist" state.
 
 import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 
@@ -84,6 +85,107 @@ describe("F025 SectionCard NodeMetaDialog icon", () => {
     const icon = document.querySelector("[data-node-meta-icon-state]");
     expect(icon).toHaveAttribute("data-node-meta-icon-state", "empty");
     expect(icon).toHaveAttribute("fill", "none");
+  });
+
+  it("AS-089: the copy-brief trigger stays mounted while detailsData is briefly null (invalidation/refetch cycle)", () => {
+    // F105: `onDetailsInvalidate` (called after NodeMetaDialog saves) sets
+    // the board's `detailsData` to `null` while it refetches. Gating the
+    // trigger on `detailsData !== null` unmounted the button for that
+    // instant, dumping keyboard focus to <body> and re-mounting a fresh,
+    // unfocused button once the refetch resolved. The trigger must remain
+    // mounted through the null interval -- it should only be withheld when
+    // details have truly never been fetched (`undefined`).
+    const { rerender } = render(
+      <SectionCard
+        section={makeSection({})}
+        detailsData={new Map()}
+        onDetailsInvalidate={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: /copy brief/i })).toBeInTheDocument();
+
+    rerender(
+      <SectionCard
+        section={makeSection({})}
+        detailsData={null}
+        onDetailsInvalidate={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: /copy brief/i }),
+    ).toBeInTheDocument();
+
+    rerender(
+      <SectionCard
+        section={makeSection({})}
+        detailsData={new Map()}
+        onDetailsInvalidate={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: /copy brief/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("AS-089: Enter activates the copy-brief trigger, opening the dialog", async () => {
+    const user = userEvent.setup();
+    render(
+      <SectionCard
+        section={makeSection({})}
+        detailsData={new Map()}
+        onDetailsInvalidate={vi.fn()}
+      />,
+    );
+
+    const trigger = screen.getByRole("button", { name: /copy brief/i });
+    trigger.focus();
+    expect(trigger).toHaveFocus();
+
+    await user.keyboard("{Enter}");
+
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("AS-089: Space activates the copy-brief trigger, opening the dialog", async () => {
+    const user = userEvent.setup();
+    render(
+      <SectionCard
+        section={makeSection({})}
+        detailsData={new Map()}
+        onDetailsInvalidate={vi.fn()}
+      />,
+    );
+
+    const trigger = screen.getByRole("button", { name: /copy brief/i });
+    trigger.focus();
+    expect(trigger).toHaveFocus();
+
+    await user.keyboard(" ");
+
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("AS-089: focus returns to the copy-brief trigger after the dialog closes", async () => {
+    const user = userEvent.setup();
+    render(
+      <SectionCard
+        section={makeSection({})}
+        detailsData={new Map()}
+        onDetailsInvalidate={vi.fn()}
+      />,
+    );
+
+    const trigger = screen.getByRole("button", { name: /copy brief/i });
+    await user.click(trigger);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /copy brief/i })).toHaveFocus();
   });
 
   it("AS-090: shows the full-state icon when the section's meta has content", () => {

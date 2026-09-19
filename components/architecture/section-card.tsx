@@ -271,7 +271,17 @@ export function SectionCard({
           )}
         </div>
         {section.kind === "cms" && <CmsSectionBadge />}
-        {detailsData !== null && detailsData !== undefined && (
+        {/* F105 (AS-089): gate on `!== undefined` only, not `!== null`. When
+            NodeMetaDialog saves it calls `onDetailsInvalidate`, which sets
+            `detailsData` to `null` while the board refetches -- gating on
+            "not null" unmounted this button for that instant, dumping
+            keyboard focus to <body> and remounting a fresh (unfocused)
+            button once the refetch resolved. Gating on "not undefined"
+            keeps the button mounted through that null interval; it is
+            withheld only when the details fetch has genuinely never run
+            (the true "unknown" state), matching the original intent of
+            F025's comment above without unmounting on every save. */}
+        {detailsData !== undefined && (
           <>
             <button
               type="button"
