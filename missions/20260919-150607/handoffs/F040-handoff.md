@@ -125,6 +125,69 @@ AssertionError: The following architecture action(s) exported from lib/actions/a
 ```
 Revert confirmed: `git checkout -- components/architecture/section-card-menu.tsx` then `git diff components/architecture/section-card-menu.tsx` = (empty)
 
+## Mutation proof 2 — Action barrel guard (AS-133) — UPDATED
+File mutated: `components/architecture/section-card-menu.tsx`
+Change: removed import + call of changeSectionKind; left comment mentioning it
+Comment left: `// previously used changeSectionKind here`
+
+Context: F107 fixed `tests/unit/m6-action-barrel-guard.test.ts` to strip comments before scanning, so a stale comment mentioning an action name no longer counts as a real reference. This proof re-demonstrates AS-133 against that updated guard: the import line for `changeSectionKind` and its call-expression line were removed from `components/architecture/section-card-menu.tsx`, replaced with a stub result object, while a comment (`// previously used changeSectionKind here`) mentioning the identifier was deliberately left in place. The guard correctly ignores the comment and still fails, proving it scans real code references, not comment text.
+
+vitest output (must show FAIL):
+```
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+  - ESM syntax in a file loaded as CommonJS (tests/realtime-live-delivery-tests.ts:18:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v4.1.11 /Users/sasajapranin/Desktop/pm-app
+
+ ✓ tests/unit/m6-action-barrel-guard.test.ts > AS-130: architecture action barrel guard > parses the expected number of exported actions from the barrel 1ms
+ × tests/unit/m6-action-barrel-guard.test.ts > AS-130: architecture action barrel guard > every exported architecture action has at least one real import/call reference outside the barrel, leaf modules, and tests 84ms
+   → The following architecture action(s) exported from lib/actions/architecture.ts have no real import/call reference outside the barrel, leaf modules (lib/actions/architecture/), and test files: changeSectionKind: expected [ 'changeSectionKind' ] to deeply equal []
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/unit/m6-action-barrel-guard.test.ts > AS-130: architecture action barrel guard > every exported architecture action has at least one real import/call reference outside the barrel, leaf modules, and tests
+AssertionError: The following architecture action(s) exported from lib/actions/architecture.ts have no real import/call reference outside the barrel, leaf modules (lib/actions/architecture/), and test files: changeSectionKind: expected [ 'changeSectionKind' ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "changeSectionKind",
++ ]
+
+ ❯ tests/unit/m6-action-barrel-guard.test.ts:161:7
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 1 passed (2)
+   Start at  01:11:23
+   Duration  225ms (transform 24ms, setup 48ms, import 9ms, tests 85ms, environment 0ms)
+```
+
+Revert confirmed: `git checkout -- components/architecture/section-card-menu.tsx` then `git diff components/architecture/section-card-menu.tsx` = (empty)
+
+Final green run:
+```
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+  - ESM syntax in a file loaded as CommonJS (tests/realtime-live-delivery-tests.ts:18:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v4.1.11 /Users/sasajapranin/Desktop/pm-app
+
+ ✓ tests/unit/m6-action-barrel-guard.test.ts > AS-130: architecture action barrel guard > parses the expected number of exported actions from the barrel 1ms
+ ✓ tests/unit/m6-action-barrel-guard.test.ts > AS-130: architecture action barrel guard > every exported architecture action has at least one real import/call reference outside the barrel, leaf modules, and tests 77ms
+
+ Test Files  1 passed (1)
+      Tests  2 passed (2)
+   Start at  01:11:28
+   Duration  214ms (transform 25ms, setup 50ms, import 8ms, tests 78ms, environment 0ms)
+```
+
 ## Final green run
 ```
 (!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
