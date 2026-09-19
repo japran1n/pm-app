@@ -38,6 +38,10 @@ export interface UseBlocksResult {
   /** Blocks with isAbsent excluded — the set that should be passed to
    * composeDocument (TH-123). */
   composableBlocks: () => Block[];
+  /** Replaces the entire blocks array (e.g. when the fetched hostname
+   * changes and the previously open files must be discarded, TH-125). Also
+   * resets the active index to the first block (or -1 if empty). */
+  resetBlocks: (blocks: EditableBlock[]) => void;
 }
 
 function defaultConfirm(): boolean {
@@ -122,6 +126,11 @@ export function useBlocks(
     return blocks.filter((b) => !b.isAbsent);
   }, [blocks]);
 
+  const resetBlocks = useCallback((nextBlocks: EditableBlock[]) => {
+    setBlocks(nextBlocks);
+    setActiveIndex(nextBlocks.length > 0 ? 0 : -1);
+  }, []);
+
   return {
     blocks,
     activeIndex,
@@ -131,5 +140,6 @@ export function useBlocks(
     renameBlock,
     updateBlock,
     composableBlocks,
+    resetBlocks,
   };
 }

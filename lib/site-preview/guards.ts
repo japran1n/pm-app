@@ -263,7 +263,9 @@ export function isWebflowHost(input: string): boolean {
   }
 
   const labels = parsed.hostname.split(".");
-  if (labels.length < 2) {
+  // TH-055 — a subdomain must exist. The bare apex `webflow.io` (2 labels)
+  // is Webflow's own marketing site, never a customer's staging/live site.
+  if (labels.length < 3) {
     return false;
   }
 

@@ -100,4 +100,49 @@ describe("GET /api/webflow-source/css (FU-1 SSRF fix)", () => {
     const res = await GET(makeRequest("https://foo.webflow.io/style.css"));
     expect(res.status).toBe(401);
   });
+
+  // TH-082 — Webflow's real published CSS is served from its CDN, not from
+  // *.webflow.io. Both origins must be allowed.
+  it("test_TH_082_allows_cdn_prod_website_files_com", async () => {
+    global.fetch = vi.fn(async () =>
+      cssResponse("body { color: blue }", {
+        url: "https://cdn.prod.website-files.com/abc123/style.css",
+      }),
+    ) as unknown as typeof fetch;
+
+    const res = await GET(
+      makeRequest("https://cdn.prod.website-files.com/abc123/style.css"),
+    );
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("body { color: blue }");
+  });
+
+  it("test_TH_082_still_allows_webflow_io_subdomains", async () => {
+    global.fetch = vi.fn(async () =>
+      cssResponse("body { color: green }", {
+        url: "https://foo.webflow.io/style.css",
+      }),
+    ) as unknown as typeof fetch;
+
+    const res = await GET(makeRequest("https://foo.webflow.io/style.css"));
+    expect(res.status).toBe(200);
+  });
+
+  it("test_TH_082_rejects_an_unrelated_host_that_is_not_the_cdn_or_webflow_io", async () => {
+    const res = await GET(makeRequest("https://example.com/style.css"));
+    expect(res.status).toBe(400);
+  });
+
+  it("test_TH_082_rejects_a_redirect_off_the_allowed_hosts", async () => {
+    global.fetch = vi.fn(async () =>
+      cssResponse("body { color: red }", {
+        url: "https://evil.example.com/style.css",
+      }),
+    ) as unknown as typeof fetch;
+
+    const res = await GET(
+      makeRequest("https://cdn.prod.website-files.com/abc123/style.css"),
+    );
+    expect(res.status).toBe(403);
+  });
 });

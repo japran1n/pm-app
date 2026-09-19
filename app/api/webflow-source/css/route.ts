@@ -36,6 +36,19 @@ import { logger } from "@/lib/observability/logger";
 
 const MAX_BYTES = 512 * 1024; // 500 KB (TH-083)
 
+// TH-082 — Webflow serves published CSS assets from its CDN
+// (`cdn.prod.website-files.com`), not from the `*.webflow.io` staging/live
+// host itself. The allowlist must accept either origin.
+function isAllowedCssHost(rawUrl: string): boolean {
+  if (isWebflowHost(rawUrl)) return true;
+  try {
+    const parsed = new URL(rawUrl);
+    return parsed.protocol === "https:" && parsed.hostname === "cdn.prod.website-files.com";
+  } catch {
+    return false;
+  }
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const rawUrl = searchParams.get("url") ?? "";
@@ -49,10 +62,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // 2. https + host allowlist (TH-081)
-  if (!rawUrl || !isWebflowHost(rawUrl)) {
+  // 2. https + host allowlist (TH-081, TH-082)
+  if (!rawUrl || !isAllowedCssHost(rawUrl)) {
     return NextResponse.json(
-      { error: "URL must be an https://*.webflow.io stylesheet" },
+      {
+        error:
+          "URL must be an https://*.webflow.io or https://cdn.prod.website-files.com stylesheet",
+      },
       { status: 400 },
     );
   }
@@ -76,9 +92,9 @@ export async function GET(request: NextRequest) {
   // never saw. Re-validate the *final* URL is still a webflow.io host,
   // matching the HTML proxy route (F024, TH-060/TH-061).
   const finalUrl = res.url || url.toString();
-  if (!isWebflowHost(finalUrl)) {
+  if (!isAllowedCssHost(finalUrl)) {
     return NextResponse.json(
-      { error: "redirect left .webflow.io domain" },
+      { error: "redirect left the allowed CSS host set" },
       { status: 403 },
     );
   }
