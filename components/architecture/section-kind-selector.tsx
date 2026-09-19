@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { cn } from "@/lib/utils";
 import type { BoardSectionKind } from "@/lib/queries/architecture";
+import { sectionKindEnum } from "@/lib/validation/architecture";
 
 // Mission 20260919-150607, F005 (AS-025, AS-026): mirrors
 // page-kind-selector.tsx for sections, which only ever take two kinds
@@ -14,7 +15,7 @@ import type { BoardSectionKind } from "@/lib/queries/architecture";
 // mutation.
 export type SectionKind = BoardSectionKind;
 
-const KINDS: SectionKind[] = ["static", "cms"];
+const KINDS = sectionKindEnum.options as SectionKind[];
 
 const LABELS: Record<SectionKind, string> = {
   static: "Static",

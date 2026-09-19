@@ -66,7 +66,9 @@ export type UpdatePageInput = z.infer<typeof updatePageSchema>;
 // ("Enumi se ne pišu dvaput"). Must match the DB CHECK constraint exactly:
 // supabase/migrations/20261124010000_architecture_cms_template_and_section_kind.sql
 // (`tasks_section_kind_check`: 'static', 'cms').
-export const sectionKindEnum = z.enum(["static", "cms"]);
+export const SECTION_KINDS = ["static", "cms"] as const;
+export const sectionKindEnum = z.enum(SECTION_KINDS);
+export type SectionKind = z.infer<typeof sectionKindEnum>;
 
 export const changeSectionKindSchema = z.object({
   taskId: z.string().uuid("Invalid task."),
