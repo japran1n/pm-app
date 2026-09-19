@@ -3,6 +3,7 @@
 // /api/webflow-source route handler.
 
 import { NextRequest } from "next/server";
+import dns from "node:dns";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockGetUser = vi.fn();
@@ -41,21 +42,21 @@ function htmlResponse(
 
 describe("GET /api/webflow-source", () => {
   const realFetch = global.fetch;
-  const realDnsLookup = require("dns").promises.lookup;
+  const realDnsLookup = dns.promises.lookup;
 
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetUser.mockResolvedValue({ data: { user: AUTHED_USER } });
     // Default: resolves to a public address so SSRF guard passes unless a
     // test overrides it.
-    require("dns").promises.lookup = vi.fn(async () => [
+    dns.promises.lookup = vi.fn(async () => [
       { address: "1.2.3.4", family: 4 },
-    ]);
+    ]) as unknown as typeof dns.promises.lookup;
   });
 
   afterEach(() => {
     global.fetch = realFetch;
-    require("dns").promises.lookup = realDnsLookup;
+    dns.promises.lookup = realDnsLookup;
   });
 
   it("test_TH_051_anonymous_request_returns_401", async () => {
@@ -86,9 +87,9 @@ describe("GET /api/webflow-source", () => {
   });
 
   it("test_TH_058_blocked_address_returns_400", async () => {
-    require("dns").promises.lookup = vi.fn(async () => [
+    dns.promises.lookup = vi.fn(async () => [
       { address: "127.0.0.1", family: 4 },
-    ]);
+    ]) as unknown as typeof dns.promises.lookup;
     const res = await GET(makeRequest("https://foo.webflow.io/"));
     expect(res.status).toBe(400);
   });
@@ -202,12 +203,12 @@ describe("GET /api/webflow-source", () => {
   });
 
   it("test_TH_060_redirect_to_blocked_address_returns_400", async () => {
-    require("dns").promises.lookup = vi
+    dns.promises.lookup = vi
       .fn()
       // First call: pre-flight check on the requested host — public.
       .mockResolvedValueOnce([{ address: "1.2.3.4", family: 4 }])
       // Second call: re-validation of the final host after redirect — blocked.
-      .mockResolvedValueOnce([{ address: "169.254.169.254", family: 4 }]);
+      .mockResolvedValueOnce([{ address: "169.254.169.254", family: 4 }]) as unknown as typeof dns.promises.lookup;
 
     global.fetch = vi.fn(async () =>
       htmlResponse("<html></html>", {

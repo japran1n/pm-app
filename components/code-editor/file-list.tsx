@@ -192,7 +192,13 @@ export function FileList({
               <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
               {isEditing ? (
                 <input
-                  autoFocus
+                  ref={(el) => {
+                    // Focus the rename field once it mounts (jsx-a11y flags
+                    // the `autoFocus` prop directly; an imperative ref
+                    // callback achieves the same "focus on entering rename
+                    // mode" behavior without it).
+                    el?.focus();
+                  }}
                   data-testid={`file-rename-input-${entry.index}`}
                   value={draftName}
                   onChange={(e) => setDraftName(e.target.value)}

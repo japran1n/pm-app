@@ -3,6 +3,27 @@ import { registerCssCompletionProvider } from "@/lib/code-editor/css-completion-
 import { registerJsCompletionProvider } from "@/lib/code-editor/js-completion-provider";
 import type * as Monaco from "monaco-editor";
 
+// Our providers only ever call `provideCompletionItems` synchronously with
+// (model, position) and read back `{ suggestions }` -- narrower than
+// Monaco's real 4-arg, thenable-returning signature, which is why this
+// fake declares its own minimal provider/result shape instead of
+// `Monaco.languages.CompletionItemProvider` (typing against the real
+// interface would fight the test's simplified synchronous call sites for
+// no type-safety benefit, since the fake never implements the rest of
+// that interface either).
+interface FakeCompletionItem {
+  label: string;
+  kind: number;
+  insertText: string;
+}
+
+interface FakeCompletionProvider {
+  provideCompletionItems(
+    model: Monaco.editor.ITextModel,
+    position: Monaco.Position,
+  ): { suggestions: FakeCompletionItem[] };
+}
+
 // A minimal fake of the `monaco` namespace surface used by our providers.
 // We avoid importing the real `monaco-editor` package in tests because it
 // pulls in browser-only APIs (workers, DOM) that don't run under vitest's
@@ -10,8 +31,10 @@ import type * as Monaco from "monaco-editor";
 // our providers call: monaco.languages.registerCompletionItemProvider and
 // monaco.languages.CompletionItemKind.
 function createFakeMonaco() {
-  const registered: Record<string, { languageId: string; provider: any; disposed: boolean }> =
-    {};
+  const registered: Record<
+    string,
+    { languageId: string; provider: FakeCompletionProvider; disposed: boolean }
+  > = {};
 
   const monaco = {
     languages: {
@@ -22,7 +45,7 @@ function createFakeMonaco() {
         Property: 9,
       },
       registerCompletionItemProvider: vi.fn(
-        (languageId: string, provider: any) => {
+        (languageId: string, provider: FakeCompletionProvider) => {
           const disposable = {
             languageId,
             provider,
@@ -81,12 +104,13 @@ describe("CSS completion provider", () => {
       fakeModel(),
       fakePosition,
     );
-    const labels = result.suggestions.map((s: any) => s.label);
+    const labels = result.suggestions.map((s: FakeCompletionItem) => s.label);
     expect(labels).toContain(".foo");
     expect(labels).toContain(".bar");
-    const fooItem = result.suggestions.find((s: any) => s.label === ".foo");
-    expect(fooItem.insertText).toBe(".foo");
-    expect(fooItem.kind).toBe(monaco.languages.CompletionItemKind.Class);
+    const fooItem = result.suggestions.find((s: FakeCompletionItem) => s.label === ".foo");
+    expect(fooItem).toBeDefined();
+    expect(fooItem!.insertText).toBe(".foo");
+    expect(fooItem!.kind).toBe(monaco.languages.CompletionItemKind.Class);
   });
 
   it("TH-143: CSS custom properties appear as var() completions", () => {
@@ -101,10 +125,10 @@ describe("CSS completion provider", () => {
       fakeModel(),
       fakePosition,
     );
-    const primary = result.suggestions.find((s: any) => s.label === "--primary");
+    const primary = result.suggestions.find((s: FakeCompletionItem) => s.label === "--primary");
     expect(primary).toBeDefined();
-    expect(primary.insertText).toBe("var(--primary)");
-    expect(primary.kind).toBe(monaco.languages.CompletionItemKind.Variable);
+    expect(primary!.insertText).toBe("var(--primary)");
+    expect(primary!.kind).toBe(monaco.languages.CompletionItemKind.Variable);
   });
 
   it("TH-146: dispose() removes the CSS provider registration", () => {
@@ -176,7 +200,7 @@ describe("JS completion provider", () => {
       fakeModel(),
       fakePosition,
     );
-    const labels = result.suggestions.map((s: any) => s.label);
+    const labels = result.suggestions.map((s: FakeCompletionItem) => s.label);
     expect(labels).toContain("foo");
     expect(labels).toContain("bar");
   });
@@ -189,11 +213,12 @@ describe("JS completion provider", () => {
       fakeModel(),
       fakePosition,
     );
-    const labels = result.suggestions.map((s: any) => s.label);
+    const labels = result.suggestions.map((s: FakeCompletionItem) => s.label);
     expect(labels).toContain("foo");
     expect(labels).toContain("bar");
-    const fooItem = result.suggestions.find((s: any) => s.label === "foo");
-    expect(fooItem.insertText).toBe("foo");
+    const fooItem = result.suggestions.find((s: FakeCompletionItem) => s.label === "foo");
+    expect(fooItem).toBeDefined();
+    expect(fooItem!.insertText).toBe("foo");
   });
 
   it("TH-151: data-* attribute names appear in JS completions", () => {
@@ -204,7 +229,7 @@ describe("JS completion provider", () => {
       fakeModel(),
       fakePosition,
     );
-    const labels = result.suggestions.map((s: any) => s.label);
+    const labels = result.suggestions.map((s: FakeCompletionItem) => s.label);
     expect(labels).toContain("data-testid");
     expect(labels).toContain("data-role");
   });
@@ -274,7 +299,7 @@ describe("Provider isolation and cleanup", () => {
       fakeModel(),
       fakePosition,
     );
-    const labels = result.suggestions.map((s: any) => s.label);
+    const labels = result.suggestions.map((s: FakeCompletionItem) => s.label);
     expect(labels.some((l: string) => l.startsWith("--"))).toBe(false);
   });
 
@@ -290,7 +315,7 @@ describe("Provider isolation and cleanup", () => {
       fakeModel(),
       fakePosition,
     );
-    const labels = result.suggestions.map((s: any) => s.label);
+    const labels = result.suggestions.map((s: FakeCompletionItem) => s.label);
     expect(labels.some((l: string) => l.includes("data-"))).toBe(false);
   });
 

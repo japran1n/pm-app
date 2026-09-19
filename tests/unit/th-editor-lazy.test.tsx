@@ -7,6 +7,8 @@
 // fallback) rather than on EditorPane's internals.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
+import fs from "node:fs";
+import path from "node:path";
 
 const dynamicMock = vi.fn((_loader: () => Promise<unknown>, opts?: { ssr?: boolean }) => {
   // Mimic next/dynamic: return a component that resolves lazily. For the
@@ -67,8 +69,6 @@ describe("TH-176..TH-180: editor lazy boundary", () => {
     // animate-pulse skeleton pattern is present, independent of whether
     // next/dynamic resolves synchronously or asynchronously in a given
     // test runner.
-    const fs = require("node:fs");
-    const path = require("node:path");
     const source = fs.readFileSync(
       path.resolve(process.cwd(), "components/code-editor/editor-lazy.tsx"),
       "utf-8",

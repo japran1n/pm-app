@@ -69,18 +69,19 @@ export function EditorPane({
   // the command closure never goes stale across re-renders (e.g. switching
   // the selected block without remounting Monaco).
   const languageRef = useRef(language);
-  languageRef.current = language;
   const onChangeRef = useRef(onChange);
-  onChangeRef.current = onChange;
   const onSaveRef = useRef(onSave);
-  onSaveRef.current = onSave;
+  useEffect(() => {
+    languageRef.current = language;
+    onChangeRef.current = onChange;
+    onSaveRef.current = onSave;
+  }, [language, onChange, onSave]);
 
   // Guard against a failed Monaco load (e.g. the locally-configured runtime
   // fails to initialize) so the user sees a retry option instead of a
   // silently-blank pane.
   useEffect(() => {
     let cancelled = false;
-    setLoadError(null);
     const promise = loader.init();
     promise
       .then(() => {

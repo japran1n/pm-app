@@ -51,11 +51,10 @@ export interface SplitLayoutProps {
 export function SplitLayout({ left, right, className }: SplitLayoutProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);
-  const [split, setSplit] = useState<number>(DEFAULT_SPLIT);
-
-  useEffect(() => {
-    setSplit(readSplit());
-  }, []);
+  // Lazy initializer (not an effect) so the persisted split is applied on
+  // the very first render instead of causing a synchronous post-mount
+  // re-render.
+  const [split, setSplit] = useState<number>(() => readSplit());
 
   const handleMouseMove = useCallback((event: MouseEvent) => {
     if (!draggingRef.current || !containerRef.current) return;
@@ -66,6 +65,7 @@ export function SplitLayout({ left, right, className }: SplitLayoutProps) {
     setSplit(next);
   }, []);
 
+  const stopDraggingRef = useRef<() => void>(() => {});
   const stopDragging = useCallback(() => {
     if (!draggingRef.current) return;
     draggingRef.current = false;
@@ -74,8 +74,11 @@ export function SplitLayout({ left, right, className }: SplitLayoutProps) {
       return current;
     });
     window.removeEventListener("mousemove", handleMouseMove);
-    window.removeEventListener("mouseup", stopDragging);
+    window.removeEventListener("mouseup", stopDraggingRef.current);
   }, [handleMouseMove]);
+  useEffect(() => {
+    stopDraggingRef.current = stopDragging;
+  }, [stopDragging]);
 
   const startDragging = useCallback(() => {
     draggingRef.current = true;
@@ -95,6 +98,7 @@ export function SplitLayout({ left, right, className }: SplitLayoutProps) {
       <div className="h-full min-w-0 overflow-hidden" style={{ width: `${split}%` }}>
         {left}
       </div>
+      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- `separator` is the correct ARIA role for a resize handle (not `slider`, since this isn't a value-input control); mouse-drag is the only interaction implemented (TH-234/TH-235 scope), tracked as a follow-up to add arrow-key resizing. */}
       <div
         role="separator"
         aria-orientation="vertical"

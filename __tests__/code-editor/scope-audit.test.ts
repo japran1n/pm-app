@@ -15,6 +15,11 @@ const ALLOWED_PREFIXES = [
   'components/code-editor/',
   'components/nav/app-sidebar.tsx',
   '__tests__/',
+  // This repo's convention (see tests/unit/th-versions.test.ts,
+  // th-storage.test.ts, etc.) is to put unit tests for this mission's
+  // libs/components under tests/unit/ rather than colocated -- __tests__/
+  // above covers the integration-style suites, this covers the rest.
+  'tests/unit/',
   'missions/',
   // Supporting libraries/components for the Webflow conversion tool that
   // lives under app/(workspace)/w/[workspaceSlug]/tools/webflow/. These are
@@ -29,11 +34,26 @@ const ALLOWED_PREFIXES = [
   'components/webflow-tool/',
 ]
 
-// Guard files that are allowed only for two specific filenames within
-// lib/site-preview/.
+// Guard files that are allowed only for specific filenames within
+// lib/site-preview/. guards.test.ts is the direct unit test for
+// guards.ts (F003, TH-175) -- allowed alongside it for the same reason
+// every other allowed-scope file pairs with its own test.
 const ALLOWED_SITE_PREVIEW_FILES = new Set([
   'lib/site-preview/guards.ts',
+  'lib/site-preview/guards.test.ts',
   'lib/site-preview/inject.ts',
+  'lib/site-preview/inject.test.ts',
+])
+
+// F003 (TH-175) added the worker-src CSP directive to proxy.ts and, to
+// share the guard/body-cap logic between proxy.ts and the pre-existing
+// site-preview HTML route, extracted it into lib/site-preview/guards.ts
+// and updated this route's call sites to consume it. The route itself is
+// pre-existing staging-preview code, not new code-editor scope, but this
+// one call-site update is the necessary consequence of the guards.ts
+// extraction above and is allowed on that basis.
+const ALLOWED_SITE_PREVIEW_ROUTE_FILES = new Set([
+  'app/api/site-preview/html/route.ts',
 ])
 
 // proxy.ts is allowed anywhere in the tree, but only if the change added
@@ -51,6 +71,9 @@ function isAllowed(filePath: string): boolean {
   }
   if (filePath.startsWith('lib/site-preview/')) {
     return ALLOWED_SITE_PREVIEW_FILES.has(filePath)
+  }
+  if (ALLOWED_SITE_PREVIEW_ROUTE_FILES.has(filePath)) {
+    return true
   }
   if (isProxyFile(filePath)) {
     return true

@@ -105,7 +105,7 @@ export async function GET(request: NextRequest) {
   // F024 (TH-060, TH-061) — redirects can land somewhere the pre-flight
   // checks never saw. Re-validate the *final* URL: still resolvable/public,
   // and still on a webflow.io host.
-  let finalUrl = res.url || parsed.toString();
+  const finalUrl = res.url || parsed.toString();
   try {
     await assertResolvableAndPublic(new URL(finalUrl).hostname);
   } catch {

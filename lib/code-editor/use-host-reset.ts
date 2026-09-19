@@ -18,7 +18,9 @@ import { clearEditorState } from "@/lib/webflow-editor/storage";
 export function useHostReset(hostname: string, onReset: () => void): void {
   const previousHost = useRef<string | null>(null);
   const onResetRef = useRef(onReset);
-  onResetRef.current = onReset;
+  useEffect(() => {
+    onResetRef.current = onReset;
+  }, [onReset]);
 
   useEffect(() => {
     const prev = previousHost.current;

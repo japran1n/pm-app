@@ -28,7 +28,13 @@ let editorValue = "";
 vi.mock("@monaco-editor/react", () => {
   return {
     __esModule: true,
-    default: (props: any) => {
+    default: (props: {
+      value?: string;
+      language?: string;
+      theme?: string;
+      onChange?: (value: string | undefined) => void;
+      onMount?: (editor: unknown, monaco: unknown) => void;
+    }) => {
       editorValue = props.value ?? "";
       const editorStub = {
         getValue: () => editorValue,
@@ -185,14 +191,18 @@ describe("EditorPane", () => {
   });
 
   test("TH-173: theme prop is 'light' when the app theme resolves to light", async () => {
-    const themeMod = (await import("next-themes")) as any;
+    const themeMod = (await import("next-themes")) as unknown as {
+      __setTheme: (t: string) => void;
+    };
     themeMod.__setTheme("light");
     render(<EditorPane file={styleBlock()} onChange={() => {}} />);
     expect(screen.getByTestId("monaco-editor")).toHaveAttribute("data-theme", "light");
   });
 
   test("TH-173: theme prop is 'vs-dark' when the app theme resolves to dark", async () => {
-    const themeMod = (await import("next-themes")) as any;
+    const themeMod = (await import("next-themes")) as unknown as {
+      __setTheme: (t: string) => void;
+    };
     themeMod.__setTheme("dark");
     render(<EditorPane file={styleBlock()} onChange={() => {}} />);
     expect(screen.getByTestId("monaco-editor")).toHaveAttribute("data-theme", "vs-dark");
@@ -200,7 +210,9 @@ describe("EditorPane", () => {
   });
 
   test("TH-173: theme updates without remounting when app theme changes (no reload)", async () => {
-    const themeMod = (await import("next-themes")) as any;
+    const themeMod = (await import("next-themes")) as unknown as {
+      __setTheme: (t: string) => void;
+    };
     themeMod.__setTheme("light");
     const { rerender } = render(<EditorPane file={styleBlock()} onChange={() => {}} />);
     expect(screen.getByTestId("monaco-editor")).toHaveAttribute("data-theme", "light");
