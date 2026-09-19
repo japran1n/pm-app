@@ -17,7 +17,7 @@ function makeKeywords(count: number): string[] {
   return Array.from({ length: count }, (_, i) => `keyword-${i}`);
 }
 
-describe("AS-095: 30-keyword limit on node meta (sections)", () => {
+describe("AS-096: 30-keyword limit on node meta (sections)", () => {
   it("accepts exactly 30 keywords", () => {
     const result = setNodeMetaSchema.safeParse({
       taskId: TASK_ID,
@@ -51,7 +51,7 @@ describe("AS-095: 30-keyword limit on node meta (sections)", () => {
   });
 });
 
-describe("AS-096: copy_status enum validation", () => {
+describe("AS-095: copy_status enum validation", () => {
   const validStatuses = [
     "not_started",
     "brief_ready",
