@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { CodeEditorPage } from "@/components/code-editor/code-editor-page";
 
@@ -107,5 +107,62 @@ describe("CodeEditorPage URL form", () => {
     expect(
       screen.queryByText("Enter a Webflow URL to start editing"),
     ).not.toBeInTheDocument();
+  });
+
+  // TH-292 / TH-293 — without an `onFetch` override, the component
+  // orchestrates its own fetch via useFetchSite and surfaces the result.
+  describe("without onFetch override (internal useFetchSite orchestration)", () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    // TH-292
+    test("TH_292_successful_fetch_hides_empty_state", async () => {
+      const user = userEvent.setup();
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue({
+          ok: true,
+          json: async () => ({
+            html: "<html><head><style>.a{}</style></head><body></body></html>",
+            finalUrl: "https://mysite.webflow.io",
+          }),
+        }),
+      );
+
+      render(<CodeEditorPage />);
+
+      const input = screen.getByPlaceholderText("https://yoursite.webflow.io");
+      await user.type(input, "https://mysite.webflow.io");
+      await user.click(screen.getByRole("button", { name: /fetch site/i }));
+
+      await waitFor(() => {
+        expect(
+          screen.queryByText("Enter a Webflow URL to start editing"),
+        ).not.toBeInTheDocument();
+      });
+    });
+
+    // TH-293
+    test("TH_293_failed_fetch_shows_error_message_in_ui", async () => {
+      const user = userEvent.setup();
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue({
+          ok: false,
+          json: async () => ({ error: "Site not reachable" }),
+        }),
+      );
+
+      render(<CodeEditorPage />);
+
+      const input = screen.getByPlaceholderText("https://yoursite.webflow.io");
+      await user.type(input, "https://mysite.webflow.io");
+      await user.click(screen.getByRole("button", { name: /fetch site/i }));
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        "Site not reachable",
+      );
+    });
   });
 });

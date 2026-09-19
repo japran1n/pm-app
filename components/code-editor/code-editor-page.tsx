@@ -11,6 +11,8 @@ import { useState } from "react";
 import { Code2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { useFetchSite } from "@/lib/code-editor/use-fetch-site";
+import { clearEditorState } from "@/lib/webflow-editor/storage";
 
 const INVALID_URL_ERROR = "Please enter a valid .webflow.io URL";
 
@@ -46,15 +48,54 @@ export interface CodeEditorPageProps {
   isFetching?: boolean;
   /** True once a site's blocks are loaded -- hides the empty state. */
   hasSite?: boolean;
+  /** Hostname of the currently loaded site (F089 storage key). */
+  activeHostname?: string | null;
+  /** Called after the stored state for `activeHostname` has been cleared. */
+  onCleared?: (hostname: string) => void;
+  /**
+   * Injectable confirm dialog, defaults to `window.confirm`. Exists so
+   * tests can control the confirmation outcome deterministically.
+   */
+  confirmFn?: (message: string) => boolean;
 }
 
 export function CodeEditorPage({
   onFetch,
-  isFetching = false,
-  hasSite = false,
+  isFetching: isFetchingProp,
+  hasSite: hasSiteProp,
+  activeHostname = null,
+  onCleared,
+  confirmFn,
 }: CodeEditorPageProps) {
   const [url, setUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
+
+  // F102 (TH-292, TH-293): when the caller doesn't supply its own
+  // `onFetch`/`isFetching`/`hasSite` (e.g. tests exercising the form in
+  // isolation), the component orchestrates the fetch itself via
+  // `useFetchSite`. A failing fetch surfaces `fetchState.error` without
+  // blanking any previously loaded blocks/html.
+  const { state: fetchState, fetchSite } = useFetchSite();
+
+  const isFetching = isFetchingProp ?? fetchState.loading;
+  const hasSite = hasSiteProp ?? fetchState.blocks.length > 0;
+  const fetchError = onFetch ? null : fetchState.error;
+
+  function handleClearSavedState() {
+    if (!activeHostname) return;
+
+    const confirm =
+      confirmFn ??
+      (typeof window !== "undefined" ? window.confirm.bind(window) : () => true);
+
+    const confirmed = confirm(
+      `Clear saved data for "${activeHostname}"? This cannot be undone.`,
+    );
+    if (!confirmed) return;
+
+    clearEditorState(activeHostname);
+    onCleared?.(activeHostname);
+  }
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -66,7 +107,11 @@ export function CodeEditorPage({
     }
 
     setError(null);
-    onFetch?.(trimmed);
+    if (onFetch) {
+      onFetch(trimmed);
+    } else {
+      void fetchSite(trimmed);
+    }
   }
 
   return (
@@ -100,6 +145,11 @@ export function CodeEditorPage({
         {error ? (
           <p role="alert" className="text-sm text-destructive">
             {error}
+          </p>
+        ) : null}
+        {!error && fetchError ? (
+          <p role="alert" className="text-sm text-destructive">
+            {fetchError}
           </p>
         ) : null}
       </form>
