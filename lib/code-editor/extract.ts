@@ -9,6 +9,21 @@ export interface StyleBlock {
 const STYLE_TAG_RE = /<style([^>]*)>([\s\S]*?)<\/style>/gi;
 const SRC_ATTR_RE = /\bsrc\s*=/i;
 const NONCE_ATTR_RE = /\bnonce\s*=/i;
+const CDATA_WRAPPER_RE = /^\s*(?:\/\/\s*)?<!\[CDATA\[([\s\S]*?)(?:\/\/\s*)?\]\]>\s*$/;
+
+/**
+ * Strips a `<![CDATA[ ... ]]>` wrapper (with or without the `//` JS-comment
+ * style markers sometimes used inside `<script>`) around block content, so
+ * downstream name-derivation and editing see the real code/CSS, not the
+ * XML escaping wrapper (F036).
+ */
+function stripCdata(content: string): string {
+  const match = (content ?? '').match(CDATA_WRAPPER_RE);
+  if (match) {
+    return match[1];
+  }
+  return content;
+}
 
 export interface ScriptBlock {
   index: number; // 0-based position in document (among script blocks)
@@ -23,12 +38,68 @@ const SCRIPT_TAG_RE = /<script([^>]*)>([\s\S]*?)<\/script>/gi;
 const FIRST_LINE_COMMENT_RE = /^\s*\/\/(.*)$/;
 const DECLARATION_RE = /\b(?:const|let|var|function)\s+([A-Za-z_$][\w$]*)/;
 const MAX_NAME_LENGTH = 60;
+const CSS_FIRST_LINE_COMMENT_RE = /^\s*\/\*([\s\S]*?)\*\//;
+const CSS_SELECTOR_RE = /([.#]?[A-Za-z_-][\w-]*)\s*[,{]/;
 
 function truncateName(name: string): string {
   if (name.length <= MAX_NAME_LENGTH) {
     return name;
   }
   return `${name.slice(0, MAX_NAME_LENGTH)}…`;
+}
+
+/**
+ * Derives a human-readable name for a CSS style block (F033).
+ *
+ * 1. If the first non-whitespace content is a `/* ... *\/` comment, use its
+ *    trimmed text.
+ * 2. Otherwise use the first CSS selector found in the content.
+ * 3. Otherwise fall back to `style-${index + 1}.css`.
+ *
+ * Result is truncated to 60 chars (with a trailing … if truncated).
+ */
+export function deriveCssName(content: string, index: number): string {
+  const src = content ?? '';
+  const trimmed = src.replace(/^\s+/, '');
+
+  const commentMatch = trimmed.match(CSS_FIRST_LINE_COMMENT_RE);
+  if (commentMatch) {
+    const commentText = commentMatch[1].trim();
+    if (commentText) {
+      return truncateName(commentText);
+    }
+  }
+
+  const selectorMatch = src.match(CSS_SELECTOR_RE);
+  if (selectorMatch) {
+    return truncateName(selectorMatch[1]);
+  }
+
+  return `style-${index + 1}.css`;
+}
+
+/**
+ * Removes duplicate blocks by trimmed `originalContent`. When two or more
+ * blocks share identical trimmed content, only the first occurrence (in
+ * array order) is kept. Kept blocks retain their original `index` values
+ * (indexes are not renumbered/compacted).
+ */
+export function deduplicateBlocks<T extends { originalContent: string; index: number }>(
+  blocks: T[]
+): T[] {
+  const seen = new Set<string>();
+  const result: T[] = [];
+
+  for (const block of blocks) {
+    const key = (block.originalContent ?? '').trim();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push(block);
+  }
+
+  return result;
 }
 
 /**
@@ -88,11 +159,14 @@ export function extractStyleBlocks(html: string): StyleBlock[] {
         continue;
       }
 
+      const unwrapped = stripCdata(content);
+
       blocks.push({
         index,
         type: 'style',
         originalContent: content,
-        content,
+        content: unwrapped,
+        name: deriveCssName(unwrapped, index),
       });
       index += 1;
     }
@@ -137,12 +211,14 @@ export function extractScriptBlocks(html: string): ScriptBlock[] {
         continue;
       }
 
+      const unwrapped = stripCdata(content);
+
       blocks.push({
         index,
         type: 'script',
         originalContent: content,
-        content,
-        name: deriveJsName(content, index),
+        content: unwrapped,
+        name: deriveJsName(unwrapped, index),
       });
       index += 1;
     }
