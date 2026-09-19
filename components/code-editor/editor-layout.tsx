@@ -38,6 +38,9 @@ import {
   duplicateVersion,
   deleteVersion,
   restoreVersion as restoreVersionContent,
+  updateVersionContent,
+  loadActiveVersionId,
+  saveActiveVersionId,
   type Version,
 } from "@/lib/code-editor/versions";
 
@@ -276,7 +279,23 @@ export function EditorLayout({ initialBlocks, html, corpus, hostname, url }: Edi
       const versions = hostname
         ? loadVersions(hostname, index, initialContent)
         : initVersions(initialContent);
-      const entry: VersionEntry = { versions, activeVersionId: versions[0]?.id ?? "" };
+      // TH-253 — restore the previously-active version for this block from
+      // its own persisted id rather than always defaulting to Original.
+      // Fall back to the most recently created non-Original version (if
+      // any) when nothing is persisted or the stored id no longer exists
+      // (e.g. that version was deleted).
+      const storedActiveId = hostname ? loadActiveVersionId(hostname, index) : null;
+      let activeVersionId: string;
+      if (storedActiveId && versions.some((v) => v.id === storedActiveId)) {
+        activeVersionId = storedActiveId;
+      } else {
+        const nonOriginal = versions.filter((v) => !v.isOriginal);
+        activeVersionId =
+          nonOriginal.length > 0
+            ? nonOriginal[nonOriginal.length - 1].id
+            : (versions[0]?.id ?? "");
+      }
+      const entry: VersionEntry = { versions, activeVersionId };
       return entry;
     },
     [versionsByBlock, blocks, hostname],
@@ -284,21 +303,28 @@ export function EditorLayout({ initialBlocks, html, corpus, hostname, url }: Edi
 
   // Lazily seed version state for the active block the first time it's
   // touched (selected or edited), without clobbering state that already
-  // exists for it.
-  useEffect(() => {
-    if (activeIndex < 0) return;
-    if (versionsByBlock[activeIndex]) return;
+  // exists for it. This is done during render (the "adjusting state during
+  // rendering" pattern -- see https://react.dev/learn/you-might-not-need-an-effect)
+  // rather than in a useEffect. The `!versionsByBlock[activeIndex]` guard is
+  // sufficient to prevent a re-render loop: once the state update below
+  // lands, this branch is false on the next render for that block.
+  if (activeIndex >= 0 && !versionsByBlock[activeIndex]) {
     const entry = ensureVersionEntry(activeIndex);
     setVersionsByBlock((prev) => (prev[activeIndex] ? prev : { ...prev, [activeIndex]: entry }));
-    // Only re-run when the active block changes or its entry disappears --
-    // `ensureVersionEntry` is intentionally excluded to avoid re-seeding on
-    // every keystroke (it depends on `blocks`, which changes on every edit).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeIndex, versionsByBlock]);
+  }
+
+  // R4-3/TH-219 — tracks the most recent editor content for the active
+  // block outside of React state. `handleEditorSave` (fired from the
+  // Cmd+S command in EditorPane, synchronously right after `onChange`)
+  // needs the just-formatted content to write it back into the active
+  // version's snapshot, but the state updates queued by `handleEditorChange`
+  // in the same tick aren't visible yet via closures/props at that point.
+  const lastEditedContentRef = useRef<string>("");
 
   const handleEditorChange = useCallback(
     (content: string) => {
       if (activeIndex < 0) return;
+      lastEditedContentRef.current = content;
       updateBlock(activeIndex, content);
       onBlockChange(activeIndex, content);
       markDirty(activeIndex);
@@ -312,10 +338,19 @@ export function EditorLayout({ initialBlocks, html, corpus, hostname, url }: Edi
         if (!active?.isOriginal) {
           return prev[activeIndex] ? prev : { ...prev, [activeIndex]: entry };
         }
+        // R4-3 — seed the forked Draft with the content the user is
+        // actually editing (not Original's stale snapshot), so versions
+        // diverge immediately instead of staying byte-identical until the
+        // next explicit save.
         const forked = forkFromOriginal(entry.versions);
-        const draft = forked[forked.length - 1];
-        const nextEntry: VersionEntry = { versions: forked, activeVersionId: draft.id };
-        if (hostname) saveVersions(hostname, activeIndex, forked);
+        const draftId = forked[forked.length - 1].id;
+        const forkedWithContent = updateVersionContent(forked, draftId, content);
+        const draft = forkedWithContent[forkedWithContent.length - 1];
+        const nextEntry: VersionEntry = { versions: forkedWithContent, activeVersionId: draft.id };
+        if (hostname) {
+          saveVersions(hostname, activeIndex, forkedWithContent);
+          saveActiveVersionId(hostname, activeIndex, draft.id);
+        }
         return { ...prev, [activeIndex]: nextEntry };
       });
     },
@@ -325,7 +360,22 @@ export function EditorLayout({ initialBlocks, html, corpus, hostname, url }: Edi
   const handleEditorSave = useCallback(() => {
     if (activeIndex < 0) return;
     markClean(activeIndex);
-  }, [activeIndex, markClean]);
+    // R4-3/TH-219 — Cmd+S persists the current editor content back into the
+    // active version's saved snapshot. Previously nothing ever wrote
+    // content back into a version, so every version stayed byte-identical
+    // to whatever it was forked/duplicated from, and restoring a version
+    // never changed anything.
+    const content = lastEditedContentRef.current;
+    setVersionsByBlock((prev) => {
+      const entry = prev[activeIndex] ?? ensureVersionEntry(activeIndex);
+      if (!entry.activeVersionId) {
+        return prev[activeIndex] ? prev : { ...prev, [activeIndex]: entry };
+      }
+      const versions = updateVersionContent(entry.versions, entry.activeVersionId, content);
+      if (hostname) saveVersions(hostname, activeIndex, versions);
+      return { ...prev, [activeIndex]: { ...entry, versions } };
+    });
+  }, [activeIndex, markClean, hostname, ensureVersionEntry]);
 
   const activeBlock = activeIndex >= 0 ? blocks[activeIndex] : undefined;
 
@@ -352,12 +402,14 @@ export function EditorLayout({ initialBlocks, html, corpus, hostname, url }: Edi
       updateBlock(activeIndex, content);
       onBlockChange(activeIndex, content);
       markDirty(activeIndex);
+      lastEditedContentRef.current = content;
+      if (hostname) saveActiveVersionId(hostname, activeIndex, id);
       setVersionsByBlock((prev) => ({
         ...prev,
         [activeIndex]: { ...entry, activeVersionId: id },
       }));
     },
-    [activeIndex, versionsByBlock, ensureVersionEntry, updateBlock, onBlockChange, markDirty],
+    [activeIndex, versionsByBlock, ensureVersionEntry, updateBlock, onBlockChange, markDirty, hostname],
   );
 
   const handleRenameVersion = useCallback(
@@ -398,8 +450,10 @@ export function EditorLayout({ initialBlocks, html, corpus, hostname, url }: Edi
           updateBlock(activeIndex, original.content);
           onBlockChange(activeIndex, original.content);
           markDirty(activeIndex);
+          lastEditedContentRef.current = original.content;
         }
       }
+      if (hostname) saveActiveVersionId(hostname, activeIndex, nextActiveId);
       setVersionsByBlock((prev) => ({
         ...prev,
         [activeIndex]: { versions, activeVersionId: nextActiveId },
