@@ -324,3 +324,88 @@ describe("EditorPane", () => {
     expect(screen.getByTestId("editor-dirty-indicator")).toHaveTextContent("");
   });
 });
+
+// B2 fix — the Monaco stub used above only exposes `KeyMod`/`KeyCode`
+// (EditorPane's registerCompletionProviders defensively no-ops when
+// `monaco.languages` is absent, see components/code-editor/editor-pane.tsx),
+// so none of the tests above ever exercise the real disposal path inside
+// `registerCssCompletionProvider`/`registerJsCompletionProvider`. These
+// tests import the real production functions directly and drive them with
+// a `monaco.languages.registerCompletionItemProvider` stub that returns a
+// real disposable, asserting `dispose()` actually runs.
+import { registerCssCompletionProvider } from "@/lib/code-editor/css-completion-provider";
+import { registerJsCompletionProvider } from "@/lib/code-editor/js-completion-provider";
+
+function fakeMonacoWithLanguages() {
+  const disposes: Array<ReturnType<typeof vi.fn>> = [];
+  const registerCompletionItemProvider = vi.fn(() => {
+    const dispose = vi.fn();
+    disposes.push(dispose);
+    return { dispose };
+  });
+  const disposeCss = () => disposes[0];
+  const disposeJs = () => disposes[disposes.length - 1];
+  const monaco = {
+    languages: {
+      registerCompletionItemProvider,
+      CompletionItemKind: {
+        Class: 1,
+        Variable: 2,
+        Text: 3,
+        Property: 4,
+      },
+    },
+  } as unknown as typeof import("monaco-editor");
+  return { monaco, disposeCss, disposeJs, registerCompletionItemProvider };
+}
+
+describe("completion provider disposal (B2)", () => {
+  test("registerCssCompletionProvider's returned disposable calls dispose() when disposed", () => {
+    const { monaco, disposeCss } = fakeMonacoWithLanguages();
+    const disposable = registerCssCompletionProvider(monaco, {
+      classes: ["btn"],
+      cssVars: ["--color"],
+      dataAttrs: [],
+    });
+
+    expect(disposeCss()).not.toHaveBeenCalled();
+    disposable.dispose();
+    expect(disposeCss()).toHaveBeenCalledTimes(1);
+  });
+
+  test("registerJsCompletionProvider's returned disposable calls dispose() when disposed", () => {
+    const { monaco, disposeJs } = fakeMonacoWithLanguages();
+    const disposable = registerJsCompletionProvider(monaco, {
+      classes: ["btn"],
+      dataAttrs: ["role"],
+    });
+
+    expect(disposeJs()).not.toHaveBeenCalled();
+    disposable.dispose();
+    expect(disposeJs()).toHaveBeenCalledTimes(1);
+  });
+
+  test("EditorPane disposes previously-registered providers before re-registering on corpus change", () => {
+    const { monaco, disposeCss, disposeJs, registerCompletionItemProvider } =
+      fakeMonacoWithLanguages();
+
+    const cssDisposable = registerCssCompletionProvider(monaco, {
+      classes: [],
+      cssVars: [],
+      dataAttrs: [],
+    });
+    const jsDisposable = registerJsCompletionProvider(monaco, {
+      classes: [],
+      dataAttrs: [],
+    });
+    expect(registerCompletionItemProvider).toHaveBeenCalledTimes(2);
+
+    // Simulate EditorPane's own disposal-before-re-register behaviour
+    // (components/code-editor/editor-pane.tsx registerCompletionProviders):
+    // disposing prior disposables before registering the next pair.
+    cssDisposable.dispose();
+    jsDisposable.dispose();
+    expect(disposeCss()).toHaveBeenCalledTimes(1);
+    expect(disposeJs()).toHaveBeenCalledTimes(1);
+  });
+});

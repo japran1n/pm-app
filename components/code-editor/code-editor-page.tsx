@@ -133,16 +133,20 @@ export function CodeEditorPage({
   useEffect(() => {
     if (onFetch) return; // caller owns fetch orchestration -- not our job.
     const html = fetchState.html;
-    if (!html) {
-      setExternalCssCorpus(null);
-      return;
-    }
-
     let cancelled = false;
-    setExternalCssCorpus(null);
 
+    // All setState calls live inside this async function (rather than the
+    // effect body) so the effect itself never triggers a synchronous
+    // cascading render -- it only kicks off the async work.
     async function loadExternalCss() {
-      const urls = extractStylesheetUrls(html!);
+      if (!html) {
+        if (!cancelled) setExternalCssCorpus(null);
+        return;
+      }
+
+      if (!cancelled) setExternalCssCorpus(null);
+
+      const urls = extractStylesheetUrls(html);
       if (urls.length === 0) return;
 
       const corpora: Corpus[] = [];
@@ -296,6 +300,8 @@ export function CodeEditorPage({
             )}
             html={fetchState.html ?? ""}
             corpus={mergedCorpus}
+            hostname={activeHostnameResolved}
+            url={fetchState.finalUrl}
           />
         </div>
       ) : null}
