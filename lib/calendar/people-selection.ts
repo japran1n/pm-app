@@ -96,10 +96,16 @@ export function orderPeopleForWholeTeam(
   const rest = members.filter((m) => m.id !== selfId);
 
   rest.sort((a, b) => {
-    if (a.name == null && b.name == null) return 0;
+    if (a.name == null && b.name == null) {
+      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+    }
     if (a.name == null) return 1;
     if (b.name == null) return -1;
-    return a.name.localeCompare(b.name, "en", { sensitivity: "base" });
+    const locale = a.name.localeCompare(b.name, "en", { sensitivity: "base" });
+    if (locale !== 0) return locale;
+    if (a.name < b.name) return -1;
+    if (a.name > b.name) return 1;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
   });
 
   return [...self, ...rest].map((m) => m.id);

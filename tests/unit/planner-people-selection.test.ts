@@ -244,5 +244,66 @@ describe("orderPeopleForWholeTeam", () => {
 
     expect(result).toEqual(["self", "a", "x"]);
   });
+
+  it("AS-058: sorts by name even when id order disagrees with name order", () => {
+    // id "zz" > "aa" alphabetically, but name "Alice" < "Bob" — a
+    // sort-by-id implementation would produce ["self-id", "aa", "zz"].
+    const inverseMembersFixed = [
+      { id: "self-id", name: "Self" },
+      { id: "zz", name: "Alice" },
+      { id: "aa", name: "Bob" },
+    ];
+
+    const result = orderPeopleForWholeTeam(inverseMembersFixed, "self-id");
+
+    expect(result).toEqual(["self-id", "zz", "aa"]);
+  });
+
+  it("AS-058: null name sorts last even when its id sorts alphabetically first", () => {
+    // id "aa" < "zz" but the null-named member must still sort last — a
+    // sort-by-id implementation would produce ["self-id", "aa", "zz"].
+    const members = [
+      { id: "self-id", name: "Self" },
+      { id: "aa", name: null },
+      { id: "zz", name: "Alice" },
+    ];
+
+    const result = orderPeopleForWholeTeam(members, "self-id");
+
+    expect(result).toEqual(["self-id", "zz", "aa"]);
+  });
+
+  it("AS-058: locale collation wins over id order", () => {
+    // id "zz" > "aa" but "Öl" collates before "Pa" under the en locale — a
+    // sort-by-id implementation would produce ["self-id", "aa", "zz"].
+    const members = [
+      { id: "self-id", name: "Self" },
+      { id: "zz", name: "Öl" },
+      { id: "aa", name: "Pa" },
+    ];
+
+    const result = orderPeopleForWholeTeam(members, "self-id");
+
+    expect(result).toEqual(["self-id", "zz", "aa"]);
+  });
+
+  it("AS-058: result order is independent of input array order", () => {
+    const r1 = orderPeopleForWholeTeam(
+      [
+        { id: "x", name: "bob" },
+        { id: "y", name: "Bob" },
+      ],
+      "self",
+    );
+    const r2 = orderPeopleForWholeTeam(
+      [
+        { id: "y", name: "Bob" },
+        { id: "x", name: "bob" },
+      ],
+      "self",
+    );
+
+    expect(r1).toEqual(r2);
+  });
 });
 
