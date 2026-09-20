@@ -387,3 +387,56 @@ describe("PeopleSwitcher closed-trigger avatar group (AS-055)", () => {
     expect(texts).toContain("BO");
   });
 });
+
+describe("PeopleSwitcher check indicator coverage (AS-054)", () => {
+  // AS-054/F081: beyond `data-checked`/`aria-selected` bookkeeping, a
+  // selected member's row must render a visible check glyph. The base
+  // CommandItem primitive always mounts *a* <CheckIcon> (opacity-controlled,
+  // used for cmdk's own selected-row affordance), so presence-of-svg alone
+  // can't distinguish selected/unselected -- this asserts on the explicit,
+  // always-visible (no `opacity-0`) CheckIcon that people-switcher.tsx itself
+  // renders only `{isSelected ? <CheckIcon .../> : null}`.
+  function explicitCheckIcon(item: Element): SVGSVGElement | null {
+    return Array.from(item.querySelectorAll("svg")).find(
+      (svg) => !svg.getAttribute("class")?.includes("opacity-0"),
+    ) as SVGSVGElement | undefined ?? null;
+  }
+
+  it("test_AS_054_selected_member_renders_a_visible_check_indicator", async () => {
+    render(
+      createElement(PeopleSwitcher, {
+        members,
+        selectedUserIds: ["user-1"],
+        selfId: "user-1",
+        onSelectionChange: vi.fn(),
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /people selected/i }));
+
+    const adasItem = await waitFor(() =>
+      screen.getByText("Ada Lovelace").closest('[data-checked]'),
+    );
+    expect(adasItem).toHaveAttribute("data-checked", "true");
+    expect(explicitCheckIcon(adasItem!)).not.toBeNull();
+  });
+
+  it("test_AS_054_unselected_member_renders_no_check_indicator", async () => {
+    render(
+      createElement(PeopleSwitcher, {
+        members,
+        selectedUserIds: ["user-1"],
+        selfId: "user-1",
+        onSelectionChange: vi.fn(),
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /people selected/i }));
+
+    const gracesItem = await waitFor(() =>
+      screen.getByText("Grace Hopper").closest('[data-checked]'),
+    );
+    expect(gracesItem).toHaveAttribute("data-checked", "false");
+    expect(explicitCheckIcon(gracesItem!)).toBeNull();
+  });
+});
