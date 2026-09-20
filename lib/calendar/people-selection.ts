@@ -84,6 +84,31 @@ export function serializePeopleParam(ids: readonly string[], selfId: string): st
 }
 
 /**
+ * F029 (AS-011): builds the Planner's `?week=` navigation hrefs
+ * (previous/next/today), carrying the raw current `?people=` value
+ * forward untouched whenever one is present. Never re-parses/re-serializes
+ * `peopleParam` -- a stale-but-still-valid selection string round-trips
+ * exactly as given, and an absent one stays absent (no `people=` key
+ * appears in the output at all).
+ */
+export function buildWeekNavHref(opts: {
+  workspaceSlug: string;
+  weekKey?: string;
+  peopleParam?: string | null;
+}): string {
+  const { workspaceSlug, weekKey, peopleParam } = opts;
+  const params = new URLSearchParams();
+  if (weekKey) {
+    params.set("week", weekKey);
+  }
+  if (peopleParam) {
+    params.set("people", peopleParam);
+  }
+  const qs = params.toString();
+  return `/w/${workspaceSlug}/calendar${qs ? `?${qs}` : ""}`;
+}
+
+/**
  * Orders members for the "whole team" shortcut: the signed-in member
  * (selfId) first, then the remaining members sorted alphabetically by
  * display name. Members with a null name sort last among the remainder.

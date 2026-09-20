@@ -35,6 +35,7 @@ import {
   previousWeekKey,
   weekDateRange,
 } from "@/lib/calendar/week-grid";
+import { buildWeekNavHref, parsePeopleParam } from "@/lib/calendar/people-selection";
 import { WeekView } from "@/components/calendar/week-view";
 
 export default async function CalendarPage({
@@ -44,10 +45,11 @@ export default async function CalendarPage({
   params: Promise<{ workspaceSlug: string }>;
   searchParams: Promise<{
     week?: string;
+    people?: string;
   }>;
 }) {
   const { workspaceSlug } = await params;
-  const { week: weekParam } = await searchParams;
+  const { week: weekParam, people: peopleParam } = await searchParams;
 
   const supabase = await getRequestClient();
 
@@ -84,7 +86,20 @@ export default async function CalendarPage({
   const weekKey = parseWeekKey(weekParam) ?? currentWeekKey(timezone);
   const week = buildCalendarWeek(weekKey, timezone);
   const weekRange = weekDateRange(weekKey);
-  const weekHrefFor = (key: string) => `/w/${workspaceSlug}/calendar?week=${key}`;
+  // F029 (AS-011): week navigation carries the raw `?people=` value forward
+  // untouched -- never re-derived/re-serialized -- so a stale-but-valid
+  // selection string round-trips exactly as given.
+  const weekHrefFor = (key: string) =>
+    buildWeekNavHref({ workspaceSlug, weekKey: key, peopleParam });
+  const todayHref = buildWeekNavHref({ workspaceSlug, peopleParam });
+
+  // F029: the switcher's own current selection, resolved the same way any
+  // other `?people=` consumer would (AS-059's empty-selection fallback to
+  // `[selfId]` already lives inside parsePeopleParam itself).
+  const selectedUserIds = parsePeopleParam(peopleParam, {
+    selfId: user.id,
+    activeMemberIds: workspaceMembers.active.map((m) => m.userId),
+  });
 
   return (
     <div className="flex flex-col gap-3 p-6 pt-4 lg:p-8 lg:pt-8">
@@ -97,6 +112,7 @@ export default async function CalendarPage({
           week={week}
           weekKey={weekKey}
           weekHrefFor={weekHrefFor}
+          todayHref={todayHref}
           // F012: getCalendarBlocks now takes an explicit userIds
           // restriction. The real "?people=" selection lands in F013 --
           // until then, every active member preserves today's
@@ -108,6 +124,16 @@ export default async function CalendarPage({
           // it needs at every call site -- no component re-derives "is
           // this mine" independently.
           currentUserId={user.id}
+          // F029 (AS-011, AS-012, AS-013, AS-059): the URL-bound people
+          // switcher's own props -- see WeekView/people-switcher.tsx.
+          peopleSwitcherMembers={workspaceMembers.active.map((m) => ({
+            userId: m.userId,
+            name: m.name,
+            email: m.email,
+            avatarUrl: m.avatarUrl,
+          }))}
+          selectedUserIds={selectedUserIds}
+          weekParam={weekParam}
         />
       </Suspense>
     </div>
@@ -125,8 +151,12 @@ async function WeekGridSection({
   week,
   weekKey,
   weekHrefFor,
+  todayHref,
   blockUserIds,
   currentUserId,
+  peopleSwitcherMembers,
+  selectedUserIds,
+  weekParam,
 }: {
   workspaceId: string;
   workspaceSlug: string;
@@ -135,8 +165,17 @@ async function WeekGridSection({
   week: ReturnType<typeof buildCalendarWeek>;
   weekKey: string;
   weekHrefFor: (key: string) => string;
+  todayHref: string;
   blockUserIds: string[];
   currentUserId: string;
+  peopleSwitcherMembers: Array<{
+    userId: string;
+    name: string | null;
+    email: string | null;
+    avatarUrl: string | null;
+  }>;
+  selectedUserIds: string[];
+  weekParam?: string;
 }) {
   const rangeEndExclusive = new Date(`${end}T00:00:00.000Z`);
   rangeEndExclusive.setUTCDate(rangeEndExclusive.getUTCDate() + 1);
@@ -165,7 +204,13 @@ async function WeekGridSection({
       currentUserId={currentUserId}
       prevHref={weekHrefFor(previousWeekKey(weekKey))}
       nextHref={weekHrefFor(nextWeekKey(weekKey))}
-      todayHref={`/w/${workspaceSlug}/calendar`}
+      todayHref={todayHref}
+      peopleSwitcher={{
+        members: peopleSwitcherMembers,
+        selectedUserIds,
+        selfId: currentUserId,
+        weekParam,
+      }}
     />
   );
 }

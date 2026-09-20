@@ -16,6 +16,10 @@ import { WeekTimeGrid } from "@/components/calendar/week-time-grid";
 import { WeekAgenda } from "@/components/calendar/week-agenda";
 import { TimeOffDayStrip } from "@/components/calendar/time-off-day-strip";
 import { AddTimeOffDialog } from "@/components/calendar/add-time-off-dialog";
+import {
+  PeopleSwitcherUrlBound,
+  type PeopleSwitcherMember,
+} from "@/components/calendar/people-switcher";
 import { Button } from "@/components/ui/button";
 
 export function WeekView({
@@ -28,6 +32,7 @@ export function WeekView({
   prevHref,
   nextHref,
   todayHref,
+  peopleSwitcher,
 }: {
   week: CalendarWeek;
   blocks: CalendarBlock[];
@@ -45,6 +50,17 @@ export function WeekView({
   prevHref: string;
   nextHref: string;
   todayHref: string;
+  /** F029 (AS-011, AS-012, AS-013, AS-059): props for the URL-bound people
+   * switcher, threaded down from the page's own `?people=`/`?week=`
+   * resolution. Optional/omitted renders no switcher at all -- keeps every
+   * existing caller/test (none of which know about the switcher yet)
+   * behaving exactly as before. */
+  peopleSwitcher?: {
+    members: PeopleSwitcherMember[];
+    selectedUserIds: string[];
+    selfId: string;
+    weekParam?: string;
+  };
 }) {
   const rangeLabel = formatWeekRangeLabel(week);
 
@@ -72,6 +88,15 @@ export function WeekView({
           {rangeLabel}
         </h1>
         <div className="flex items-center gap-1">
+          {peopleSwitcher ? (
+            <PeopleSwitcherUrlBound
+              members={peopleSwitcher.members}
+              selectedUserIds={peopleSwitcher.selectedUserIds}
+              selfId={peopleSwitcher.selfId}
+              workspaceSlug={workspaceSlug}
+              weekParam={peopleSwitcher.weekParam}
+            />
+          ) : null}
           {workspaceId ? <AddTimeOffDialog workspaceId={workspaceId} /> : null}
           <Button
             variant="outline"
