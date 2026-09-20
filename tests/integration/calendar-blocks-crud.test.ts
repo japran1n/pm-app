@@ -398,6 +398,7 @@ describe.skipIf(!haveAdminCreds)("Planner calendar_blocks CRUD + RLS", () => {
       workspaceId,
       "2026-05-01T00:00:00.000Z",
       "2026-06-01T00:00:00.000Z",
+      [memberUserId],
     );
 
     const ids = results.map((b) => b.id);

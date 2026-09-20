@@ -64,11 +64,14 @@ function toCalendarBlock(row: CalendarBlockRow): CalendarBlock {
  * full ISO timestamps (not DateOnly strings) -- blocks carry a real time
  * of day, unlike the task due-date grid this feature sits alongside.
  *
- * `userIds`, when provided (F012's `?people=` selection), restricts the
- * result to blocks owned by that set of members -- applied as a
- * database-level `in` restriction on the blocks query itself (AS-029),
- * never by fetching everyone and discarding rows afterwards. Omitting it
- * keeps the whole-workspace behaviour any other caller relies on.
+ * `userIds` (F012's `?people=` selection) restricts the result to blocks
+ * owned by that set of members -- applied as a database-level `in`
+ * restriction on the blocks query itself (AS-029), never by fetching
+ * everyone and discarding rows afterwards. The parameter is required
+ * (AS-001): every caller must decide the selection explicitly rather than
+ * silently falling back to "no restriction" and leaking all members'
+ * blocks (AS-059). Pass every active member's id to get whole-workspace
+ * behaviour.
  *
  * F013 (AS-031): before that restriction is applied, `userIds` is first
  * resolved against `workspace_members` and narrowed to only the ids that
@@ -81,37 +84,34 @@ export async function getCalendarBlocks(
   workspaceId: string,
   rangeStartIso: string,
   rangeEndIsoExclusive: string,
-  userIds?: readonly string[],
+  userIds: readonly string[],
 ): Promise<CalendarBlock[]> {
   const supabase = await createClient();
 
-  let restrictedUserIds: string[] | undefined;
-  if (userIds !== undefined) {
-    if (userIds.length === 0) {
-      // Explicitly empty selection: no one is selected, so no blocks --
-      // without even touching the database.
-      return [];
-    }
+  if (userIds.length === 0) {
+    // Explicitly empty selection: no one is selected, so no blocks --
+    // without even touching the database.
+    return [];
+  }
 
-    const { data: activeMembers, error: membersError } = await supabase
-      .from("workspace_members")
-      .select("user_id")
-      .eq("workspace_id", workspaceId)
-      .eq("status", "active")
-      .in("user_id", userIds as string[]);
+  const { data: activeMembers, error: membersError } = await supabase
+    .from("workspace_members")
+    .select("user_id")
+    .eq("workspace_id", workspaceId)
+    .eq("status", "active")
+    .in("user_id", userIds as string[]);
 
-    if (membersError) {
-      throw membersError;
-    }
+  if (membersError) {
+    throw membersError;
+  }
 
-    restrictedUserIds = (activeMembers ?? [])
-      .map((row) => (row as { user_id: string | null }).user_id)
-      .filter((id): id is string => id !== null);
+  const restrictedUserIds = (activeMembers ?? [])
+    .map((row) => (row as { user_id: string | null }).user_id)
+    .filter((id): id is string => id !== null);
 
-    if (restrictedUserIds.length === 0) {
-      // None of the requested ids are active members of this workspace.
-      return [];
-    }
+  if (restrictedUserIds.length === 0) {
+    // None of the requested ids are active members of this workspace.
+    return [];
   }
 
   let query = supabase
@@ -123,9 +123,7 @@ export async function getCalendarBlocks(
     .lt("starts_at", rangeEndIsoExclusive)
     .gt("ends_at", rangeStartIso);
 
-  if (restrictedUserIds !== undefined) {
-    query = query.in("user_id", restrictedUserIds);
-  }
+  query = query.in("user_id", restrictedUserIds);
 
   const { data, error } = await query.order("starts_at", { ascending: true });
 
