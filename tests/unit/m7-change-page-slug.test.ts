@@ -167,3 +167,43 @@ describe("F042 changePageSlug", () => {
     ).toBe(true);
   });
 });
+
+describe("side-effect isolation (AS-144, AS-145, AS-146)", () => {
+  it("AS-144: the update call targets only the given taskId and touches no other rows/sections", async () => {
+    const result = await changePageSlug(TASK_ID, "new-slug");
+
+    expect(result.success).toBe(true);
+    expect(updateCalls.length).toBe(1);
+    const call = updateCalls[0];
+    expect(call.table).toBe("tasks");
+    expect(call.matchId).toBe(TASK_ID);
+    expect(call.payload).toEqual({ page_slug: "new-slug" });
+  });
+
+  it("AS-145: the update payload does not touch position or page_order", async () => {
+    const result = await changePageSlug(TASK_ID, "new-slug");
+
+    expect(result.success).toBe(true);
+    expect(updateCalls.length).toBe(1);
+    const payload = updateCalls[0].payload;
+    expect(payload).toEqual({ page_slug: "new-slug" });
+    expect(payload).not.toHaveProperty("position");
+    expect(payload).not.toHaveProperty("page_order");
+  });
+
+  it("AS-146: a nested slug is written verbatim and the update is scoped to the exact taskId, not a wildcard that could cascade to child pages", async () => {
+    const nestedSlug = "services/seo";
+
+    const result = await changePageSlug(TASK_ID, nestedSlug);
+
+    expect(result.success).toBe(true);
+    expect(updateCalls.length).toBe(1);
+    const call = updateCalls[0];
+    // Scoped to exactly this task id — not a broader/neq match that would
+    // also hit child pages (rows with parent_task_id = TASK_ID).
+    expect(call.matchId).toBe(TASK_ID);
+    expect(call.payload.page_slug).toBe(nestedSlug);
+    // Verbatim: no parsing/splitting of the nested path into segments.
+    expect(call.payload).toEqual({ page_slug: nestedSlug });
+  });
+});
