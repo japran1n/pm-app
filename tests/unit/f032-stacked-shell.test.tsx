@@ -4,9 +4,17 @@
 // name, and a person with zero blocks in the visible week still gets
 // their own row.
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
+
+// F035 made StackedPlanner a client component that calls useRouter (for
+// drag-to-reorder persistence) -- this shell test doesn't exercise reorder,
+// but still needs a router in scope for the component to render at all.
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
+}));
+
 import { StackedPlanner } from "@/components/calendar/stacked-planner";
 import type { CalendarBlock } from "@/lib/queries/calendar-blocks";
 import type { SwitcherMember } from "@/lib/calendar/workspace-members";
