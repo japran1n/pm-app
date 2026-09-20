@@ -14,7 +14,39 @@ vi.mock("next/navigation", () => ({
 }));
 
 import { ArchitectureBoard } from "@/components/architecture/board";
+import { ArchitectureActionsProvider } from "@/lib/architecture/actions-context";
+import type { ArchitectureActions } from "@/lib/architecture/actions-context";
 import type { BoardPage } from "@/lib/queries/architecture";
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const noop = async (..._args: any[]): Promise<never> => {
+  throw new Error("noop");
+};
+
+const readOnlyActions: ArchitectureActions = {
+  readOnly: true,
+  createSection: noop,
+  deleteSection: noop,
+  renameSection: noop,
+  reorderSections: noop,
+  moveSectionToPage: noop,
+  changeSectionKind: noop,
+  createPage: noop,
+  changePageKind: noop,
+  changePageSlug: noop,
+  renamePage: noop,
+  deletePage: noop,
+  reorderPages: noop,
+  importPages: noop,
+};
+
+function WithProvider({ children }: { children: React.ReactNode }) {
+  return (
+    <ArchitectureActionsProvider actions={readOnlyActions}>
+      {children}
+    </ArchitectureActionsProvider>
+  );
+}
 
 afterEach(() => {
   cleanup();
@@ -41,7 +73,7 @@ describe("F006 architecture board page column shell", () => {
       makePage({ id: "page-3", title: "About", pageSlug: "about" }),
     ];
 
-    render(<ArchitectureBoard pages={pages} components={[]} projectId={"00000000-0000-4000-8000-000000000001"} />);
+    render(<WithProvider><ArchitectureBoard pages={pages} components={[]} projectId={"00000000-0000-4000-8000-000000000001"} /></WithProvider>);
 
     expect(screen.getByText("Home")).toBeInTheDocument();
     expect(screen.getByText("Pricing")).toBeInTheDocument();
@@ -53,7 +85,7 @@ describe("F006 architecture board page column shell", () => {
       makePage({ id: "page-1", title: "Dashboard", pageSlug: "dashboard" }),
     ];
 
-    render(<ArchitectureBoard pages={pages} components={[]} projectId={"00000000-0000-4000-8000-000000000001"} />);
+    render(<WithProvider><ArchitectureBoard pages={pages} components={[]} projectId={"00000000-0000-4000-8000-000000000001"} /></WithProvider>);
 
     expect(screen.getByText("Dashboard")).toBeInTheDocument();
   });
@@ -73,7 +105,7 @@ describe("F006 architecture board page column shell", () => {
       }),
     ];
 
-    render(<ArchitectureBoard pages={pages} components={[]} projectId={"00000000-0000-4000-8000-000000000001"} />);
+    render(<WithProvider><ArchitectureBoard pages={pages} components={[]} projectId={"00000000-0000-4000-8000-000000000001"} /></WithProvider>);
 
     // Only the page name paragraph renders in the header, no second
     // description line.
