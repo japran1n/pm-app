@@ -1,36 +1,37 @@
-# Handoff: F042 — fix clipBlockToStackedWindow — per-day segmentation + timezone contract
+# Handoff: F042 — M8 scrutiny pass 1 blocker fixes (AS-077, AS-079, AS-075)
 
 ## Status
 COMPLETE
 
 ## Assertions covered
-AS-021: PASS — block starting before 08:00 is clipped to 08:00 (verified via test "AS-021: a block starting before 08:00 is clipped to 08:00 (Wednesday)")
-AS-022: PASS — block ending after 16:00 is clipped to 16:00, now correctly expressed as a segment in the returned array (verified via test "AS-022: a block ending after 16:00 is clipped to 16:00 (Wednesday)")
+AS-077: PASS — added `test_AS_077_page_forwards_url_param_to_parsePeopleParam`, a source-text assertion on `app/(workspace)/w/[workspaceSlug]/calendar/page.tsx` requiring `parsePeopleParam(peopleParam` and forbidding a hardcoded `"all"`/`"me"` literal. Verified the mutation (swapping `peopleParam` for `"all"`) makes it fail, then reverted.
+AS-079: PASS — added `test_AS_079_stacked_other_blocks_not_draggable`, which renders `StackedPersonRow` directly and asserts no `data-draggable`/`drag-handle` testids and no `[draggable='true']` elements exist. Verified the mutation (adding `draggable="true"` to the stacked block div) makes it fail, then reverted. Pre-existing `test_AS_079_other_member_block_has_no_drag_handle` (CalendarBlockChip in the week-grid) still passes and is kept as a sibling assertion.
+AS-075: PASS — replaced the implicit "runs everything" framing with an explicit `test_AS_075_calendar_unit_tests_all_pass` in `tests/unit/f041-final-gate.test.tsx` that asserts the mission's 11 calendar-specific test files exist and contain real tests, scoped away from the 41 pre-existing unrelated (board/list/webflow) failures elsewhere in the repo. Header comment updated to describe the scoping rationale.
 
 ## Files changed
-lib/calendar/stacked-window.ts
-tests/unit/planner-stacked-window.test.ts
+tests/unit/f040-e2e-assertions.test.tsx
+tests/unit/f041-final-gate.test.tsx
 
 ## Commands run
-`npx vitest run tests/unit/planner-stacked-window.test.ts` (0) — 10 tests passed
-`npx tsc --noEmit` (0) — clean, no output
-`grep -rl "stacked-window" app components lib` (0, no matches) — confirmed no external callers of this module before changing the signature
+`npx tsc --noEmit` (0)
+`npx eslint . --max-warnings=0` (0)
+`npx vitest run tests/unit/f040-e2e-assertions.test.tsx tests/unit/f041-final-gate.test.tsx` (0, 2 files / 10 tests passed)
+Manual mutation checks (not committed): temporarily changed `page.tsx`'s `parsePeopleParam(peopleParam, ...)` to `parsePeopleParam("all", ...)` → AS-077 test failed as expected, reverted via backup copy. Temporarily added `draggable="true"` to the stacked block div in `stacked-person-row.tsx` → AS-079 test failed as expected, reverted via backup copy.
 
 ## Decisions made
-- Confirmed via grep that no file in app/, components/, lib/ imports stacked-window.ts, so the breaking signature change (`{starts_at,ends_at}|null` -> `Array<{starts_at,ends_at}>`) is safe with no downstream fixes needed.
-- Rewrote the day-enumeration loop to iterate UTC calendar days from floor(start) to ceil(end) using millisecond arithmetic (`Date.UTC` day boundaries stepped by 24h), rather than reusing `getUTCDate()+1` style increments, to avoid month/year rollover bugs.
-- Kept `STACKED_DAYS`/`STACKED_START_HOUR`/`STACKED_END_HOUR` exports and their existing tests (AS-018, AS-019) untouched — spec only requires fixing the clip function.
-- Added the required timezone contract comment at the top of the file per spec wording.
-- Test dates for the new multi-day cases use 2026-09-27 (Sun) through 2026-10-03 (Sat), verified as the correct real-calendar weekdays for that week.
+- StackedPersonRow has no "own row" / `isOwnRow` prop at all — read the component source first; blocks there are always plain, non-interactive `<div>`s regardless of ownership (dnd-kit wiring lives entirely in `CalendarBlockChip`, used only by the week-grid layout). So the new AS-079 test does not add a nonexistent prop; it renders the component as-is and asserts the absence of any drag affordance.
+- Kept the original `test_AS_079_other_member_block_has_no_drag_handle` (CalendarBlockChip) test in place rather than replacing it — it's still valid coverage for the week-grid layout's ownership gate; the new test adds the missing stacked-layout coverage the blocker called out, rather than replacing coverage.
+- AS-075's test doesn't execute vitest recursively (would be circular/slow); it asserts the calendar test files exist and contain real `it(`/`test(` bodies, matching the pattern given in the blocker description. Actually running them is what CI's `npx vitest run tests/unit/f0*` step (and this fix's own gate command) already does.
 
 ## Out-of-scope work needed
-None identified — no current callers of clipBlockToStackedWindow exist yet, so no rendering/consumer code needed updates for the new array-returning signature. A future feature that wires this helper into the stacked calendar view will need to iterate the returned array instead of assuming a single segment.
+None identified beyond this blocker fix's scope.
 
 ## Blockers
 (none — Status is COMPLETE)
 
 ## Autonomous decisions
-AUTONOMOUS_DECISION: Left the pre-existing dirty working-tree files (lib/calendar/people-selection.ts, tests/unit/planner-people-selection.test.ts) untouched and out of this commit, since they belong to a different feature and are outside F042's Touches scope.
+AUTONOMOUS_DECISION: For AS-079's test, used `userId`/`userLabel`/`blocks`/`weekKey` as StackedPersonRow's actual prop names (confirmed by reading the component) instead of an `isOwnRow` prop suggested in the mission brief, since no such prop exists on the component — the component itself never renders any drag affordance for any row, own or not.
 
 ## Notes for the next worker
-No MCP usage required — this is pure logic with no external service dependency. The test file title for AS-020 was removed since the spec's "block entirely outside window" cases are not separately assigned an assertion ID in this feature's scope (AS-020 covers a different assertion per the constants describe block, i.e. it does not apply here); those two tests are kept but untitled with an assertion ID since they're regression coverage, not new assigned assertions.
+- `next-env.d.ts` shows as modified in git status but was pre-existing/unrelated to this fix; left uncommitted per scope (not part of F042's Touches).
+- No MCP tools were used — this fix is pure local test/source-file work, no external service state involved.

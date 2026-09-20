@@ -108,7 +108,7 @@ server will refuse to let the caller write.
 | F035 [CLARIFIED-AUTO] | Drag a row to reorder; the new order is written back into `?people=` | AS-064, AS-065 |
 | F036 [CLARIFIED-AUTO] | Scroll behaviour for many rows; block keeps its own colour; no summary rendered | AS-067, AS-068, AS-069 |
 
-## M8 — Polish and QA
+## M8 — Polish and QA ✅ GREEN (scrutiny pass 3 + UX pass 2)
 
 | # | Feature | Assertions |
 |---|---|---|

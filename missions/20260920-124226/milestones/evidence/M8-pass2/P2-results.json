@@ -1,0 +1,233 @@
+{
+  "runAt": "2026-09-20T21:38:17.826Z",
+  "slug": "m8b-1789940297826-noivfd",
+  "as082": {
+    "geo": {
+      "vw": 375,
+      "vh": 812,
+      "docScrollWidth": 375,
+      "docClientWidth": 375,
+      "main": {
+        "x": 147,
+        "y": 9,
+        "w": 219,
+        "h": 794,
+        "right": 366,
+        "bottom": 803,
+        "overflowX": "hidden",
+        "scrollWidth": 219,
+        "clientWidth": 219
+      },
+      "headerControls": {
+        "x": 171,
+        "y": 158,
+        "w": 171,
+        "h": 114,
+        "right": 342,
+        "bottom": 272
+      },
+      "nav": [
+        {
+          "label": "Previous week",
+          "rect": {
+            "x": 277,
+            "y": 200,
+            "w": 40,
+            "h": 34,
+            "right": 317,
+            "bottom": 234
+          },
+          "inViewport": true,
+          "display": "flex",
+          "visibility": "visible"
+        },
+        {
+          "label": "Next week",
+          "rect": {
+            "x": 239,
+            "y": 238,
+            "w": 40,
+            "h": 34,
+            "right": 279,
+            "bottom": 272
+          },
+          "inViewport": true,
+          "display": "flex",
+          "visibility": "visible"
+        },
+        {
+          "label": "Today",
+          "rect": {
+            "x": 171,
+            "y": 238,
+            "w": 64,
+            "h": 34,
+            "right": 235,
+            "bottom": 272
+          },
+          "inViewport": true,
+          "display": "flex",
+          "visibility": "visible"
+        }
+      ],
+      "switcher": {
+        "rect": {
+          "x": 171,
+          "y": 158,
+          "w": 74,
+          "h": 38,
+          "right": 245,
+          "bottom": 196
+        },
+        "inViewport": true,
+        "flexWrap": "wrap"
+      },
+      "rows": [
+        {
+          "label": "Alice Anderson's schedule",
+          "rect": {
+            "x": 195,
+            "y": 284,
+            "w": 147,
+            "h": 368,
+            "right": 342,
+            "bottom": 652
+          }
+        },
+        {
+          "label": "Bob Brown's schedule",
+          "rect": {
+            "x": 195,
+            "y": 664,
+            "w": 147,
+            "h": 368,
+            "right": 342,
+            "bottom": 1031
+          }
+        },
+        {
+          "label": "Carol Clark's schedule",
+          "rect": {
+            "x": 195,
+            "y": 1043,
+            "w": 147,
+            "h": 368,
+            "right": 342,
+            "bottom": 1411
+          }
+        }
+      ]
+    },
+    "scrollXAfterScrollTo": 0,
+    "hitTest": [
+      {
+        "label": "Previous week",
+        "point": [
+          297,
+          217
+        ],
+        "hitsSelf": true,
+        "topTag": "A.group/button inline-flex shrink-0 items-"
+      },
+      {
+        "label": "Next week",
+        "point": [
+          259,
+          255
+        ],
+        "hitsSelf": true,
+        "topTag": "A.group/button inline-flex shrink-0 items-"
+      },
+      {
+        "label": "Today",
+        "point": [
+          203,
+          255
+        ],
+        "hitsSelf": true,
+        "topTag": "A.group/button inline-flex shrink-0 items-"
+      }
+    ],
+    "nextWeekClick": {
+      "labelBefore": "Sep 14 – Sep 20, 2026",
+      "labelAfter": "Sep 21 – Sep 27, 2026",
+      "urlAfter": "http://localhost:3000/w/m8b-1789940297826-noivfd/calendar?week=2026-09-21&people=cf93463d-e4ff-4d7a-8915-b698f23e73d6%2Cd6affe12-45be-4930-b0e5-f589863b5dfa%2C9343cfb7-b4ff-4dee-9e4b-d1e0984556a1",
+      "clickOK": true,
+      "clickErr": null,
+      "changed": true,
+      "peoplePreserved": true
+    },
+    "navSequence": {
+      "start": "Sep 14 – Sep 20, 2026",
+      "afterNext": "Sep 21 – Sep 27, 2026",
+      "afterPrev": "Sep 14 – Sep 20, 2026",
+      "afterToday": "Sep 14 – Sep 20, 2026",
+      "backToStart": true
+    },
+    "switcherMobile": {
+      "visible": true,
+      "box": {
+        "x": 171,
+        "y": 158.21875,
+        "width": 74,
+        "height": 38
+      },
+      "inViewport": true,
+      "popoverOpened": true
+    },
+    "stackedRowsMobile": 3
+  },
+  "as070": {
+    "ownPlannerSubtitleCount": 0,
+    "singleOther": "Bob Brown's schedule",
+    "multiOthers": "Bob Brown, Carol Clark",
+    "multiWithSelf": "Bob Brown, Carol Clark"
+  },
+  "as071": [
+    {
+      "testid": "stacked-block-31a934df-dd9f-4fb3-8fde-bd9365a5e1bb-1",
+      "text": "Alice Green",
+      "title": "Alice Green",
+      "borderColor": "rgb(34, 197, 94)",
+      "backgroundColor": "rgba(34, 197, 94, 0.1)",
+      "opacity": "1",
+      "filter": "none"
+    },
+    {
+      "testid": "stacked-block-a3cc96b8-6e20-4f98-8763-d558fd085d2c-3",
+      "text": "Alice Pink",
+      "title": "Alice Pink",
+      "borderColor": "rgb(236, 72, 153)",
+      "backgroundColor": "rgba(236, 72, 153, 0.1)",
+      "opacity": "1",
+      "filter": "none"
+    },
+    {
+      "testid": "stacked-block-55864a5f-6d5f-4fc8-8064-dcebcb45e591-1",
+      "text": "Bob Green",
+      "title": "Bob Green",
+      "borderColor": "rgb(34, 197, 94)",
+      "backgroundColor": "rgba(34, 197, 94, 0.1)",
+      "opacity": "1",
+      "filter": "none"
+    },
+    {
+      "testid": "stacked-block-6b9e11f8-5219-4569-8c25-30816b0660c1-2",
+      "text": "Carol Pink",
+      "title": "Carol Pink",
+      "borderColor": "rgb(236, 72, 153)",
+      "backgroundColor": "rgba(236, 72, 153, 0.1)",
+      "opacity": "1",
+      "filter": "none"
+    }
+  ],
+  "as083": {
+    "regionCounts": {
+      "Alice Anderson": 1,
+      "Bob Brown": 1,
+      "Carol Clark": 1
+    },
+    "ariaSnapshotFile": "P2-a11y-tree.txt"
+  },
+  "ok": true
+}

@@ -1,0 +1,7 @@
+- group "Team planner":
+  - button "Drag to reorder"
+  - region "Alice Anderson's schedule": Alice Anderson Mon Alice Green Tue Alice Pink Wed Thu Fri
+  - button "Drag to reorder"
+  - region "Bob Brown's schedule": Bob Brown Mon Bob Green Tue Wed Bob Slate Thu Fri
+  - button "Drag to reorder"
+  - region "Carol Clark's schedule": Carol Clark Mon Tue Wed Thu Carol Pink Fri

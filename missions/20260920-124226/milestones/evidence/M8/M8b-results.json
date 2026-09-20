@@ -1,0 +1,182 @@
+{
+  "navGeo": {
+    "viewportW": 375,
+    "prev": {
+      "x": 355,
+      "right": 395,
+      "w": 40,
+      "h": 34
+    },
+    "next": {
+      "x": 467,
+      "right": 507,
+      "w": 40,
+      "h": 34
+    },
+    "switcher": {
+      "x": 171,
+      "right": 245,
+      "w": 74,
+      "h": 38
+    },
+    "today": {
+      "x": 399,
+      "right": 463,
+      "w": 64
+    },
+    "ancestorChain": [
+      {
+        "tag": "A",
+        "cls": "group/button inline-flex shrink-0 items-center justify-cente",
+        "ovx": "visible",
+        "ovy": "visible",
+        "w": 64
+      },
+      {
+        "tag": "DIV",
+        "cls": "flex items-center gap-1",
+        "ovx": "visible",
+        "ovy": "visible",
+        "w": 336
+      },
+      {
+        "tag": "DIV",
+        "cls": "flex flex-wrap items-center justify-between gap-2",
+        "ovx": "visible",
+        "ovy": "visible",
+        "w": 171
+      },
+      {
+        "tag": "DIV",
+        "cls": "flex flex-col gap-3 p-6 pt-4 lg:p-8 lg:pt-8",
+        "ovx": "visible",
+        "ovy": "visible",
+        "w": 219
+      },
+      {
+        "tag": "MAIN",
+        "cls": "flex min-w-0 flex-1 flex-col min-h-0 overflow-x-hidden overf",
+        "ovx": "hidden",
+        "ovy": "auto",
+        "w": 219
+      },
+      {
+        "tag": "DIV",
+        "cls": "bg-background border border-border rounded-lg m-2 flex-1 min",
+        "ovx": "visible",
+        "ovy": "visible",
+        "w": 221
+      },
+      {
+        "tag": "DIV",
+        "cls": "flex h-svh",
+        "ovx": "visible",
+        "ovy": "visible",
+        "w": 375
+      },
+      {
+        "tag": "BODY",
+        "cls": "min-h-full flex flex-col",
+        "ovx": "visible",
+        "ovy": "visible",
+        "w": 375
+      }
+    ],
+    "main": {
+      "x": 147,
+      "right": 366,
+      "w": 219,
+      "ovx": "hidden",
+      "scrollW": 360,
+      "clientW": 219
+    }
+  },
+  "headerScroll": [
+    {
+      "tag": "DIV",
+      "cls": "flex items-center gap-1",
+      "scrollW": 336,
+      "clientW": 336,
+      "ovx": "visible"
+    },
+    {
+      "tag": "DIV",
+      "cls": "flex flex-wrap items-center justify-between gap-2",
+      "scrollW": 336,
+      "clientW": 171,
+      "ovx": "visible"
+    },
+    {
+      "tag": "DIV",
+      "cls": "flex flex-col gap-3 p-6 pt-4 lg:p-8 lg:pt-8",
+      "scrollW": 360,
+      "clientW": 219,
+      "ovx": "visible"
+    },
+    {
+      "tag": "MAIN",
+      "cls": "flex min-w-0 flex-1 flex-col min-h-0 overflow-x-hi",
+      "scrollW": 360,
+      "clientW": 219,
+      "ovx": "hidden"
+    },
+    {
+      "tag": "DIV",
+      "cls": "bg-background border border-border rounded-lg m-2 ",
+      "scrollW": 219,
+      "clientW": 219,
+      "ovx": "visible"
+    },
+    {
+      "tag": "DIV",
+      "cls": "flex h-svh",
+      "scrollW": 375,
+      "clientW": 375,
+      "ovx": "visible"
+    }
+  ],
+  "nextClickable": {
+    "clickable": "trial-click-ok(playwright auto-scrolled)",
+    "hitTest": {
+      "cx": 346,
+      "cy": 177,
+      "inViewport": true,
+      "elementAtPoint": "A.group/button inline-flex shrink-0 items-",
+      "isNextOrChild": true
+    }
+  },
+  "boardGeo": {
+    "url": "/w/m8ux-1789939955487/board",
+    "mainX": null,
+    "mainW": null,
+    "docScrollW": 375,
+    "clientW": 375
+  },
+  "sidebar": [],
+  "blockGeo": [
+    {
+      "text": "Alice Green",
+      "title": "Alice Green",
+      "w": 24,
+      "h": 80
+    },
+    {
+      "text": "Bob Green",
+      "title": "Bob Green",
+      "w": 24,
+      "h": 80
+    },
+    {
+      "text": "Carol Pink",
+      "title": "Carol Pink",
+      "w": 24,
+      "h": 120
+    }
+  ],
+  "vscroll": {
+    "scrollTop": 515,
+    "scrollH": 1127,
+    "clientH": 612,
+    "ovy": "auto"
+  }
+}

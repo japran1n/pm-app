@@ -1,0 +1,245 @@
+seeded workspace m8ux-1789939862298 weekKey 2026-09-14 {
+  "alice": "4cf67045-1ba4-4fc9-b12c-f351fc03b5d2",
+  "bob": "846ef6c7-87fe-4a02-9429-43437e15a56f",
+  "carol": "7e29e3be-fb71-4431-818c-73a9a99b407f"
+}
+
+===== AS-070 =====
+own planner (no params): subtitle count = 0
+single other person (Bob): subtitle = "Bob Brown's schedule" visible true
+multi, not including viewer (Bob,Carol): subtitle = "Bob Brown, Carol Clark"
+multi including viewer (me,Bob,Carol): subtitle = "Bob Brown, Carol Clark"
+
+===== M7 spot-checks =====
+stacked? 1 weekview? 0 rows [
+  "Carol Clark",
+  "Bob Brown",
+  "Alice Anderson"
+] orderOK true switcher visible true
+nav hrefs: {
+  "prev": "/w/m8ux-1789939862298/calendar?week=2026-09-07&people=7e29e3be-fb71-4431-818c-73a9a99b407f%2C846ef6c7-87fe-4a02-9429-43437e15a56f%2C4cf67045-1ba4-4fc9-b12c-f351fc03b5d2",
+  "next": "/w/m8ux-1789939862298/calendar?week=2026-09-21&people=7e29e3be-fb71-4431-818c-73a9a99b407f%2C846ef6c7-87fe-4a02-9429-43437e15a56f%2C4cf67045-1ba4-4fc9-b12c-f351fc03b5d2",
+  "today": "/w/m8ux-1789939862298/calendar?people=7e29e3be-fb71-4431-818c-73a9a99b407f%2C846ef6c7-87fe-4a02-9429-43437e15a56f%2C4cf67045-1ba4-4fc9-b12c-f351fc03b5d2"
+}
+nav: {
+  "labelBefore": "Sep 14 – Sep 20, 2026",
+  "labelNext": "Sep 21 – Sep 27, 2026",
+  "urlNext": "http://localhost:3000/w/m8ux-1789939862298/calendar?week=2026-09-21&people=7e29e3be-fb71-4431-818c-73a9a99b407f%2C846ef6c7-87fe-4a02-9429-43437e15a56f%2C4cf67045-1ba4-4fc9-b12c-f351fc03b5d2",
+  "labelPrev": "Sep 14 – Sep 20, 2026",
+  "urlPrev": "http://localhost:3000/w/m8ux-1789939862298/calendar?week=2026-09-14&people=7e29e3be-fb71-4431-818c-73a9a99b407f%2C846ef6c7-87fe-4a02-9429-43437e15a56f%2C4cf67045-1ba4-4fc9-b12c-f351fc03b5d2",
+  "labelTwoFwd": "Sep 28 – Oct 4, 2026",
+  "labelToday": "Sep 14 – Sep 20, 2026",
+  "urlToday": "http://localhost:3000/w/m8ux-1789939862298/calendar?people=7e29e3be-fb71-4431-818c-73a9a99b407f%2C846ef6c7-87fe-4a02-9429-43437e15a56f%2C4cf67045-1ba4-4fc9-b12c-f351fc03b5d2",
+  "stillStacked": 1
+}
+
+===== AS-071 =====
+stacked block colours: [
+  {
+    "title": "Alice Green",
+    "row": "Alice Anderson",
+    "border": "rgb(34, 197, 94)",
+    "bg": "rgba(34, 197, 94, 0.1)",
+    "opacity": "1",
+    "filter": "none"
+  },
+  {
+    "title": "Alice Pink",
+    "row": "Alice Anderson",
+    "border": "rgb(236, 72, 153)",
+    "bg": "rgba(236, 72, 153, 0.1)",
+    "opacity": "1",
+    "filter": "none"
+  },
+  {
+    "title": "Bob Green",
+    "row": "Bob Brown",
+    "border": "rgb(34, 197, 94)",
+    "bg": "rgba(34, 197, 94, 0.1)",
+    "opacity": "1",
+    "filter": "none"
+  },
+  {
+    "title": "Bob Slate",
+    "row": "Bob Brown",
+    "border": "rgb(100, 116, 139)",
+    "bg": "rgba(100, 116, 139, 0.1)",
+    "opacity": "1",
+    "filter": "none"
+  },
+  {
+    "title": "Carol Pink",
+    "row": "Carol Clark",
+    "border": "rgb(236, 72, 153)",
+    "bg": "rgba(236, 72, 153, 0.1)",
+    "opacity": "1",
+    "filter": "none"
+  }
+]
+single-layout (Bob) block colours: [
+  {
+    "testid": "calendar-week-block-chip-f25d54e2-8bf9-4580-ae61-d212e16a1985",
+    "title": "Bob Green12:00 PM–2:00 PM",
+    "border": "rgb(34, 197, 94)",
+    "bg": "rgba(34, 197, 94, 0.1)",
+    "opacity": "1",
+    "filter": "none"
+  },
+  {
+    "testid": "calendar-week-block-time-f25d54e2-8bf9-4580-ae61-d212e16a1985",
+    "title": "12:00 PM–2:00 PM",
+    "border": "oklch(0.95 0.001485 159 / 0.075125)",
+    "bg": "rgba(0, 0, 0, 0)",
+    "opacity": "1",
+    "filter": "none"
+  },
+  {
+    "testid": "calendar-week-block-chip-e81026d4-a025-424f-b98f-65d39cb14283",
+    "title": "Bob Slate3:00 PM–5:00 PM",
+    "border": "rgb(100, 116, 139)",
+    "bg": "rgba(100, 116, 139, 0.1)",
+    "opacity": "1",
+    "filter": "none"
+  },
+  {
+    "testid": "calendar-week-block-time-e81026d4-a025-424f-b98f-65d39cb14283",
+    "title": "3:00 PM–5:00 PM",
+    "border": "oklch(0.95 0.001485 159 / 0.075125)",
+    "bg": "rgba(0, 0, 0, 0)",
+    "opacity": "1",
+    "filter": "none"
+  }
+]
+
+===== AS-083 =====
+row aria: [
+  {
+    "role": "region",
+    "label": "Alice Anderson's schedule"
+  },
+  {
+    "role": "region",
+    "label": "Bob Brown's schedule"
+  },
+  {
+    "role": "region",
+    "label": "Carol Clark's schedule"
+  }
+] container: {
+  "role": "group",
+  "label": "Team planner"
+}
+aria snapshot of stacked planner:
+- group "Team planner":
+  - button "Drag to reorder"
+  - region "Alice Anderson's schedule": Alice Anderson Mon Alice Green Tue Alice Pink Wed Thu Fri
+  - button "Drag to reorder"
+  - region "Bob Brown's schedule": Bob Brown Mon Bob Green Tue Wed Bob Slate Thu Fri
+  - button "Drag to reorder"
+  - region "Carol Clark's schedule": Carol Clark Mon Tue Wed Thu Carol Pink Fri
+getByRole(region, name) lookups: [
+  {
+    "name": "Alice Anderson",
+    "foundByRole": 1
+  },
+  {
+    "name": "Bob Brown",
+    "foundByRole": 1
+  },
+  {
+    "name": "Carol Clark",
+    "foundByRole": 1
+  }
+]
+
+===== AS-082 =====
+mobile overflow: {
+  "docScrollW": 375,
+  "docClientW": 375,
+  "bodyScrollW": 375,
+  "innerW": 375
+} offenders: [
+  {
+    "tag": "DIV",
+    "cls": "flex items-center gap-1",
+    "testid": null,
+    "right": 507,
+    "width": 336
+  },
+  {
+    "tag": "A",
+    "cls": "group/button inline-flex shrink-0 items-center justify-center gap-2 whitespace-n",
+    "testid": null,
+    "right": 395,
+    "width": 40
+  },
+  {
+    "tag": "A",
+    "cls": "group/button inline-flex shrink-0 items-center justify-center gap-2 whitespace-n",
+    "testid": null,
+    "right": 463,
+    "width": 64
+  },
+  {
+    "tag": "A",
+    "cls": "group/button inline-flex shrink-0 items-center justify-center gap-2 whitespace-n",
+    "testid": null,
+    "right": 507,
+    "width": 40
+  }
+]
+mobile rows: 3 [
+  {
+    "label": "Alice Anderson's schedule",
+    "w": 147,
+    "h": 368,
+    "right": 342
+  },
+  {
+    "label": "Bob Brown's schedule",
+    "w": 147,
+    "h": 368,
+    "right": 342
+  },
+  {
+    "label": "Carol Clark's schedule",
+    "w": 147,
+    "h": 368,
+    "right": 342
+  }
+] daycols: [
+  {
+    "label": "Mon",
+    "w": 29,
+    "right": 224
+  },
+  {
+    "label": "Tue",
+    "w": 29,
+    "right": 254
+  },
+  {
+    "label": "Wed",
+    "w": 29,
+    "right": 283
+  },
+  {
+    "label": "Thu",
+    "w": 29,
+    "right": 313
+  },
+  {
+    "label": "Fri",
+    "w": 29,
+    "right": 342
+  }
+] switcher visible true nav {
+  "prev": true,
+  "today": true,
+  "next": true
+}
+horizontal scrollX after scrollTo(9999): 0
+mobile single layout overflow: {
+  "scrollW": 375,
+  "clientW": 375
+}

@@ -1,36 +1,39 @@
-# Handoff: F045 — Parser and collation hardening
+# Handoff: F045 — M8 scrutiny blocker fixes (AS-077, AS-075) attempt 3
 
 ## Status
 COMPLETE
 
 ## Assertions covered
-AS-004: PASS — ?people=all (with whitespace, trailing comma, uppercase, multi-trailing-commas) resolves to all active members via robust normalisation
-AS-008: PASS — invalid/unknown ids and empty roster fall back to [selfId], never empty array
-AS-058: PASS — orderPeopleForWholeTeam sorts self first, then by locale-aware name comparison; null/undefined names sort last
+AS-077: PASS — added source-text check that `peopleParam` is never assigned a string literal, plus a check that it originates from `searchParams` destructuring; verified via mutation (swapping the real destructure for `const peopleParam = "all"`) causes the new `not.toMatch` assertion to fail as expected, then reverted.
+AS-075: PASS — the gate test now actually spawns `npx vitest run <calendar files> --reporter=verbose` via `execSync` and asserts it does not throw; verified via mutation (inserting a broken/failing line into `f039-stacked-mobile.test.tsx`) causes the execSync call to throw (subprocess exit non-zero) and the test fails as expected, then reverted.
 
 ## Files changed
-lib/calendar/people-selection.ts
-tests/unit/planner-people-selection.test.ts
+tests/unit/f040-e2e-assertions.test.tsx
+tests/unit/f041-final-gate.test.tsx
 
 ## Commands run
-`npx vitest run tests/unit/planner-people-selection.test.ts` (0) — 27 passed
-`npx tsc --noEmit` (0) — clean
+`npx tsc --noEmit` (0)
+`npx eslint . --max-warnings=0` (0)
+`npx vitest run tests/unit/f040-e2e-assertions.test.tsx tests/unit/f041-final-gate.test.tsx --reporter=verbose` (0, 10/10 tests passed)
+Mutation check 1 (AS-077): replaced `const { week: weekParam, people: peopleParam } = await searchParams;` with `const { week: weekParam } = await searchParams; const peopleParam = "all";` in page.tsx, ran the single AS-077 test — FAILED as expected on the new `not.toMatch(/\bpeopleParam\s*=\s*["'\`][^{]/)` assertion, then reverted file from backup.
+Mutation check 2 (AS-075): inserted `expect(1).toBe(2);` into `tests/unit/f039-stacked-mobile.test.tsx`, ran the AS-075 test — the spawned vitest subprocess failed (syntax/assertion break) causing execSync to throw, and `test_AS_075_calendar_unit_tests_pass` FAILED as expected, then reverted file from backup.
 
 ## Decisions made
-- Replaced the trim-only "me"/"all" check with `(raw ?? "").trim().replace(/[,\s]+$/g, "").toLowerCase()` per spec, so `"ALL"`, `" all "`, `"all,"`, and `"all,,"` (multiple trailing commas/whitespace) all normalise correctly to the `all` branch.
-- Changed `orderPeopleForWholeTeam`'s null checks from `=== null` to `== null` (and widened the type to `string | null | undefined`) so members with an `undefined` name (not just `null`) sort last instead of crashing on `.localeCompare` or sorting unpredictably.
-- Replaced the old non-ASCII test (Ärla vs Zebra) which didn't actually probe locale-sensitive collation with a working locale-sensitive case: `"Öl".localeCompare("Pa", "en", { sensitivity: "base" })` returns -1 (Ö collates near O, so Öl sorts before Pa) — verified empirically via `node -e` before writing the assertion, since Ö's collation position relative to P is not obvious from naive code-point comparison.
-- Added a dedicated "member with undefined name sorts last" test using `name: undefined` (distinct from the existing `name: null` test) to lock in the `==` null-check widening.
-- Added AS-004 tests for `"ALL"` (uppercase) and `"all,,"` (multiple trailing commas) per spec. The existing "AS-008: all path with empty roster falls back to selfId" test already covered the empty-roster case named in the spec as a new test to add, so no duplicate was created.
+- For AS-077, used `[^{]` after the literal-quote match in the "no string-literal assignment" regex so that destructuring patterns like `people: peopleParam` (which have `{` before `peopleParam`, not `=`) are unaffected, while still catching `peopleParam = "all"` / `peopleParam = 'me'` style mutations. The positive-origin regex separately requires the value to come from `searchParams` in one of three shapes.
+- For AS-075, kept the original list of calendar test files (existence-filtered) but now actually executes them under vitest as a subprocess with a 120s execSync timeout and a 150s outer test timeout to avoid the harness's default test timeout killing a legitimately slow subprocess run.
+- Did not touch AS-076 or AS-084 tests in f041 — they were unaffected by the scrutiny findings and already run real subprocess checks (migrations:check, git diff).
+- Only staged/committed the two test files I edited; left pre-existing unrelated working-tree changes (missions/20260920-124226/handoffs/F042-handoff.md, next-env.d.ts, playwright-mcp artifacts) untouched since they predate this task and are out of scope.
 
 ## Out-of-scope work needed
-None identified beyond this feature's scope.
+None identified for this task.
 
 ## Blockers
-(none — status is COMPLETE)
+(none — Status is COMPLETE)
 
 ## Autonomous decisions
-AUTONOMOUS_DECISION: Kept the "AS-008: all path with empty roster falls back to selfId" test's existing name rather than duplicating it under a new "AS-008: all with empty roster returns [selfId]" name, since it already fully covers the spec's requested case (`parsePeopleParam("all", { selfId, activeMemberIds: [] })` -> `[selfId]`).
+AUTONOMOUS_DECISION: Chose to leave pre-existing unstaged/untracked changes in the working tree unmodified and uncommitted, since they were not part of this feature's scope and committing them could conflate unrelated work into this commit.
 
 ## Notes for the next worker
-No MCP tools used — this feature is pure in-repo TypeScript logic with no external service dependency. `git status` shows numerous untracked mission-state files and other unrelated worker handoffs (F001-F011, F042-F044, F046) present before this session started; only `lib/calendar/people-selection.ts` and `tests/unit/planner-people-selection.test.ts` were staged and committed for F045.
+- The AS-075 test now takes ~3.2s (spawns a real vitest subprocess covering 11 calendar test files); this is intentional per the mission's spec for this fix and is bounded by a 150_000ms test timeout.
+- If a future scrutiny pass tries the same "narrow existence-only check" attack pattern on AS-075, note that the current implementation already executes the files for real via `execSync`, so a stub-only regression would need to defeat the subprocess exit-code check, not just file existence.
+- Mutation backups used during verification were made via `cp` to `/tmp` inside the scratchpad flow and were fully reverted before committing; git status confirms only the two intended files changed by this commit.
