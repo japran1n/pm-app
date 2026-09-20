@@ -61,6 +61,7 @@ import {
 } from "@/components/calendar/calendar-block-popover-form";
 import { canWrite } from "@/lib/auth/permissions";
 import { useMembership } from "@/components/auth/membership-provider";
+import { isOwnBlock } from "@/lib/calendar/ownership";
 import { cn } from "@/lib/utils";
 
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
@@ -119,16 +120,15 @@ export function WeekTimeGrid({
   blocksByDate,
   workspaceSlug: _workspaceSlug,
   workspaceId,
-  currentUserId: _currentUserId,
+  currentUserId,
 }: {
   days: CalendarWeekDay[];
   blocksByDate: Record<string, CalendarBlock[]>;
   workspaceSlug: string;
   workspaceId?: string;
-  /** F020 (AS-046): plumbing only -- the actual `isOwnBlock` usage (which
-   * gates drag/resize/edit affordances to the block's owner) lands in
-   * F021-F024. Prefixed `_` until then, same convention `_workspaceSlug`
-   * already uses in this component for a prop it doesn't read yet. */
+  /** F020 (AS-046): the signed-in member's id, used via `isOwnBlock` to
+   * gate drag/resize/edit affordances to the block's owner. F021 is the
+   * first consumer (resize handles); F022-F024 follow the same pattern. */
   currentUserId: string;
 }) {
   // F135/F225/F234 pattern reused verbatim (see calendar-day-grid.tsx's
@@ -525,7 +525,7 @@ export function WeekTimeGrid({
                   height={isResizingThis ? liveResize!.height : layout.height}
                   liveTimeLabel={isResizingThis ? liveResize!.label : null}
                   isResizing={isResizingThis}
-                  canDrag={canDrag}
+                  canResize={canDrag && isOwnBlock(block, currentUserId)}
                   onStartResize={(edge) =>
                     setResize({ blockId: block.id, edge, date: day.date })
                   }
@@ -631,7 +631,7 @@ function WeekBlockChip({
   height,
   liveTimeLabel = null,
   isResizing = false,
-  canDrag,
+  canResize,
   onStartResize,
   onUpdate,
   onDelete,
@@ -645,7 +645,11 @@ function WeekBlockChip({
    * time, when the chip's own static time range (below) is shown instead. */
   liveTimeLabel?: string | null;
   isResizing?: boolean;
-  canDrag: boolean;
+  /** F021 (AS-042): gates the resize handles -- write permission alone
+   * (`canDrag`) is not enough; a member with write access still must not
+   * see resize handles on a teammate's block. Callers pass
+   * `canDrag && isOwnBlock(block, currentUserId)`. */
+  canResize: boolean;
   onStartResize: (edge: "start" | "end") => void;
   onUpdate: (values: {
     title: string;
@@ -712,7 +716,7 @@ function WeekBlockChip({
             onPointerDown={(event) => event.stopPropagation()}
             title={block.title}
           >
-            {canDrag && (
+            {canResize && (
               <span
                 data-testid={`calendar-week-resize-start-${block.id}`}
                 aria-hidden="true"
@@ -741,7 +745,7 @@ function WeekBlockChip({
                   before releasing the mouse. */}
               {liveTimeLabel ?? formatBlockTimeRange(block.startsAt, block.endsAt)}
             </span>
-            {canDrag && (
+            {canResize && (
               <span
                 data-testid={`calendar-week-resize-end-${block.id}`}
                 aria-hidden="true"
