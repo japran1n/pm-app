@@ -5,7 +5,11 @@
 // that AS-007/AS-008 build on.
 
 import { describe, expect, it } from "vitest";
-import { parsePeopleParam, serializePeopleParam } from "@/lib/calendar/people-selection";
+import {
+  orderPeopleForWholeTeam,
+  parsePeopleParam,
+  serializePeopleParam,
+} from "@/lib/calendar/people-selection";
 
 const SELF_ID = "member-self";
 const ACTIVE_MEMBER_IDS = ["member-self", "member-a", "member-b", "member-c"];
@@ -119,5 +123,43 @@ describe("serializePeopleParam", () => {
 
   it("serializes a multi-person selection as a comma-joined, order-preserving string", () => {
     expect(serializePeopleParam(["member-c", "member-a"], SELF_ID)).toBe("member-c,member-a");
+  });
+});
+
+describe("orderPeopleForWholeTeam", () => {
+  it("AS-058: orders self first, then remaining members alphabetically by name", () => {
+    const members = [
+      { id: "b", name: "Bob" },
+      { id: "a", name: "Alice" },
+      { id: "self", name: "Zed" },
+      { id: "c", name: "Charlie" },
+    ];
+
+    const result = orderPeopleForWholeTeam(members, "self");
+
+    expect(result).toEqual(["self", "a", "b", "c"]);
+  });
+
+  it("AS-058: members with a null name sort last among the remainder", () => {
+    const members = [
+      { id: "n", name: null },
+      { id: "a", name: "Alice" },
+      { id: "self", name: "Self Person" },
+    ];
+
+    const result = orderPeopleForWholeTeam(members, "self");
+
+    expect(result).toEqual(["self", "a", "n"]);
+  });
+
+  it("AS-058: self appears first even when self sorts last alphabetically", () => {
+    const members = [
+      { id: "self", name: "Zzz" },
+      { id: "a", name: "Alice" },
+    ];
+
+    const result = orderPeopleForWholeTeam(members, "self");
+
+    expect(result).toEqual(["self", "a"]);
   });
 });
