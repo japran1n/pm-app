@@ -831,6 +831,18 @@ export async function reorderComponents(
     return { success: false, error: "Component list is incomplete." };
   }
 
+  // Defense-in-depth: even if the schema's uniqueness refinement somehow
+  // passed (e.g. a direct call bypassing the schema), a submitted list with
+  // duplicate ids will have a different length than the DB's row count even
+  // when the Set-based completeness check above matched (a Set of
+  // [A, A, B] has the same size as a Set of {A, B}).
+  if (parsed.data.componentIds.length !== (existingComponents ?? []).length) {
+    return {
+      success: false,
+      error: "Component list is incomplete or contains duplicates",
+    };
+  }
+
   // AS-161: batch-update every component's position to its index in the
   // caller-supplied order.
   const results = await Promise.all(

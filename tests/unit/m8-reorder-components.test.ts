@@ -99,6 +99,36 @@ describe("F047 reorderComponents", () => {
     expect(updateMock).not.toHaveBeenCalled();
   });
 
+  it("AS-160 duplicate ids are rejected", async () => {
+    // Only 2 distinct ids submitted for a project with 3 components -- the
+    // schema's uniqueness refinement should reject this before it ever
+    // reaches the DB completeness check.
+    const result = await reorderComponents(PROJECT_ID, [COMP_1, COMP_1, COMP_2]);
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error).toBeTruthy();
+    }
+    expect(updateMock).not.toHaveBeenCalled();
+  });
+
+  it("AS-160 foreign id rejected", async () => {
+    const FOREIGN_ID = "00000000-0000-4000-8000-000000000999";
+    // Same length as existingComponentIds (3), but one id doesn't belong to
+    // any page_components row for this project.
+    const result = await reorderComponents(PROJECT_ID, [
+      COMP_1,
+      COMP_2,
+      FOREIGN_ID,
+    ]);
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error).toBeTruthy();
+    }
+    expect(updateMock).not.toHaveBeenCalled();
+  });
+
   it("AS-161: a complete list updates every component's position to its index", async () => {
     const result = await reorderComponents(PROJECT_ID, [
       COMP_3,

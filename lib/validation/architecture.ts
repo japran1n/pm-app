@@ -38,7 +38,7 @@ export const createPageSchema = z.object({
   page_kind: pageKindEnum.default("static"),
 });
 
-export type CreatePageInput = z.infer<typeof createPageSchema>;
+export type CreatePageInput = z.input<typeof createPageSchema>;
 
 // AS-040 (this mission's naming assertion): section title is required,
 // non-empty after trimming. `page_id` names the parent page task this
@@ -78,7 +78,12 @@ export type SectionKind = z.infer<typeof sectionKindEnum>;
 // task-backed rows.
 export const reorderComponentsSchema = z.object({
   projectId: z.string().uuid(),
-  componentIds: z.array(z.string().uuid()).min(1),
+  componentIds: z
+    .array(z.string().uuid())
+    .min(1)
+    .refine((ids) => new Set(ids).size === ids.length, {
+      message: "Component IDs must be unique",
+    }),
 });
 
 export type ReorderComponentsInput = z.infer<typeof reorderComponentsSchema>;
