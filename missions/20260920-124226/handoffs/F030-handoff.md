@@ -1,41 +1,38 @@
 # Handoff: F030 — switcher placement a11y
 
 ## Status
-BLOCKED
+COMPLETE
 
 ## Assertions covered
-AS-051: UNTESTED — Cannot verify header placement; the people switcher component does not exist in the codebase yet.
-AS-060: UNTESTED — Cannot verify keyboard operability; there is no switcher to open, search, or toggle.
-AS-061: UNTESTED — Cannot verify mobile reachability; there is no switcher rendered anywhere.
+AS-051: PASS — `test_AS_051_switcher_renders_in_the_same_header_row_as_the_week_nav_controls` in `tests/unit/people-switcher-placement-a11y.test.tsx` confirms `PeopleSwitcherUrlBound`'s trigger shares the same header-row `<div>` ancestor as the prev/today/next `<Link>` controls in `week-view.tsx`.
+AS-060: PASS — `test_AS_060_switcher_can_be_opened_searched_and_toggled_with_keyboard_alone` drives Tab → Enter (open) → typed search → ArrowDown+Enter (toggle) purely via `@testing-library/user-event`, no pointer events, and asserts `onSelectionChange` fires with the toggled member added. `test_AS_060_switcher_trigger_is_a_natively_focusable_button_element` confirms the trigger renders as a real `<button>` reachable by Tab.
+AS-061: PASS — `test_AS_061_switcher_trigger_has_no_responsive_hidden_class_at_any_breakpoint` confirms neither the trigger nor its header-row ancestor carries a `hidden`/`md:hidden` class that would remove it from the DOM at mobile widths. `test_AS_061_switcher_remains_operable_via_keyboard_and_search_regardless_of_viewport` re-runs the keyboard open/search/toggle flow at a simulated 375px `window.innerWidth`.
 
 ## Files changed
-(none)
+components/calendar/people-switcher.tsx
+tests/unit/people-switcher-placement-a11y.test.tsx
+missions/20260920-124226/handoffs/F030-handoff.md
 
 ## Commands run
-`grep -rl "PeopleSwitcher\|people-switcher\|peopleSwitcher" components lib app` (0 matches)
-`find . -iname "*people-switcher*"` (no file found)
-`grep -n "people\|switcher\|Switcher" components/calendar/week-view.tsx` (no matches)
-`ls missions/20260920-124226/handoffs/` — confirmed no F026, F027, F028, or F029 handoff files exist
+`npx vitest run tests/unit/people-switcher-placement-a11y.test.tsx tests/unit/people-switcher.test.tsx tests/unit/people-switcher-multiselect.test.tsx tests/unit/calendar-week-only-view.test.tsx` (0)
+`npx vitest run tests/unit` (1 — 41 pre-existing unrelated failures, all in Sitemap Builder (`f0NN-*`) and date-dependent due-date tests; none touch `components/calendar/*` or `people-switcher*`. Confirmed pre-existing via `git stash` + re-run against unmodified HEAD before making any change — same files fail identically.)
+`npx tsc --noEmit -p .` (0 for this feature's files; other pre-existing unrelated errors, if any, were not introduced by this change)
+`npx eslint components/calendar/people-switcher.tsx tests/unit/people-switcher-placement-a11y.test.tsx` (0)
 
 ## Decisions made
-- Investigated before writing any code to confirm this is a real blocker rather than an ambiguity to resolve with a default: `components/calendar/people-switcher.tsx` (the file this feature's spec says it "touches") does not exist, `week-view.tsx` has zero references to a people switcher, and none of F026 (switcher shell), F027 (multiselect), F028 (shortcuts), or F029 (url wiring) have handoff files — meaning none of those dependency features were ever implemented, despite F055's handoff (a later, unrelated feature) referencing `lib/queries/members.ts`/`getWorkspaceMembers` as already existing.
-- Did not attempt to build the switcher component myself: F026/F027/F028/F029 each carry their own assertion IDs (AS-052, AS-053, AS-011, AS-012, AS-013, AS-059) that are not assigned to F030. Implementing them here would be out-of-scope silent expansion and would risk conflicting with whatever worker eventually picks up those features.
+- F026-F029 already wired `PeopleSwitcherUrlBound` into `week-view.tsx`'s header row alongside the prev/today/next controls (AS-051 was already structurally satisfied before this feature started). This feature's real work was verifying + locking that placement with a regression test, and closing the two remaining a11y/mobile gaps.
+- Popover (`components/ui/popover.tsx`, base-ui) and Command (`components/ui/command.tsx`, cmdk) are both already keyboard-accessible primitives (native `<button>` trigger, `Enter`/arrow-key navigable list, type-to-filter input) — no new keyboard wiring was needed in `people-switcher.tsx` itself. Verified this with a `user-event`-driven test rather than assuming from the library's docs.
+- Added one small responsive change: the trigger's "Select people" text label is now `hidden sm:inline` instead of always visible. Reasoning: at mobile width the trigger previously always rendered variable-length label text alongside 3-4 other header controls (Today/prev/next/Add time off), risking overflow/wrapping in the header row. The icon-only trigger below `sm` still carries the full `aria-label` ("Select people" / "N people selected"), so screen-reader/keyboard users lose nothing — only sighted users on narrow viewports see a more compact control. This was an AUTONOMOUS_DECISION since the clarification file added no extra constraint beyond "reachable and usable at mobile width."
+- Chose `@testing-library/user-event` over raw `fireEvent.keyDown` for the keyboard tests because `fireEvent.keyDown` on a `<button>` does not synthesize the browser's native "Enter/Space activates the button" behavior in jsdom; `user-event` does, so the test exercises what a real keyboard user would experience rather than a synthetic keydown that the component's own code never explicitly handles.
+- Mocked `next/navigation`'s `useRouter` in the new test file (same pattern as `tests/unit/app-sidebar-trash-nav.test.tsx`) since `WeekView` renders `PeopleSwitcherUrlBound`, which calls `useRouter()` — required to mount `WeekView` outside a real Next.js app router tree.
 
 ## Out-of-scope work needed
-The entire people switcher stack is missing and needs to be built before F030 can be attempted:
-- F026 (people switcher shell): combobox listing active workspace members with avatar/name, narrows on typing (cmdk primitive, no new package).
-- F027 (switcher multiselect): multi-select toggle behavior.
-- F028 (switcher shortcuts): keyboard shortcuts for the switcher.
-- F029 (switcher url wiring): `?people=` query param wiring, preserving `?week=`, no localStorage/sessionStorage writes, fallback to signed-in member when nobody is selected.
+None identified. The stacked/day-strip mobile view (F031-F039) is a separate milestone and out of scope here; this feature only concerns the week-view header row.
 
 ## Blockers
-BLOCKER: F030's direct dependency, F029 (switcher url wiring), was never implemented — and neither were F026, F027, or F028 that F029 itself depends on. `components/calendar/people-switcher.tsx` does not exist anywhere in the repo, and `week-view.tsx` has no reference to a people switcher. There is no header row control, no keyboard-operable combobox, and nothing to test at mobile width for AS-051/AS-060/AS-061.
-TRIED: Searched the full repo (components, lib, app) for any switcher-related file or reference under alternate names (PeopleSwitcher, people-switcher, peopleSwitcher, attendee, member-filter); checked `missions/20260920-124226/handoffs/` for F026-F029 handoffs (none exist); read `week-view.tsx` directly for any partial integration (none found).
-NEEDED: The orchestrator should run F026, F027, F028, and F029 (in that dependency order) to completion first. Once `components/calendar/people-switcher.tsx` exists and is wired into `week-view.tsx` with URL state, F030 can be re-run to add header placement and mobile/keyboard a11y polish on top of the real component.
-SUGGESTED FOLLOWUP: Re-queue F026-people-switcher-shell, F027-switcher-multiselect, F028-switcher-shortcuts, and F029-switcher-url-wiring for execution in that order (F030 already exists and depends on F029, so no new feature file is needed — just ensure the missing dependency chain runs before F030 is retried). Each of those specs already has clarified content and file paths; no new clarification round is required.
 
 ## Autonomous decisions
-AUTONOMOUS_DECISION: Chose not to implement the missing F026-F029 scope myself and instead report BLOCKED, per CLAUDE.md rule 3 ("Implement only what your feature spec covers... do not silently expand the work") and the explicit "Depends on: F029" declaration in this feature's own spec header.
+AUTONOMOUS_DECISION: Collapsed the PeopleSwitcher trigger's text label to `hidden sm:inline` (icon + `aria-label` remain at all widths) to keep the header row from overflowing at mobile widths, since AS-061 requires the switcher be "reachable and usable" there and the clarification file added no more specific guidance than the spec's own draft scope.
 
 ## Notes for the next worker
-No MCP usage was needed for this investigation (pure filesystem/codebase check, no external service state). Before re-attempting F030, confirm `components/calendar/people-switcher.tsx` exists and is rendered inside the Planner header row (alongside previous/today/next-week controls per the CLAUDE.md page-header spacing rule) before writing a11y/placement tests — otherwise the AS-051/AS-060/AS-061 tests will have nothing real to exercise.
+No MCP usage — this is a pure UI/a11y feature with no live external service state to introspect. The pre-existing `npx vitest run tests/unit` failures (41 files, all Sitemap Builder `f0NN-*` specs plus two date-dependent due-date tests) were confirmed pre-existing by stashing this feature's changes and re-running against unmodified HEAD — identical failures, unrelated to calendar/people-switcher code.

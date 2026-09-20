@@ -148,7 +148,13 @@ export function PeopleSwitcher({
         {selectedMembers.length === 0 ? (
           <>
             <UsersIcon className="size-4 shrink-0 text-muted-foreground" />
-            <span className="text-muted-foreground">Select people</span>
+            {/* AS-061: the label text is dropped below the `sm` breakpoint so
+             * the trigger stays a compact icon-only control alongside the
+             * week nav buttons at mobile widths -- `aria-label` above still
+             * announces "Select people" to assistive tech either way, so
+             * nothing is lost for keyboard/screen-reader users, only for
+             * sighted mobile viewport space. */}
+            <span className="hidden text-muted-foreground sm:inline">Select people</span>
           </>
         ) : (
           <AvatarGroup data-slot="people-switcher-avatar-group">
