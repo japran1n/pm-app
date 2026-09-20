@@ -53,6 +53,7 @@ import { setTaskBlockedReason } from "@/lib/actions/tasks";
 import { PageLinksEditor } from "@/components/task/page-links-editor";
 import { CustomFieldsSection } from "@/components/task/custom-fields-section";
 import { Input } from "@/components/ui/input";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -1156,16 +1157,12 @@ export function TaskDetailFields({
         <Label htmlFor={`task-start-date-${task.id}`}>
           Start date
         </Label>
-        <Input
-          id={`task-start-date-${task.id}`}
-          type="date"
-          value={startDate ?? ""}
+        <DatePicker
+          value={startDate ?? undefined}
+          onChange={(next) => handleStartDateChange(next ?? "")}
           disabled={isSavingField || !canEdit}
-          title={editDisabledTitle}
-          onChange={(changeEvent) =>
-            handleStartDateChange(changeEvent.target.value)
-          }
           className="font-mono"
+          aria-label="Start date"
         />
         </div>
 
@@ -1185,20 +1182,16 @@ export function TaskDetailFields({
             <span className="sr-only">(overdue)</span>
           )}
         </Label>
-        <Input
-          id={`task-due-date-${task.id}`}
-          type="date"
-          value={dueDate ?? ""}
+        <DatePicker
+          value={dueDate ?? undefined}
+          onChange={(next) => handleDueDateChange(next ?? "")}
           disabled={isSavingField || !canEdit}
-          title={editDisabledTitle}
-          onChange={(changeEvent) =>
-            handleDueDateChange(changeEvent.target.value)
-          }
           className={cn(
             "font-mono",
             isOverdue(task.dueDate, task.status, timezone, task.statusCategory) &&
               "border-destructive text-destructive",
           )}
+          aria-label="Due date"
         />
         </div>
       </div>

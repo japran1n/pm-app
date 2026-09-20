@@ -44,6 +44,7 @@ import type {
 import { deliverableKindSchema } from "@/lib/validation/deliverables";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -303,11 +304,13 @@ function DeliverableRow({
           aria-label={`${deliverable.title} owner name`}
         />
 
-        <Input
-          type="date"
-          value={dueAt}
-          onChange={(event) => setDueAt(event.target.value)}
-          onBlur={() => submit({ title, ownerName, kind, dueAt, blocking, taskId })}
+        <DatePicker
+          value={dueAt || undefined}
+          onChange={(next) => {
+            const nextDueAt = next ?? "";
+            setDueAt(nextDueAt);
+            submit({ title, ownerName, kind, dueAt: nextDueAt, blocking, taskId });
+          }}
           disabled={isPending}
           className="w-40"
           aria-label={`${deliverable.title} due date`}

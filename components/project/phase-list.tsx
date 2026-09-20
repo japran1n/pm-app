@@ -38,6 +38,7 @@ import { showUndoToast } from "@/lib/toast/undo-toast";
 import type { TeamProjectPhase } from "@/lib/queries/phases";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -287,24 +288,40 @@ function PhaseRow({
           </SelectContent>
         </Select>
 
-        <Input
-          type="date"
-          value={plannedStart}
-          onChange={(event) => setPlannedStart(event.target.value)}
-          onBlur={() =>
-            submit({ name, clientDescription, state, plannedStart, plannedEnd, clientVisible, blockedReason })
-          }
+        <DatePicker
+          value={plannedStart || undefined}
+          onChange={(next) => {
+            const nextPlannedStart = next ?? "";
+            setPlannedStart(nextPlannedStart);
+            submit({
+              name,
+              clientDescription,
+              state,
+              plannedStart: nextPlannedStart,
+              plannedEnd,
+              clientVisible,
+              blockedReason,
+            });
+          }}
           disabled={isPending}
           className="w-40"
           aria-label={`${phase.name} planned start date`}
         />
-        <Input
-          type="date"
-          value={plannedEnd}
-          onChange={(event) => setPlannedEnd(event.target.value)}
-          onBlur={() =>
-            submit({ name, clientDescription, state, plannedStart, plannedEnd, clientVisible, blockedReason })
-          }
+        <DatePicker
+          value={plannedEnd || undefined}
+          onChange={(next) => {
+            const nextPlannedEnd = next ?? "";
+            setPlannedEnd(nextPlannedEnd);
+            submit({
+              name,
+              clientDescription,
+              state,
+              plannedStart,
+              plannedEnd: nextPlannedEnd,
+              clientVisible,
+              blockedReason,
+            });
+          }}
           disabled={isPending}
           className="w-40"
           aria-label={`${phase.name} planned end date`}

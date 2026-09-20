@@ -38,6 +38,7 @@ import { canWrite } from "@/lib/auth/permissions";
 import { useMembership } from "@/components/auth/membership-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -586,13 +587,11 @@ export function NewTaskDialog({
 
             <div className="flex flex-col gap-2">
               <Label htmlFor="task-due-date">Due date (optional)</Label>
-              <Input
-                id="task-due-date"
-                name="dueDate"
-                type="date"
+              <DatePicker
+                value={dueDate || undefined}
+                onChange={(next) => setDueDate(next ?? "")}
                 disabled={isPending}
-                value={dueDate}
-                onChange={(changeEvent) => setDueDate(changeEvent.target.value)}
+                aria-label="Due date"
               />
             </div>
 
