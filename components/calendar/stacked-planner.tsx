@@ -156,7 +156,9 @@ export function StackedPlanner({
       <SortableContext items={selectedUserIds} strategy={verticalListSortingStrategy}>
         <div
           data-testid="stacked-planner"
-          className="flex max-h-[calc(100vh-200px)] flex-col gap-3 overflow-y-auto"
+          className="flex max-h-[calc(100vh-200px)] flex-col gap-3 overflow-y-auto overflow-x-hidden"
+          role="group"
+          aria-label="Team planner"
         >
           {/* AS-063: rows render in `selectedUserIds` order -- never re-sorted
               (e.g. alphabetically) -- so the order matches `?people=`. */}
