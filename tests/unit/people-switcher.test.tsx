@@ -61,26 +61,71 @@ function openSwitcherWithSelection() {
 
 describe("PeopleSwitcher", () => {
   it("test_AS_052_lists_active_members_with_avatar_and_name", async () => {
-    render(
-      createElement(PeopleSwitcher, {
-        members,
-        selectedUserIds: [],
-        onSelectionChange: vi.fn(),
-        selfId: "user-1",
-      }),
-    );
+    // Base UI's <Avatar.Image> (components/ui/avatar.tsx's AvatarImage) only
+    // mounts the real <img> once a background `new window.Image()` probe
+    // reports `loaded` -- jsdom never fires that event on its own, so
+    // without this shim the image path would never render and this test
+    // would only ever exercise the fallback-initials path, masking a
+    // mutation that drops `avatarUrl` from the row entirely.
+    class AutoLoadingImage {
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      complete = false;
+      naturalWidth = 1;
+      private _src = "";
+      set src(value: string) {
+        this._src = value;
+        queueMicrotask(() => this.onload?.());
+      }
+      get src() {
+        return this._src;
+      }
+    }
+    vi.stubGlobal("Image", AutoLoadingImage);
 
-    openSwitcher();
+    try {
+      render(
+        createElement(PeopleSwitcher, {
+          members,
+          selectedUserIds: [],
+          onSelectionChange: vi.fn(),
+          selfId: "user-1",
+        }),
+      );
 
-    await waitFor(() => {
-      expect(screen.getByText("Ada Lovelace")).toBeInTheDocument();
-      expect(screen.getByText("Grace Hopper")).toBeInTheDocument();
-    });
+      openSwitcher();
 
-    // Every listed member row renders an avatar (image or fallback initial).
-    expect(
-      document.querySelectorAll('[data-slot="people-switcher-content"] [data-slot="avatar"]'),
-    ).toHaveLength(2);
+      await waitFor(() => {
+        expect(screen.getByText("Ada Lovelace")).toBeInTheDocument();
+        expect(screen.getByText("Grace Hopper")).toBeInTheDocument();
+      });
+
+      // Every listed member row renders an avatar (image or fallback initial).
+      const rows = document.querySelectorAll(
+        '[data-slot="people-switcher-content"] [data-slot="avatar"]',
+      );
+      expect(rows).toHaveLength(2);
+
+      // Ada Lovelace has a non-null avatarUrl: her row must render a real
+      // <img> pointed at that URL, not just an empty avatar shell.
+      const adaRow = rows[0]!;
+      await waitFor(() => {
+        expect(adaRow.querySelector("img")).not.toBeNull();
+      });
+      expect(adaRow.querySelector("img")!.getAttribute("src")).toBe(
+        "https://example.com/ada.png",
+      );
+
+      // Grace Hopper has a null avatarUrl: her row must render the fallback
+      // initials derived from her name ("GH"), not an empty avatar shell.
+      const graceRow = rows[1]!;
+      expect(graceRow.querySelector("img")).toBeNull();
+      expect(graceRow.querySelector('[data-slot="avatar-fallback"]')?.textContent).toBe(
+        "GH",
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("test_AS_052_empty_member_list_shows_empty_state", async () => {
