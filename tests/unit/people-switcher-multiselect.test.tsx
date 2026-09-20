@@ -177,6 +177,48 @@ describe("PeopleSwitcher closed-trigger avatar group (AS-055)", () => {
     expect(overflow).toHaveTextContent("+4");
   });
 
+  it("test_AS_055_default_max_visible_avatars_shows_3_avatars_and_exact_overflow_for_5_selected", () => {
+    render(
+      createElement(PeopleSwitcher, {
+        members: [
+          ...members,
+          { userId: "user-5", name: "Hedy Lamarr", email: "hedy@example.com", avatarUrl: null },
+        ],
+        selectedUserIds: ["user-1", "user-2", "user-3", "user-4", "user-5"],
+        selfId: "user-1",
+        onSelectionChange: vi.fn(),
+        // maxVisibleAvatars intentionally omitted to exercise the production default (3)
+      }),
+    );
+
+    const group = document.querySelector('[data-slot="people-switcher-avatar-group"]');
+    expect(group!.querySelectorAll('[data-slot="avatar"]')).toHaveLength(3);
+
+    const overflow = document.querySelector('[data-slot="people-switcher-overflow-count"]');
+    expect(overflow).toBeInTheDocument();
+    expect(overflow).toHaveTextContent("+2");
+  });
+
+  it("test_AS_055_default_max_visible_avatars_overflow_equals_selected_count_minus_max_for_4_selected", () => {
+    render(
+      createElement(PeopleSwitcher, {
+        members,
+        selectedUserIds: ["user-1", "user-2", "user-3", "user-4"],
+        selfId: "user-1",
+        onSelectionChange: vi.fn(),
+        // maxVisibleAvatars intentionally omitted to exercise the production default (3)
+      }),
+    );
+
+    const group = document.querySelector('[data-slot="people-switcher-avatar-group"]');
+    expect(group!.querySelectorAll('[data-slot="avatar"]')).toHaveLength(3);
+
+    const overflow = document.querySelector('[data-slot="people-switcher-overflow-count"]');
+    const selectedCount = 4;
+    const defaultMaxVisibleAvatars = 3;
+    expect(overflow).toHaveTextContent(`+${selectedCount - defaultMaxVisibleAvatars}`);
+  });
+
   it("test_AS_055_closed_trigger_shows_no_avatar_group_when_nothing_is_selected", () => {
     render(
       createElement(PeopleSwitcher, {
