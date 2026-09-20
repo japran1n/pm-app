@@ -320,7 +320,7 @@ describe("Provider isolation and cleanup", () => {
   });
 
   it("TH-159: registering twice produces two independent disposables, both disposable safely", () => {
-    const { monaco, registered } = createFakeMonaco();
+    const { monaco, registered: _registered } = createFakeMonaco();
     const d1 = registerCssCompletionProvider(monaco, {
       classes: ["a"],
       cssVars: [],

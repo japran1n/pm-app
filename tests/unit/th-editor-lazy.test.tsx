@@ -10,7 +10,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import fs from "node:fs";
 import path from "node:path";
 
-const dynamicMock = vi.fn((_loader: () => Promise<unknown>, opts?: { ssr?: boolean }) => {
+const dynamicMock = vi.fn((_loader: () => Promise<unknown>, _opts?: { ssr?: boolean }) => {
   // Mimic next/dynamic: return a component that resolves lazily. For the
   // test we just render a stand-in so we can assert the Suspense fallback
   // shows before it, and that dynamic() was invoked with ssr:false.

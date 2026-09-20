@@ -21,7 +21,6 @@ function extractScriptBody(tag: string): string {
 
 function loadAgent() {
   const body = extractScriptBody(STYLE_AGENT_SCRIPT)
-  // eslint-disable-next-line no-new-func
   const fn = new Function("window", "document", "parent", body)
   fn(window, document, window.parent)
 }

@@ -31,7 +31,6 @@ function extractScriptBody(tag: string): string {
 function loadAgent(postMessage: (data: unknown) => void) {
   const body = extractScriptBody(STYLE_AGENT_SCRIPT)
   const fakeParent = { postMessage: (data: unknown) => postMessage(data) }
-  // eslint-disable-next-line no-new-func
   const fn = new Function("window", "document", "parent", body)
   fn(window, document, fakeParent)
 }

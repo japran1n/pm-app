@@ -152,6 +152,9 @@ describe("M9 regression (AS-178, AS-179, AS-180, AS-181)", () => {
     const componentColumns = componentColumnsMatch![1]
     // Negative assertion: the dropped page_components.description column is absent.
     expect(componentColumns).not.toContain("description")
+    // Positive assertion: the critical board-rendering columns are present.
+    expect(componentColumns).toContain("name")
+    expect(componentColumns).toContain("position")
 
     // node_meta (architecture_node_meta).client_visible was dropped -- this
     // file never references node_meta at all, so its own client_visible
@@ -193,5 +196,36 @@ describe("M9 regression (AS-178, AS-179, AS-180, AS-181)", () => {
       )
 
     expect(matches).toEqual([])
+
+    // Dropped-column guard: architecture_node_meta.client_visible was
+    // dropped. client_visible remains a live column on page_components and
+    // sections, so a bare grep for "client_visible" is not sufficient --
+    // only flag files that also reference architecture_node_meta.
+    const nodeMetaClientVisibleUses = execSync(
+      'grep -r "client_visible" app/ components/ lib/ --include="*.ts" --include="*.tsx" -l 2>/dev/null || true',
+      { cwd: process.cwd(), encoding: "utf8" }
+    )
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .filter(
+        (path) =>
+          !path.includes(".test.") &&
+          !path.includes(".spec.") &&
+          !path.includes("missions/") &&
+          !path.includes("handoffs/") &&
+          !path.includes("__tests__/") &&
+          !path.includes("database.types.ts")
+      )
+
+    const qualifiedRefs = nodeMetaClientVisibleUses.filter((f) => {
+      const content = readFileSync(join(process.cwd(), f), "utf8")
+      return content.includes("architecture_node_meta") && content.includes("client_visible")
+    })
+
+    expect(
+      qualifiedRefs,
+      `Files reference dropped column architecture_node_meta.client_visible: ${qualifiedRefs.join(", ")}`
+    ).toHaveLength(0)
   })
 })

@@ -154,7 +154,7 @@ import { EditorPane } from "@/components/code-editor/editor-pane";
 // Captured immediately after the module (and its module-level
 // `configureMonaco()` call) has finished importing, before any test's
 // `beforeEach` has a chance to clear the mock.
-const configureMonacoCalledBeforeFirstMount = configureMonacoMock.mock.calls.length > 0;
+const _configureMonacoCalledBeforeFirstMount = configureMonacoMock.mock.calls.length > 0;
 
 describe("EditorPane", () => {
   test("TH-170: configureMonaco (local loader) runs before/at editor mount", () => {

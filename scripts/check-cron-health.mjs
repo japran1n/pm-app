@@ -156,7 +156,7 @@ async function main() {
 
   // 2. For each expected job, fetch the most recent successful run.
   const cutoff = new Date(Date.now() - HEALTHY_WINDOW_HOURS * 60 * 60 * 1000);
-  const cutoffIso = cutoff.toISOString();
+  const _cutoffIso = cutoff.toISOString();
 
   const rows = [];
 
