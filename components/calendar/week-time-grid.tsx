@@ -197,7 +197,18 @@ export function WeekTimeGrid({
     setHoveredSlot((current) => (current?.date === date ? null : current));
   }
 
-  function handleAddSlotPointerDown(date: string, event: React.PointerEvent) {
+  // F024 (AS-047/AS-048/AS-049): infrastructure for M7's stacked
+  // multi-person layout, where each grid column will belong to a
+  // specific member. For today's single-column-per-day view every
+  // column's `columnUserId` is always `currentUserId` (there's no other
+  // user's column to render yet), so this guard has no visible effect
+  // now -- but it's the same check F032's per-person columns will rely
+  // on to keep create affordances off teammates' columns.
+  function canCreateInColumn(columnUserId: string): boolean {
+    return columnUserId === currentUserId;
+  }
+
+  function handleAddSlotPointerDown(date: string, columnUserId: string, event: React.PointerEvent) {
     // The "+" trigger sits above the column's own hour-line/block
     // children but is still a descendant of the column div, so this
     // pointerdown both starts the gesture AND (via bubbling, since
@@ -208,11 +219,15 @@ export function WeekTimeGrid({
     // render condition) rather than unmounting on this same tick, so a
     // synthetic pointerup dispatched straight at it (tests) or a real
     // one from the OS still bubbles to the column's commit handler.
-    handleColumnPointerDown(date, event);
+    handleColumnPointerDown(date, columnUserId, event);
   }
 
-  function handleColumnPointerDown(date: string, event: React.PointerEvent) {
+  function handleColumnPointerDown(date: string, columnUserId: string, event: React.PointerEvent) {
     if (!canDrag || !workspaceId) return;
+    // AS-047/AS-048/AS-049: never start a create-drag (click OR
+    // press-and-drag -- both funnel through this same handler) on a
+    // column that isn't the signed-in member's own.
+    if (!canCreateInColumn(columnUserId)) return;
     // If this pointerdown originated from inside an already-open popover's
     // own content (the create form, the edit form, or any of their
     // interactive controls -- inputs, selects, color swatches, the submit
@@ -453,7 +468,15 @@ export function WeekTimeGrid({
           ))}
         </div>
 
-        {days.map((day) => (
+        {days.map((day) => {
+          // F024: today's `CalendarWeekDay` has no per-column owner (the
+          // grid is always the signed-in member's own week), so this
+          // defaults to `currentUserId`. M7's stacked layout is expected
+          // to add a real `userId` to `CalendarWeekDay` per rendered
+          // person-row; this fallback keeps today's behavior identical
+          // once that lands.
+          const columnUserId = day.userId ?? currentUserId;
+          return (
           <div
             key={day.date}
             ref={(el) => {
@@ -495,6 +518,7 @@ export function WeekTimeGrid({
                 those. */}
             {canDrag &&
               workspaceId &&
+              canCreateInColumn(columnUserId) &&
               hoveredSlot?.date === day.date &&
               !resize &&
               !(pendingCreate && pendingCreate.date === day.date) && (
@@ -504,7 +528,7 @@ export function WeekTimeGrid({
                   data-testid={`calendar-week-add-slot-${day.date}`}
                   className="absolute left-0.5 right-0.5 flex items-center gap-1 rounded border border-dashed border-primary/50 bg-primary/5 px-1 text-[10px] font-mono text-primary/80 hover:bg-primary/10"
                   style={{ top: hoveredSlot.top, height: HALF_HOUR_PX }}
-                  onPointerDown={(event) => handleAddSlotPointerDown(day.date, event)}
+                  onPointerDown={(event) => handleAddSlotPointerDown(day.date, columnUserId, event)}
                 >
                   <Plus className="size-3 shrink-0" aria-hidden="true" />
                   {formatHalfHourLabel(hoveredSlot.top)}
@@ -526,6 +550,7 @@ export function WeekTimeGrid({
                   liveTimeLabel={isResizingThis ? liveResize!.label : null}
                   isResizing={isResizingThis}
                   canResize={canDrag && isOwnBlock(block, currentUserId)}
+                  isOwn={isOwnBlock(block, currentUserId)}
                   onStartResize={(edge) =>
                     setResize({ blockId: block.id, edge, date: day.date })
                   }
@@ -551,7 +576,8 @@ export function WeekTimeGrid({
               />
             )}
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -632,6 +658,7 @@ function WeekBlockChip({
   liveTimeLabel = null,
   isResizing = false,
   canResize,
+  isOwn,
   onStartResize,
   onUpdate,
   onDelete,
@@ -650,6 +677,9 @@ function WeekBlockChip({
    * see resize handles on a teammate's block. Callers pass
    * `canDrag && isOwnBlock(block, currentUserId)`. */
   canResize: boolean;
+  /** F023 (AS-044/AS-045): gates the popover to a read-only detail view
+   * when false -- callers pass `isOwnBlock(block, currentUserId)`. */
+  isOwn: boolean;
   onStartResize: (edge: "start" | "end") => void;
   onUpdate: (values: {
     title: string;
@@ -774,6 +804,7 @@ function WeekBlockChip({
           onSubmit={handleSubmit}
           onDelete={handleDelete}
           pending={pending}
+          isOwn={isOwn}
         />
       </PopoverContent>
     </Popover>

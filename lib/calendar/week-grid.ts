@@ -18,6 +18,11 @@ export type CalendarWeekDay = {
   /** "YYYY-MM-DD" */
   date: DateOnly;
   isToday: boolean;
+  /** F024: which member's column this is, for the eventual M7 stacked
+   * layout where multiple people's rows share one grid. Undefined in
+   * today's single-column-per-day view, where `WeekTimeGrid` falls back
+   * to treating every column as the signed-in member's own. */
+  userId?: string;
 };
 
 export type CalendarWeek = {
