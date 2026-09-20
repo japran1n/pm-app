@@ -135,6 +135,8 @@ export function StackedPersonRow({
     <div
       data-testid={`stacked-person-row-${userId}`}
       className="w-full min-h-[6rem] shrink-0"
+      role="region"
+      aria-label={`${userLabel ?? userId}'s schedule`}
     >
       {userLabel && (
         <div className="mb-1 text-sm font-medium">{userLabel}</div>
