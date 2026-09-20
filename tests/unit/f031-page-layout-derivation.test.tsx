@@ -208,6 +208,10 @@ describe("AS-001/AS-059: the page fetches blocks for the selected people, not ev
     expect(source).not.toMatch(
       /blockUserIds=\{workspaceMembers\.active\.map/,
     );
+    // F100: a regression re-appended activeMemberIds via .concat(), leaking
+    // every workspace member's blocks regardless of selection. Guard against
+    // any `.concat(` immediately following the buildBlockUserIds(...) call.
+    expect(source).not.toMatch(/buildBlockUserIds\([^)]*\)\s*\.concat\(/);
   });
 
   it("test_AS_001_userIds_is_required_param", async () => {
