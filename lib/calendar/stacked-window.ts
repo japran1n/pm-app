@@ -1,3 +1,7 @@
+// Timezone contract: all timestamps must be UTC (Z-suffix). This helper
+// clips to UTC 08:00-16:00 Mon-Fri; callers are responsible for converting
+// wall-clock hours to UTC before calling.
+
 export const STACKED_START_HOUR = 8;
 export const STACKED_END_HOUR = 16;
 
@@ -14,68 +18,86 @@ export interface StackedBlockClipped {
   ends_at: string;
 }
 
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
 /**
  * Clips a calendar block to the stacked layout's visible window: Monday-Friday,
- * 08:00-16:00. Returns null when the block has no overlap with that window.
- *
- * Times are treated as UTC — the ISO string's own date/hour components are
- * used directly, with no timezone conversion, per the clarified spec.
+ * 08:00-16:00 UTC. Returns one segment per Mon-Fri UTC day the block overlaps,
+ * in chronological order. Returns an empty array when the block has no
+ * overlap with that window.
  */
 export function clipBlockToStackedWindow(
   block: StackedBlockInput
-): StackedBlockClipped | null {
+): StackedBlockClipped[] {
   const start = new Date(block.starts_at);
   const end = new Date(block.ends_at);
 
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-    return null;
+    return [];
   }
   if (end.getTime() <= start.getTime()) {
-    return null;
+    return [];
   }
 
-  // A block must lie within a single Mon-Fri day to be eligible. If the
-  // block's start day is a weekend day, or spans past the same UTC day
-  // entirely outside the window, it is dropped.
-  const startDay = start.getUTCDay(); // 0 = Sunday .. 6 = Saturday
-  const isoWeekday = startDay === 0 ? 7 : startDay;
+  const segments: StackedBlockClipped[] = [];
 
-  if (!(STACKED_DAYS as readonly number[]).includes(isoWeekday)) {
-    return null;
-  }
-
-  const dayStart = new Date(
-    Date.UTC(
-      start.getUTCFullYear(),
-      start.getUTCMonth(),
-      start.getUTCDate(),
-      STACKED_START_HOUR,
-      0,
-      0,
-      0
-    )
+  const firstDayStart = Date.UTC(
+    start.getUTCFullYear(),
+    start.getUTCMonth(),
+    start.getUTCDate()
   );
-  const dayEnd = new Date(
-    Date.UTC(
-      start.getUTCFullYear(),
-      start.getUTCMonth(),
-      start.getUTCDate(),
-      STACKED_END_HOUR,
-      0,
-      0,
-      0
-    )
+  const lastDayStart = Date.UTC(
+    end.getUTCFullYear(),
+    end.getUTCMonth(),
+    end.getUTCDate()
   );
 
-  const clippedStart = start.getTime() < dayStart.getTime() ? dayStart : start;
-  const clippedEnd = end.getTime() > dayEnd.getTime() ? dayEnd : end;
+  for (
+    let dayMs = firstDayStart;
+    dayMs <= lastDayStart;
+    dayMs += MS_PER_DAY
+  ) {
+    const day = new Date(dayMs);
+    const utcDay = day.getUTCDay(); // 0 = Sunday .. 6 = Saturday
+    const isoWeekday = utcDay === 0 ? 7 : utcDay;
 
-  if (clippedStart.getTime() >= clippedEnd.getTime()) {
-    return null;
+    if (!(STACKED_DAYS as readonly number[]).includes(isoWeekday)) {
+      continue;
+    }
+
+    const windowStart = new Date(
+      Date.UTC(
+        day.getUTCFullYear(),
+        day.getUTCMonth(),
+        day.getUTCDate(),
+        STACKED_START_HOUR,
+        0,
+        0,
+        0
+      )
+    );
+    const windowEnd = new Date(
+      Date.UTC(
+        day.getUTCFullYear(),
+        day.getUTCMonth(),
+        day.getUTCDate(),
+        STACKED_END_HOUR,
+        0,
+        0,
+        0
+      )
+    );
+
+    const segStart = start.getTime() > windowStart.getTime() ? start : windowStart;
+    const segEnd = end.getTime() < windowEnd.getTime() ? end : windowEnd;
+
+    if (segStart.getTime() < segEnd.getTime()) {
+      segments.push({
+        starts_at: segStart.toISOString(),
+        ends_at: segEnd.toISOString(),
+      });
+    }
   }
 
-  return {
-    starts_at: clippedStart.toISOString(),
-    ends_at: clippedEnd.toISOString(),
-  };
+  return segments;
 }

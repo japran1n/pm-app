@@ -18,70 +18,78 @@ describe("stacked window constants", () => {
 });
 
 describe("clipBlockToStackedWindow", () => {
-  it("AS-020: a block starting before 08:00 is clipped to 08:00 (Wednesday)", () => {
+  it("AS-021: a block starting before 08:00 is clipped to 08:00 (Wednesday)", () => {
     // 2026-09-23 is a Wednesday (UTC)
     const result = clipBlockToStackedWindow({
       starts_at: "2026-09-23T06:00:00.000Z",
       ends_at: "2026-09-23T10:00:00.000Z",
     });
-    expect(result).not.toBeNull();
-    expect(result?.starts_at).toBe("2026-09-23T08:00:00.000Z");
-    expect(result?.ends_at).toBe("2026-09-23T10:00:00.000Z");
+    expect(result).toEqual([
+      {
+        starts_at: "2026-09-23T08:00:00.000Z",
+        ends_at: "2026-09-23T10:00:00.000Z",
+      },
+    ]);
   });
 
-  it("AS-021: a block ending after 16:00 is clipped to 16:00 (Wednesday)", () => {
+  it("AS-022: a block ending after 16:00 is clipped to 16:00 (Wednesday)", () => {
     const result = clipBlockToStackedWindow({
       starts_at: "2026-09-23T14:00:00.000Z",
       ends_at: "2026-09-23T18:00:00.000Z",
     });
-    expect(result).not.toBeNull();
-    expect(result?.starts_at).toBe("2026-09-23T14:00:00.000Z");
-    expect(result?.ends_at).toBe("2026-09-23T16:00:00.000Z");
+    expect(result).toEqual([
+      {
+        starts_at: "2026-09-23T14:00:00.000Z",
+        ends_at: "2026-09-23T16:00:00.000Z",
+      },
+    ]);
   });
 
-  it("AS-022: a block entirely outside 08:00-16:00 is dropped (before window)", () => {
+  it("a block entirely outside 08:00-16:00 is dropped (before window)", () => {
     const result = clipBlockToStackedWindow({
       starts_at: "2026-09-23T04:00:00.000Z",
       ends_at: "2026-09-23T06:00:00.000Z",
     });
-    expect(result).toBeNull();
+    expect(result).toEqual([]);
   });
 
-  it("AS-022: a block entirely outside 08:00-16:00 is dropped (after window)", () => {
+  it("a block entirely outside 08:00-16:00 is dropped (after window)", () => {
     const result = clipBlockToStackedWindow({
       starts_at: "2026-09-23T17:00:00.000Z",
       ends_at: "2026-09-23T19:00:00.000Z",
     });
-    expect(result).toBeNull();
+    expect(result).toEqual([]);
   });
 
-  it("a block on a Saturday returns null", () => {
+  it("a block on a Saturday only returns []", () => {
     // 2026-09-26 is a Saturday (UTC)
     const result = clipBlockToStackedWindow({
       starts_at: "2026-09-26T09:00:00.000Z",
       ends_at: "2026-09-26T11:00:00.000Z",
     });
-    expect(result).toBeNull();
+    expect(result).toEqual([]);
   });
 
-  it("a block on a Sunday returns null", () => {
+  it("a block on a Sunday only returns []", () => {
     // 2026-09-27 is a Sunday (UTC)
     const result = clipBlockToStackedWindow({
       starts_at: "2026-09-27T09:00:00.000Z",
       ends_at: "2026-09-27T11:00:00.000Z",
     });
-    expect(result).toBeNull();
+    expect(result).toEqual([]);
   });
 
-  it("a block fully inside the window is returned unchanged", () => {
+  it("a block fully inside the window is returned unchanged as a single segment", () => {
     const result = clipBlockToStackedWindow({
       starts_at: "2026-09-23T09:00:00.000Z",
       ends_at: "2026-09-23T11:00:00.000Z",
     });
-    expect(result).toEqual({
-      starts_at: "2026-09-23T09:00:00.000Z",
-      ends_at: "2026-09-23T11:00:00.000Z",
-    });
+    expect(result).toEqual([
+      {
+        starts_at: "2026-09-23T09:00:00.000Z",
+        ends_at: "2026-09-23T11:00:00.000Z",
+      },
+    ]);
   });
 
   it("a block starting before 08:00 and ending after 16:00 is clipped on both ends", () => {
@@ -89,9 +97,67 @@ describe("clipBlockToStackedWindow", () => {
       starts_at: "2026-09-23T05:00:00.000Z",
       ends_at: "2026-09-23T20:00:00.000Z",
     });
-    expect(result).toEqual({
-      starts_at: "2026-09-23T08:00:00.000Z",
-      ends_at: "2026-09-23T16:00:00.000Z",
+    expect(result).toEqual([
+      {
+        starts_at: "2026-09-23T08:00:00.000Z",
+        ends_at: "2026-09-23T16:00:00.000Z",
+      },
+    ]);
+  });
+
+  it("Sun 22:00Z -> Mon 10:00Z produces one segment on Monday, clipped to 08:00", () => {
+    // 2026-09-27 is Sunday, 2026-09-28 is Monday
+    const result = clipBlockToStackedWindow({
+      starts_at: "2026-09-27T22:00:00.000Z",
+      ends_at: "2026-09-28T10:00:00.000Z",
     });
+    expect(result).toEqual([
+      {
+        starts_at: "2026-09-28T08:00:00.000Z",
+        ends_at: "2026-09-28T10:00:00.000Z",
+      },
+    ]);
+  });
+
+  it("Mon 09:00Z -> Fri 15:00Z produces 5 daily segments, Mon-Fri", () => {
+    // 2026-09-28 Mon .. 2026-10-02 Fri
+    const result = clipBlockToStackedWindow({
+      starts_at: "2026-09-28T09:00:00.000Z",
+      ends_at: "2026-10-02T15:00:00.000Z",
+    });
+    expect(result).toEqual([
+      { starts_at: "2026-09-28T09:00:00.000Z", ends_at: "2026-09-28T16:00:00.000Z" },
+      { starts_at: "2026-09-29T08:00:00.000Z", ends_at: "2026-09-29T16:00:00.000Z" },
+      { starts_at: "2026-09-30T08:00:00.000Z", ends_at: "2026-09-30T16:00:00.000Z" },
+      { starts_at: "2026-10-01T08:00:00.000Z", ends_at: "2026-10-01T16:00:00.000Z" },
+      { starts_at: "2026-10-02T08:00:00.000Z", ends_at: "2026-10-02T15:00:00.000Z" },
+    ]);
+  });
+
+  it("Fri 15:00Z -> Sat 09:00Z produces one segment on Friday only", () => {
+    // 2026-10-02 Fri, 2026-10-03 Sat
+    const result = clipBlockToStackedWindow({
+      starts_at: "2026-10-02T15:00:00.000Z",
+      ends_at: "2026-10-03T09:00:00.000Z",
+    });
+    expect(result).toEqual([
+      {
+        starts_at: "2026-10-02T15:00:00.000Z",
+        ends_at: "2026-10-02T16:00:00.000Z",
+      },
+    ]);
+  });
+
+  it("Mon 08:00Z -> Mon 16:00Z (exact boundary) produces one full-window segment", () => {
+    const result = clipBlockToStackedWindow({
+      starts_at: "2026-09-28T08:00:00.000Z",
+      ends_at: "2026-09-28T16:00:00.000Z",
+    });
+    expect(result).toEqual([
+      {
+        starts_at: "2026-09-28T08:00:00.000Z",
+        ends_at: "2026-09-28T16:00:00.000Z",
+      },
+    ]);
   });
 });
