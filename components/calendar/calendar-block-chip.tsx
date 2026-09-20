@@ -68,6 +68,9 @@ export function CalendarBlockChip({
   // new time -- gate the drag affordance on ownership, not just the
   // caller's general write permission.
   const canMove = canDrag && isOwnBlock(block, currentUserId);
+  // F023 (AS-044/AS-045): a block owned by another member opens read-only
+  // -- no save/delete affordance, matching the drag gate above.
+  const isOwn = isOwnBlock(block, currentUserId);
 
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `${CALENDAR_BLOCK_DRAG_PREFIX}${block.id}`,
@@ -157,6 +160,7 @@ export function CalendarBlockChip({
           onSubmit={handleSubmit}
           onDelete={handleDelete}
           pending={pending}
+          isOwn={isOwn}
         />
       </PopoverContent>
     </Popover>

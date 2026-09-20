@@ -60,6 +60,7 @@ export function CalendarBlockPopoverForm({
   onSubmit,
   onDelete,
   pending,
+  isOwn = true,
 }: {
   initial: Omit<CalendarBlockFormValues, "color" | "blockType"> & {
     color?: string | null;
@@ -69,6 +70,12 @@ export function CalendarBlockPopoverForm({
   onSubmit: (values: CalendarBlockFormValues) => void;
   onDelete?: () => void;
   pending?: boolean;
+  /** F023 (AS-044/AS-045): when a block belongs to another member, the
+   * popover renders as a read-only detail view -- inputs disabled, no
+   * Save/Delete buttons. Defaults to `true` so existing callers (create
+   * popovers, which have no concept of another member's block) keep the
+   * editable behavior without change. */
+  isOwn?: boolean;
 }) {
   const [title, setTitle] = useState(initial.title);
   const [startTime, setStartTime] = useState(initial.startTime);
@@ -88,6 +95,7 @@ export function CalendarBlockPopoverForm({
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
+    if (!isOwn) return;
     if (title.trim().length === 0) {
       setError("A title is required.");
       return;
@@ -109,7 +117,9 @@ export function CalendarBlockPopoverForm({
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="e.g. Morning meeting"
-          autoFocus
+          autoFocus={isOwn}
+          disabled={!isOwn}
+          readOnly={!isOwn}
         />
       </div>
       <div className="flex gap-2">
@@ -120,6 +130,7 @@ export function CalendarBlockPopoverForm({
             type="time"
             value={startTime}
             onChange={(e) => setStartTime(e.target.value)}
+            disabled={!isOwn}
           />
         </div>
         <div className="flex flex-1 flex-col gap-1">
@@ -129,6 +140,7 @@ export function CalendarBlockPopoverForm({
             type="time"
             value={endTime}
             onChange={(e) => setEndTime(e.target.value)}
+            disabled={!isOwn}
           />
         </div>
       </div>
@@ -138,6 +150,7 @@ export function CalendarBlockPopoverForm({
           data-testid="calendar-block-client-presentation-toggle"
           checked={blockType === "client_presentation"}
           onChange={(e) => handleClientPresentationToggle(e.target.checked)}
+          disabled={!isOwn}
           className="h-3.5 w-3.5"
         />
         This is a client presentation
@@ -153,12 +166,14 @@ export function CalendarBlockPopoverForm({
               aria-checked={color === swatch.value}
               aria-label={swatch.label}
               data-testid={`calendar-block-color-${swatch.value.replace("#", "")}`}
-              onClick={() => setColor(swatch.value)}
+              onClick={() => isOwn && setColor(swatch.value)}
+              disabled={!isOwn}
               className={cn(
                 "h-6 w-6 shrink-0 rounded-full border-2 transition-transform",
                 color === swatch.value
                   ? "border-foreground scale-110"
                   : "border-transparent hover:scale-105",
+                !isOwn && "cursor-default hover:scale-100",
               )}
               style={{ backgroundColor: swatch.value }}
             />
@@ -170,31 +185,37 @@ export function CalendarBlockPopoverForm({
           {error}
         </p>
       )}
-      <div className="flex items-center justify-between gap-2">
-        {onDelete ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="text-destructive"
-            onClick={onDelete}
+      {isOwn ? (
+        <div className="flex items-center justify-between gap-2">
+          {onDelete ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="text-destructive"
+              onClick={onDelete}
+              disabled={pending}
+            >
+              Delete
+            </Button>
+          ) : (
+            <span />
+          )}
+          {/* Native button to guarantee form submission — base-ui's Button
+              primitive may intercept clicks before the form's onSubmit fires. */}
+          <button
+            type="submit"
             disabled={pending}
+            className={cn(buttonVariants({ variant: "default", size: "sm" }))}
           >
-            Delete
-          </Button>
-        ) : (
-          <span />
-        )}
-        {/* Native button to guarantee form submission — base-ui's Button
-            primitive may intercept clicks before the form's onSubmit fires. */}
-        <button
-          type="submit"
-          disabled={pending}
-          className={cn(buttonVariants({ variant: "default", size: "sm" }))}
-        >
-          {submitLabel}
-        </button>
-      </div>
+            {submitLabel}
+          </button>
+        </div>
+      ) : (
+        <p className="text-xs text-muted-foreground" data-testid="calendar-block-readonly-note">
+          You can only edit or delete your own blocks.
+        </p>
+      )}
     </form>
   );
 }
