@@ -234,4 +234,90 @@ describe("PeopleSwitcher closed-trigger avatar group (AS-055)", () => {
     ).not.toBeInTheDocument();
     expect(screen.getByText("Select people")).toBeInTheDocument();
   });
+
+  it("test_AS_055_trigger_avatar_shows_the_selected_members_own_avatar_image", async () => {
+    // Base UI's <Avatar.Image> only mounts the real <img> once a background
+    // `new window.Image()` probe reports `loaded` -- jsdom never fires that
+    // event on its own, so we shim it the same way people-switcher.test.tsx
+    // does, otherwise this would only ever exercise the fallback path.
+    class AutoLoadingImage {
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      complete = false;
+      naturalWidth = 1;
+      private _src = "";
+      set src(value: string) {
+        this._src = value;
+        queueMicrotask(() => this.onload?.());
+      }
+      get src() {
+        return this._src;
+      }
+    }
+    vi.stubGlobal("Image", AutoLoadingImage);
+
+    try {
+      const membersWithAvatar: PeopleSwitcherMember[] = [
+        { userId: "user-1", name: "Alice", email: "alice@example.com", avatarUrl: "https://example.com/alice.jpg" },
+        { userId: "user-2", name: "Bob", email: "bob@example.com", avatarUrl: null },
+      ];
+
+      render(
+        createElement(PeopleSwitcher, {
+          members: membersWithAvatar,
+          selectedUserIds: ["user-1"],
+          selfId: "user-1",
+          onSelectionChange: vi.fn(),
+          maxVisibleAvatars: 3,
+        }),
+      );
+
+      const group = document.querySelector('[data-slot="people-switcher-avatar-group"]');
+      expect(group).not.toBeNull();
+
+      await waitFor(() => {
+        const img = group!.querySelector("img");
+        expect(img).not.toBeNull();
+        expect(img).toHaveAttribute("src", "https://example.com/alice.jpg");
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("test_AS_055_trigger_avatars_reflect_each_selected_members_own_identity_not_just_the_first", () => {
+    const alice: PeopleSwitcherMember = {
+      userId: "user-1",
+      name: "Alice",
+      email: "alice@example.com",
+      avatarUrl: null,
+    };
+    const bob: PeopleSwitcherMember = {
+      userId: "user-2",
+      name: "Bob",
+      email: "bob@example.com",
+      avatarUrl: null,
+    };
+
+    render(
+      createElement(PeopleSwitcher, {
+        members: [alice, bob],
+        selectedUserIds: ["user-1", "user-2"],
+        selfId: "user-1",
+        onSelectionChange: vi.fn(),
+        maxVisibleAvatars: 3,
+      }),
+    );
+
+    const group = document.querySelector('[data-slot="people-switcher-avatar-group"]');
+    expect(group).not.toBeNull();
+    const fallbacks = group!.querySelectorAll('[data-slot="avatar-fallback"]');
+    const texts = Array.from(fallbacks).map((el) => el.textContent);
+
+    // Both members' distinct initials must be present -- if every avatar were
+    // derived from selectedMembers[0] instead of the individual member, "AL"
+    // would appear twice and "BO" would never appear.
+    expect(texts).toContain("AL");
+    expect(texts).toContain("BO");
+  });
 });
