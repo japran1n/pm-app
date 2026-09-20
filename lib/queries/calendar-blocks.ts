@@ -2,7 +2,7 @@
 // member drags onto the calendar (see calendar_blocks migration for the
 // full data-model rationale). This is the read path -- every block whose
 // [starts_at, ends_at) range overlaps the visible calendar window,
-// RLS-scoped exactly like getCalendarTasks (lib/queries/calendar.ts): the
+// RLS-scoped the same way other calendar-surface reads are: the
 // plain session client only, never createAdminClient(), since
 // `calendar_blocks_select_visible`'s own is_project_visible_to/
 // is_active_workspace_member predicates are the real enforcement boundary.

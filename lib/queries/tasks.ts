@@ -282,11 +282,10 @@ export type ProjectListTaskSort = "due_date_asc" | "due_date_desc";
 // id-list approach). Returns `null` when no `assigneeId` filter was given
 // (caller should skip the id-scoping entirely), or an array (possibly
 // empty, meaning "no task matches") otherwise.
-// F235 (AS-448): exported so getCalendarTasks (lib/queries/calendar.ts)
-// can reuse the exact same "which task ids have this assignee" resolution
-// -- same RLS-scoped `task_assignees` read, same dedup rule -- instead of
-// a second hand-rolled assignee-filter implementation for the calendar's
-// own workspace-wide query.
+// F235 (AS-448): exported so other workspace-wide queries can reuse the
+// exact same "which task ids have this assignee" resolution -- same
+// RLS-scoped `task_assignees` read, same dedup rule -- instead of a
+// second hand-rolled assignee-filter implementation.
 export async function filterTaskIdsByAnyAssignee(
   supabase: Awaited<ReturnType<typeof createClient>>,
   assigneeId: string | string[] | undefined,
@@ -785,4 +784,66 @@ export async function resolveTaskIdByKey(
   }
 
   return { taskId: task.id, projectId: project.id };
+}
+
+// Relocated from lib/queries/calendar.ts (F057 cleanup of orphaned month-view
+// code, AS-081). Original F009 perf rationale preserved below; still used by
+// tests/unit/f009-workspace-status-options-project-scan.test.ts.
+export type CalendarStatusOption = {
+  name: string;
+  color: string | null;
+  category: string | null;
+};
+
+export async function getWorkspaceStatusOptions(
+  workspaceId: string,
+): Promise<CalendarStatusOption[]> {
+  const supabase = await createClient();
+
+  // Perf (F009): constrain the project_statuses scan to this workspace's
+  // visible project ids instead of joining/filtering across all rows
+  // (995ms on 30,998 rows). Same visible-project resolution pattern as
+  // my-tasks/page.tsx's own project_statuses query.
+  const { data: visibleProjects, error: projectsError } = await supabase
+    .from("projects")
+    .select("id")
+    .eq("workspace_id", workspaceId)
+    .is("deleted_at", null);
+
+  if (projectsError) {
+    throw projectsError;
+  }
+
+  const projectIds = (visibleProjects ?? []).map((row) => row.id);
+
+  if (projectIds.length === 0) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("project_statuses")
+    .select("name, color, category, position")
+    .in("project_id", projectIds)
+    .order("position", { ascending: true });
+
+  if (error) {
+    throw error;
+  }
+
+  const byName = new Map<string, CalendarStatusOption>();
+  for (const row of (data ?? []) as unknown as {
+    name: string;
+    color: string | null;
+    category: string | null;
+  }[]) {
+    if (!byName.has(row.name)) {
+      byName.set(row.name, {
+        name: row.name,
+        color: row.color,
+        category: row.category,
+      });
+    }
+  }
+
+  return Array.from(byName.values());
 }

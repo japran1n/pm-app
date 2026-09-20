@@ -55,7 +55,7 @@ vi.mock("@/lib/supabase/server", () => ({
   })),
 }));
 
-import { getWorkspaceStatusOptions } from "@/lib/queries/calendar";
+import { getWorkspaceStatusOptions } from "@/lib/queries/tasks";
 
 describe("F009: getWorkspaceStatusOptions constrained by project id", () => {
   it("AS-008: scopes the project_statuses query with an explicit project id list", async () => {
