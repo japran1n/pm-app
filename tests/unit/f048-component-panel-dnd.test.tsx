@@ -4,12 +4,13 @@
 // panel's list is reordered via `@dnd-kit` drag-and-drop rather than the
 // F047 move-up/move-down button placeholder.
 //
-// AS-162 asserts the panel is wired up with a DndContext + SortableContext
-// (dnd-kit's own `useSortable` hook throws if rendered outside a
-// SortableContext, so successfully rendering `ComponentPanel` with a
-// non-empty component list -- which is what exercises the per-row
-// useSortable call -- is itself proof the wrappers are present; we also
-// assert the drag handle each row renders).
+// AS-162 asserts the panel is wired up with a DndContext + SortableContext.
+// It renders each row's drag handle and spies on the real SortableContext
+// export from `@dnd-kit/sortable` (see `sortableContextSpy` below) to
+// assert it was actually rendered with the component ids -- useSortable
+// alone does not throw when SortableContext is absent (it silently falls
+// back to a default context value), so the drag-handle assertion by itself
+// is not falsifiable against deleting `<SortableContext>`.
 //
 // AS-163/AS-164 render `ComponentPanel`, simulate dnd-kit's onDragEnd by
 // invoking DndContext's onDragEnd prop directly (jsdom has no real pointer
@@ -55,6 +56,31 @@ vi.mock("@dnd-kit/core", async () => {
   };
 });
 
+// AS-162: the previous version of this test only mocked `@dnd-kit/core`'s
+// DndContext and asserted the drag handles rendered -- but `@dnd-kit/sortable`
+// ships its own default context value, so `useSortable` inside
+// `ComponentListItem` never throws even when `SortableContext` is removed
+// entirely from `component-panel.tsx`; the old assertions kept passing on
+// that mutation. To make the assertion falsifiable we spy on the real
+// `SortableContext` export (delegating to the actual implementation so
+// dnd-kit's own behaviour is unaffected) and assert it was rendered with an
+// `items` list containing every component id -- a call that only happens if
+// `<SortableContext>` is actually present in the tree.
+const sortableContextSpy = vi.fn();
+
+vi.mock("@dnd-kit/sortable", async () => {
+  const actual = await vi.importActual<typeof import("@dnd-kit/sortable")>(
+    "@dnd-kit/sortable",
+  );
+  return {
+    ...actual,
+    SortableContext: (props: Parameters<typeof actual.SortableContext>[0]) => {
+      sortableContextSpy(props);
+      return actual.SortableContext(props);
+    },
+  };
+});
+
 import { ComponentPanel } from "@/components/architecture/component-panel";
 import type { BoardComponent } from "@/lib/queries/architecture";
 
@@ -90,6 +116,12 @@ describe("F048 ComponentPanel drag-and-drop reordering", () => {
     // A DndContext must have mounted (and captured its onDragEnd) for the
     // per-row useSortable() calls above to have succeeded at all.
     expect(capturedOnDragEnd).toBeInstanceOf(Function);
+    // And SortableContext itself must have been rendered with every
+    // component id in `items` -- this is what actually makes useSortable's
+    // per-row sorting behaviour (not just dnd-kit/core's DndContext) real.
+    expect(sortableContextSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ items: ["comp-a", "comp-b", "comp-c"] }),
+    );
   });
 
   it("AS-163: onDragEnd calls reorderComponents with the reordered id list", () => {
