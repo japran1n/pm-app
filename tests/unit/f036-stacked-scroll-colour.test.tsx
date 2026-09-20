@@ -136,6 +136,8 @@ describe("F036 stacked planner colour + scroll", () => {
 
     const capacityPatterns = [
       /\d+\s*h\s*(total|·|\/)/i, // "32h total" or "32h · " or "32h / 40h"
+      /\d+\s+hours?\b/i, // "12 hours"
+      /\d+\s*\/\s*\d+\s*hrs?\b/i, // "8 / 40 hrs"
       /utilis[ae]tion/i, // "utilisation" or "utilization"
       /capacity/i,
       /\d+%\s*(load|utilis|capac)/i, // "80% load" or "80% utilisation"
@@ -268,5 +270,98 @@ describe("F036 stacked planner colour + scroll", () => {
     expect(bobChip).toHaveStyle({ borderColor: "#22c55e" });
     expect(aliceChip.getAttribute("style")).toContain("239, 68, 68");
     expect(bobChip.getAttribute("style")).toContain("34, 197, 94");
+  });
+
+  // F109: the render-level checks above only cover PlannerHeader and
+  // StackedPersonRow individually. This renders the full StackedPlanner
+  // (multi-member, with blocks, but no capacity data anywhere in props)
+  // and asserts document.body.textContent never surfaces a capacity/hours
+  // figure that a mutation could interpolate at render time.
+  it("test_AS_069_no_capacity_figure_rendered_in_stacked_planner", () => {
+    const members: SwitcherMember[] = [
+      { userId: "alice", name: "Alice", email: "alice@example.com", avatarUrl: null },
+      { userId: "bob", name: "Bob", email: "bob@example.com", avatarUrl: null },
+    ];
+
+    const aliceBlock = makeBlock({
+      id: "b1",
+      userId: "alice",
+      color: "#ef4444",
+      startsAt: "2026-09-14T09:00:00Z",
+      endsAt: "2026-09-14T17:00:00Z",
+    });
+    const bobBlock = makeBlock({
+      id: "b2",
+      userId: "bob",
+      color: "#22c55e",
+      startsAt: "2026-09-14T09:00:00Z",
+      endsAt: "2026-09-14T17:00:00Z",
+    });
+
+    render(
+      <StackedPlanner
+        selectedUserIds={["alice", "bob"]}
+        members={members}
+        blocksByUser={new Map([
+          ["alice", [aliceBlock]],
+          ["bob", [bobBlock]],
+        ])}
+        weekKey={WEEK_KEY}
+        workspaceSlug="test"
+        selfId="alice"
+        weekParam="2026-W38"
+      />,
+    );
+
+    const text = document.body.textContent ?? "";
+    expect(text).not.toMatch(/\d+\s*h(ours?)?\s*(total|·|\/|booked|load)/i);
+    expect(text).not.toMatch(/utili[sz]ation/i);
+    expect(text).not.toMatch(/capacity/i);
+    expect(text).not.toMatch(/\d+\s*\/\s*\d+\s*h/i);
+    expect(text).not.toMatch(/\d+%\s*(load|booked|capacity|utili)/i);
+  });
+
+  // F110: the two AS-068 tests above only sweep the source text for the
+  // substrings "overflow-y-auto" and "max-h-[" -- a mutation that swaps the
+  // rendered className to `overflow-hidden` or `min-h-0` while leaving an
+  // unrelated `max-h-[` comment/string elsewhere in the file would slip
+  // past. This test renders the real component and asserts on the actual
+  // DOM className of the scroll container and each row, which a rendered
+  // class mutation cannot escape.
+  it("test_AS_068_scroll_container_and_row_min_height", () => {
+    const members: SwitcherMember[] = [
+      { userId: "alice", name: "Alice", email: "alice@example.com", avatarUrl: null },
+      { userId: "bob", name: "Bob", email: "bob@example.com", avatarUrl: null },
+    ];
+
+    render(
+      <StackedPlanner
+        selectedUserIds={["alice", "bob"]}
+        members={members}
+        blocksByUser={new Map()}
+        weekKey={WEEK_KEY}
+        workspaceSlug="test"
+        selfId="alice"
+        weekParam="2026-W38"
+      />,
+    );
+
+    // Scroll container must render with overflow-y-auto, never
+    // overflow-hidden -- short days must be able to scroll, not compress.
+    const scrollContainer = screen.getByTestId("stacked-planner");
+    expect(scrollContainer.className).toMatch(/overflow-y-auto/);
+    expect(scrollContainer.className).not.toMatch(/overflow-hidden/);
+
+    // Each per-person row must keep a fixed min-height and never shrink
+    // below it -- min-h-0 would let short days compress the row away.
+    const rows = [
+      screen.getByTestId("stacked-person-row-alice"),
+      screen.getByTestId("stacked-person-row-bob"),
+    ];
+    for (const row of rows) {
+      expect(row.className).toMatch(/min-h-\[6rem\]/);
+      expect(row.className).not.toMatch(/min-h-0/);
+      expect(row.className).toMatch(/shrink-0/);
+    }
   });
 });
