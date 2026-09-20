@@ -4,7 +4,7 @@
 // colour, the stacked container scrolls instead of compressing rows, and
 // hours/capacity/utilisation text never appears in either stacked file.
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -124,7 +124,7 @@ describe("F036 stacked planner colour + scroll", () => {
   });
 
   it("test_AS_069_no_capacity_figure_in_any_planner_file", () => {
-    const plannerFiles = [
+    const candidateFiles = [
       "app/(workspace)/w/[workspaceSlug]/calendar/page.tsx",
       "components/calendar/planner-header.tsx",
       "components/calendar/stacked-planner.tsx",
@@ -132,7 +132,14 @@ describe("F036 stacked planner colour + scroll", () => {
       "components/calendar/week-view.tsx",
       "components/calendar/week-time-grid.tsx",
       "components/calendar/people-switcher.tsx",
+      "components/calendar/week-agenda.tsx",
+      "components/calendar/calendar-block-chip.tsx",
+      "components/calendar/time-off-day-strip.tsx",
     ];
+
+    const plannerFiles = candidateFiles.filter((file) =>
+      existsSync(path.join(process.cwd(), file)),
+    );
 
     const capacityPatterns = [
       /\d+\s*h\s*(total|·|\/)/i, // "32h total" or "32h · " or "32h / 40h"
@@ -143,6 +150,9 @@ describe("F036 stacked planner colour + scroll", () => {
       /\d+%\s*(load|utilis|capac)/i, // "80% load" or "80% utilisation"
       /load\s*:\s*\d/i, // "load: 80"
       /\bh\s*·\s*\d+%/i, // "32h · 80%"
+      /\b\d+\s*h\s+(total|booked|load|available|utili|spent|work)/i, // bare "40h booked"
+      /\b\d+\s*%\s+(booked|load|utili|capacity|total)/i, // bare "80% booked"
+      /booked\s*:\s*\d/i, // "booked: 8"
     ];
 
     for (const file of plannerFiles) {

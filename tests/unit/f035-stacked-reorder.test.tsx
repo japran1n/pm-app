@@ -147,7 +147,7 @@ describe("F103 stacked row reorder -- real dnd-kit KeyboardSensor", () => {
   });
 
   it("test_AS_064_drag_reorders_rows", async () => {
-    renderPlanner({ weekParam: "2026-W38" });
+    const { rerender } = renderPlanner({ weekParam: "2026-09-14" });
 
     // Self starts at index 0. Pick it up with the keyboard sensor and move
     // it down one slot, past Person A.
@@ -166,17 +166,49 @@ describe("F103 stacked row reorder -- real dnd-kit KeyboardSensor", () => {
     expect(selfIndex).toBeGreaterThanOrEqual(0);
     expect(aIndex).toBeGreaterThanOrEqual(0);
     expect(aIndex).toBeLessThan(selfIndex);
+
+    // AS-064: the URL order alone isn't enough -- a mutation that reverses
+    // the splice result (`splice + reverse()` instead of `splice + insert`)
+    // can still flip the *pair* comparison above while producing a
+    // fundamentally wrong full order. Feed the exact order the app would
+    // navigate to (`ids`, from the captured `router.replace` URL) back into
+    // the component as `selectedUserIds` -- the way a reload actually would
+    // -- and assert the rendered DOM order of the draggable row wrappers
+    // matches it. A `reverse()` mutation produces an `ids` array whose
+    // relative order for PERSON_B (never touched by the drag) would be
+    // wrong here, and a truncated/duplicated splice would fail to resolve
+    // all three ids into distinct rows below.
+    rerender(
+      <StackedPlanner
+        selectedUserIds={ids}
+        blocksByUser={new Map<string, CalendarBlock[]>()}
+        weekKey="2026-09-14"
+        members={MEMBERS}
+        workspaceSlug="acme"
+        selfId={SELF_ID}
+        weekParam="2026-09-14"
+      />,
+    );
+
+    const rows = screen.getAllByTestId(/^stacked-row-draggable-/);
+    const domOrder = rows.map((row) => row.getAttribute("data-testid"));
+    const expectedOrder = ids.map((id) => `stacked-row-draggable-${id}`);
+    expect(domOrder).toEqual(expectedOrder);
+
+    const domAIndex = domOrder.indexOf(`stacked-row-draggable-${PERSON_A}`);
+    const domSelfIndex = domOrder.indexOf(`stacked-row-draggable-${SELF_ID}`);
+    expect(domAIndex).toBeLessThan(domSelfIndex);
   });
 
   it("test_AS_065_weekParam_preserved_on_reorder", async () => {
-    renderPlanner({ weekParam: "2026-W39" });
+    renderPlanner({ weekParam: "2026-09-21" });
 
     const selfHandle = screen.getByTestId(`stacked-row-drag-handle-${SELF_ID}`);
     await pickUpMoveDropDown(selfHandle);
 
     expect(replaceMock).toHaveBeenCalledTimes(1);
     const url = replaceMock.mock.calls[0][0] as string;
-    expect(url).toContain("week=2026-W39");
+    expect(url).toContain("week=2026-09-21");
 
     // And the reorder itself still happened alongside the preserved week.
     const params = new URL(url, "http://localhost").searchParams;
@@ -185,7 +217,7 @@ describe("F103 stacked row reorder -- real dnd-kit KeyboardSensor", () => {
   });
 
   it("AS-065: a drag that doesn't change position does NOT call router.replace", () => {
-    renderPlanner({ weekParam: "2026-W38" });
+    renderPlanner({ weekParam: "2026-09-14" });
 
     // No keyboard interaction at all -- render alone must never persist.
     expect(replaceMock).not.toHaveBeenCalled();
@@ -196,7 +228,7 @@ describe("F103 stacked row reorder -- real dnd-kit KeyboardSensor", () => {
   // above only if the keyboard gesture happened to no-op; guard the
   // rendered handle directly too.
   it("AS-064: each rendered row exposes a keyboard-operable drag handle", () => {
-    renderPlanner();
+    renderPlanner({ weekParam: "2026-09-14" });
 
     for (const id of ROW_ORDER) {
       const handle = screen.getByTestId(`stacked-row-drag-handle-${id}`);
