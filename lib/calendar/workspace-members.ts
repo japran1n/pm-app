@@ -32,3 +32,12 @@ export function buildSwitcherMembers(
     activeMemberIds: active.map((m) => m.userId),
   };
 }
+
+// F090 (AS-001, AS-059): the single place that decides which user ids the
+// calendar-blocks query is scoped to. It must be a pure passthrough of the
+// caller's selection -- never widened to "everyone in the workspace" -- so
+// a dropped 4th argument to getCalendarBlocks(...) can't silently leak
+// every member's blocks past a source-regex guard again.
+export function buildBlockUserIds(selectedUserIds: string[]): string[] {
+  return [...selectedUserIds];
+}

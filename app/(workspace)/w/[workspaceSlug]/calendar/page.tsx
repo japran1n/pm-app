@@ -46,7 +46,7 @@ import {
 } from "@/lib/calendar/week-grid";
 import { parsePeopleParam } from "@/lib/calendar/people-selection";
 import { buildPlannerNavHrefs } from "@/lib/calendar/week-nav";
-import { buildSwitcherMembers } from "@/lib/calendar/workspace-members";
+import { buildBlockUserIds, buildSwitcherMembers } from "@/lib/calendar/workspace-members";
 import type { SwitcherMember } from "@/lib/calendar/workspace-members";
 import { resolvePlannerLayout } from "@/lib/calendar/planner-layout";
 import { PlannerHeader } from "@/components/calendar/planner-header";
@@ -132,6 +132,12 @@ export default async function CalendarPage({
   // are selected -- there is deliberately no `?view=` param (AS-015).
   const layout = resolvePlannerLayout(selectedUserIds.length);
 
+  // F090 (AS-001, AS-059): go through the single helper that decides which
+  // user ids the calendar-blocks query is scoped to -- never widened to
+  // every workspace member, and never inlined so a dropped argument to
+  // getCalendarBlocks(...) can't silently desync from this prop again.
+  const blockUserIds = buildBlockUserIds(selectedUserIds);
+
   return (
     <div className="flex flex-col gap-3 p-6 pt-4 lg:p-8 lg:pt-8">
       {/* F088: rendered ONCE, above the layout branch, so the switcher
@@ -164,7 +170,7 @@ export default async function CalendarPage({
           week={week}
           // F031 (AS-001): fetch blocks for exactly the selected people --
           // no params means [selfId] alone, never the whole workspace.
-          blockUserIds={selectedUserIds}
+          blockUserIds={blockUserIds}
           layout={layout}
           weekKey={weekKey}
           // F020 (AS-046): the signed-in member's id, threaded all the
