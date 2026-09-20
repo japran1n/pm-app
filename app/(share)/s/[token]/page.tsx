@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { resolveSitemapShareToken } from "@/lib/queries/sitemaps";
 import { ArchitectureViewToggle } from "@/components/architecture/architecture-view-toggle";
+import { ShareExportMenu } from "@/components/sitemap-tool/share-export-menu";
 import type { ArchitectureActions } from "@/lib/architecture/actions-context";
 
 // Phase 3 of the standalone Sitemap tool: the public, unauthenticated
@@ -73,9 +74,12 @@ export default async function SharedSitemapPage({
 
   return (
     <div className="flex h-screen min-h-0 flex-col bg-background">
-      <div className="flex h-12 shrink-0 items-center justify-between border-b border-border px-4">
-        <span className="text-sm font-medium text-foreground">{name}</span>
-        <span className="text-xs text-muted-foreground">Built with Goodguys Studio</span>
+      <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-border px-4">
+        <span className="truncate text-sm font-medium text-foreground">{name}</span>
+        <div className="flex shrink-0 items-center gap-3">
+          <ShareExportMenu pages={board.pages} sitemapName={name} />
+          <span className="text-xs text-muted-foreground">Built with Goodguys Studio</span>
+        </div>
       </div>
       <div className="flex min-h-0 flex-1 flex-col p-4">
         <ArchitectureViewToggle
