@@ -3,7 +3,7 @@
 // "URL-safe unguessable ... at least 128 bits of entropy".
 
 import { describe, expect, it } from "vitest";
-import { generateShareToken } from "@/lib/actions/sitemaps";
+import { generateShareToken } from "@/lib/sitemaps/share-token";
 
 describe("generateShareToken", () => {
   it("is URL-safe (no characters requiring percent-encoding)", () => {

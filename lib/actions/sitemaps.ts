@@ -18,7 +18,7 @@
 // trusting a workspace id supplied by the caller -- same "never trust a
 // client-supplied workspace id" reasoning pages.ts's own header comment
 // gives.
-import { randomBytes } from "node:crypto";
+import { generateShareToken } from "@/lib/sitemaps/share-token";
 
 import { revalidatePath } from "next/cache";
 
@@ -50,13 +50,6 @@ type AdminClient = ReturnType<typeof createAdminClient>;
 
 const GENERIC_ERROR = "Something went wrong. Please try again in a moment.";
 
-// AS-note: a URL-safe, unguessable share token. 32 random bytes
-// (256 bits) base64url-encoded -- well over the "at least 128 bits of
-// entropy" bar, using node:crypto's randomBytes (already a repo
-// dependency, see lib/extension-handoff.ts), so no new package.
-export function generateShareToken(): string {
-  return randomBytes(32).toString("base64url");
-}
 
 async function requireWriteAccess(
   admin: AdminClient,
