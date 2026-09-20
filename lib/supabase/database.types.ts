@@ -2850,6 +2850,200 @@ export type Database = {
           },
         ]
       }
+      sitemap_components: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          position: number
+          sitemap_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          position?: number
+          sitemap_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          position?: number
+          sitemap_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sitemap_components_sitemap_id_fkey"
+            columns: ["sitemap_id"]
+            isOneToOne: false
+            referencedRelation: "sitemaps"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sitemap_pages: {
+        Row: {
+          created_at: string
+          id: string
+          kind: string | null
+          position: number
+          sitemap_id: string
+          slug: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          kind?: string | null
+          position?: number
+          sitemap_id: string
+          slug: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          kind?: string | null
+          position?: number
+          sitemap_id?: string
+          slug?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sitemap_pages_sitemap_id_fkey"
+            columns: ["sitemap_id"]
+            isOneToOne: false
+            referencedRelation: "sitemaps"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sitemap_sections: {
+        Row: {
+          component_id: string | null
+          created_at: string
+          id: string
+          kind: string
+          page_id: string
+          position: number
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          component_id?: string | null
+          created_at?: string
+          id?: string
+          kind?: string
+          page_id: string
+          position?: number
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          component_id?: string | null
+          created_at?: string
+          id?: string
+          kind?: string
+          page_id?: string
+          position?: number
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sitemap_sections_component_id_fkey"
+            columns: ["component_id"]
+            isOneToOne: false
+            referencedRelation: "sitemap_components"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sitemap_sections_page_id_fkey"
+            columns: ["page_id"]
+            isOneToOne: false
+            referencedRelation: "sitemap_pages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sitemap_shares: {
+        Row: {
+          created_at: string
+          id: string
+          revoked_at: string | null
+          sitemap_id: string
+          token: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          revoked_at?: string | null
+          sitemap_id: string
+          token: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          revoked_at?: string | null
+          sitemap_id?: string
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sitemap_shares_sitemap_id_fkey"
+            columns: ["sitemap_id"]
+            isOneToOne: false
+            referencedRelation: "sitemaps"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sitemaps: {
+        Row: {
+          archived_at: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          name: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          archived_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          archived_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sitemaps_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       status_template_items: {
         Row: {
           category: string
