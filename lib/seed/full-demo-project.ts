@@ -569,7 +569,6 @@ export async function createFullDemoProject(
             workspace_id: workspaceId,
             project_id: projectId,
             user_id: memberUserIds.member,
-            task_id: wireframesId,
             title: "Focus block — wireframes",
             starts_at: isoTimestampInDays(1, 9),
             ends_at: isoTimestampInDays(1, 11),
