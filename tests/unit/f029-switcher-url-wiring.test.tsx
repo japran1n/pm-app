@@ -202,3 +202,33 @@ describe("AS-013: no Planner view state is written to localStorage or sessionSto
     expect(source).not.toMatch(/\bsessionStorage\s*\./);
   });
 });
+
+describe("F067 (AS-011): calendar page.tsx call sites actually pass peopleParam to buildWeekNavHref", () => {
+  it("both buildWeekNavHref(...) calls in page.tsx include the peopleParam wiring", async () => {
+    const fs = await import("node:fs/promises");
+    const path = await import("node:path");
+    const source = await fs.readFile(
+      path.join(
+        process.cwd(),
+        "app/(workspace)/w/[workspaceSlug]/calendar/page.tsx",
+      ),
+      "utf8",
+    );
+
+    // Grab every buildWeekNavHref(...) call site (non-greedy, single-line
+    // object-literal argument as used in page.tsx) and assert each one
+    // carries `peopleParam` through -- either as the shorthand property
+    // `peopleParam` or an explicit `peopleParam:` kwarg. If a future edit
+    // drops it from either call site, this regex-per-call assertion fails
+    // even though the isolated buildWeekNavHref unit tests above stay
+    // green (they never touch page.tsx at all).
+    const calls = [...source.matchAll(/buildWeekNavHref\(\{[^}]*\}\)/g)].map(
+      (m) => m[0],
+    );
+
+    expect(calls.length).toBeGreaterThanOrEqual(2);
+    for (const call of calls) {
+      expect(call).toMatch(/\bpeopleParam\b/);
+    }
+  });
+});
