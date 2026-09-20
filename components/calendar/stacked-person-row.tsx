@@ -132,7 +132,10 @@ export function StackedPersonRow({
   );
 
   return (
-    <div data-testid={`stacked-person-row-${userId}`} className="w-full">
+    <div
+      data-testid={`stacked-person-row-${userId}`}
+      className="w-full min-h-[6rem] shrink-0"
+    >
       {userLabel && (
         <div className="mb-1 text-sm font-medium">{userLabel}</div>
       )}

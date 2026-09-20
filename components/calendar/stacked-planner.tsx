@@ -154,7 +154,10 @@ export function StackedPlanner({
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
       <SortableContext items={selectedUserIds} strategy={verticalListSortingStrategy}>
-        <div data-testid="stacked-planner" className="flex flex-col gap-3">
+        <div
+          data-testid="stacked-planner"
+          className="flex max-h-[calc(100vh-200px)] flex-col gap-3 overflow-y-auto"
+        >
           {/* AS-063: rows render in `selectedUserIds` order -- never re-sorted
               (e.g. alphabetically) -- so the order matches `?people=`. */}
           {selectedUserIds.map((userId) => {
