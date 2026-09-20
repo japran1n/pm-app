@@ -35,10 +35,11 @@ describe("Tools index page (TH-037..TH-042)", () => {
   it("TH-037: renders a ToolCard for each tool entry", async () => {
     await renderToolsPage();
 
-    // Two known tools from the sidebar's "Tools" band: HTML -> Webflow and
-    // Webflow Code Editor. Each renders as a link (ToolCard is a Link).
+    // Three known tools from the sidebar's "Tools" band: HTML -> Webflow,
+    // Webflow Code Editor, and Sitemap Builder (Standalone Sitemap tool,
+    // Phase 2). Each renders as a link (ToolCard is a Link).
     const links = screen.getAllByRole("link");
-    expect(links).toHaveLength(2);
+    expect(links).toHaveLength(3);
   });
 
   it("TH-038: navigation to /tools/code-editor works", async () => {
@@ -74,6 +75,18 @@ describe("Tools index page (TH-037..TH-042)", () => {
     expect(
       screen.getByText("Edit and preview Webflow custom code snippets.")
     ).toBeInTheDocument();
+
+    expect(screen.getByText("Sitemap Builder")).toBeInTheDocument();
+    expect(
+      screen.getByText("Plan website structure and share with clients.")
+    ).toBeInTheDocument();
+  });
+
+  it("renders a link to /tools/sitemap for the Sitemap Builder card", async () => {
+    await renderToolsPage();
+
+    const link = screen.getByRole("link", { name: /sitemap builder/i });
+    expect(link).toHaveAttribute("href", "/w/acme/tools/sitemap");
   });
 
   it("TH-042: tools page is a server component (no 'use client' directive)", () => {

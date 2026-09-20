@@ -13,7 +13,7 @@
 //
 // Card content is defined in one place (the `tools` array below) so a
 // third tool is a one-line addition, per this feature's own Draft scope.
-import { Code2, FileCode2 } from "lucide-react";
+import { Code2, FileCode2, Network } from "lucide-react";
 
 import { ToolCard } from "@/components/tools/tool-card";
 
@@ -38,6 +38,12 @@ export default async function ToolsIndexPage({
       icon: FileCode2,
       name: "Webflow Code Editor",
       description: "Edit and preview Webflow custom code snippets.",
+    },
+    {
+      href: `/w/${workspaceSlug}/tools/sitemap`,
+      icon: Network,
+      name: "Sitemap Builder",
+      description: "Plan website structure and share with clients.",
     },
   ];
 

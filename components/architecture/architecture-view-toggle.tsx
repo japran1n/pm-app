@@ -28,10 +28,6 @@ import { EstimateSummary } from "@/components/architecture/estimate-summary";
 // `architectureActions.<name>(...)` call site per barrel export -- the
 // same guarantee tests/unit/m6-action-barrel-guard.test.ts already checks
 // for every export of lib/actions/architecture.ts.
-function getNodeDetailsForToggle(projectId: string) {
-  return architectureActions.getNodeDetailsForToggle(projectId);
-}
-
 const projectBackedActions: ArchitectureActions = {
   createSection: (...args) => architectureActions.createSection(...args),
   deleteSection: (...args) => architectureActions.deleteSection(...args),
@@ -103,13 +99,25 @@ export function ArchitectureViewToggle({
   components,
   projectId,
   projectName,
+  actions = projectBackedActions,
 }: {
   pages: BoardPage[];
   components: BoardComponent[];
   projectId: string;
   projectName: string;
+  // Standalone Sitemap tool, Phase 2: lets a non-project caller (the
+  // sitemap editor) supply its own ArchitectureActions -- e.g. omitting
+  // the `estimates` capability group entirely, since discipline estimates
+  // are a project-only concept. Defaults to the existing project-backed
+  // wiring so every current call site (the Architecture tab) is
+  // byte-identical in behaviour.
+  actions?: ArchitectureActions;
 }) {
   const [view, setView] = useState<ViewMode>("canvas");
+  // Estimates/copy-brief details are only available when the caller's
+  // actions include the `estimates` capability group (Phase 0 guarantee:
+  // absent capability -> no affordance). The sitemap tool omits it.
+  const detailsCapable = actions.estimates != null;
 
   // Details toggle — default OFF, persisted to localStorage per project.
   // Data fetched lazily on first enable, cached for the session.
@@ -159,6 +167,7 @@ export function ArchitectureViewToggle({
   // -- independent of `showDetails`. Toggling the details panel on/off no
   // longer starts, cancels, or restarts this fetch.
   useEffect(() => {
+    if (!detailsCapable) return;
     if (detailsData !== null) return;
 
     const fetchId = ++fetchIdRef.current;
@@ -166,7 +175,7 @@ export function ArchitectureViewToggle({
       if (fetchId === fetchIdRef.current) setDetailsLoading(true);
     });
 
-    getNodeDetailsForToggle(projectId)
+    actions.estimates!.getNodeDetailsForToggle(projectId)
       .then((result) => {
         if (fetchId !== fetchIdRef.current) return; // superseded/stale
         if (result.ok) {
@@ -189,7 +198,7 @@ export function ArchitectureViewToggle({
       .finally(() => {
         if (fetchId === fetchIdRef.current) setDetailsLoading(false);
       });
-  }, [detailsData, projectId]);
+  }, [detailsCapable, actions, detailsData, projectId]);
 
   // Write actions deep in the board tree (an estimate saved via
   // DisciplineEstimatePopover, a copy brief saved via NodeMetaDialog) call
@@ -221,7 +230,7 @@ export function ArchitectureViewToggle({
   }
 
   return (
-    <ArchitectureActionsProvider actions={projectBackedActions}>
+    <ArchitectureActionsProvider actions={actions}>
     <div className="flex min-h-0 flex-1 flex-col gap-2">
       {/* Toggle */}
       <div className="flex items-center justify-between gap-3 px-1">
@@ -266,23 +275,27 @@ export function ArchitectureViewToggle({
           >
             <Network size={14} />
           </button>
-          <div className="mx-0.5 h-4 w-px bg-border" aria-hidden="true" />
-          <button
-            type="button"
-            onClick={toggleDetails}
-            title={showDetails ? "Hide details" : "Show estimates & copy brief"}
-            disabled={detailsLoading}
-            className={`flex h-7 w-7 items-center justify-center rounded transition-colors disabled:opacity-50 ${
-              showDetails
-                ? "bg-background text-foreground shadow-xs"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {detailsLoading
-              ? <Loader2 size={14} className="animate-spin" aria-hidden="true" />
-              : <SlidersHorizontal size={14} aria-hidden="true" />
-            }
-          </button>
+          {detailsCapable && (
+            <>
+              <div className="mx-0.5 h-4 w-px bg-border" aria-hidden="true" />
+              <button
+                type="button"
+                onClick={toggleDetails}
+                title={showDetails ? "Hide details" : "Show estimates & copy brief"}
+                disabled={detailsLoading}
+                className={`flex h-7 w-7 items-center justify-center rounded transition-colors disabled:opacity-50 ${
+                  showDetails
+                    ? "bg-background text-foreground shadow-xs"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {detailsLoading
+                  ? <Loader2 size={14} className="animate-spin" aria-hidden="true" />
+                  : <SlidersHorizontal size={14} aria-hidden="true" />
+                }
+              </button>
+            </>
+          )}
         </div>
       </div>
 

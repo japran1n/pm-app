@@ -41,6 +41,9 @@ import {
   sitemapPageTitleSchema,
   sitemapSectionTitleSchema,
   sitemapComponentNameSchema,
+  sitemapPageKindEnum,
+  sitemapPageSlugSchema,
+  sitemapSectionKindEnum,
 } from "@/lib/validation/sitemaps";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
@@ -916,6 +919,430 @@ export async function createSitemapShare(
 
   revalidateSitemaps();
   return { ok: true, data: { token } };
+}
+
+// ---------------------------------------------------------------------
+// Board-UI parity actions (Phase 2: `ArchitectureCoreActions` shape,
+// lib/architecture/actions-context.tsx). The board leaf components call
+// these with the exact same flat signatures the project-backed
+// lib/actions/architecture/{pages,sections}.ts export (updates arrays
+// with no page/sitemap id threaded through, a "move to page" with an
+// explicit target position, etc.) -- these thin wrappers exist so the
+// sitemap tool can supply matching functions without changing the shared
+// board UI's call sites. Each one still re-verifies write access
+// server-side before touching a row, same as every other action above.
+// ---------------------------------------------------------------------
+
+export async function reorderSitemapSectionsFlat(
+  updates: { id: string; position: number }[],
+): Promise<MutationResult> {
+  if (!Array.isArray(updates) || updates.length === 0) {
+    return { success: false, error: "No sections to reorder." };
+  }
+
+  const ctx = await guardedAdmin();
+  if (!ctx.ok) return { success: false, error: ctx.error };
+
+  const firstSection = await resolveSectionPageSitemapWorkspace(ctx.admin, updates[0].id);
+  if (!firstSection) return { success: false, error: "Section not found." };
+
+  const access = await requireWriteAccess(ctx.admin, firstSection.workspaceId, ctx.userId);
+  if (!access.ok) return { success: false, error: access.error };
+
+  const results = await Promise.all(
+    updates.map((update) =>
+      ctx.admin.from("sitemap_sections").update({ position: update.position }).eq("id", update.id),
+    ),
+  );
+
+  const failed = results.find((r) => r.error);
+  if (failed?.error) {
+    logger.error("reorderSitemapSectionsFlat: update failed", { error: failed.error });
+    return { success: false, error: GENERIC_ERROR };
+  }
+
+  revalidateSitemaps();
+  return { success: true };
+}
+
+export async function changeSectionKindSitemap(
+  sectionId: string,
+  kind: string,
+): Promise<MutationResult> {
+  const kindCheck = sitemapSectionKindEnum.safeParse(kind);
+  if (!kindCheck.success) {
+    return { success: false, error: "Invalid section kind." };
+  }
+
+  const ctx = await guardedAdmin();
+  if (!ctx.ok) return { success: false, error: ctx.error };
+
+  const section = await resolveSectionPageSitemapWorkspace(ctx.admin, sectionId);
+  if (!section) return { success: false, error: "Section not found." };
+
+  const access = await requireWriteAccess(ctx.admin, section.workspaceId, ctx.userId);
+  if (!access.ok) return { success: false, error: access.error };
+
+  const { error } = await ctx.admin
+    .from("sitemap_sections")
+    .update({ kind: kindCheck.data })
+    .eq("id", sectionId);
+
+  if (error) {
+    logger.error("changeSectionKindSitemap: update failed", { error });
+    return { success: false, error: GENERIC_ERROR };
+  }
+
+  revalidateSitemaps();
+  return { success: true };
+}
+
+export async function moveSitemapSectionToPage(
+  sectionId: string,
+  newPageId: string,
+  position: number,
+): Promise<MutationResult> {
+  const ctx = await guardedAdmin();
+  if (!ctx.ok) return { success: false, error: ctx.error };
+
+  const section = await resolveSectionPageSitemapWorkspace(ctx.admin, sectionId);
+  if (!section) return { success: false, error: "Section not found." };
+
+  const newPage = await resolvePageSitemapWorkspace(ctx.admin, newPageId);
+  if (!newPage || newPage.workspaceId !== section.workspaceId) {
+    return { success: false, error: "Page not found." };
+  }
+
+  const access = await requireWriteAccess(ctx.admin, section.workspaceId, ctx.userId);
+  if (!access.ok) return { success: false, error: access.error };
+
+  const { error } = await ctx.admin
+    .from("sitemap_sections")
+    .update({ page_id: newPageId, position })
+    .eq("id", sectionId);
+
+  if (error) {
+    logger.error("moveSitemapSectionToPage: update failed", { error });
+    return { success: false, error: GENERIC_ERROR };
+  }
+
+  revalidateSitemaps();
+  return { success: true };
+}
+
+export async function changeSitemapPageKind(
+  pageId: string,
+  kind: string,
+): Promise<MutationResult> {
+  const kindCheck = sitemapPageKindEnum.safeParse(kind);
+  if (!kindCheck.success) {
+    return { success: false, error: "Invalid page kind." };
+  }
+
+  const ctx = await guardedAdmin();
+  if (!ctx.ok) return { success: false, error: ctx.error };
+
+  const page = await resolvePageSitemapWorkspace(ctx.admin, pageId);
+  if (!page) return { success: false, error: "Page not found." };
+
+  const access = await requireWriteAccess(ctx.admin, page.workspaceId, ctx.userId);
+  if (!access.ok) return { success: false, error: access.error };
+
+  const { error } = await ctx.admin
+    .from("sitemap_pages")
+    .update({ kind: kindCheck.data })
+    .eq("id", page.pageId);
+
+  if (error) {
+    logger.error("changeSitemapPageKind: update failed", { error });
+    return { success: false, error: GENERIC_ERROR };
+  }
+
+  revalidateSitemaps();
+  return { success: true };
+}
+
+export async function reorderSitemapPagesFlat(
+  updates: { id: string; position: number }[],
+): Promise<MutationResult> {
+  if (!Array.isArray(updates) || updates.length === 0) {
+    return { success: false, error: "No pages to reorder." };
+  }
+
+  const ctx = await guardedAdmin();
+  if (!ctx.ok) return { success: false, error: ctx.error };
+
+  const firstPage = await resolvePageSitemapWorkspace(ctx.admin, updates[0].id);
+  if (!firstPage) return { success: false, error: "Page not found." };
+
+  const access = await requireWriteAccess(ctx.admin, firstPage.workspaceId, ctx.userId);
+  if (!access.ok) return { success: false, error: access.error };
+
+  const results = await Promise.all(
+    updates.map((update) =>
+      ctx.admin.from("sitemap_pages").update({ position: update.position }).eq("id", update.id),
+    ),
+  );
+
+  const failed = results.find((r) => r.error);
+  if (failed?.error) {
+    logger.error("reorderSitemapPagesFlat: update failed", { error: failed.error });
+    return { success: false, error: GENERIC_ERROR };
+  }
+
+  revalidateSitemaps();
+  return { success: true };
+}
+
+export async function importSitemapPages(
+  sitemapId: string,
+  pages: { path: string; title: string; kind?: string }[],
+): Promise<{ ok: true; created: number; skipped: number } | { ok: false; error: string }> {
+  if (pages.length === 0) {
+    return { ok: true, created: 0, skipped: 0 };
+  }
+
+  const ctx = await guardedAdmin();
+  if (!ctx.ok) return { ok: false, error: ctx.error };
+
+  const sitemap = await resolveSitemapWorkspace(ctx.admin, sitemapId);
+  if (!sitemap) return { ok: false, error: "Sitemap not found." };
+
+  const access = await requireWriteAccess(ctx.admin, sitemap.workspace_id, ctx.userId);
+  if (!access.ok) return { ok: false, error: access.error };
+
+  const { data: existingPages, error: existingError } = await ctx.admin
+    .from("sitemap_pages")
+    .select("slug")
+    .eq("sitemap_id", sitemap.id);
+
+  if (existingError) {
+    logger.error("importSitemapPages: failed to load existing pages", { error: existingError });
+    return { ok: false, error: GENERIC_ERROR };
+  }
+
+  const existingSlugs = new Set((existingPages ?? []).map((p) => p.slug));
+  let position = existingSlugs.size;
+  let created = 0;
+  let skipped = 0;
+  const rowsToInsert: { sitemap_id: string; title: string; slug: string; kind: string; position: number }[] = [];
+
+  for (const page of pages) {
+    const slugCheck = sitemapPageSlugSchema.safeParse(page.path);
+    const titleCheck = sitemapPageTitleSchema.safeParse(page.title);
+    const kindCheck = sitemapPageKindEnum.safeParse(page.kind ?? "static");
+
+    if (!slugCheck.success || !titleCheck.success || existingSlugs.has(slugCheck.data)) {
+      skipped += 1;
+      continue;
+    }
+
+    existingSlugs.add(slugCheck.data);
+    rowsToInsert.push({
+      sitemap_id: sitemap.id,
+      title: titleCheck.data,
+      slug: slugCheck.data,
+      kind: kindCheck.success ? kindCheck.data : "static",
+      position: position++,
+    });
+    created += 1;
+  }
+
+  if (rowsToInsert.length > 0) {
+    const { error: insertError } = await ctx.admin.from("sitemap_pages").insert(rowsToInsert);
+    if (insertError) {
+      logger.error("importSitemapPages: insert failed", { error: insertError });
+      return { ok: false, error: GENERIC_ERROR };
+    }
+  }
+
+  revalidateSitemaps();
+  return { ok: true, created, skipped };
+}
+
+// ---------------------------------------------------------------------
+// Component <-> section linking (Phase 2: `componentLinks` capability
+// group for ArchitectureActionsProvider, lib/architecture/actions-context.tsx).
+// Signatures/return shapes intentionally MIRROR
+// lib/actions/architecture/components.ts's own (MutationResult /
+// MutationWithIdResult / MutationWithComponentIdResult, `success`/`error`
+// not `ok`/`data`) since that is the exact shape
+// ArchitectureComponentLinkActions requires -- this repo's other
+// sitemap actions above use `ActionResult` (`ok`/`data`) because they're
+// standalone Phase 1 CRUD with no existing shape to match; these four are
+// the board UI's own capability contract and have no freedom to differ.
+// ---------------------------------------------------------------------
+
+type MutationResult = { success: boolean; error?: string };
+type MutationWithComponentIdResult = MutationResult & { componentId?: string };
+
+export async function createSitemapComponentFromSection(
+  sectionId: string,
+  sitemapId: string,
+): Promise<MutationWithComponentIdResult> {
+  const ctx = await guardedAdmin();
+  if (!ctx.ok) return { success: false, error: ctx.error };
+
+  const section = await resolveSectionPageSitemapWorkspace(ctx.admin, sectionId);
+  if (!section) {
+    return { success: false, error: "Section not found." };
+  }
+
+  const access = await requireWriteAccess(ctx.admin, section.workspaceId, ctx.userId);
+  if (!access.ok) return { success: false, error: access.error };
+
+  const { data: sectionRow, error: sectionError } = await ctx.admin
+    .from("sitemap_sections")
+    .select("id, title, component_id, sitemap_pages(sitemap_id)")
+    .eq("id", sectionId)
+    .maybeSingle();
+
+  if (sectionError || !sectionRow) {
+    return { success: false, error: "Section not found." };
+  }
+
+  if (sectionRow.component_id) {
+    return { success: false, error: "Section already linked to a component" };
+  }
+
+  const nameCheck = sitemapComponentNameSchema.safeParse(sectionRow.title);
+  if (!nameCheck.success) {
+    return { success: false, error: "Section title cannot become a component name." };
+  }
+
+  const { count: existingCount, error: countError } = await ctx.admin
+    .from("sitemap_components")
+    .select("id", { count: "exact", head: true })
+    .eq("sitemap_id", sitemapId);
+
+  if (countError) {
+    logger.error("createSitemapComponentFromSection: count failed", { error: countError });
+    return { success: false, error: GENERIC_ERROR };
+  }
+
+  const { data: insertedComponent, error: insertError } = await ctx.admin
+    .from("sitemap_components")
+    .insert({ sitemap_id: sitemapId, name: nameCheck.data, position: existingCount ?? 0 })
+    .select("id")
+    .single();
+
+  if (insertError || !insertedComponent) {
+    if (insertError?.code === "23505") {
+      return { success: false, error: "A component with this name already exists." };
+    }
+    logger.error("createSitemapComponentFromSection: insert failed", { error: insertError });
+    return { success: false, error: GENERIC_ERROR };
+  }
+
+  const { error: linkError } = await ctx.admin
+    .from("sitemap_sections")
+    .update({ component_id: insertedComponent.id })
+    .eq("id", sectionId);
+
+  if (linkError) {
+    logger.error("createSitemapComponentFromSection: link failed", { error: linkError });
+    return { success: false, error: GENERIC_ERROR };
+  }
+
+  revalidateSitemaps();
+  return { success: true, componentId: insertedComponent.id };
+}
+
+export async function linkSitemapComponentToSection(
+  sectionId: string,
+  componentId: string,
+): Promise<MutationResult> {
+  const ctx = await guardedAdmin();
+  if (!ctx.ok) return { success: false, error: ctx.error };
+
+  const section = await resolveSectionPageSitemapWorkspace(ctx.admin, sectionId);
+  if (!section) return { success: false, error: "Section not found." };
+
+  const access = await requireWriteAccess(ctx.admin, section.workspaceId, ctx.userId);
+  if (!access.ok) return { success: false, error: access.error };
+
+  const { error } = await ctx.admin
+    .from("sitemap_sections")
+    .update({ component_id: componentId })
+    .eq("id", sectionId);
+
+  if (error) {
+    logger.error("linkSitemapComponentToSection: update failed", { error });
+    return { success: false, error: GENERIC_ERROR };
+  }
+
+  revalidateSitemaps();
+  return { success: true };
+}
+
+export async function unlinkSitemapComponentFromSection(
+  sectionId: string,
+): Promise<MutationResult> {
+  const ctx = await guardedAdmin();
+  if (!ctx.ok) return { success: false, error: ctx.error };
+
+  const section = await resolveSectionPageSitemapWorkspace(ctx.admin, sectionId);
+  if (!section) return { success: false, error: "Section not found." };
+
+  const access = await requireWriteAccess(ctx.admin, section.workspaceId, ctx.userId);
+  if (!access.ok) return { success: false, error: access.error };
+
+  const { error } = await ctx.admin
+    .from("sitemap_sections")
+    .update({ component_id: null })
+    .eq("id", sectionId);
+
+  if (error) {
+    logger.error("unlinkSitemapComponentFromSection: update failed", { error });
+    return { success: false, error: GENERIC_ERROR };
+  }
+
+  revalidateSitemaps();
+  return { success: true };
+}
+
+export async function reorderSitemapComponents(
+  sitemapId: string,
+  componentIds: string[],
+): Promise<MutationResult> {
+  const ctx = await guardedAdmin();
+  if (!ctx.ok) return { success: false, error: ctx.error };
+
+  const sitemap = await resolveSitemapWorkspace(ctx.admin, sitemapId);
+  if (!sitemap) return { success: false, error: "Sitemap not found." };
+
+  const access = await requireWriteAccess(ctx.admin, sitemap.workspace_id, ctx.userId);
+  if (!access.ok) return { success: false, error: access.error };
+
+  const { data: components, error: componentsError } = await ctx.admin
+    .from("sitemap_components")
+    .select("id")
+    .eq("sitemap_id", sitemap.id);
+
+  if (componentsError) {
+    logger.error("reorderSitemapComponents: failed to load components", { error: componentsError });
+    return { success: false, error: GENERIC_ERROR };
+  }
+
+  const validIds = new Set((components ?? []).map((c) => c.id));
+  if (componentIds.some((id) => !validIds.has(id))) {
+    return { success: false, error: "One or more components do not belong to this sitemap." };
+  }
+
+  const updates = await Promise.all(
+    componentIds.map((id, index) =>
+      ctx.admin.from("sitemap_components").update({ position: index }).eq("id", id),
+    ),
+  );
+
+  const failed = updates.find((result) => result.error);
+  if (failed?.error) {
+    logger.error("reorderSitemapComponents: update failed", { error: failed.error });
+    return { success: false, error: GENERIC_ERROR };
+  }
+
+  revalidateSitemaps();
+  return { success: true };
 }
 
 export async function revokeSitemapShare(
