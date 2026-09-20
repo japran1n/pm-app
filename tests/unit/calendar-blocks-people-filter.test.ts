@@ -139,7 +139,15 @@ describe("getCalendarBlocks people filter (F012)", () => {
       [USER_A, USER_B],
     );
 
-    expect(result.map((b) => b.id).sort()).toEqual(["block-a1", "block-b1"]);
+    const resultIds = result.map((b) => b.id);
+    expect(resultIds).toHaveLength(2);
+    expect(resultIds).toEqual(expect.arrayContaining(["block-a1", "block-b1"]));
+
+    // Results are sorted by starts_at ascending (the .order("starts_at")
+    // is already applied in the implementation).
+    const startsAtTimes = result.map((b) => new Date(b.startsAt).getTime());
+    const sortedTimes = [...startsAtTimes].sort((a, b) => a - b);
+    expect(startsAtTimes).toEqual(sortedTimes);
   });
 
   it("test_AS_029_unknown_userId_in_list_returns_no_blocks_for_that_id", async () => {
