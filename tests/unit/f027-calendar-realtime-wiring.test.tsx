@@ -44,6 +44,11 @@ function makeFakeSupabase() {
       return channelObject;
     }),
     removeChannel: vi.fn(),
+    auth: {
+      getSession: vi.fn().mockResolvedValue({ data: { session: { user: { id: "user-1" } } }, error: null }),
+      getUser: vi.fn().mockResolvedValue({ data: { user: { id: "user-1" } }, error: null }),
+      onAuthStateChange: vi.fn().mockReturnValue({ data: { subscription: { unsubscribe: vi.fn() } } }),
+    },
   };
 }
 
@@ -164,8 +169,12 @@ function dispatch(payload: unknown) {
 }
 
 describe("F027 (AS-019..AS-022): CalendarDayGrid is wired to useCalendarRealtime", () => {
-  it("test_AS_020_INSERT_with_due_date_shows_the_new_task_on_the_correct_day", () => {
+  it("test_AS_020_INSERT_with_due_date_shows_the_new_task_on_the_correct_day", async () => {
     renderGrid({ "2026-09-01": [existingTask()] });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
 
     expect(onCalls).toHaveLength(1);
     expect(screen.queryByText("Brand new task")).not.toBeInTheDocument();
@@ -182,8 +191,12 @@ describe("F027 (AS-019..AS-022): CalendarDayGrid is wired to useCalendarRealtime
     expect(cell3).toHaveTextContent("Brand new task");
   });
 
-  it("test_AS_019_UPDATE_changing_due_date_moves_the_task_to_the_new_day", () => {
+  it("test_AS_019_UPDATE_changing_due_date_moves_the_task_to_the_new_day", async () => {
     renderGrid({ "2026-09-01": [existingTask()] });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
 
     const cell1 = screen.getByTestId("calendar-day-cell-2026-09-01");
     expect(cell1).toHaveTextContent("Existing task");
@@ -203,8 +216,12 @@ describe("F027 (AS-019..AS-022): CalendarDayGrid is wired to useCalendarRealtime
     ).toHaveTextContent("Existing task");
   });
 
-  it("test_AS_021_UPDATE_clearing_due_date_removes_the_task_from_the_grid", () => {
+  it("test_AS_021_UPDATE_clearing_due_date_removes_the_task_from_the_grid", async () => {
     renderGrid({ "2026-09-01": [existingTask()] });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
 
     expect(
       screen.getByTestId("calendar-day-cell-2026-09-01"),
@@ -220,8 +237,12 @@ describe("F027 (AS-019..AS-022): CalendarDayGrid is wired to useCalendarRealtime
     expect(screen.queryByText("Existing task")).not.toBeInTheDocument();
   });
 
-  it("test_AS_021_DELETE_removes_the_task_from_the_grid", () => {
+  it("test_AS_021_DELETE_removes_the_task_from_the_grid", async () => {
     renderGrid({ "2026-09-01": [existingTask()] });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
 
     expect(
       screen.getByTestId("calendar-day-cell-2026-09-01"),
@@ -238,7 +259,7 @@ describe("F027 (AS-019..AS-022): CalendarDayGrid is wired to useCalendarRealtime
     expect(screen.queryByText("Existing task")).not.toBeInTheDocument();
   });
 
-  it("test_AS_022_DELETE_with_minimal_old_id_payload_removes_the_task_from_the_grid", () => {
+  it("test_AS_022_DELETE_with_minimal_old_id_payload_removes_the_task_from_the_grid", async () => {
     // Replica identity default on `tasks` means a real DELETE's `old` only
     // ever carries `{id}` -- this is the realistic minimal payload shape.
     // Proves the grid actually unwires from useCalendarRealtime: if the
@@ -246,6 +267,10 @@ describe("F027 (AS-019..AS-022): CalendarDayGrid is wired to useCalendarRealtime
     // removed, `onCalls` would stay empty, `dispatch` would throw on
     // `onCalls[0]`, and this test would fail.
     renderGrid({ "2026-09-01": [existingTask()] });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
 
     expect(
       screen.getByTestId("calendar-day-cell-2026-09-01"),
@@ -265,7 +290,7 @@ describe("F027 (AS-019..AS-022): CalendarDayGrid is wired to useCalendarRealtime
     ).not.toHaveTextContent("Existing task");
   });
 
-  it("test_AS_022_passes_the_rendered_grid_own_date_window_to_the_reconciler", () => {
+  it("test_AS_022_passes_the_rendered_grid_own_date_window_to_the_reconciler", async () => {
     // F041 (scrutiny-6 MUT-N fix): a mutant that replaces the
     // `visibleDateRange` argument at the call site
     // (components/calendar/calendar-day-grid.tsx) with `undefined` leaves
@@ -280,6 +305,10 @@ describe("F027 (AS-019..AS-022): CalendarDayGrid is wired to useCalendarRealtime
     // per `days()` above) -- not `undefined` -- proving the wiring exists
     // independent of what any individual event happens to render.
     renderGrid({ "2026-09-01": [existingTask()] });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
 
     dispatch(
       insertOrUpdateEvent("INSERT", {
@@ -297,12 +326,16 @@ describe("F027 (AS-019..AS-022): CalendarDayGrid is wired to useCalendarRealtime
     });
   });
 
-  it("test_AS_022_ignores_an_INSERT_for_a_task_outside_the_caller_visible_projects", () => {
+  it("test_AS_022_ignores_an_INSERT_for_a_task_outside_the_caller_visible_projects", async () => {
     // AS-022: "Calendar realtime only delivers events for tasks the current
     // user is permitted to see." projectIds=["project-1"] is the caller's
     // visible set; an event for a task in a different project must never
     // reach the rendered grid, even though the mocked channel forwards it.
     renderGrid({ "2026-09-01": [existingTask()] });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
 
     dispatch(
       insertOrUpdateEvent("INSERT", {

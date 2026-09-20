@@ -70,6 +70,7 @@ vi.mock("@/lib/supabase/server", () => ({
       }
       throw new Error(`Unexpected table: ${table}`);
     }),
+    rpc: vi.fn(async () => ({ data: [], error: null })),
   })),
 }));
 

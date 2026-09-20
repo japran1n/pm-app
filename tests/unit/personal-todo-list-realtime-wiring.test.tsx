@@ -86,6 +86,11 @@ function makeFakeSupabase() {
       return obj;
     }),
     removeChannel: vi.fn(),
+    auth: {
+      getSession: vi.fn().mockResolvedValue({ data: { session: { user: { id: "user-1" } } }, error: null }),
+      getUser: vi.fn().mockResolvedValue({ data: { user: { id: "user-1" } }, error: null }),
+      onAuthStateChange: vi.fn().mockReturnValue({ data: { subscription: { unsubscribe: vi.fn() } } }),
+    },
   };
 }
 
@@ -157,8 +162,13 @@ function Harness() {
 }
 
 describe("PersonalTodoList realtime wiring (AS-015, AS-016, AS-017, AS-018)", () => {
-  it("mounts the real hook, subscribing to user-scoped channels split per table (F003)", () => {
+  it("mounts the real hook, subscribing to user-scoped channels split per table (F003)", async () => {
     render(<Harness />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
 
     // F003 deliberately split the single "tasks:my-tasks:user-1" channel
     // into two per-table channels so an unpublished table on one binding
@@ -186,8 +196,13 @@ describe("PersonalTodoList realtime wiring (AS-015, AS-016, AS-017, AS-018)", ()
     expect(onCalls).toHaveLength(2);
   });
 
-  it("AS-015: a task_assignees INSERT for this user triggers a refresh whose fresh data renders", () => {
+  it("AS-015: a task_assignees INSERT for this user triggers a refresh whose fresh data renders", async () => {
     render(<Harness />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
     expect(screen.queryByText("Second reminder (arrived live)")).not.toBeInTheDocument();
 
     act(() =>
@@ -204,8 +219,13 @@ describe("PersonalTodoList realtime wiring (AS-015, AS-016, AS-017, AS-018)", ()
     expect(screen.getByText("Second reminder (arrived live)")).toBeInTheDocument();
   });
 
-  it("AS-016: a real tasks UPDATE payload for a task already visible on this page (seeded via initialTaskIds, F035) triggers a refresh whose fresh data renders", () => {
+  it("AS-016: a real tasks UPDATE payload for a task already visible on this page (seeded via initialTaskIds, F035) triggers a refresh whose fresh data renders", async () => {
     render(<Harness />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
 
     // No task_assignees INSERT fires first -- production wiring seeds the
     // tracked-id set directly from the server-fetched real TASK ids passed
@@ -226,8 +246,13 @@ describe("PersonalTodoList realtime wiring (AS-015, AS-016, AS-017, AS-018)", ()
     expect(screen.getByText("Second reminder (arrived live)")).toBeInTheDocument();
   });
 
-  it("AS-017: a task_assignees DELETE for this user triggers a refresh whose fresh data renders", () => {
+  it("AS-017: a task_assignees DELETE for this user triggers a refresh whose fresh data renders", async () => {
     render(<Harness />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
 
     act(() =>
       callbackFor("task_assignees")({
@@ -243,8 +268,13 @@ describe("PersonalTodoList realtime wiring (AS-015, AS-016, AS-017, AS-018)", ()
     expect(screen.getByText("Second reminder (arrived live)")).toBeInTheDocument();
   });
 
-  it("AS-018: a real tasks DELETE payload for a task already visible on this page (seeded via initialTaskIds, F035) triggers a refresh whose fresh data renders", () => {
+  it("AS-018: a real tasks DELETE payload for a task already visible on this page (seeded via initialTaskIds, F035) triggers a refresh whose fresh data renders", async () => {
     render(<Harness />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
 
     act(() =>
       callbackFor("tasks")({
@@ -260,8 +290,13 @@ describe("PersonalTodoList realtime wiring (AS-015, AS-016, AS-017, AS-018)", ()
     expect(screen.getByText("Second reminder (arrived live)")).toBeInTheDocument();
   });
 
-  it("AS-018: a tasks UPDATE for a task never tracked by this session is NOT propagated", () => {
+  it("AS-018: a tasks UPDATE for a task never tracked by this session is NOT propagated", async () => {
     render(<Harness />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
 
     // No task_assignees event has fired for "t-other" -- it's some
     // workspace-wide task this user never had, but is still RLS-visible on
@@ -280,8 +315,13 @@ describe("PersonalTodoList realtime wiring (AS-015, AS-016, AS-017, AS-018)", ()
     expect(screen.queryByText("Second reminder (arrived live)")).not.toBeInTheDocument();
   });
 
-  it("AS-018: a tasks DELETE for a task never tracked by this session is NOT propagated", () => {
+  it("AS-018: a tasks DELETE for a task never tracked by this session is NOT propagated", async () => {
     render(<Harness />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
 
     act(() =>
       callbackFor("tasks")({

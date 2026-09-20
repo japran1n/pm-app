@@ -49,6 +49,11 @@ function makeFakeSupabase() {
       return chan;
     }),
     removeChannel: vi.fn(),
+    auth: {
+      getSession: vi.fn().mockResolvedValue({ data: { session: { user: { id: "user-1" } } }, error: null }),
+      getUser: vi.fn().mockResolvedValue({ data: { user: { id: "user-1" } }, error: null }),
+      onAuthStateChange: vi.fn().mockReturnValue({ data: { subscription: { unsubscribe: vi.fn() } } }),
+    },
   };
 }
 
@@ -80,7 +85,7 @@ function baseTask(overrides: Partial<TaskCardTask> = {}): TaskCardTask {
 }
 
 describe("F251 AS-488: TaskListTable live-reconciles Realtime tasks-row events", () => {
-  it("test_AS_488_another_users_status_change_appears_in_the_row_without_a_reload", () => {
+  it("test_AS_488_another_users_status_change_appears_in_the_row_without_a_reload", async () => {
     render(
       createElement(TaskListTable, {
         tasks: [baseTask()],
@@ -89,6 +94,11 @@ describe("F251 AS-488: TaskListTable live-reconciles Realtime tasks-row events",
         projectId: "proj-1",
       }),
     );
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
 
     expect(
       screen.getByRole("combobox", { name: "Change status for task task-1" }),

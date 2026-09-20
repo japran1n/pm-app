@@ -49,17 +49,25 @@ describe("F042: architecture board has no approval, locking, or comment surface"
   });
 
   it("test_AS_172_no_comment_ui_or_comment_data_reference", () => {
-    // "comment" appears innocuously in a couple of doc-comments here
-    // ("doc comment", "comment for how it reconciles..."), which are
-    // meta-references to JS comments, not a commenting feature -- strip
-    // those known phrases before asserting the word is absent entirely,
-    // so a genuine comment-thread/comment-input feature still trips this.
+    // The word "comment" appears innocuously inside source-code comments
+    // themselves -- line comments (`// ... doc comment ...`), block
+    // comments (`/* ... */`), and JSX comment nodes (`{/* ... */}`) that
+    // reference "F021's doc comment" or "F025's comment above" while
+    // explaining unrelated logic. These are meta-references to JS/JSX
+    // comments, not a commenting FEATURE (comment threads, comment input,
+    // comment data). Strip every comment node from the source before
+    // asserting the word is absent from the remaining actual code, so a
+    // genuine comment-thread/comment-input feature written outside a
+    // comment still trips this.
     for (const file of files) {
-      const lower = file.source
-        .toLowerCase()
-        .replace(/doc comment/g, "")
-        .replace(/\/\/ comment for how/g, "");
-      expect(lower).not.toContain("comment");
+      const withoutComments = file.source
+        // Block comments, including JSX comment nodes `{/* ... */}` (the
+        // braces are just JS expression syntax around a `/* ... */` block
+        // comment, so stripping the block comment body is sufficient).
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        // Line comments.
+        .replace(/\/\/.*$/gm, "");
+      expect(withoutComments.toLowerCase()).not.toContain("comment");
     }
   });
 });

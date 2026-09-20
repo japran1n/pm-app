@@ -62,6 +62,11 @@ function makeFakeSupabase() {
       return obj;
     }),
     removeChannel: vi.fn(),
+    auth: {
+      getSession: vi.fn().mockResolvedValue({ data: { session: { user: { id: "user-1" } } }, error: null }),
+      getUser: vi.fn().mockResolvedValue({ data: { user: { id: "user-1" } }, error: null }),
+      onAuthStateChange: vi.fn().mockReturnValue({ data: { subscription: { unsubscribe: vi.fn() } } }),
+    },
   };
 }
 
@@ -85,7 +90,7 @@ afterEach(() => {
 });
 
 describe("F019/AS-011: useMyTasksRealtime shares one live tracked-id Set across both channels", () => {
-  it("test_AS_011_task_assigned_live_then_updated_delivers_onUpdate", () => {
+  it("test_AS_011_task_assigned_live_then_updated_delivers_onUpdate", async () => {
     const onAssigned = vi.fn();
     const onUnassigned = vi.fn();
     const onUpdate = vi.fn();
@@ -100,6 +105,11 @@ describe("F019/AS-011: useMyTasksRealtime shares one live tracked-id Set across 
         onDelete,
       }),
     );
+
+    await hookAct(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
 
     const assigneesCallback = callbackFor("task_assignees");
     const tasksCallback = callbackFor("tasks");
@@ -137,7 +147,7 @@ describe("F019/AS-011: useMyTasksRealtime shares one live tracked-id Set across 
     );
   });
 
-  it("test_AS_011_id_learned_live_survives_a_resubscribe_after_userId_change", () => {
+  it("test_AS_011_id_learned_live_survives_a_resubscribe_after_userId_change", async () => {
     // This is the test that actually discriminates the live-reference
     // mutant (`new Set(trackedTaskIdsRef.current)` at the hook's call
     // site, use-my-tasks-realtime.ts:283) from the correct implementation.
@@ -177,6 +187,11 @@ describe("F019/AS-011: useMyTasksRealtime shares one live tracked-id Set across 
       { initialProps: { userId: "user-1" } },
     );
 
+    await hookAct(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
     const firstAssigneesCallback = callbackFor("task_assignees");
 
     hookAct(() => {
@@ -193,6 +208,11 @@ describe("F019/AS-011: useMyTasksRealtime shares one live tracked-id Set across 
     // site under test.
     onCalls = [];
     rerender({ userId: "user-2" });
+
+    await hookAct(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
 
     const secondTasksCallback = callbackFor("tasks");
 

@@ -49,6 +49,7 @@ vi.mock("@/lib/queries/portal", () => ({
   getPortalProjects: vi.fn(async () => portalProjects),
   getPortalBadgeCounts: vi.fn(async () => ({ approvalsAwaiting: 0, yourListOpen: 0 })),
   getPortalCurrentUserProfile: vi.fn(async () => null),
+  isPortalProjectArchived: vi.fn(async () => false),
 }));
 
 // Mission 20260914-portal-simplify, F008: the layout now sources the
@@ -65,6 +66,7 @@ vi.mock("@/lib/portal/waiting-on-you-count", () => ({
 
 vi.mock("@/lib/queries/project-site", () => ({
   getClientVisiblePortalLinks: vi.fn(async () => ({ ok: true, data: [] })),
+  getClientVisibleStagingLinks: vi.fn(async () => ({ ok: true, data: [] })),
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
