@@ -1,9 +1,15 @@
 // @vitest-environment jsdom
 //
-// F030 (AS-051, AS-060, AS-061): the people switcher's placement in the
-// Planner header row alongside the week nav controls, its keyboard
-// operability (open, search, toggle a member), and its reachability/
-// usability at mobile viewport width.
+// F030 (AS-051, AS-060): the people switcher's placement in the Planner
+// header row alongside the week nav controls, and its keyboard operability
+// (open, search, toggle a member).
+//
+// AS-061 ("reachable at mobile viewport width") is NOT tested here: jsdom
+// loads no CSS, so getComputedStyle never reflects a Tailwind responsive
+// class -- a jsdom test can't distinguish "hidden at mobile" from "visible
+// at mobile" (see F068, F072, F076's postmortems on this exact assertion).
+// AS-061 is covered by a real-browser Playwright spec instead:
+// tests/e2e/m6-people-switcher-mobile.spec.ts.
 
 import { createElement } from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -159,116 +165,5 @@ describe("F030: people switcher keyboard operability (AS-060)", () => {
     const trigger = document.querySelector('[data-slot="people-switcher-trigger"]');
     expect(trigger?.tagName).toBe("BUTTON");
     expect(trigger).not.toHaveAttribute("tabindex", "-1");
-  });
-});
-
-describe("F030: people switcher at mobile viewport width (AS-061)", () => {
-  it("test_AS_061_switcher_trigger_is_never_unconditionally_hidden", () => {
-    renderWeekViewWithSwitcher();
-
-    const switcherTrigger = document.querySelector('[data-slot="people-switcher-trigger"]');
-    expect(switcherTrigger).toBeInTheDocument();
-
-    // AS-061: reachable at mobile width means the trigger element itself is
-    // never removed from layout by a bare `hidden` class (unconditional
-    // `display: none`), a responsive `hidden` at some breakpoint with no
-    // matching un-hide variant, or inline `display:none`/`visibility:hidden`.
-    // A mutation that adds bare `class="hidden"` to the trigger must fail
-    // this assertion -- unlike matching `/(^|\s)hidden(\s|$)/` against the
-    // whole className (which never matches a *responsive* variant like
-    // `sm:hidden` either, so this test also catches that class of bug even
-    // though it isn't the mutation under test here).
-    const classTokens = (switcherTrigger?.className ?? "").split(/\s+/).filter(Boolean);
-    // Reject bare `hidden` AND every responsive-prefixed variant
-    // (`sm:hidden`, `md:hidden`, `lg:hidden`, `xl:hidden`, `2xl:hidden`,
-    // `max-sm:hidden`, `max-md:hidden`, etc.) -- any of these applies
-    // `display: none` at some breakpoint with no guaranteed un-hide
-    // variant, which jsdom's non-CSS-evaluating renderer would otherwise
-    // let slip through undetected.
-    const hiddenVariantPattern = /^((max-)?(sm|md|lg|xl|2xl):)?hidden$/;
-    const hasUnconditionalHiddenClass = classTokens.some((token) => hiddenVariantPattern.test(token));
-    expect(hasUnconditionalHiddenClass).toBe(false);
-
-    const style = switcherTrigger ? window.getComputedStyle(switcherTrigger) : null;
-    expect(style?.display).not.toBe("none");
-    expect(style?.visibility).not.toBe("hidden");
-
-    // The trigger is the same button element at a narrow (375px) and a wide
-    // (1280px) simulated viewport width -- it never swaps for a different
-    // element or disappears from the DOM as the width changes.
-    Object.defineProperty(window, "innerWidth", { writable: true, configurable: true, value: 375 });
-    window.dispatchEvent(new Event("resize"));
-    const triggerAtMobile = document.querySelector('[data-slot="people-switcher-trigger"]');
-    expect(triggerAtMobile).toBe(switcherTrigger);
-    expect(triggerAtMobile).toHaveAttribute("aria-label");
-
-    Object.defineProperty(window, "innerWidth", { writable: true, configurable: true, value: 1280 });
-    window.dispatchEvent(new Event("resize"));
-    const triggerAtDesktop = document.querySelector('[data-slot="people-switcher-trigger"]');
-    expect(triggerAtDesktop).toBe(switcherTrigger);
-
-    // The switcher trigger co-locates with the week-nav prev/next controls:
-    // it shares a common ancestor with them within a shallow number of DOM
-    // levels, rather than living in an unrelated part of the page.
-    const prevLink = document.querySelector('a[aria-label="Previous week"]');
-    const nextLink = document.querySelector('a[aria-label="Next week"]');
-    expect(prevLink).toBeInTheDocument();
-    expect(nextLink).toBeInTheDocument();
-
-    function findCommonAncestor(a: Element, b: Element): { ancestor: Element; depth: number } | null {
-      let ancestor: Element | null = a;
-      let depth = 0;
-      while (ancestor) {
-        if (ancestor.contains(b)) {
-          return { ancestor, depth };
-        }
-        ancestor = ancestor.parentElement;
-        depth += 1;
-      }
-      return null;
-    }
-
-    const commonWithPrev = findCommonAncestor(switcherTrigger as Element, prevLink as Element);
-    const commonWithNext = findCommonAncestor(switcherTrigger as Element, nextLink as Element);
-    expect(commonWithPrev).not.toBeNull();
-    expect(commonWithNext).not.toBeNull();
-    expect(commonWithPrev!.depth).toBeLessThanOrEqual(4);
-    expect(commonWithNext!.depth).toBeLessThanOrEqual(4);
-  });
-
-  it("test_AS_061_switcher_remains_operable_via_keyboard_and_search_regardless_of_viewport", async () => {
-    // AS-061: "usable at mobile viewport width" for a component with no
-    // viewport-dependent JS branches (this one has none -- CSS-only
-    // responsiveness) collapses to "keyboard/search flow still works when
-    // rendered at a narrow width." Simulate a mobile viewport width and
-    // re-run the same open/search/toggle flow AS-060 covers.
-    Object.defineProperty(window, "innerWidth", { writable: true, configurable: true, value: 375 });
-    window.dispatchEvent(new Event("resize"));
-
-    const user = userEvent.setup();
-    const onChange = vi.fn();
-    render(
-      createElement(PeopleSwitcher, {
-        members: MEMBERS,
-        selectedUserIds: ["user-1"],
-        selfId: "user-1",
-        onSelectionChange: onChange,
-      }),
-    );
-
-    await user.tab();
-    const trigger = screen.getByRole("button", { name: /people selected/i });
-    expect(trigger).toHaveFocus();
-    await user.keyboard("{Enter}");
-
-    const searchInput = await waitFor(() => screen.getByPlaceholderText("Find a person..."));
-    fireEvent.change(searchInput, { target: { value: "Grace" } });
-
-    const graceItem = await waitFor(() => screen.getByText("Grace Hopper"));
-    fireEvent.click(graceItem);
-
-    await waitFor(() => {
-      expect(onChange).toHaveBeenCalledWith(["user-1", "user-2"]);
-    });
   });
 });
