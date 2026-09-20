@@ -328,6 +328,50 @@ describe.skipIf(!haveAdminCreds)(
       expect(row?.due_date).toBe("2026-12-31");
     });
 
+    it("test_AS_445_off_by_one_guard_the_persisted_due_date_is_exactly_the_requested_YYYY_MM_DD_regardless_of_ambient_timezone", async () => {
+      // Ported from tests/integration/f234-calendar-drag-reschedule.test.ts
+      // (deleted in F058): the calendar's drag-reschedule flow reuses this
+      // same editTask Server Action, so its highest-risk case -- a
+      // month-end boundary date, where a `new Date(dateOnlyString)` round
+      // trip can silently roll backward a day in a zone west of UTC --
+      // still needs coverage here.
+      const { editTask } = await import("@/lib/actions/tasks");
+      const taskId = await makeTask();
+      currentTestUserId = authorUserId;
+
+      const targetDate = "2026-01-31";
+      const result = await editTask(taskId, { dueDate: targetDate });
+      expect(result.ok).toBe(true);
+
+      const { data: row } = await adminClient
+        .from("tasks")
+        .select("due_date")
+        .eq("id", taskId)
+        .single();
+      expect(row?.due_date).toBe(targetDate);
+    });
+
+    it("test_AS_445_adjacent_month_boundary_date_is_persisted_exactly_not_clamped_into_the_current_month", async () => {
+      // Ported from tests/integration/f234-calendar-drag-reschedule.test.ts
+      // (deleted in F058): the calendar grid can render a leading/trailing
+      // day cell that belongs to an adjacent month; the persisted date
+      // must match that cell's real date exactly.
+      const { editTask } = await import("@/lib/actions/tasks");
+      const taskId = await makeTask();
+      currentTestUserId = authorUserId;
+
+      const adjacentMonthDate = "2026-05-31";
+      const result = await editTask(taskId, { dueDate: adjacentMonthDate });
+      expect(result.ok).toBe(true);
+
+      const { data: row } = await adminClient
+        .from("tasks")
+        .select("due_date")
+        .eq("id", taskId)
+        .single();
+      expect(row?.due_date).toBe(adjacentMonthDate);
+    });
+
     it("AS-054: a caller who is not a member of the task's workspace cannot edit it", async () => {
       const { editTask } = await import("@/lib/actions/tasks");
       const taskId = await makeTask();
