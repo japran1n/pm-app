@@ -163,3 +163,19 @@ describe("orderPeopleForWholeTeam", () => {
     expect(result).toEqual(["self", "a"]);
   });
 });
+
+describe("AS-015: no ?view= parameter is read or produced", () => {
+  it("AS-015: parsePeopleParam's result depends only on the people param, selfId, and activeMemberIds — an unrelated 'view' key changes nothing", () => {
+    const withoutView = parsePeopleParam("member-a,member-b", {
+      selfId: SELF_ID,
+      activeMemberIds: ACTIVE_MEMBER_IDS,
+    });
+    const optsWithExtraKey = {
+      selfId: SELF_ID,
+      activeMemberIds: ACTIVE_MEMBER_IDS,
+      view: "week",
+    } as unknown as { selfId: string; activeMemberIds: readonly string[] };
+    const withUnrelatedView = parsePeopleParam("member-a,member-b", optsWithExtraKey);
+    expect(withUnrelatedView).toEqual(withoutView);
+  });
+});
