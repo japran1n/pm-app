@@ -171,6 +171,56 @@ describe("PeopleSwitcher", () => {
     });
   });
 
+  it("test_AS_053_filter_matches_substring_not_just_prefix", async () => {
+    // "ovelace" is a substring of "Ada Lovelace" but is not a prefix of any
+    // word in that name. A prefix-only matcher (name.startsWith(query) or
+    // per-word startsWith) would hide Ada here, even though a real
+    // substring filter (cmdk's default) keeps her visible.
+    render(
+      createElement(PeopleSwitcher, {
+        members,
+        selectedUserIds: [],
+        onSelectionChange: vi.fn(),
+        selfId: "user-1",
+      }),
+    );
+
+    openSwitcher();
+
+    const input = await waitFor(() =>
+      screen.getByPlaceholderText("Find a person..."),
+    );
+    fireEvent.change(input, { target: { value: "ovelace" } });
+
+    await waitFor(() => {
+      expect(screen.getByText("Ada Lovelace")).toBeInTheDocument();
+      expect(screen.queryByText("Grace Hopper")).not.toBeInTheDocument();
+    });
+  });
+
+  it("test_AS_053_filter_is_case_insensitive", async () => {
+    render(
+      createElement(PeopleSwitcher, {
+        members,
+        selectedUserIds: [],
+        onSelectionChange: vi.fn(),
+        selfId: "user-1",
+      }),
+    );
+
+    openSwitcher();
+
+    const input = await waitFor(() =>
+      screen.getByPlaceholderText("Find a person..."),
+    );
+    fireEvent.change(input, { target: { value: "ADA LOVELACE" } });
+
+    await waitFor(() => {
+      expect(screen.getByText("Ada Lovelace")).toBeInTheDocument();
+      expect(screen.queryByText("Grace Hopper")).not.toBeInTheDocument();
+    });
+  });
+
   it("test_AS_053_typing_a_query_matching_nobody_shows_the_empty_state", async () => {
     render(
       createElement(PeopleSwitcher, {
