@@ -9,17 +9,20 @@ describe("F046 createPage page_kind optional (AS-155, AS-156)", () => {
       // no page_kind
     });
     expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.page_kind).toBe("static");
+    }
   });
 
-  it("AS-155: createPageSchema accepts page_kind when provided", () => {
+  it("AS-155: createPageSchema succeeds without page_kind and defaults to static", () => {
     const result = createPageSchema.safeParse({
       name: "My Page",
       slug: "my-page",
-      page_kind: "cms",
+      // no page_kind supplied
     });
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.page_kind).toBe("cms");
+      expect(result.data.page_kind).toBe("static");
     }
   });
 });
