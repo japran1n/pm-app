@@ -11,6 +11,8 @@ import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import type { ReactNode } from "react";
+import fs from "node:fs";
+import path from "node:path";
 
 let capturedOnDragEnd: ((event: unknown) => void) | undefined;
 
@@ -107,5 +109,41 @@ describe("F035 stacked row reorder", () => {
     capturedOnDragEnd?.({ active: { id: PERSON_A }, over: { id: PERSON_A } });
 
     expect(replaceMock).not.toHaveBeenCalled();
+  });
+
+  // AS-064: each row must actually be draggable in the DOM -- a plain <div>
+  // with no useSortable/drag-handle wiring would still pass every test
+  // above (they only invoke the captured onDragEnd directly and never
+  // touch the rendered tree). This test renders the real component tree
+  // (DndContext's mock above still forwards `children` through -- it only
+  // intercepts the onDragEnd prop -- so SortableRow's useSortable/
+  // GripVertical handle still mount for real) and fails if the drag handle
+  // element is removed from StackedPersonRow's row wrapper.
+  it("AS-064: each rendered row exposes a drag handle element in the DOM", () => {
+    const { getByTestId } = renderPlanner([SELF_ID, PERSON_A, PERSON_B]);
+
+    for (const id of [SELF_ID, PERSON_A, PERSON_B]) {
+      const handle = getByTestId(`stacked-row-drag-handle-${id}`);
+      expect(handle).toBeInTheDocument();
+      // dnd-kit wires its pointer/keyboard listeners as DOM attributes
+      // (tabIndex + aria-roledescription="sortable") onto the handle via
+      // {...attributes} {...listeners} -- these disappear if the handle
+      // stops calling useSortable().
+      expect(handle).toHaveAttribute("aria-label", "Drag to reorder");
+      expect(handle).toHaveAttribute("aria-roledescription", "sortable");
+      expect(handle.tagName).toBe("BUTTON");
+    }
+  });
+});
+
+describe("F035 stacked planner uses dnd-kit SortableContext", () => {
+  it("AS-064/AS-065: stacked-planner.tsx imports and renders SortableContext (not a hand-rolled reorder list)", () => {
+    const source = fs.readFileSync(
+      path.join(process.cwd(), "components/calendar/stacked-planner.tsx"),
+      "utf-8",
+    );
+
+    expect(source).toMatch(/import\s*{[^}]*\bSortableContext\b[^}]*}\s*from\s*["']@dnd-kit\/sortable["']/);
+    expect(source).toMatch(/<SortableContext[\s>]/);
   });
 });
