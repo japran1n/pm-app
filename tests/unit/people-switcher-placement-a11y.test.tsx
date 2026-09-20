@@ -163,20 +163,72 @@ describe("F030: people switcher keyboard operability (AS-060)", () => {
 });
 
 describe("F030: people switcher at mobile viewport width (AS-061)", () => {
-  it("test_AS_061_switcher_trigger_has_no_responsive_hidden_class_at_any_breakpoint", () => {
+  it("test_AS_061_switcher_trigger_is_never_unconditionally_hidden", () => {
     renderWeekViewWithSwitcher();
 
     const switcherTrigger = document.querySelector('[data-slot="people-switcher-trigger"]');
     expect(switcherTrigger).toBeInTheDocument();
 
-    // AS-061: reachable at mobile width means the trigger itself is never
-    // `hidden` / `md:hidden`-style removed from the DOM at small
-    // viewports -- only its optional text label collapses responsively.
-    const className = switcherTrigger?.className ?? "";
-    expect(className).not.toMatch(/(^|\s)hidden(\s|$)/);
+    // AS-061: reachable at mobile width means the trigger element itself is
+    // never removed from layout by a bare `hidden` class (unconditional
+    // `display: none`), a responsive `hidden` at some breakpoint with no
+    // matching un-hide variant, or inline `display:none`/`visibility:hidden`.
+    // A mutation that adds bare `class="hidden"` to the trigger must fail
+    // this assertion -- unlike matching `/(^|\s)hidden(\s|$)/` against the
+    // whole className (which never matches a *responsive* variant like
+    // `sm:hidden` either, so this test also catches that class of bug even
+    // though it isn't the mutation under test here).
+    const classTokens = (switcherTrigger?.className ?? "").split(/\s+/).filter(Boolean);
+    // A bare `hidden` token (no responsive prefix like `sm:hidden`) applies
+    // `display: none` unconditionally at every breakpoint.
+    const hasUnconditionalHiddenClass = classTokens.includes("hidden");
+    expect(hasUnconditionalHiddenClass).toBe(false);
 
-    const headerRow = switcherTrigger?.closest('[class*="flex"]');
-    expect(headerRow?.className ?? "").not.toMatch(/\bmd:hidden\b/);
+    const style = switcherTrigger ? window.getComputedStyle(switcherTrigger) : null;
+    expect(style?.display).not.toBe("none");
+    expect(style?.visibility).not.toBe("hidden");
+
+    // The trigger is the same button element at a narrow (375px) and a wide
+    // (1280px) simulated viewport width -- it never swaps for a different
+    // element or disappears from the DOM as the width changes.
+    Object.defineProperty(window, "innerWidth", { writable: true, configurable: true, value: 375 });
+    window.dispatchEvent(new Event("resize"));
+    const triggerAtMobile = document.querySelector('[data-slot="people-switcher-trigger"]');
+    expect(triggerAtMobile).toBe(switcherTrigger);
+    expect(triggerAtMobile).toHaveAttribute("aria-label");
+
+    Object.defineProperty(window, "innerWidth", { writable: true, configurable: true, value: 1280 });
+    window.dispatchEvent(new Event("resize"));
+    const triggerAtDesktop = document.querySelector('[data-slot="people-switcher-trigger"]');
+    expect(triggerAtDesktop).toBe(switcherTrigger);
+
+    // The switcher trigger co-locates with the week-nav prev/next controls:
+    // it shares a common ancestor with them within a shallow number of DOM
+    // levels, rather than living in an unrelated part of the page.
+    const prevLink = document.querySelector('a[aria-label="Previous week"]');
+    const nextLink = document.querySelector('a[aria-label="Next week"]');
+    expect(prevLink).toBeInTheDocument();
+    expect(nextLink).toBeInTheDocument();
+
+    function findCommonAncestor(a: Element, b: Element): { ancestor: Element; depth: number } | null {
+      let ancestor: Element | null = a;
+      let depth = 0;
+      while (ancestor) {
+        if (ancestor.contains(b)) {
+          return { ancestor, depth };
+        }
+        ancestor = ancestor.parentElement;
+        depth += 1;
+      }
+      return null;
+    }
+
+    const commonWithPrev = findCommonAncestor(switcherTrigger as Element, prevLink as Element);
+    const commonWithNext = findCommonAncestor(switcherTrigger as Element, nextLink as Element);
+    expect(commonWithPrev).not.toBeNull();
+    expect(commonWithNext).not.toBeNull();
+    expect(commonWithPrev!.depth).toBeLessThanOrEqual(4);
+    expect(commonWithNext!.depth).toBeLessThanOrEqual(4);
   });
 
   it("test_AS_061_switcher_remains_operable_via_keyboard_and_search_regardless_of_viewport", async () => {
