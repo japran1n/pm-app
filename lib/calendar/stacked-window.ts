@@ -21,9 +21,20 @@ export interface StackedBlockClipped {
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
+// Matches an explicit UTC/offset marker at the end of an ISO-ish timestamp:
+// "Z"/"z", or a numeric offset with or without a colon, e.g. "+00:00",
+// "+02:00", "-05:00", "+0000". Deliberately requires two offset digits so it
+// doesn't false-match on things like a bare "-05" date fragment.
+const EXPLICIT_OFFSET_RE = /(?:Z|[+-]\d{2}:?\d{2})$/i;
+
 function toUtcMs(s: string): number {
-  // Normalise: treat offset-less strings as UTC, accept space separator
-  const normalised = /[Z+\-]\d*$/.test(s) ? s : s.replace(" ", "T") + "Z";
+  // Normalise: accept space separator, then only append a trailing "Z" when
+  // the string has no explicit UTC/offset marker. Offset-less and
+  // space-separated strings are treated as UTC; everything else (Z suffix,
+  // "+00:00", "+02:00", "-05:00", with or without microseconds) is parsed
+  // as-is so Date correctly honours the offset.
+  const withT = s.replace(" ", "T");
+  const normalised = EXPLICIT_OFFSET_RE.test(withT) ? withT : withT + "Z";
   return new Date(normalised).getTime();
 }
 

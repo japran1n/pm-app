@@ -162,6 +162,77 @@ describe("clipBlockToStackedWindow", () => {
   });
 });
 
+describe("toUtcMs offset handling (AS-022 regression: PostgREST timestamptz)", () => {
+  // These fixtures reproduce the bug where the previous regex
+  // `[Z+\-]\d*$` could not match a colon-delimited numeric offset
+  // (e.g. "+00:00"), so every block coming back from Supabase/PostgREST
+  // silently produced an empty array instead of being rendered.
+  // Mutation check: if clipBlockToStackedWindow were stubbed to always
+  // return `[]`, every `toEqual` below with a non-empty array would fail.
+
+  it("AS-022: PostgREST canonical +00:00 offset (Monday) is not dropped", () => {
+    const result = clipBlockToStackedWindow({
+      starts_at: "2026-09-22T09:00:00+00:00",
+      ends_at: "2026-09-22T10:00:00+00:00",
+    });
+    expect(result).toEqual([
+      {
+        starts_at: "2026-09-22T09:00:00.000Z",
+        ends_at: "2026-09-22T10:00:00.000Z",
+      },
+    ]);
+  });
+
+  it("AS-022: +02:00 offset converts wall clock 11:00-12:00 to 09:00-10:00 UTC (in window)", () => {
+    const result = clipBlockToStackedWindow({
+      starts_at: "2026-09-22T11:00:00+02:00",
+      ends_at: "2026-09-22T12:00:00+02:00",
+    });
+    expect(result).toEqual([
+      {
+        starts_at: "2026-09-22T09:00:00.000Z",
+        ends_at: "2026-09-22T10:00:00.000Z",
+      },
+    ]);
+  });
+
+  it("AS-022: -05:00 offset converts wall clock 04:00-05:00 to 09:00-10:00 UTC (in window)", () => {
+    const result = clipBlockToStackedWindow({
+      starts_at: "2026-09-22T04:00:00-05:00",
+      ends_at: "2026-09-22T05:00:00-05:00",
+    });
+    expect(result).toEqual([
+      {
+        starts_at: "2026-09-22T09:00:00.000Z",
+        ends_at: "2026-09-22T10:00:00.000Z",
+      },
+    ]);
+  });
+
+  it("AS-022: lowercase z/t timestamps are parsed correctly", () => {
+    const result = clipBlockToStackedWindow({
+      starts_at: "2026-09-22t09:00:00z",
+      ends_at: "2026-09-22t10:00:00z",
+    });
+    expect(result).toEqual([
+      {
+        starts_at: "2026-09-22T09:00:00.000Z",
+        ends_at: "2026-09-22T10:00:00.000Z",
+      },
+    ]);
+  });
+
+  it("AS-022: microsecond precision with +00:00 offset is not dropped", () => {
+    const result = clipBlockToStackedWindow({
+      starts_at: "2026-09-22T09:00:00.123456+00:00",
+      ends_at: "2026-09-22T10:00:00.000000+00:00",
+    });
+    expect(result.length).toBeGreaterThan(0);
+    expect(result[0]!.starts_at).toBe("2026-09-22T09:00:00.123Z");
+    expect(result[result.length - 1]!.ends_at).toBe("2026-09-22T10:00:00.000Z");
+  });
+});
+
 describe("TZ invariance (AS-021/AS-022)", () => {
   it("AS-021/022: offset-less string treated as UTC", () => {
     const zResult = clipBlockToStackedWindow({
