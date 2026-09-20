@@ -2,9 +2,8 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { resolveSitemapShareToken } from "@/lib/queries/sitemaps";
-import { ArchitectureViewToggle } from "@/components/architecture/architecture-view-toggle";
+import { SharedSitemapView } from "@/components/sitemap-tool/shared-sitemap-view";
 import { ShareExportMenu } from "@/components/sitemap-tool/share-export-menu";
-import type { ArchitectureActions } from "@/lib/architecture/actions-context";
 
 // Phase 3 of the standalone Sitemap tool: the public, unauthenticated
 // share route. This route group is deliberately OUTSIDE (workspace) and
@@ -13,35 +12,10 @@ import type { ArchitectureActions } from "@/lib/architecture/actions-context";
 // is the entire security boundary: it uses the admin client and validates
 // the token itself, ignoring auth entirely.
 //
-// The board is rendered read-only via ArchitectureActionsProvider with
-// readOnly: true and a set of no-op core actions -- readOnly hides every
-// create/rename/delete/reorder affordance (see actions-context.tsx's
-// header), so these functions are never actually invoked; they exist only
-// to satisfy ArchitectureActions' required shape. No optional capability
-// group (estimates, nodeMeta, clientVisibility, componentLinks) is
-// supplied -- those are project-only concepts a standalone/public sitemap
-// has no business exposing, and per the Phase 0 guarantee an absent
-// capability group renders no affordance at all.
-async function noop(): Promise<never> {
-  throw new Error("This sitemap is read-only.");
-}
-
-const readOnlyActions: ArchitectureActions = {
-  createSection: noop,
-  deleteSection: noop,
-  renameSection: noop,
-  reorderSections: noop,
-  moveSectionToPage: noop,
-  changeSectionKind: noop,
-  createPage: noop,
-  changePageKind: noop,
-  changePageSlug: noop,
-  renamePage: noop,
-  deletePage: noop,
-  reorderPages: noop,
-  importPages: noop,
-  readOnly: true,
-};
+// No-op actions are NOT constructed here (Server Components cannot pass
+// plain functions to Client Components in Next.js). Instead they live in
+// SharedSitemapView ("use client"), which builds the readOnly actions
+// object on the client boundary and wraps the canvas in the provider.
 
 export async function generateMetadata({
   params,
@@ -81,13 +55,12 @@ export default async function SharedSitemapPage({
           <span className="text-xs text-muted-foreground">Built with Goodguys Studio</span>
         </div>
       </div>
-      <div className="flex min-h-0 flex-1 flex-col p-4">
-        <ArchitectureViewToggle
+      <div className="flex min-h-0 flex-1 flex-col">
+        <SharedSitemapView
           pages={board.pages}
           components={board.components}
-          projectId={token}
-          projectName={name}
-          actions={readOnlyActions}
+          token={token}
+          name={name}
         />
       </div>
     </div>
