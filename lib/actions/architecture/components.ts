@@ -805,7 +805,7 @@ export async function reorderComponents(
 
   const { data: existingComponents, error: existingComponentsError } = await admin
     .from("page_components")
-    .select("id")
+    .select("id, name, project_id")
     .eq("project_id", parsed.data.projectId);
 
   if (existingComponentsError) {
@@ -843,17 +843,31 @@ export async function reorderComponents(
     };
   }
 
-  // AS-161: batch-update every component's position to its index in the
-  // caller-supplied order.
-  const results = await Promise.all(
-    parsed.data.componentIds.map((id, index) =>
-      admin.from("page_components").update({ position: index }).eq("id", id),
-    ),
+  // AS-161: atomically write every component's position to its index in
+  // the caller-supplied order via a single upsert. onConflict "id" merges
+  // into the existing rows (every id here was already confirmed to exist
+  // for this project above) -- this is either all-or-nothing at the DB
+  // level, unlike the previous Promise.all fan-out of independent updates,
+  // which could commit a partial reorder if one call in the batch failed.
+  // The generated Insert type requires `name`/`project_id` as well as the
+  // conflict key even though onConflict "id" only ever updates existing
+  // rows here, so those are carried over unchanged from the rows already
+  // fetched above rather than re-queried.
+  const existingComponentById = new Map(
+    (existingComponents ?? []).map((row) => [row.id, row]),
+  );
+  const { error: upsertError } = await admin.from("page_components").upsert(
+    parsed.data.componentIds.map((id, index) => ({
+      id,
+      position: index,
+      name: existingComponentById.get(id)?.name ?? "",
+      project_id: parsed.data.projectId,
+    })),
+    { onConflict: "id" },
   );
 
-  const failed = results.find((result) => result.error);
-  if (failed) {
-    logger.error("reorderComponents: update failed", { error: failed.error });
+  if (upsertError) {
+    logger.error("reorderComponents: upsert failed", { error: upsertError });
     return {
       success: false,
       error: "Something went wrong. Please try again in a moment.",

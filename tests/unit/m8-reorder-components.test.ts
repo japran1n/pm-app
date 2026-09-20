@@ -2,9 +2,14 @@
 // Architecture board's Components panel.
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const updateMock = vi.fn(() => ({
-  eq: vi.fn(async () => ({ error: null })),
-}));
+const upsertCalls: { rows: { id: string; position: number }[]; options: unknown }[] = [];
+
+const upsertMock = vi.fn(
+  async (rows: { id: string; position: number }[], options: unknown) => {
+    upsertCalls.push({ rows, options });
+    return { error: null };
+  },
+);
 
 const COMP_1 = "00000000-0000-4000-8000-000000000101";
 const COMP_2 = "00000000-0000-4000-8000-000000000102";
@@ -45,7 +50,7 @@ vi.mock("@/lib/supabase/admin", () => ({
               error: null,
             })),
           })),
-          update: updateMock,
+          upsert: upsertMock,
         };
       }
       throw new Error(`unexpected table: ${table}`);
@@ -80,6 +85,7 @@ const PROJECT_ID = "00000000-0000-4000-8000-000000000001";
 
 afterEach(() => {
   vi.clearAllMocks();
+  upsertCalls.length = 0;
   existingComponentIds = [COMP_1, COMP_2, COMP_3];
 });
 
@@ -96,7 +102,7 @@ describe("F047 reorderComponents", () => {
     if (!result.success) {
       expect(result.error).toBe("Component list is incomplete.");
     }
-    expect(updateMock).not.toHaveBeenCalled();
+    expect(upsertMock).not.toHaveBeenCalled();
   });
 
   it("AS-160 duplicate ids are rejected", async () => {
@@ -109,7 +115,7 @@ describe("F047 reorderComponents", () => {
     if (!result.success) {
       expect(result.error).toBeTruthy();
     }
-    expect(updateMock).not.toHaveBeenCalled();
+    expect(upsertMock).not.toHaveBeenCalled();
   });
 
   it("AS-160 foreign id rejected", async () => {
@@ -126,10 +132,14 @@ describe("F047 reorderComponents", () => {
     if (!result.success) {
       expect(result.error).toBeTruthy();
     }
-    expect(updateMock).not.toHaveBeenCalled();
+    expect(upsertMock).not.toHaveBeenCalled();
   });
 
-  it("AS-161: a complete list updates every component's position to its index", async () => {
+  it("AS-161: a complete list writes every id's position matching its index in the submitted order, not DB order", async () => {
+    // Submitted order deliberately differs from DB/existingComponentIds
+    // order (COMP_1, COMP_2, COMP_3) -- if the implementation wrote
+    // positions in DB row order instead of the submitted order, this test
+    // would fail.
     const result = await reorderComponents(PROJECT_ID, [
       COMP_3,
       COMP_1,
@@ -137,9 +147,18 @@ describe("F047 reorderComponents", () => {
     ]);
 
     expect(result.success).toBe(true);
-    expect(updateMock).toHaveBeenCalledTimes(3);
-    expect(updateMock).toHaveBeenCalledWith({ position: 0 });
-    expect(updateMock).toHaveBeenCalledWith({ position: 1 });
-    expect(updateMock).toHaveBeenCalledWith({ position: 2 });
+    expect(upsertMock).toHaveBeenCalledTimes(1);
+    expect(upsertCalls).toHaveLength(1);
+
+    const [{ rows, options }] = upsertCalls;
+    expect(options).toEqual({ onConflict: "id" });
+
+    // Exact (id, position) pairing: index in the *submitted* array, not
+    // the DB's row order.
+    const positionById = new Map(rows.map((row) => [row.id, row.position]));
+    expect(positionById.get(COMP_3)).toBe(0);
+    expect(positionById.get(COMP_1)).toBe(1);
+    expect(positionById.get(COMP_2)).toBe(2);
+    expect(rows).toHaveLength(3);
   });
 });
