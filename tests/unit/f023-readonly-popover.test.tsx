@@ -10,8 +10,18 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 
+vi.mock("@/lib/actions/calendar-blocks", () => ({
+  createCalendarBlock: vi.fn(),
+  updateCalendarBlock: vi.fn().mockResolvedValue({ ok: true, data: {} }),
+  deleteCalendarBlock: vi.fn(),
+}));
+
+vi.mock("@/components/auth/membership-provider", () => ({
+  useMembership: () => null,
+}));
+
 import { CalendarBlockPopoverForm } from "@/components/calendar/calendar-block-popover-form";
-import { CalendarBlockChip } from "@/components/calendar/calendar-block-chip";
+import { WeekTimeGrid } from "@/components/calendar/week-time-grid";
 import type { CalendarBlock } from "@/lib/queries/calendar-blocks";
 
 afterEach(cleanup);
@@ -67,44 +77,62 @@ describe("F023: read-only popover for another member's block", () => {
   });
 });
 
-describe("F063 (AS-044/AS-045): chip wires isOwnBlock(block, currentUserId) into the popover", () => {
-  it("test_AS_045_chip_hides_save_and_delete_for_another_members_block", async () => {
+describe("F065 (AS-044/AS-045): WeekTimeGrid/WeekBlockChip wires isOwnBlock(block, currentUserId) into the popover", () => {
+  const DAY = { date: "2026-06-01", isToday: false };
+
+  function makeGridBlock(id: string, userId: string): CalendarBlock {
+    return {
+      id,
+      workspaceId: "workspace-1",
+      projectId: null,
+      userId,
+      title: "Deep work",
+      startsAt: new Date(2026, 5, 1, 9, 0, 0, 0).toISOString(),
+      endsAt: new Date(2026, 5, 1, 10, 0, 0, 0).toISOString(),
+      color: null,
+      blockType: "general",
+    };
+  }
+
+  it("test_AS_045_other_members_block_hides_save_and_delete", async () => {
     const user = userEvent.setup();
-    const block = makeBlock({ userId: "user-owner" });
+    const ownBlock = makeGridBlock("block-own", "user-own");
+    const otherBlock = makeGridBlock("block-other", "user-other");
 
     render(
-      <CalendarBlockChip
-        block={block}
-        canDrag
-        currentUserId="user-other"
-        onUpdate={vi.fn()}
-        onDelete={vi.fn()}
+      <WeekTimeGrid
+        days={[DAY]}
+        blocksByDate={{ [DAY.date]: [ownBlock, otherBlock] }}
+        workspaceSlug="acme"
+        workspaceId="workspace-1"
+        currentUserId="user-own"
       />,
     );
 
-    await user.click(screen.getByTestId(`calendar-block-chip-${block.id}`));
+    await user.click(screen.getByTestId("calendar-week-block-chip-block-other"));
 
-    expect(await screen.findByDisplayValue("Standup")).toBeInTheDocument();
+    expect(await screen.findByDisplayValue("Deep work")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
     expect(screen.getByTestId("calendar-block-readonly-note")).toBeInTheDocument();
   });
 
-  it("test_AS_044_chip_shows_save_and_delete_for_own_block", async () => {
+  it("test_AS_044_own_block_shows_save_and_delete", async () => {
     const user = userEvent.setup();
-    const block = makeBlock({ userId: "user-owner" });
+    const ownBlock = makeGridBlock("block-own", "user-own");
+    const otherBlock = makeGridBlock("block-other", "user-other");
 
     render(
-      <CalendarBlockChip
-        block={block}
-        canDrag
-        currentUserId="user-owner"
-        onUpdate={vi.fn()}
-        onDelete={vi.fn()}
+      <WeekTimeGrid
+        days={[DAY]}
+        blocksByDate={{ [DAY.date]: [ownBlock, otherBlock] }}
+        workspaceSlug="acme"
+        workspaceId="workspace-1"
+        currentUserId="user-own"
       />,
     );
 
-    await user.click(screen.getByTestId(`calendar-block-chip-${block.id}`));
+    await user.click(screen.getByTestId("calendar-week-block-chip-block-own"));
 
     expect(await screen.findByRole("button", { name: "Save" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
