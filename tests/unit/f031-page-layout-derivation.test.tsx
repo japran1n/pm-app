@@ -23,6 +23,15 @@ function readPageSource(): string {
   return readFileSync(PAGE_PATH, "utf8");
 }
 
+// Strips `//` line comments and `/* ... */` block comments so JSDoc-style
+// prose referencing "<PlannerHeader" or "layout ===" inside a comment can
+// never satisfy the structural position check below.
+function stripComments(source: string): string {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\/\/.*$/gm, "");
+}
+
 describe("resolvePlannerLayout", () => {
   it("test_AS_001_no_selection_defaults_to_week_grid_layout", () => {
     // No params -> selection is just the signed-in member -> week-grid.
@@ -33,6 +42,29 @@ describe("resolvePlannerLayout", () => {
     // Narrowing from a stacked selection back to one person must return
     // the full-day week grid, not stay stacked.
     expect(resolvePlannerLayout(1)).toBe("week-grid");
+  });
+
+  it("test_AS_023_planner_header_rendered_once_above_the_layout_conditional", () => {
+    // AS-023 is about JSX structure, not resolvePlannerLayout's return
+    // value (that's already AS-001's own test above) -- assert
+    // <PlannerHeader> is rendered exactly once in page.tsx, and that its
+    // JSX appears BEFORE the "week-grid"/"stacked" layout conditional, so
+    // it can never end up nested inside either branch (where it would
+    // vanish whenever the other branch was picked).
+    const source = stripComments(readPageSource());
+
+    const headerMatches = [...source.matchAll(/<PlannerHeader\b/g)];
+    expect(headerMatches).toHaveLength(1);
+
+    const layoutConditionalMatch = source.match(
+      /layout\s*===\s*["'](?:stacked|week-grid)["']/,
+    );
+    expect(layoutConditionalMatch).not.toBeNull();
+
+    const headerIndex = headerMatches[0].index!;
+    const layoutConditionalIndex = layoutConditionalMatch!.index!;
+
+    expect(headerIndex).toBeLessThan(layoutConditionalIndex);
   });
 
   it("test_stacked_layout_for_two_or_more_people", () => {
@@ -176,5 +208,19 @@ describe("AS-001/AS-059: the page fetches blocks for the selected people, not ev
     expect(source).not.toMatch(
       /blockUserIds=\{workspaceMembers\.active\.map/,
     );
+  });
+
+  it("test_AS_001_userIds_is_required_param", async () => {
+    // F096: userIds must be a required parameter on getCalendarBlocks --
+    // omitting it must be a compile error, so it can never silently mean
+    // "no restriction" (AS-059) again. If this signature ever regresses to
+    // optional, the @ts-expect-error below becomes an unused-directive
+    // error and the suite fails. The resulting (unawaited) promise is
+    // allowed to reject at runtime -- only the compile-time check matters
+    // here, so the rejection is swallowed.
+    const { getCalendarBlocks } = await import("@/lib/queries/calendar-blocks");
+    // @ts-expect-error — userIds is required; omitting it must be a compile error
+    const pending = getCalendarBlocks("w1", "2026-01-01T00:00:00.000Z", "2026-01-02T00:00:00.000Z");
+    await pending.catch(() => undefined);
   });
 });
