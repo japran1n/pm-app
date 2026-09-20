@@ -97,7 +97,7 @@ server will refuse to let the caller write.
 | F029 [CLARIFIED-AUTO] | Wire the switcher to the URL: write `?people=`, preserve `?week=`, empty selection falls back to self, nothing stored in the browser | AS-011, AS-012, AS-013, AS-059 |
 | F030 [CLARIFIED-AUTO] | Header placement alongside the week controls; reachable at mobile width; keyboard-operable | AS-051, AS-060, AS-061 |
 
-## M7 — The stacked layout
+## M7 — The stacked layout ✅ GREEN (scrutiny pass 10 + UX pass)
 
 | # | Feature | Assertions |
 |---|---|---|

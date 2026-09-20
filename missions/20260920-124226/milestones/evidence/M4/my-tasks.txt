@@ -1,0 +1,141 @@
+URL: http://localhost:3000/w/m4ux-1789912628133-us5xh5/my-tasks
+STATUS: 200
+
+--- BODY TEXT ---
+Command palette
+
+Search or run a command
+
+Switch project
+
+Jump to a project in this workspace
+
+M4
+M4 UX WS
+Dashboard
+My Tasks
+Projects
+Chat
+
+PLAN
+
+Planner
+Time
+
+TEAM
+
+Team
+Members
+
+TOOLS
+
+HTML → Webflow
+Webflow Code Editor
+Sitemap Builder
+
+OTHER
+
+Watching
+Archive
+Templates
+Trash
+How this works
+PROJECTS
+M4 Proj
+M4
+m4-ux-1789912628133-us5xh5@example.com
+Sign out
+M4 UX WS
+My Tasks
+My Tasks
+Include tasks I watch
+Personal to-dos
+
+Visible only to you — not a task, not assigned, not shared.
+
+Nothing here yet.
+Today (1)
+KEY	TITLE	STATUS	PRIORITY	TYPE	DUE DATE	ESTIMATE	LOGGED
+
+MP-1
+	
+M4 UX Task 0 DUE
+M4 PROJ
+	
+To Do
+	
+No priority
+	
+Delivery
+	Sep 20, 2026	—	—
+Later (2)
+KEY	TITLE	STATUS	PRIORITY	TYPE	DUE DATE	ESTIMATE	LOGGED
+
+MP-2
+	
+M4 UX Task 1 DUE
+M4 PROJ
+	
+To Do
+	
+No priority
+	
+Delivery
+	Sep 21, 2026	—	—
+
+MP-3
+	
+M4 UX Task 2 DUE
+M4 PROJ
+	
+To Do
+	
+No priority
+	
+Delivery
+	Sep 22, 2026	—	—
+
+--- REQUESTS ---
+GET http://localhost:3000/w/m4ux-1789912628133-us5xh5/my-tasks
+GET http://localhost:3000/_next/static/media/83afe278b6a6bb3c-s.p.2bn3s6zvc0dyp.woff2
+GET http://localhost:3000/_next/static/media/c9e42e3eae6237c2-s.p.2s-4kwv_nqb0b.woff2
+GET http://localhost:3000/_next/static/chunks/%5Broot-of-the-server%5D__0rtoqzg._.css
+GET http://localhost:3000/_next/static/chunks/%5Bturbopack%5D_browser_dev_hmr-client_hmr-client_ts_1di75ot._.js
+GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_next-devtools_index_090k2jm.js
+GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_react-dom_096_9a-._.js
+GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_react-server-dom-turbopack_164kp-6._.js
+GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_1amofcm._.js
+GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_0_90u2t._.js
+GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_1e8vcs8._.js
+GET http://localhost:3000/_next/static/chunks/node_modules_%40swc_helpers_cjs_1r9vbqw._.js
+GET http://localhost:3000/_next/static/chunks/_1anvha4._.js
+GET http://localhost:3000/_next/static/chunks/turbopack-_08bm286._.js
+GET http://localhost:3000/_next/static/chunks/_131cfrp._.js
+GET http://localhost:3000/_next/static/chunks/node_modules_1mevlaw._.js
+GET http://localhost:3000/_next/static/chunks/components_0waygqh._.js
+GET http://localhost:3000/_next/static/chunks/node_modules_0yktsxp._.js
+GET http://localhost:3000/_next/static/chunks/_142vfoj._.js
+GET http://localhost:3000/_next/static/chunks/_211ub6y._.js
+GET http://localhost:3000/_next/static/chunks/node_modules_tailwind-merge_dist_bundle-mjs_mjs_0q79z23._.js
+GET http://localhost:3000/_next/static/chunks/node_modules_%40base-ui_react_internals_11anh2k._.js
+GET http://localhost:3000/_next/static/chunks/node_modules_%40base-ui_react_utils_0nimr92._.js
+GET http://localhost:3000/_next/static/chunks/node_modules_%40base-ui_react_floating-ui-react_1sa7nzx._.js
+GET http://localhost:3000/_next/static/chunks/node_modules_%40base-ui_react_menu_0w4x-wc._.js
+GET http://localhost:3000/_next/static/chunks/node_modules_%40base-ui_react_0rvpmco._.js
+GET http://localhost:3000/_next/static/chunks/node_modules_%40supabase_auth-js_dist_module_1vqrmkg._.js
+GET http://localhost:3000/_next/static/chunks/node_modules_zod_v4_06yv92s._.js
+GET http://localhost:3000/_next/static/chunks/node_modules_%40dnd-kit_core_dist_core_esm_0i-bf15.js
+GET http://localhost:3000/_next/static/chunks/node_modules_%40floating-ui_0q7ozde._.js
+GET http://localhost:3000/_next/static/chunks/node_modules_%40supabase_0bj5x07._.js
+GET http://localhost:3000/_next/static/chunks/node_modules_%40radix-ui_0c9ywhi._.js
+GET http://localhost:3000/_next/static/chunks/node_modules_18o7vj_._.js
+GET http://localhost:3000/_next/static/chunks/_088s1wj._.js
+GET http://localhost:3000/_next/static/chunks/app_global-error_tsx_0cmn22j._.js
+GET http://localhost:3000/_next/static/chunks/_0itiqx2._.js
+GET http://localhost:3000/_next/static/chunks/_1lv_fb4._.js
+GET http://localhost:3000/_next/static/chunks/node_modules_197z4tm._.js
+GET http://localhost:3000/theme-init.js
+POST http://localhost:3000/api/csp-report
+GET http://localhost:3000/_next/static/chunks/%5Bturbopack%5D_browser_dev_hmr-client_hmr-client_ts_1mojsay._.js
+GET http://localhost:3000/__nextjs_font/geist-latin.woff2
+POST http://localhost:3000/w/m4ux-1789912628133-us5xh5/my-tasks

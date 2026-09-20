@@ -1,0 +1,9 @@
+# migrations:check
+
+> pm-app@0.1.0 migrations:check
+> node --env-file=.env scripts/check-migration-drift.mjs
+
+✓ No migration drift — all migrations present on remote.
+
+# grep task_id in calendar_blocks type
+0

@@ -1,0 +1,21 @@
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+  - ESM syntax in a file loaded as CommonJS (tests/realtime-live-delivery-tests.ts:18:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v4.1.11 /Users/sasajapranin/Desktop/pm-app
+
+ ✓ tests/integration/planner-block-rls.test.ts > Planner calendar_blocks RLS (F011) > test_AS_026_member_can_read_block_attached_to_project_they_cannot_see 312ms
+ ✓ tests/integration/planner-block-rls.test.ts > Planner calendar_blocks RLS (F011) > test_AS_028_active_workspace_member_can_read_another_members_block 82ms
+ ✓ tests/integration/planner-block-rls.test.ts > Planner calendar_blocks RLS (F011) > test_AS_028_non_member_cannot_read_any_workspace_blocks 100ms
+ ✓ tests/integration/planner-block-rls.test.ts > Planner calendar_blocks RLS (F011) > test_AS_028_unauthenticated_anon_client_reads_zero_rows_for_the_workspace 73ms
+ ✓ tests/integration/planner-block-rls.test.ts > Planner calendar_blocks RLS (F011) > test_AS_032_active_member_cannot_update_another_members_block 182ms
+ ✓ tests/integration/planner-block-rls.test.ts > Planner calendar_blocks RLS (F011) > test_AS_032_active_member_cannot_delete_another_members_block 173ms
+ ✓ tests/integration/planner-block-rls.test.ts > Planner calendar_blocks RLS (F011) > test_AS_032_active_member_cannot_insert_a_block_owned_by_another_member 97ms
+ ✓ tests/integration/planner-block-rls.test.ts > Planner calendar_blocks RLS (F011) > test_AS_032_admin_bypass_confirms_the_row_exists_and_RLS_not_a_missing_row_is_what_blocked_the_write 99ms
+
+ Test Files  1 passed (1)
+      Tests  8 passed (8)
+   Start at  14:51:47
+   Duration  4.17s (transform 28ms, setup 55ms, import 25ms, tests 4.00s, environment 0ms)
+

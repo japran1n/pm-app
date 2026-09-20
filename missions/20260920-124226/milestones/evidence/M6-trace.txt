@@ -1,0 +1,59 @@
+workspace m6ux-1789926140595 b4e7e27b-1a68-4da3-a700-da00f42f6616
+ids {"self":"3d913b37-f9ee-44f0-8b99-edbffc9bcdf5","b":"4c57eca0-f7f8-44b2-9b83-ed51eceea2d8","c":"a8bb0510-da8f-4f20-9e32-501cbe76ff7c","d":"8799f52e-2175-4724-9318-5160d8beea8b","e":"bb47e369-2453-41c9-ba5d-bb09f3539954","p":"15e15bf8-70f3-44fd-b17e-56c9fa43072c"}
+AS-051 trigger visible: true
+AS-051 header contains trigger: 1
+AS-051 header contains prev/today/next: 1 1 1
+AS-052 items listed: ["Just me","Whole team","AAAlice Anderson","BBBob Brown","CCCarol Clark","DDDave Davis","EEErin Evans"]
+AS-052 'Pending Pat' present: false
+AS-053 after typing 'Carol': ["CCCarol Clark"]
+AS-053 after typing 'zzzz': [] empty-msg: true
+AS-054 url select Bob: http://localhost:3000/w/m6ux-1789926140595/calendar?people=3d913b37-f9ee-44f0-8b99-edbffc9bcdf5,4c57eca0-f7f8-44b2-9b83-ed51eceea2d8
+AS-054 Bob checked: true checkIcons: 2 | Carol: false 1
+AS-054 url + Carol: http://localhost:3000/w/m6ux-1789926140595/calendar?people=3d913b37-f9ee-44f0-8b99-edbffc9bcdf5,4c57eca0-f7f8-44b2-9b83-ed51eceea2d8,a8bb0510-da8f-4f20-9e32-501cbe76ff7c
+AS-054 both checked (Bob,Carol): true true
+AS-054 url deselect Bob: http://localhost:3000/w/m6ux-1789926140595/calendar?people=3d913b37-f9ee-44f0-8b99-edbffc9bcdf5,a8bb0510-da8f-4f20-9e32-501cbe76ff7c
+AS-054 Bob after deselect: false checkIcons: 1
+AS-057 url whole team: http://localhost:3000/w/m6ux-1789926140595/calendar?people=3d913b37-f9ee-44f0-8b99-edbffc9bcdf5,4c57eca0-f7f8-44b2-9b83-ed51eceea2d8,a8bb0510-da8f-4f20-9e32-501cbe76ff7c,8799f52e-2175-4724-9318-5160d8beea8b,bb47e369-2453-41c9-ba5d-bb09f3539954
+AS-057 expected order self,Bob,Carol,Dave,Erin: 3d913b37-f9ee-44f0-8b99-edbffc9bcdf5,4c57eca0-f7f8-44b2-9b83-ed51eceea2d8,a8bb0510-da8f-4f20-9e32-501cbe76ff7c,8799f52e-2175-4724-9318-5160d8beea8b,bb47e369-2453-41c9-ba5d-bb09f3539954
+AS-055 overflow count node: 1 visible: true text: +2
+AS-055 avatars in trigger: 3
+AS-056 url just me: http://localhost:3000/w/m6ux-1789926140595/calendar?people=me | selfId: 3d913b37-f9ee-44f0-8b99-edbffc9bcdf5
+AS-059 url after deselecting the only selected member (self): URL DID NOT CHANGE: http://localhost:3000/w/m6ux-1789926140595/calendar?people=me
+AS-059 self checked after: true
+AS-059 planner still renders week view: true
+AS-060 trigger reached by Tab: true after 31 Tab presses
+AS-060 popover open after Enter: true
+AS-060 focus lands on: INPUT placeholder=Find a person...
+AS-060 list after typing 'Dave': ["DDDave Davis"]
+AS-060 highlighted item after ArrowDown: DDDave Davis
+AS-060 url after keyboard Enter toggle: http://localhost:3000/w/m6ux-1789926140595/calendar?people=3d913b37-f9ee-44f0-8b99-edbffc9bcdf5,8799f52e-2175-4724-9318-5160d8beea8b | Dave id: 8799f52e-2175-4724-9318-5160d8beea8b
+AS-061 mobile trigger visible: true box: {"x":171,"y":139.65625,"width":42,"height":38}
+AS-061 mobile popover visible: true
+AS-061 mobile url after toggling Erin: http://localhost:3000/w/m6ux-1789926140595/calendar?people=3d913b37-f9ee-44f0-8b99-edbffc9bcdf5,bb47e369-2453-41c9-ba5d-bb09f3539954 | Erin id: bb47e369-2453-41c9-ba5d-bb09f3539954
+AS-061 mobile horizontal overflow: false
+
+--- addendum (AS-059 real empty-selection path) ---
+AS-059 start url: http://localhost:3000/w/m6ux-1789926140595/calendar?people=3d913b37-f9ee-44f0-8b99-edbffc9bcdf5,a8bb0510-da8f-4f20-9e32-501cbe76ff7c
+AS-059 deselect self -> http://localhost:3000/w/m6ux-1789926140595/calendar?people=a8bb0510-da8f-4f20-9e32-501cbe76ff7c
+AS-059 deselect Carol (last remaining) -> http://localhost:3000/w/m6ux-1789926140595/calendar?people=me | self id: 3d913b37-f9ee-44f0-8b99-edbffc9bcdf5
+AS-059 self checked after emptying: true
+AS-059 week view still rendered: true
+AS-054 selected item HTML: <span data-slot="avatar" data-size="sm" class="group/avatar relative flex size-8 shrink-0 rounded-full select-none ring-1 ring-border data-[size=lg]:size-10 data-[size=sm]:size-6"><span data-slot="avatar-fallback" class="flex size-full items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground">AA</span></span><span class="truncate">Alice Anderson</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check ml-auto size-4 shrink-0" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check ml-auto opac
+AS-054 unselected item HTML: <span data-slot="avatar" data-size="sm" class="group/avatar relative flex size-8 shrink-0 rounded-full select-none ring-1 ring-border data-[size=lg]:size-10 data-[size=sm]:size-6"><span data-slot="avatar-fallback" class="flex size-full items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground">CC</span></span><span class="truncate">Carol Clark</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check ml-auto opacity-0 group-has-data-[slot=command-shortcut]/command-item:hidden group-data-[checked=true]/command-item:opacity-100" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>
+
+--- addendum (full page load at each selection size: does the switcher survive?) ---
+HARD LOAD 1 person (no param) | url: http://localhost:3000/w/m6ux-1789926140595/calendar | switcher triggers: 1 | week-view nodes: 1
+   first content lines: []
+HARD LOAD 2 people | url: http://localhost:3000/w/m6ux-1789926140595/calendar?people=3d913b37-f9ee-44f0-8b99-edbffc9bcdf5,4c57eca0-f7f8-44b2-9b83-ed51eceea2d8 | switcher triggers: 0 | week-view nodes: 0
+   first content lines: []
+HARD LOAD 5 people | url: http://localhost:3000/w/m6ux-1789926140595/calendar?people=3d913b37-f9ee-44f0-8b99-edbffc9bcdf5,4c57eca0-f7f8-44b2-9b83-ed51eceea2d8,a8bb0510-da8f-4f20-9e32-501cbe76ff7c,8799f52e-2175-4724-9318-5160d8beea8b,bb47e369-2453-41c9-ba5d-bb09f3539954 | switcher triggers: 0 | week-view nodes: 0
+   first content lines: []
+
+--- addendum 4 (AS-059 empty-selection fallback, from a single non-self selection) ---
+AS-059 start url (single non-self selection, Carol): http://localhost:3000/w/m6ux-1789926140595/calendar?people=a8bb0510-da8f-4f20-9e32-501cbe76ff7c
+AS-059 Carol checked at start: true | self checked: false
+AS-059 deselect Carol (selection becomes empty) -> http://localhost:3000/w/m6ux-1789926140595/calendar?people=me | self id: 3d913b37-f9ee-44f0-8b99-edbffc9bcdf5
+AS-059 after reload -- self checked: true | Carol checked: false
+AS-059 week view still rendered (not empty): true
+AS-054 selected item HTML: <span data-slot="avatar" data-size="sm" class="group/avatar relative flex size-8 shrink-0 rounded-full select-none ring-1 ring-border data-[size=lg]:size-10 data-[size=sm]:size-6"><span data-slot="avatar-fallback" class="flex size-full items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground">AA</span></span><span class="truncate">Alice Anderson</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check ml-auto size-4 shrink-0" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check ml-auto opac
+AS-054 unselected item HTML: <span data-slot="avatar" data-size="sm" class="group/avatar relative flex size-8 shrink-0 rounded-full select-none ring-1 ring-border data-[size=lg]:size-10 data-[size=sm]:size-6"><span data-slot="avatar-fallback" class="flex size-full items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground">CC</span></span><span class="truncate">Carol Clark</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check ml-auto opacity-0 group-has-data-[slot=command-shortcut]/command-item:hidden group-data-[checked=true]/command-item:opacity-100" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>

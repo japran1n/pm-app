@@ -1,0 +1,138 @@
+workspace m7ux-1789937235650 ea55bd6e-d096-4076-96b4-fc143b16d303
+ids {"self":"bea0e28f-b9a5-4497-b849-9ade60aa12c6","b":"0235a77e-bf35-405b-8d68-44422ccc2e53","c":"e1e96dda-16be-446c-a46b-ec1e3dcbb884","d":"b20eb25d-6bee-41eb-af6f-cb83897b4a60","e":"5382fc29-1b66-45cd-9f62-3c75f5305b6b"}
+seeded block Alice Mon block 2a6ae295-1a80-46e0-ac98-b8c3c462e793 color #3ecf8e
+seeded block Bob Tue block 5d87e035-fd72-49c2-b64d-e370bf19b27d color #f59e0b
+seeded block Carol Wed block 4013df26-2766-40e8-9815-e5d056c94275 color #8b5cf6
+
+--- baseline: no params ---
+week-view: 1 stacked: 0
+header switcher count: 1
+
+--- stacked, people order Carol,Bob,Alice,Erin ---
+stacked-planner count: 1 week-view count: 0
+rendered row user ids: ["e1e96dda-16be-446c-a46b-ec1e3dcbb884","0235a77e-bf35-405b-8d68-44422ccc2e53","bea0e28f-b9a5-4497-b849-9ade60aa12c6","5382fc29-1b66-45cd-9f62-3c75f5305b6b"]
+expected order:         ["e1e96dda-16be-446c-a46b-ec1e3dcbb884","0235a77e-bf35-405b-8d68-44422ccc2e53","bea0e28f-b9a5-4497-b849-9ade60aa12c6","5382fc29-1b66-45cd-9f62-3c75f5305b6b"]
+AS-063 order matches: true
+AS-062 row first-line labels: ["Carol Clark","Bob Brown","Alice Anderson","Erin Evans"]
+  row Carol Clark: label present = true
+  row Bob Brown: label present = true
+  row Alice Anderson: label present = true
+  row Erin Evans: label present = true
+AS-024 Erin (no blocks) row present: true
+
+--- AS-051 header in stacked layout ---
+switcher trigger count: 1 visible: true
+prev/today/next: 1 1 1
+AS-055 avatar group count: 1 overflow badge: ["+1"]
+
+--- week nav (stacked layout) ---
+next: url http://localhost:3000/w/m7ux-1789937235650/calendar?week=2026-09-21&people=e1e96dda-16be-446c-a46b-ec1e3dcbb884,0235a77e-bf35-405b-8d68-44422ccc2e53,bea0e28f-b9a5-4497-b849-9ade60aa12c6,5382fc29-1b66-45cd-9f62-3c75f5305b6b | label Sep 14 – Sep 20, 2026 -> Sep 21 – Sep 27, 2026
+next: people preserved: true | week param: 2026-09-21
+next: still stacked: 1
+prev: url http://localhost:3000/w/m7ux-1789937235650/calendar?week=2026-09-14&people=e1e96dda-16be-446c-a46b-ec1e3dcbb884,0235a77e-bf35-405b-8d68-44422ccc2e53,bea0e28f-b9a5-4497-b849-9ade60aa12c6,5382fc29-1b66-45cd-9f62-3c75f5305b6b | label Sep 14 – Sep 20, 2026
+today: url http://localhost:3000/w/m7ux-1789937235650/calendar?people=e1e96dda-16be-446c-a46b-ec1e3dcbb884,0235a77e-bf35-405b-8d68-44422ccc2e53,bea0e28f-b9a5-4497-b849-9ade60aa12c6,5382fc29-1b66-45cd-9f62-3c75f5305b6b | label Sep 14 – Sep 20, 2026 | baseline label Sep 14 – Sep 20, 2026
+today restores current week: true
+
+--- read-only affordances in stacked layout ---
+{
+ "resizeHandles": 0,
+ "addSlots": 0,
+ "blocks": [
+  {
+   "testid": "stacked-block-4013df26-2766-40e8-9815-e5d056c94275-3",
+   "text": "Carol Wed block",
+   "draggable": false,
+   "roleBtn": null,
+   "tabindex": null,
+   "cursor": "auto",
+   "borderColor": "rgb(139, 92, 246)",
+   "bg": "rgba(139, 92, 246, 0.1)",
+   "hasDndAttr": false
+  },
+  {
+   "testid": "stacked-block-5d87e035-fd72-49c2-b64d-e370bf19b27d-2",
+   "text": "Bob Tue block",
+   "draggable": false,
+   "roleBtn": null,
+   "tabindex": null,
+   "cursor": "auto",
+   "borderColor": "rgb(59, 130, 246)",
+   "bg": "rgba(59, 130, 246, 0.1)",
+   "hasDndAttr": false
+  },
+  {
+   "testid": "stacked-block-2a6ae295-1a80-46e0-ac98-b8c3c462e793-1",
+   "text": "Alice Mon block",
+   "draggable": false,
+   "roleBtn": null,
+   "tabindex": null,
+   "cursor": "auto",
+   "borderColor": "rgb(59, 130, 246)",
+   "bg": "rgba(59, 130, 246, 0.1)",
+   "hasDndAttr": false
+  }
+ ],
+ "rowDragHandles": [
+  "stacked-row-drag-handle-e1e96dda-16be-446c-a46b-ec1e3dcbb884",
+  "stacked-row-drag-handle-0235a77e-bf35-405b-8d68-44422ccc2e53",
+  "stacked-row-drag-handle-bea0e28f-b9a5-4497-b849-9ade60aa12c6",
+  "stacked-row-drag-handle-5382fc29-1b66-45cd-9f62-3c75f5305b6b"
+ ]
+}
+
+--- AS-067/AS-071 block colour ---
+seeded colors: [{"t":"Alice Mon block","c":"#3ecf8e"},{"t":"Bob Tue block","c":"#f59e0b"},{"t":"Carol Wed block","c":"#8b5cf6"}]
+AS-069 planner text sample: "Carol Clark\nMon\nTue\nWed\nCarol Wed block\nThu\nFri\nBob Brown\nMon\nTue\nBob Tue block\nWed\nThu\nFri\nAlice Anderson\nMon\nAlice Mon block\nTue\nWed\nThu\nFri\nErin Evans\nMon\nTue\nWed\nThu\nFri"
+AS-069 matches hours/capacity/util/%: null
+
+--- AS-068 scroll with 5 rows ---
+{"rows":5,"clientH":750,"scrollH":1886,"overflowY":"auto","rowHeights":[368,368,368,368,368]}
+
+--- AS-064/AS-065 drag row reorder ---
+before: ["stacked-person-row-bea0e28f-b9a5-4497-b849-9ade60aa12c6","stacked-person-row-0235a77e-bf35-405b-8d68-44422ccc2e53","stacked-person-row-e1e96dda-16be-446c-a46b-ec1e3dcbb884"]
+handles present: 1 1
+after drag rows: ["stacked-person-row-0235a77e-bf35-405b-8d68-44422ccc2e53","stacked-person-row-e1e96dda-16be-446c-a46b-ec1e3dcbb884","stacked-person-row-bea0e28f-b9a5-4497-b849-9ade60aa12c6"]
+url after drag: http://localhost:3000/w/m7ux-1789937235650/calendar?people=0235a77e-bf35-405b-8d68-44422ccc2e53,e1e96dda-16be-446c-a46b-ec1e3dcbb884,bea0e28f-b9a5-4497-b849-9ade60aa12c6
+after reload rows: ["stacked-person-row-0235a77e-bf35-405b-8d68-44422ccc2e53","stacked-person-row-e1e96dda-16be-446c-a46b-ec1e3dcbb884","stacked-person-row-bea0e28f-b9a5-4497-b849-9ade60aa12c6"]
+
+--- AS-070 single non-self person ---
+layout week-view: 1 stacked: 0
+header text: "Sep 14 – Sep 20, 2026\nBB\nAdd time off\n←\nToday\n→\n14 Mon\n15 Tue\n16 Wed\n17 Thu\n18 Fri\n19 Sat\n20 Sun · Today\n00:00\n01:00\n02:00\n03:00\n04:00\n05:00\n06:00\n07:00\n08:00\n09:00\n10:00\n11:00\n12:00\n13:00\n14:00\n15:00\n16:00\n17:00\n18:00\n19:00\n20:00\n21:00\n22:00\n23:00\nBob Tue block\n10:00 AM–12:00 PM"
+AS-070 mentions Bob: false
+AS-020/021/022 other-person view affordances: {"resize":0,"addSlots":0,"chips":["Bob Tue block10:00 AM–12:00 PM"]}
+
+--- own single person view (control) ---
+own view affordances: {"resize":2,"addSlots":0,"chips":["Alice Mon block9:00 AM–11:00 AM"]}
+
+--- AS-067/AS-071 re-run with palette colours ---
+seed Alice green #22c55e
+seed Alice pink #ec4899
+seed Bob green #22c55e
+seed Bob slate #64748b
+rendered: [
+ {
+  "row": "Alice Anderson",
+  "text": "Alice green",
+  "border": "rgb(34, 197, 94)",
+  "bg": "rgba(34, 197, 94, 0.1)"
+ },
+ {
+  "row": "Alice Anderson",
+  "text": "Alice pink",
+  "border": "rgb(236, 72, 153)",
+  "bg": "rgba(236, 72, 153, 0.1)"
+ },
+ {
+  "row": "Bob Brown",
+  "text": "Bob green",
+  "border": "rgb(34, 197, 94)",
+  "bg": "rgba(34, 197, 94, 0.1)"
+ },
+ {
+  "row": "Bob Brown",
+  "text": "Bob slate",
+  "border": "rgb(100, 116, 139)",
+  "bg": "rgba(100, 116, 139, 0.1)"
+ }
+]
+slug=m7col-1789937317541

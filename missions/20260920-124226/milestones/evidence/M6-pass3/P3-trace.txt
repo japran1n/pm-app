@@ -1,0 +1,99 @@
+=== part A (m6ux3.mjs; console transcript — the script aborted on an AS-059 popover-reopen
+    timing bug in the harness AFTER all of the below was recorded, so the in-script
+    writeFileSync never ran; AS-059 onward was re-run in part B) ===
+workspace m6ux3-1789930474621 4ec0f006-3c79-4b1d-b887-3c11b3bfda33
+ids {"self":"6ad705d3-5636-4c1f-9048-e5f0039ec4ac","b":"d8228448-15c7-49ff-93bb-4b3e93a4b609","c":"a66772b8-2f8f-4797-8c2c-088812db128d","d":"7288bad9-e675-45f2-8114-5704bfdd4a2f","e":"15993c1c-b48a-4d54-b8bb-adcd72c6862a","p":"c29221f4-955f-4c8c-ae6b-5b6d2de0df89"}
+--- AS-051 (single-person / week-grid) ---
+AS-051 trigger visible: true
+AS-051 header trigger count: 1
+AS-051 header prev/today/next: 1 1 1
+AS-051 week-view present: 1 stacked-planner present: 0
+--- AS-052 ---
+AS-052 items: ["Just me","Whole team","AAAlice Anderson","BBBob Brown","CCCarol Clark","DDDave Davis","EEErin Evans"]
+AS-052 'Pending Pat' present: false
+AS-052 avatars rendered in list: 5
+--- AS-053 ---
+AS-053 typing 'Carol': ["CCCarol Clark"]
+AS-053 typing 'zzzz': [] | empty msg visible: true
+AS-053 cleared: ["Just me","Whole team","AAAlice Anderson","BBBob Brown","CCCarol Clark","DDDave Davis","EEErin Evans"]
+--- AS-054 ---
+AS-054 url +Bob: .../calendar?people=<self>,<bob>
+AS-054 after +Bob -> Bob checked: true svgs: 1 visible svgs: 1
+AS-054 after +Bob -> Carol checked: false svgs: 1 visible svgs: 0
+AS-054 url +Carol: .../calendar?people=<self>,<bob>,<carol>
+AS-054 Alice/Bob/Carol checked: true true true
+AS-054 visible ticks Alice/Bob/Carol: 1 1 1
+AS-054 visible ticks Dave (unselected): 0
+AS-054 url -Bob: .../calendar?people=<self>,<carol>
+AS-054 Bob after deselect: false visible ticks: 0 | Carol still: true
+--- AS-051 (stacked layout, hard load) ---
+AS-051 hardload 1 person: trigger=1 visible=true weekview=1 stacked=0 prev/today/next=1/1/1
+AS-051 hardload 2 people: trigger=1 visible=true weekview=0 stacked=1 prev/today/next=1/1/1
+AS-051 hardload 5 people: trigger=1 visible=true weekview=0 stacked=1 prev/today/next=1/1/1
+--- AS-055 ---
+AS-055 (5 selected, settled) avatar-group: 1 avatars: 3 overflow node: 1 visible: true text: +2
+AS-055 (2 selected, settled) avatars: 2 overflow visible: false
+--- AS-057 / AS-058 (invoked from the STACKED layout) ---
+AS-057 url whole team: ?people=6ad705d3...(self),d8228448...(Bob),a66772b8...(Carol),7288bad9...(Dave),15993c1c...(Erin)
+AS-058 expected order self,Bob,Carol,Dave,Erin: 6ad705d3-5636-4c1f-9048-e5f0039ec4ac,d8228448-15c7-49ff-93bb-4b3e93a4b609,a66772b8-2f8f-4797-8c2c-088812db128d,7288bad9-e675-45f2-8114-5704bfdd4a2f,15993c1c-b48a-4d54-b8bb-adcd72c6862a  (MATCH)
+--- AS-056 (invoked from the STACKED layout) ---
+AS-056 url just me: .../calendar?people=me | selfId: 6ad705d3-5636-4c1f-9048-e5f0039ec4ac
+AS-056 layout now: weekview= 1 stacked= 0
+
+
+=== part B ===
+--- AS-059 ---
+AS-059 ?people=<carol>: carol checked: true alice: false
+AS-059 url after deselecting Carol (the last one): http://localhost:3000/w/m6ux3-1789930474621/calendar?people=me
+AS-059 after hard reload -> Alice checked: true Carol: false
+AS-059 week-view renders: 1
+--- AS-011 ---
+AS-011 start url: http://localhost:3000/w/m6ux3-1789930474621/calendar?people=6ad705d3-5636-4c1f-9048-e5f0039ec4ac,d8228448-15c7-49ff-93bb-4b3e93a4b609,a66772b8-2f8f-4797-8c2c-088812db128d
+AS-011 after 'Next week': http://localhost:3000/w/m6ux3-1789930474621/calendar?people=6ad705d3-5636-4c1f-9048-e5f0039ec4ac,d8228448-15c7-49ff-93bb-4b3e93a4b609,a66772b8-2f8f-4797-8c2c-088812db128d
+AS-011 after 'Previous week': http://localhost:3000/w/m6ux3-1789930474621/calendar?people=6ad705d3-5636-4c1f-9048-e5f0039ec4ac,d8228448-15c7-49ff-93bb-4b3e93a4b609,a66772b8-2f8f-4797-8c2c-088812db128d
+AS-011 after 'Today': http://localhost:3000/w/m6ux3-1789930474621/calendar?people=6ad705d3-5636-4c1f-9048-e5f0039ec4ac,d8228448-15c7-49ff-93bb-4b3e93a4b609,a66772b8-2f8f-4797-8c2c-088812db128d
+--- AS-012 ---
+AS-012 url with a week param: http://localhost:3000/w/m6ux3-1789930474621/calendar?people=6ad705d3-5636-4c1f-9048-e5f0039ec4ac,d8228448-15c7-49ff-93bb-4b3e93a4b609,a66772b8-2f8f-4797-8c2c-088812db128d | week= null
+AS-012 url after toggling Dave: http://localhost:3000/w/m6ux3-1789930474621/calendar?week=2026-09-21&people=6ad705d3-5636-4c1f-9048-e5f0039ec4ac,d8228448-15c7-49ff-93bb-4b3e93a4b609,a66772b8-2f8f-4797-8c2c-088812db128d
+AS-012 week preserved: 2026-09-21 === null -> false
+--- AS-013 ---
+AS-013 localStorage keys: []
+AS-013 sessionStorage keys: []
+AS-013 keys/values mentioning people|week|planner|calendar: []
+--- AS-060 ---
+AS-060 trigger reached by Tab: true after 31 presses
+AS-060 popover open: true
+AS-060 focus: INPUT placeholder=Find a person...
+AS-060 list after typing 'Dave': ["DDDave Davis"]
+AS-060 highlighted after ArrowDown: DDDave Davis
+AS-060 url after keyboard Enter: http://localhost:3000/w/m6ux3-1789930474621/calendar?people=6ad705d3-5636-4c1f-9048-e5f0039ec4ac,7288bad9-e675-45f2-8114-5704bfdd4a2f | Dave id: 7288bad9-e675-45f2-8114-5704bfdd4a2f
+--- AS-061 ---
+AS-061 mobile (single) trigger visible: true box: {"x":171,"y":139.65625,"width":42,"height":38}
+AS-061 mobile popover visible: true items: ["Just me","Whole team","AAAlice Anderson","BBBob Brown","CCCarol Clark","DDDave Davis","EEErin Evans"]
+AS-061 mobile url after toggling Erin: http://localhost:3000/w/m6ux3-1789930474621/calendar?people=6ad705d3-5636-4c1f-9048-e5f0039ec4ac,15993c1c-b48a-4d54-b8bb-adcd72c6862a | Erin id: 15993c1c-b48a-4d54-b8bb-adcd72c6862a
+AS-061 mobile (stacked) trigger count: 1 visible: true stacked: 1
+AS-061 mobile horizontal overflow: false
+
+
+=== part C (AS-011 focused) ===
+=== AS-011 STACKED(3 people) ===
+start url: http://localhost:3000/w/m6ux3-1789930474621/calendar?people=6ad705d3-5636-4c1f-9048-e5f0039ec4ac,d8228448-15c7-49ff-93bb-4b3e93a4b609,a66772b8-2f8f-4797-8c2c-088812db128d | label: Sep 14 – Sep 20, 2026
+after 'Next week': week=2026-09-21 people=6ad705d3-5636-4c1f-9… label='Sep 21 – Sep 27, 2026'
+after 'Next week': week=2026-09-28 people=6ad705d3-5636-4c1f-9… label='Sep 28 – Oct 4, 2026'
+after 'Previous week': week=2026-09-21 people=6ad705d3-5636-4c1f-9… label='Sep 21 – Sep 27, 2026'
+after 'Today': week=null people=6ad705d3-5636-4c1f-9048-e5f0039ec4ac,d8228448-15c7-49ff-93bb-4b3e93a4b609,a66772b8-2f8f-4797-8c2c-088812db128d label='Sep 14 – Sep 20, 2026'
+=== AS-011 SINGLE(me) ===
+start url: http://localhost:3000/w/m6ux3-1789930474621/calendar | label: Sep 14 – Sep 20, 2026
+after 'Next week': week=2026-09-21 people=undefined… label='Sep 21 – Sep 27, 2026'
+after 'Next week': week=2026-09-28 people=undefined… label='Sep 28 – Oct 4, 2026'
+after 'Previous week': week=2026-09-21 people=undefined… label='Sep 21 – Sep 27, 2026'
+after 'Today': week=null people=null label='Sep 14 – Sep 20, 2026'
+
+
+=== part D (AS-012 focused) ===
+=== AS-012 (week preserved when the selection changes) ===
+before: week= 2026-09-21 people= 6ad705d3-5636-4c1f-9048-e5f0039ec4ac,d8228448-15c7-49ff-93bb-4b3e93a4b609,a66772b8-2f8f-4797-8c2c-088812db128d label= Sep 21 – Sep 27, 2026
+after toggling Dave: week= 2026-09-21 people= 6ad705d3-5636-4c1f-9048-e5f0039ec4ac,d8228448-15c7-49ff-93bb-4b3e93a4b609,a66772b8-2f8f-4797-8c2c-088812db128d,7288bad9-e675-45f2-8114-5704bfdd4a2f label= Sep 21 – Sep 27, 2026
+AS-012 week preserved: true
+after 'Just me': week= 2026-09-21 people= me label= Sep 21 – Sep 27, 2026
+AS-012 week preserved through shortcut: true

@@ -1,0 +1,130 @@
+URL: http://localhost:3000/w/m4ux-1789912628133-us5xh5/calendar
+STATUS: 200
+
+--- BODY TEXT ---
+Command palette
+
+Search or run a command
+
+Switch project
+
+Jump to a project in this workspace
+
+M4
+M4 UX WS
+Dashboard
+My Tasks
+Projects
+Chat
+
+PLAN
+
+Planner
+Time
+
+TEAM
+
+Team
+Members
+
+TOOLS
+
+HTML → Webflow
+Webflow Code Editor
+Sitemap Builder
+
+OTHER
+
+Watching
+Archive
+Templates
+Trash
+How this works
+PROJECTS
+M4 Proj
+M4
+m4-ux-1789912628133-us5xh5@example.com
+Sign out
+M4 UX WS
+Calendar
+Sep 14 – Sep 20, 2026
+Add time off
+←
+Today
+→
+14 Mon
+15 Tue
+16 Wed
+17 Thu
+18 Fri
+19 Sat
+20 Sun · Today
+00:00
+01:00
+02:00
+03:00
+04:00
+05:00
+06:00
+07:00
+08:00
+09:00
+10:00
+11:00
+12:00
+13:00
+14:00
+15:00
+16:00
+17:00
+18:00
+19:00
+20:00
+21:00
+22:00
+23:00
+
+--- REQUESTS ---
+GET http://localhost:3000/w/m4ux-1789912628133-us5xh5/calendar
+POST http://localhost:3000/api/csp-report
+GET http://localhost:3000/_next/static/media/83afe278b6a6bb3c-s.p.2bn3s6zvc0dyp.woff2
+GET http://localhost:3000/_next/static/media/c9e42e3eae6237c2-s.p.2s-4kwv_nqb0b.woff2
+GET http://localhost:3000/_next/static/chunks/%5Broot-of-the-server%5D__0rtoqzg._.css
+GET http://localhost:3000/_next/static/chunks/%5Bturbopack%5D_browser_dev_hmr-client_hmr-client_ts_1di75ot._.js
+GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_next-devtools_index_090k2jm.js
+GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_react-dom_096_9a-._.js
+GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_react-server-dom-turbopack_164kp-6._.js
+GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_1amofcm._.js
+GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_0_90u2t._.js
+GET http://localhost:3000/_next/static/chunks/node_modules_next_dist_1e8vcs8._.js
+GET http://localhost:3000/_next/static/chunks/node_modules_%40swc_helpers_cjs_1r9vbqw._.js
+GET http://localhost:3000/_next/static/chunks/_1anvha4._.js
+GET http://localhost:3000/_next/static/chunks/turbopack-_08bm286._.js
+GET http://localhost:3000/_next/static/chunks/_1-gtysu._.js
+GET http://localhost:3000/_next/static/chunks/node_modules_1mevlaw._.js
+GET http://localhost:3000/_next/static/chunks/components_0waygqh._.js
+GET http://localhost:3000/_next/static/chunks/node_modules_0yktsxp._.js
+GET http://localhost:3000/_next/static/chunks/_142vfoj._.js
+GET http://localhost:3000/_next/static/chunks/_211ub6y._.js
+GET http://localhost:3000/_next/static/chunks/node_modules_tailwind-merge_dist_bundle-mjs_mjs_0q79z23._.js
+GET http://localhost:3000/_next/static/chunks/node_modules_%40base-ui_react_internals_11anh2k._.js
+GET http://localhost:3000/_next/static/chunks/node_modules_%40base-ui_react_utils_0nimr92._.js
+GET http://localhost:3000/_next/static/chunks/node_modules_%40base-ui_react_floating-ui-react_1sa7nzx._.js
+GET http://localhost:3000/_next/static/chunks/node_modules_%40base-ui_react_menu_0w4x-wc._.js
+GET http://localhost:3000/_next/static/chunks/node_modules_%40base-ui_react_0rvpmco._.js
+GET http://localhost:3000/_next/static/chunks/node_modules_%40supabase_auth-js_dist_module_1vqrmkg._.js
+GET http://localhost:3000/_next/static/chunks/node_modules_zod_v4_06yv92s._.js
+GET http://localhost:3000/_next/static/chunks/node_modules_%40dnd-kit_core_dist_core_esm_0i-bf15.js
+GET http://localhost:3000/_next/static/chunks/node_modules_%40floating-ui_0q7ozde._.js
+GET http://localhost:3000/_next/static/chunks/node_modules_%40supabase_0bj5x07._.js
+GET http://localhost:3000/_next/static/chunks/node_modules_%40radix-ui_0c9ywhi._.js
+GET http://localhost:3000/_next/static/chunks/node_modules_18o7vj_._.js
+GET http://localhost:3000/_next/static/chunks/_088s1wj._.js
+GET http://localhost:3000/_next/static/chunks/app_global-error_tsx_0cmn22j._.js
+GET http://localhost:3000/_next/static/chunks/_04es2z4._.js
+GET http://localhost:3000/_next/static/chunks/_0zhz_z0._.js
+GET http://localhost:3000/_next/static/chunks/node_modules_lucide-react_dist_esm_icons_x_mjs_1mzh6hx._.js
+GET http://localhost:3000/theme-init.js
+GET http://localhost:3000/_next/static/chunks/%5Bturbopack%5D_browser_dev_hmr-client_hmr-client_ts_1mojsay._.js
+POST http://localhost:3000/w/m4ux-1789912628133-us5xh5/calendar
+GET http://localhost:3000/__nextjs_font/geist-latin.woff2

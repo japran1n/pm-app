@@ -1,0 +1,24 @@
+{
+  "probe": "document.querySelector checks on /w/m5ux-1789915983011/calendar, signed in as m5ux-me-...@example.com (274025fa-adba-467f-9a4c-e9bcf30eff2b)",
+  "own_block_b604cf50-204c-46e2-b78b-907a02366282": {
+    "gridChip": true, "resizeStart": true, "resizeEnd": true
+  },
+  "other_block_abba3245-844d-40c5-b224-38c9f710bf36": {
+    "gridChip": true, "resizeStart": false, "resizeEnd": false
+  },
+  "other_block_popover": {
+    "text": "Title / Start / End / This is a client presentation / Color / You can only edit or delete your own blocks.",
+    "saveButton": false,
+    "deleteButton": false,
+    "titleInput": { "value": "THEIRS Other Block", "disabled": true, "readOnly": true },
+    "startInput": { "value": "15:00", "disabled": true },
+    "endInput": { "value": "16:00", "disabled": true },
+    "colorSwatches": "all 8 disabled",
+    "readonlyNoteTestid": "calendar-block-readonly-note present"
+  },
+  "own_block_popover": { "text": "Title / Start / End / This is a client presentation / Color / Delete / Save" },
+  "other_block_move_drag": { "before": "3:00 PM-4:00 PM", "after": "3:00 PM-4:00 PM" },
+  "other_block_bottom_edge_drag": { "before": "3:00 PM-4:00 PM", "after": "3:00 PM-4:00 PM" },
+  "own_column_click_create": { "popover": "calendar-week-create-popover opened, submitted 'M5 UX Created Block', persisted across reload" },
+  "own_column_drag_create": { "dragPreview": true, "popover": true, "prefilledTimes": ["11:45", "13:00"] }
+}
