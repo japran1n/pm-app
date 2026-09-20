@@ -1,47 +1,47 @@
 // @vitest-environment jsdom
 //
-// F035 (AS-064, AS-065): a stacked row can be dragged to a new position,
-// and doing so rewrites `?people=` so the new order survives a reload.
-// jsdom has no real pointer/drag simulation, so -- same pattern as
-// f024-drag-cancellation.test.tsx -- this test captures the exact
-// `onDragEnd` prop StackedPlanner passes to its DndContext and invokes it
-// directly.
+// F035/F103 (AS-064, AS-065): a stacked row can be dragged to a new
+// position, and doing so rewrites `?people=` (preserving `?week=`) so the
+// new order survives a reload.
+//
+// F103 supersedes the earlier version of this file, which mocked
+// `DndContext` away entirely and invoked its captured `onDragEnd` prop
+// directly -- that let mutations that break the *real* drag gesture (e.g.
+// deleting `{...listeners}` or dropping `sensors={sensors}`) pass
+// undetected, and gave zero coverage to AS-065's `?week=` preservation.
+//
+// This file does NOT mock @dnd-kit/core or @dnd-kit/sortable. It drives
+// the real KeyboardSensor against the rendered drag handle: focus, Space
+// (pick up), ArrowDown (move), Space (drop) -- exactly the gesture a
+// keyboard user performs -- then asserts on the resulting
+// `router.replace` call.
+//
+// jsdom returns an all-zero `getBoundingClientRect()` for every element by
+// default, which would make dnd-kit's keyboard coordinate getter
+// (`sortableKeyboardCoordinates`, which compares row rects' `top`) see
+// every row as identical and never move. `stubRowRects` below overrides
+// `Element.prototype.getBoundingClientRect` to give each draggable row
+// wrapper (`stacked-row-draggable-<userId>`, in `?people=` order) a
+// distinct, stacked rect so the real algorithm can tell rows apart. jsdom
+// also has no `ResizeObserver`, which dnd-kit's rect tracking depends on;
+// this file stubs a no-op one, the same fixup already used in
+// people-switcher.test.tsx et al.
 
-import { cleanup, render } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import type { ReactNode } from "react";
 import fs from "node:fs";
 import path from "node:path";
 
-let capturedOnDragEnd: ((event: unknown) => void) | undefined;
-
-vi.mock("@dnd-kit/core", async () => {
-  const actual = await vi.importActual<typeof import("@dnd-kit/core")>("@dnd-kit/core");
-  return {
-    ...actual,
-    DndContext: ({
-      children,
-      onDragEnd,
-    }: {
-      children: ReactNode;
-      onDragEnd?: (event: unknown) => void;
-    }) => {
-      capturedOnDragEnd = onDragEnd;
-      return children;
-    },
-  };
-});
+import { StackedPlanner } from "@/components/calendar/stacked-planner";
+import type { CalendarBlock } from "@/lib/queries/calendar-blocks";
+import type { SwitcherMember } from "@/lib/calendar/workspace-members";
 
 const replaceMock = vi.fn();
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: replaceMock, refresh: vi.fn() }),
 }));
-
-import { StackedPlanner } from "@/components/calendar/stacked-planner";
-import type { CalendarBlock } from "@/lib/queries/calendar-blocks";
-import type { SwitcherMember } from "@/lib/calendar/workspace-members";
 
 const SELF_ID = "11111111-1111-4111-8111-111111111111";
 const PERSON_A = "22222222-2222-4222-8222-222222222222";
@@ -53,77 +53,153 @@ const MEMBERS: SwitcherMember[] = [
   { userId: PERSON_B, name: "Person B", email: "b@example.com", avatarUrl: null },
 ];
 
-function renderPlanner(selectedUserIds: string[]) {
+// [Self, A, B] rendered top-to-bottom in this order -- Self at index 0.
+const ROW_ORDER = [SELF_ID, PERSON_A, PERSON_B];
+const ROW_HEIGHT = 60;
+
+if (typeof globalThis.ResizeObserver === "undefined") {
+  globalThis.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+}
+
+function renderPlanner(overrides: { weekParam?: string } = {}) {
   return render(
     <StackedPlanner
-      selectedUserIds={selectedUserIds}
+      selectedUserIds={ROW_ORDER}
       blocksByUser={new Map<string, CalendarBlock[]>()}
       weekKey="2026-09-14"
       members={MEMBERS}
       workspaceSlug="acme"
       selfId={SELF_ID}
+      {...overrides}
     />,
   );
 }
 
-afterEach(() => {
-  cleanup();
-  capturedOnDragEnd = undefined;
-  replaceMock.mockClear();
-});
+// Gives each draggable row wrapper a distinct, stacked rect (in
+// `ROW_ORDER`) so dnd-kit's real KeyboardSensor + sortableKeyboardCoordinates
+// -- which pick the next row by comparing `getBoundingClientRect().top`
+// between the active row and its siblings -- can tell rows apart.
+function stubRowRects() {
+  const original = Element.prototype.getBoundingClientRect;
+  Element.prototype.getBoundingClientRect = function (this: Element) {
+    const testId = this.getAttribute("data-testid");
+    const match = testId?.match(/^stacked-row-draggable-(.+)$/);
+    if (match) {
+      const index = ROW_ORDER.indexOf(match[1]);
+      const top = index >= 0 ? index * ROW_HEIGHT : 0;
+      return {
+        top,
+        bottom: top + ROW_HEIGHT,
+        left: 0,
+        right: 300,
+        width: 300,
+        height: ROW_HEIGHT,
+        x: 0,
+        y: top,
+        toJSON() {
+          return this;
+        },
+      } as DOMRect;
+    }
+    return original.call(this);
+  };
+  return () => {
+    Element.prototype.getBoundingClientRect = original;
+  };
+}
 
-describe("F035 stacked row reorder", () => {
-  it("AS-064/AS-065: dragging B from position 2 to position 1 calls router.replace with a `?people=` URL", () => {
-    // [Self, A, B] -- A at index 1, B at index 2.
-    renderPlanner([SELF_ID, PERSON_A, PERSON_B]);
+// dnd-kit's KeyboardSensor attaches its document-level follow-up keydown
+// listener (the one that handles ArrowDown/Space after pickup) inside a
+// `setTimeout(fn)` fired right when the drag starts -- flush one macrotask
+// between keystrokes so each subsequent event lands on a listener that's
+// actually attached yet.
+async function flushMacrotask() {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}
 
-    expect(capturedOnDragEnd).toBeInstanceOf(Function);
+async function pickUpMoveDropDown(handle: HTMLElement) {
+  handle.focus();
+  fireEvent.keyDown(handle, { key: " ", code: "Space" });
+  await flushMacrotask();
+  fireEvent.keyDown(handle, { key: "ArrowDown", code: "ArrowDown" });
+  await flushMacrotask();
+  fireEvent.keyDown(handle, { key: " ", code: "Space" });
+  await flushMacrotask();
+}
 
-    // Drag B onto A's slot.
-    capturedOnDragEnd?.({ active: { id: PERSON_B }, over: { id: PERSON_A } });
+describe("F103 stacked row reorder -- real dnd-kit KeyboardSensor", () => {
+  let restoreRects: () => void;
 
-    expect(replaceMock).toHaveBeenCalledTimes(1);
-    const calledUrl = replaceMock.mock.calls[0][0] as string;
-    expect(calledUrl).toContain("?people=");
+  beforeEach(() => {
+    restoreRects = stubRowRects();
   });
 
-  it("AS-065: the reordered URL contains ids in the new order -- B first, then A", () => {
-    renderPlanner([SELF_ID, PERSON_A, PERSON_B]);
+  afterEach(() => {
+    cleanup();
+    replaceMock.mockClear();
+    restoreRects();
+  });
 
-    capturedOnDragEnd?.({ active: { id: PERSON_B }, over: { id: PERSON_A } });
+  it("test_AS_064_drag_reorders_rows", async () => {
+    renderPlanner({ weekParam: "2026-W38" });
 
-    const calledUrl = replaceMock.mock.calls[0][0] as string;
-    const peopleValue = new URL(calledUrl, "http://localhost").searchParams.get("people") ?? "";
-    const ids = peopleValue.split(",");
+    // Self starts at index 0. Pick it up with the keyboard sensor and move
+    // it down one slot, past Person A.
+    const selfHandle = screen.getByTestId(`stacked-row-drag-handle-${SELF_ID}`);
+    await pickUpMoveDropDown(selfHandle);
 
-    const bIndex = ids.indexOf(PERSON_B);
+    expect(replaceMock).toHaveBeenCalledTimes(1);
+    const url = replaceMock.mock.calls[0][0] as string;
+    const params = new URL(url, "http://localhost").searchParams;
+    const people = params.get("people") ?? "";
+    const ids = people.split(",");
+
+    // Self moved from before Person A to after Person A.
+    const selfIndex = ids.indexOf(SELF_ID);
     const aIndex = ids.indexOf(PERSON_A);
-    expect(bIndex).toBeGreaterThanOrEqual(0);
-    expect(aIndex).toBeGreaterThan(bIndex);
+    expect(selfIndex).toBeGreaterThanOrEqual(0);
+    expect(aIndex).toBeGreaterThanOrEqual(0);
+    expect(aIndex).toBeLessThan(selfIndex);
+  });
+
+  it("test_AS_065_weekParam_preserved_on_reorder", async () => {
+    renderPlanner({ weekParam: "2026-W39" });
+
+    const selfHandle = screen.getByTestId(`stacked-row-drag-handle-${SELF_ID}`);
+    await pickUpMoveDropDown(selfHandle);
+
+    expect(replaceMock).toHaveBeenCalledTimes(1);
+    const url = replaceMock.mock.calls[0][0] as string;
+    expect(url).toContain("week=2026-W39");
+
+    // And the reorder itself still happened alongside the preserved week.
+    const params = new URL(url, "http://localhost").searchParams;
+    const ids = (params.get("people") ?? "").split(",");
+    expect(ids.indexOf(PERSON_A)).toBeLessThan(ids.indexOf(SELF_ID));
   });
 
   it("AS-065: a drag that doesn't change position does NOT call router.replace", () => {
-    renderPlanner([SELF_ID, PERSON_A, PERSON_B]);
+    renderPlanner({ weekParam: "2026-W38" });
 
-    // Dropped back onto itself -- no position change.
-    capturedOnDragEnd?.({ active: { id: PERSON_A }, over: { id: PERSON_A } });
-
+    // No keyboard interaction at all -- render alone must never persist.
     expect(replaceMock).not.toHaveBeenCalled();
   });
 
   // AS-064: each row must actually be draggable in the DOM -- a plain <div>
-  // with no useSortable/drag-handle wiring would still pass every test
-  // above (they only invoke the captured onDragEnd directly and never
-  // touch the rendered tree). This test renders the real component tree
-  // (DndContext's mock above still forwards `children` through -- it only
-  // intercepts the onDragEnd prop -- so SortableRow's useSortable/
-  // GripVertical handle still mount for real) and fails if the drag handle
-  // element is removed from StackedPersonRow's row wrapper.
-  it("AS-064: each rendered row exposes a drag handle element in the DOM", () => {
-    const { getByTestId } = renderPlanner([SELF_ID, PERSON_A, PERSON_B]);
+  // with no useSortable/drag-handle wiring would still pass the tests
+  // above only if the keyboard gesture happened to no-op; guard the
+  // rendered handle directly too.
+  it("AS-064: each rendered row exposes a keyboard-operable drag handle", () => {
+    renderPlanner();
 
-    for (const id of [SELF_ID, PERSON_A, PERSON_B]) {
-      const handle = getByTestId(`stacked-row-drag-handle-${id}`);
+    for (const id of ROW_ORDER) {
+      const handle = screen.getByTestId(`stacked-row-drag-handle-${id}`);
       expect(handle).toBeInTheDocument();
       // dnd-kit wires its pointer/keyboard listeners as DOM attributes
       // (tabIndex + aria-roledescription="sortable") onto the handle via
@@ -141,7 +217,8 @@ describe("F035 stacked planner wires listeners, not just attributes", () => {
   // {...attributes}, not {...listeners}. A handle could keep {...attributes}
   // (so the DOM assertions above still pass) while {...listeners} is
   // deleted, silently making the row undraggable since pointer/keyboard
-  // drag handlers only come from {...listeners}. Guard the source directly.
+  // drag handlers only come from {...listeners}. Guard the source directly
+  // as a fast, explicit backstop to the real-gesture test above.
   it("test_AS_064_drag_listeners_wired_to_handle", () => {
     const src = fs.readFileSync(
       path.join(process.cwd(), "components/calendar/stacked-planner.tsx"),
