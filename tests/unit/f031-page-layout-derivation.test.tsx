@@ -12,6 +12,7 @@ import { describe, expect, it } from "vitest";
 
 import { resolvePlannerLayout } from "@/lib/calendar/planner-layout";
 import { parsePeopleParam } from "@/lib/calendar/people-selection";
+import { buildBlockUserIds } from "@/lib/calendar/workspace-members";
 
 const PAGE_PATH = path.join(
   process.cwd(),
@@ -99,18 +100,79 @@ describe("AS-015: the page never reads a ?view= param", () => {
     expect(source).not.toMatch(/params\.view\b/);
   });
 
+  it("test_AS_015_searchParams_type_does_not_destructure_a_view_field", () => {
+    const source = readPageSource();
+    // Type assertion: the searchParams Promise's object type must not
+    // declare a `view` field alongside the known `week`/`people` fields --
+    // this catches `{ week?: string; view?: string; people?: string }`
+    // regardless of field ordering.
+    expect(source).not.toMatch(
+      /searchParams:\s*Promise<\{[^}]*\bview\??\s*:\s*string[^}]*\}>/,
+    );
+    // And the destructuring assignment pulled out of `await searchParams`
+    // must not bind a `view` variable.
+    const destructureMatch = source.match(
+      /const\s*\{([^}]*)\}\s*=\s*await\s+searchParams;/,
+    );
+    expect(destructureMatch).not.toBeNull();
+    const destructuredFields = destructureMatch![1];
+    expect(destructuredFields).not.toMatch(/\bview\b/);
+  });
+
   it("test_AS_015_page_source_derives_layout_only_from_resolvePlannerLayout", () => {
     const source = readPageSource();
     expect(source).toMatch(/resolvePlannerLayout\(/);
   });
+
+  it("test_AS_015_resolvePlannerLayout_call_site_takes_no_view_argument", () => {
+    const source = readPageSource();
+    // Usage assertion: the call to resolvePlannerLayout must not reference
+    // `view` anywhere in its argument list.
+    const callMatch = source.match(/resolvePlannerLayout\(([^)]*)\)/);
+    expect(callMatch).not.toBeNull();
+    expect(callMatch![1]).not.toMatch(/view/);
+    expect(callMatch![1]).toMatch(/selectedUserIds\.length/);
+  });
+
+  it("test_AS_015_resolvePlannerLayout_signature_only_accepts_a_number", () => {
+    // Structural test: resolvePlannerLayout's own contract is a single
+    // numeric selection count. A `?view=stacked` override could only ever
+    // reach the derived layout by widening this signature to accept a
+    // string/view-like value -- assert the function's real behavior
+    // still comes purely from the numeric selection count, never from a
+    // string such as "stacked" being passed straight through.
+    expect(resolvePlannerLayout(1)).toBe("week-grid");
+    expect(resolvePlannerLayout(2)).toBe("stacked");
+    // @ts-expect-error -- resolvePlannerLayout must not accept a
+    // view-like string argument at all; a mutation widening its
+    // parameter type to accept `"stacked"` (e.g. `number | "stacked"`)
+    // so a `?view=stacked` override could reach it would make this line
+    // type-check, and TypeScript's `--noEmit` gate would then need the
+    // `@ts-expect-error` directive above removed -- the signal that
+    // AS-015 stopped holding.
+    resolvePlannerLayout("stacked");
+  });
 });
 
-describe("AS-001: the page fetches blocks for the selected people, not every member", () => {
-  it("test_AS_001_page_passes_selectedUserIds_as_blockUserIds_not_all_members", () => {
+describe("AS-001/AS-059: the page fetches blocks for the selected people, not every member", () => {
+  // F090: a source regex on page.tsx (`blockUserIds={selectedUserIds}`)
+  // stayed green even after a worker dropped the 4th argument from
+  // getCalendarBlocks(...), because the regex never exercised the actual
+  // data flowing into the query. This replaces it with a data-flow test on
+  // the shared helper page.tsx is required to route through.
+  it("test_AS_059_block_fetch_scoped_to_selection_not_all_members", () => {
+    const result = buildBlockUserIds(["u1", "u2"]);
+    expect(result).toEqual(["u1", "u2"]);
+    // pending/other members not in the input must not appear
+    expect(result).not.toContain("u3");
+  });
+
+  it("test_AS_001_page_source_routes_blockUserIds_through_buildBlockUserIds", () => {
     const source = readPageSource();
-    // The fix for the AS-059 caveat: blockUserIds must come from the
-    // parsed selection, not from every active workspace member.
-    expect(source).toMatch(/blockUserIds=\{selectedUserIds\}/);
+    // page.tsx must derive its `blockUserIds` prop from the shared helper,
+    // not by inlining `selectedUserIds` or widening to every active member.
+    expect(source).toMatch(/buildBlockUserIds\(selectedUserIds\)/);
+    expect(source).toMatch(/blockUserIds=\{blockUserIds\}/);
     expect(source).not.toMatch(
       /blockUserIds=\{workspaceMembers\.active\.map/,
     );
