@@ -35,7 +35,8 @@ import {
   previousWeekKey,
   weekDateRange,
 } from "@/lib/calendar/week-grid";
-import { buildWeekNavHref, parsePeopleParam } from "@/lib/calendar/people-selection";
+import { parsePeopleParam } from "@/lib/calendar/people-selection";
+import { buildPlannerNavHrefs } from "@/lib/calendar/week-nav";
 import { WeekView } from "@/components/calendar/week-view";
 
 export default async function CalendarPage({
@@ -90,8 +91,20 @@ export default async function CalendarPage({
   // untouched -- never re-derived/re-serialized -- so a stale-but-valid
   // selection string round-trips exactly as given.
   const weekHrefFor = (key: string) =>
-    buildWeekNavHref({ workspaceSlug, weekKey: key, peopleParam });
-  const todayHref = buildWeekNavHref({ workspaceSlug, peopleParam });
+    buildPlannerNavHrefs({
+      workspaceSlug,
+      currentWeekKey: weekKey,
+      prevWeekKey: key,
+      nextWeekKey: key,
+      peopleParam,
+    }).prevHref;
+  const todayHref = buildPlannerNavHrefs({
+    workspaceSlug,
+    currentWeekKey: weekKey,
+    prevWeekKey: weekKey,
+    nextWeekKey: weekKey,
+    peopleParam,
+  }).todayHref;
 
   // F029: the switcher's own current selection, resolved the same way any
   // other `?people=` consumer would (AS-059's empty-selection fallback to
