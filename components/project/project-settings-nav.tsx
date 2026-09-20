@@ -93,7 +93,10 @@ export function ProjectSettingsNav({
   const basePath = `/w/${workspaceSlug}/projects/${projectId}/settings`;
 
   return (
-    <nav aria-label="Project settings" className="flex flex-wrap gap-1">
+    <nav
+      aria-label="Project settings"
+      className="flex gap-0.5 overflow-x-auto border-b border-border pb-2"
+    >
       {ENTRIES.map((entry) => {
         const href = entry.slug ? `${basePath}/${entry.slug}` : basePath;
         const isActive = pathname === href;
@@ -104,7 +107,7 @@ export function ProjectSettingsNav({
             href={href}
             aria-current={isActive ? "page" : undefined}
             className={cn(
-              "flex flex-col gap-0.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+              "flex shrink-0 flex-col items-start gap-0 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium leading-tight transition-colors",
               isActive
                 ? "bg-accent text-accent-foreground"
                 : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
@@ -118,9 +121,9 @@ export function ProjectSettingsNav({
             {clientSees && (
               <span
                 data-testid={`settings-nav-client-sees-${entry.slug || "members"}`}
-                className="text-xs font-normal text-muted-foreground"
+                className="text-[10px] font-normal leading-tight text-muted-foreground/70"
               >
-                Client sees: {clientSees}
+                {clientSees}
               </span>
             )}
           </Link>
