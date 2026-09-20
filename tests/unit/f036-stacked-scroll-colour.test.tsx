@@ -7,11 +7,36 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 
 import { StackedPersonRow } from "@/components/calendar/stacked-person-row";
+import { StackedPlanner } from "@/components/calendar/stacked-planner";
+import { PlannerHeader } from "@/components/calendar/planner-header";
 import type { CalendarBlock } from "@/lib/queries/calendar-blocks";
+import type { SwitcherMember } from "@/lib/calendar/workspace-members";
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: () => {},
+    replace: () => {},
+    prefetch: () => {},
+  }),
+  usePathname: () => "/w/test/calendar",
+  useSearchParams: () => new URLSearchParams(),
+}));
+
+if (typeof globalThis.ResizeObserver === "undefined") {
+  globalThis.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+}
+
+if (typeof HTMLElement.prototype.scrollIntoView !== "function") {
+  HTMLElement.prototype.scrollIntoView = function scrollIntoView() {};
+}
 
 afterEach(() => {
   cleanup();
@@ -131,5 +156,117 @@ describe("F036 stacked planner colour + scroll", () => {
         ).not.toMatch(pattern);
       }
     }
+  });
+
+  // F106: the source-text sweep above is not falsifiable against template
+  // literals like `${bookedHours}h total` -- the digit only exists at
+  // runtime, so the regex never sees it in the static source. These two
+  // tests render the real components and assert on actual DOM textContent,
+  // which a mutation that interpolates a capacity figure at render time
+  // cannot escape.
+  it("test_AS_069_no_capacity_figure_rendered_in_planner_header", () => {
+    render(
+      <PlannerHeader
+        rangeLabel="Sep 15 – Sep 19, 2026"
+        workspaceSlug="test"
+        workspaceId="workspace-1"
+        prevHref="/w/test/calendar?week=2026-W37"
+        nextHref="/w/test/calendar?week=2026-W39"
+        todayHref="/w/test/calendar"
+        peopleSwitcher={{
+          members: [
+            { userId: "u1", name: "Alice", email: "alice@example.com", avatarUrl: null },
+            { userId: "u2", name: "Bob", email: "bob@example.com", avatarUrl: null },
+          ],
+          selectedUserIds: ["u1", "u2"],
+          selfId: "u1",
+          weekParam: "2026-W38",
+        }}
+      />,
+    );
+
+    const text = document.body.textContent ?? "";
+    expect(text).not.toMatch(/\d+\s*h\s*(total|booked|·)/i);
+    expect(text).not.toMatch(/utili[sz]ation/i);
+    expect(text).not.toMatch(/capacity/i);
+    expect(text).not.toMatch(/\d+%\s*(load|booked|capacity)/i);
+  });
+
+  it("test_AS_069_no_capacity_figure_rendered_in_stacked_row", () => {
+    render(
+      <StackedPersonRow
+        userId="user-1"
+        userLabel="Alice"
+        blocks={[
+          makeBlock({
+            id: "block-1",
+            startsAt: "2026-09-14T09:00:00Z",
+            endsAt: "2026-09-14T17:00:00Z",
+          }),
+        ]}
+        weekKey={WEEK_KEY}
+      />,
+    );
+
+    const text = document.body.textContent ?? "";
+    expect(text).not.toMatch(/\d+\s*h\s*(total|booked|·)/i);
+    expect(text).not.toMatch(/utili[sz]ation/i);
+    expect(text).not.toMatch(/capacity/i);
+    expect(text).not.toMatch(/\d+%\s*(load|booked|capacity)/i);
+  });
+
+  // F107: the two tests above only render StackedPersonRow directly with a
+  // single person, so a StackedPlanner-level bug that overwrites block.color
+  // with a per-person palette color (e.g. `PERSON_PALETTE[i % 4]`) before
+  // handing blocks down to each row would never be exercised. This test
+  // renders the full StackedPlanner with two members whose blocks each have
+  // a distinct, deliberately-non-palette color, and asserts each chip still
+  // shows its own block.color -- never a color keyed off the person's index.
+  it("test_AS_067_block_color_not_overridden_by_person_palette", () => {
+    const members: SwitcherMember[] = [
+      { userId: "alice", name: "Alice", email: "alice@example.com", avatarUrl: null },
+      { userId: "bob", name: "Bob", email: "bob@example.com", avatarUrl: null },
+    ];
+
+    const aliceBlock = makeBlock({
+      id: "b1",
+      userId: "alice",
+      color: "#ef4444", // red
+      startsAt: "2026-09-14T09:00:00Z",
+      endsAt: "2026-09-14T10:00:00Z",
+    });
+    const bobBlock = makeBlock({
+      id: "b2",
+      userId: "bob",
+      color: "#22c55e", // green
+      startsAt: "2026-09-14T09:00:00Z",
+      endsAt: "2026-09-14T10:00:00Z",
+    });
+
+    render(
+      <StackedPlanner
+        selectedUserIds={["alice", "bob"]}
+        members={members}
+        blocksByUser={new Map([
+          ["alice", [aliceBlock]],
+          ["bob", [bobBlock]],
+        ])}
+        weekKey={WEEK_KEY}
+        workspaceSlug="test"
+        selfId="alice"
+        weekParam="2026-W38"
+      />,
+    );
+
+    const aliceChip = screen.getByTestId("stacked-block-b1-1");
+    const bobChip = screen.getByTestId("stacked-block-b2-1");
+
+    // Each block must render with ITS OWN color -- a person-indexed palette
+    // override would make alice's chip use palette[0] and bob's chip use
+    // palette[1], which would not match block.color here.
+    expect(aliceChip).toHaveStyle({ borderColor: "#ef4444" });
+    expect(bobChip).toHaveStyle({ borderColor: "#22c55e" });
+    expect(aliceChip.getAttribute("style")).toContain("239, 68, 68");
+    expect(bobChip.getAttribute("style")).toContain("34, 197, 94");
   });
 });
