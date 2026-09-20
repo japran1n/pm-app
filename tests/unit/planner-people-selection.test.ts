@@ -106,6 +106,25 @@ describe("parsePeopleParam", () => {
     ).toEqual(["member-a", "member-b"]);
   });
 
+  it("AS-072 regression: order is NOT sorted — z,a,b input stays z,a,b, not a,b,z", () => {
+    const activeIds = ["member-self", "uuid-z", "uuid-a", "uuid-b"];
+    const result = parsePeopleParam("uuid-z,uuid-a,uuid-b", {
+      selfId: SELF_ID,
+      activeMemberIds: activeIds,
+    });
+    expect(result).toEqual(["uuid-z", "uuid-a", "uuid-b"]);
+    expect(result).not.toEqual(["uuid-a", "uuid-b", "uuid-z"]);
+  });
+
+  it("AS-072 regression: all-invalid ids fall back to [selfId], never an empty array (builds on AS-008)", () => {
+    const result = parsePeopleParam("bogus-1,bogus-2,bogus-3", {
+      selfId: SELF_ID,
+      activeMemberIds: ACTIVE_MEMBER_IDS,
+    });
+    expect(result).toEqual([SELF_ID]);
+    expect(result).not.toEqual([]);
+  });
+
   it("defaults to [selfId] when no param is present", () => {
     expect(
       parsePeopleParam(undefined, { selfId: SELF_ID, activeMemberIds: ACTIVE_MEMBER_IDS }),
