@@ -73,6 +73,7 @@ describe("Week time-grid hover-\"+\"-to-create (UI polish: a plain click on the 
         blocksByDate={{}}
         workspaceSlug="acme"
         workspaceId="workspace-1"
+        currentUserId="user-1"
       />,
     );
 
@@ -94,6 +95,7 @@ describe("Week time-grid hover-\"+\"-to-create (UI polish: a plain click on the 
         blocksByDate={{}}
         workspaceSlug="acme"
         workspaceId="workspace-1"
+        currentUserId="user-1"
       />,
     );
 
@@ -118,6 +120,7 @@ describe("Week time-grid hover-\"+\"-to-create (UI polish: a plain click on the 
         blocksByDate={{}}
         workspaceSlug="acme"
         workspaceId="workspace-1"
+        currentUserId="user-1"
       />,
     );
 
@@ -148,6 +151,7 @@ describe("Week time-grid hover-\"+\"-to-create (UI polish: a plain click on the 
         blocksByDate={{}}
         workspaceSlug="acme"
         workspaceId="workspace-1"
+        currentUserId="user-1"
       />,
     );
 

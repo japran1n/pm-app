@@ -19,10 +19,14 @@ export function WeekAgenda({
   days,
   blocksByDate,
   workspaceSlug: _workspaceSlug,
+  currentUserId: _currentUserId,
 }: {
   days: CalendarWeekDay[];
   blocksByDate: Record<string, CalendarBlock[]>;
   workspaceSlug: string;
+  /** F020 (AS-046): plumbing only -- see week-time-grid.tsx's identical
+   * doc comment. Real usage lands in F021-F024. */
+  currentUserId: string;
 }) {
   const daysWithItems = days.filter((day) => (blocksByDate[day.date] ?? []).length > 0);
 

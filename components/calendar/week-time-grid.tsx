@@ -119,11 +119,17 @@ export function WeekTimeGrid({
   blocksByDate,
   workspaceSlug: _workspaceSlug,
   workspaceId,
+  currentUserId: _currentUserId,
 }: {
   days: CalendarWeekDay[];
   blocksByDate: Record<string, CalendarBlock[]>;
   workspaceSlug: string;
   workspaceId?: string;
+  /** F020 (AS-046): plumbing only -- the actual `isOwnBlock` usage (which
+   * gates drag/resize/edit affordances to the block's owner) lands in
+   * F021-F024. Prefixed `_` until then, same convention `_workspaceSlug`
+   * already uses in this component for a prop it doesn't read yet. */
+  currentUserId: string;
 }) {
   // F135/F225/F234 pattern reused verbatim (see calendar-day-grid.tsx's
   // identical `canDrag` line): `null` (no provider in the tree) is

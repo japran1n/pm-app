@@ -102,6 +102,12 @@ export default async function CalendarPage({
           // until then, every active member preserves today's
           // whole-workspace behaviour.
           blockUserIds={workspaceMembers.active.map((m) => m.userId)}
+          // F020 (AS-046): the signed-in member's id, threaded all the
+          // way down to WeekView/WeekTimeGrid/WeekAgenda so the single
+          // `isOwnBlock` predicate (lib/calendar/ownership.ts) has what
+          // it needs at every call site -- no component re-derives "is
+          // this mine" independently.
+          currentUserId={user.id}
         />
       </Suspense>
     </div>
@@ -120,6 +126,7 @@ async function WeekGridSection({
   weekKey,
   weekHrefFor,
   blockUserIds,
+  currentUserId,
 }: {
   workspaceId: string;
   workspaceSlug: string;
@@ -129,6 +136,7 @@ async function WeekGridSection({
   weekKey: string;
   weekHrefFor: (key: string) => string;
   blockUserIds: string[];
+  currentUserId: string;
 }) {
   const rangeEndExclusive = new Date(`${end}T00:00:00.000Z`);
   rangeEndExclusive.setUTCDate(rangeEndExclusive.getUTCDate() + 1);
@@ -154,6 +162,7 @@ async function WeekGridSection({
       timeOffEntries={timeOffEntries}
       workspaceSlug={workspaceSlug}
       workspaceId={workspaceId}
+      currentUserId={currentUserId}
       prevHref={weekHrefFor(previousWeekKey(weekKey))}
       nextHref={weekHrefFor(nextWeekKey(weekKey))}
       todayHref={`/w/${workspaceSlug}/calendar`}

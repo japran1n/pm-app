@@ -56,6 +56,7 @@ describe("Week time-grid live-synced resize (AS: resize is synced with time as i
         blocksByDate={{ [DAY.date]: [makeBlock()] }}
         workspaceSlug="acme"
         workspaceId="workspace-1"
+        currentUserId="user-1"
       />,
     );
 
@@ -94,6 +95,7 @@ describe("Week time-grid live-synced resize (AS: resize is synced with time as i
         blocksByDate={{ [DAY.date]: [makeBlock()] }}
         workspaceSlug="acme"
         workspaceId="workspace-1"
+        currentUserId="user-1"
       />,
     );
 
@@ -129,6 +131,7 @@ describe("Week time-grid live-synced resize (AS: resize is synced with time as i
         blocksByDate={{ [DAY.date]: [makeBlock()] }}
         workspaceSlug="acme"
         workspaceId="workspace-1"
+        currentUserId="user-1"
       />,
     );
 

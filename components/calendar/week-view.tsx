@@ -24,6 +24,7 @@ export function WeekView({
   timeOffEntries,
   workspaceSlug,
   workspaceId,
+  currentUserId,
   prevHref,
   nextHref,
   todayHref,
@@ -37,6 +38,10 @@ export function WeekView({
   timeOffEntries?: TimeOffEntry[];
   workspaceSlug: string;
   workspaceId?: string;
+  /** F020 (AS-046): the signed-in member's user_id, threaded straight
+   * through to WeekTimeGrid/WeekAgenda so the single `isOwnBlock`
+   * predicate (lib/calendar/ownership.ts) has what it needs. */
+  currentUserId: string;
   prevHref: string;
   nextHref: string;
   todayHref: string;
@@ -121,12 +126,14 @@ export function WeekView({
           blocksByDate={blocksByDate}
           workspaceSlug={workspaceSlug}
           workspaceId={workspaceId}
+          currentUserId={currentUserId}
         />
       </div>
       <WeekAgenda
         days={week.days}
         blocksByDate={blocksByDate}
         workspaceSlug={workspaceSlug}
+        currentUserId={currentUserId}
       />
     </div>
   );
