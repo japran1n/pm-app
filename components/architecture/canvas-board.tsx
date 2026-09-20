@@ -342,8 +342,12 @@ function SitemapCanvas({
   // branch collapsed); `hasInit` keeps it from firing into a zero-sized
   // viewport before then, where it would silently do nothing.
   const [hasInit, setHasInit] = useState(false);
+  // Once the user has panned or zoomed, further data changes (e.g. editing a
+  // section) must not yank their viewport back to a fit-all framing.
+  const userHasInteracted = useRef(false);
   useEffect(() => {
     if (!hasInit) return;
+    if (userHasInteracted.current) return;
     const frame = requestAnimationFrame(() =>
       fitBounds(bounds, { padding: 0.12, duration: 200 }),
     );
@@ -381,6 +385,9 @@ function SitemapCanvas({
         nodesConnectable={false}
         elementsSelectable
         panOnDrag
+        onMoveStart={() => {
+          userHasInteracted.current = true;
+        }}
         // Trackpad-first, the way Figma and Octopus.do behave: a two-finger
         // scroll pans on both axes, pinch zooms, and cmd/ctrl + wheel zooms.
         // React Flow's default (zoomOnScroll) turns every two-finger scroll
