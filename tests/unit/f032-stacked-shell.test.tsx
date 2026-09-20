@@ -74,12 +74,29 @@ describe("F032 StackedPlanner shell", () => {
   });
 
   it("AS-063: rows render in selectedUserIds order, not alphabetical", () => {
+    // Deliberately chosen so that BOTH the ids and the names sort
+    // differently from selectedUserIds order: "carol-id" < "alice-id" is
+    // false alphabetically, but critically [...selectedUserIds].sort()
+    // (string sort) reorders these ids to alice, bob, carol -- which would
+    // still incorrectly pass a same-order assertion if the fixture's id
+    // order happened to already be sorted. Using non-UUID ids that sort
+    // differently from the intended render order closes that gap.
+    const CAROL_ID = "carol-id";
+    const ALICE_ID = "alice-id";
+    const BOB_ID = "bob-id";
+    const orderedSelectedUserIds = [CAROL_ID, ALICE_ID, BOB_ID];
+    const orderedMembers: SwitcherMember[] = [
+      { userId: CAROL_ID, name: "Carol", email: "carol@example.com", avatarUrl: null },
+      { userId: ALICE_ID, name: "Alice", email: "alice@example.com", avatarUrl: null },
+      { userId: BOB_ID, name: "Bob", email: "bob@example.com", avatarUrl: null },
+    ];
+
     const { container } = render(
       <StackedPlanner
-        selectedUserIds={SELECTED_USER_IDS}
-        blocksByUser={buildBlocksByUser()}
+        selectedUserIds={orderedSelectedUserIds}
+        blocksByUser={new Map()}
         weekKey="2026-09-14"
-        members={MEMBERS}
+        members={orderedMembers}
       />,
     );
 
@@ -87,15 +104,17 @@ describe("F032 StackedPlanner shell", () => {
     expect(planner).not.toBeNull();
 
     const text = planner!.textContent ?? "";
-    const zoeIndex = text.indexOf("Zoe Zephyr");
-    const aliceIndex = text.indexOf("Alice Anders");
-    const moIndex = text.indexOf("Mo Morales");
+    const carolIndex = text.indexOf("Carol");
+    const aliceIndex = text.indexOf("Alice");
+    const bobIndex = text.indexOf("Bob");
 
-    // selectedUserIds = [Zoe, Alice, Mo] -- must appear in that order, which
-    // is NOT alphabetical (alphabetical would be Alice, Mo, Zoe).
-    expect(zoeIndex).toBeGreaterThanOrEqual(0);
-    expect(aliceIndex).toBeGreaterThan(zoeIndex);
-    expect(moIndex).toBeGreaterThan(aliceIndex);
+    // selectedUserIds = [Carol, Alice, Bob] -- must appear in that order.
+    // A string sort of these ids yields [alice-id, bob-id, carol-id], i.e.
+    // Alice, Bob, Carol -- so this fixture fails under a sort-before-render
+    // mutation, unlike the old ascending-UUID fixture.
+    expect(carolIndex).toBeGreaterThanOrEqual(0);
+    expect(aliceIndex).toBeGreaterThan(carolIndex);
+    expect(bobIndex).toBeGreaterThan(aliceIndex);
   });
 
   it("AS-024 mutation guard: fails if the person with no blocks is dropped from the render", () => {
