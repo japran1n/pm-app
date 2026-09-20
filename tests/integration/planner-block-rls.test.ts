@@ -214,7 +214,7 @@ describe.skipIf(!haveAdminCreds)("Planner calendar_blocks RLS (F011)", () => {
     }
     createdProjectIds.push(project.id);
 
-    const { data: block, error: blockErr } = await memberClient
+    const { data: block, error: blockErr } = await adminClient
       .from("calendar_blocks")
       .insert({
         workspace_id: workspaceId,
