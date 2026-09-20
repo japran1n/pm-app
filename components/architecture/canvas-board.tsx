@@ -367,8 +367,7 @@ function SitemapCanvas({
   return (
     <div
       ref={hoverRef}
-      className="relative w-full min-w-0 overflow-hidden rounded-lg border border-border bg-background"
-      style={{ height: "calc(100vh - 340px)", minHeight: 420 }}
+      className="relative min-h-0 w-full min-w-0 flex-1 overflow-hidden rounded-lg border border-border bg-background"
     >
       <div className="absolute inset-0">
       <ReactFlow
