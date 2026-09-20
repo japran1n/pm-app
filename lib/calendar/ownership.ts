@@ -14,3 +14,11 @@ import type { CalendarBlock } from "@/lib/queries/calendar-blocks";
 export function isOwnBlock(block: CalendarBlock, currentUserId: string): boolean {
   return block.userId === currentUserId;
 }
+
+/** True when a grid column identified by `columnUserId` belongs to the
+ * signed-in member identified by `currentUserId`. Companion to
+ * `isOwnBlock` for affordances that key off the column rather than an
+ * individual block (e.g. the "create block" click target). */
+export function isOwnColumn(columnUserId: string, currentUserId: string): boolean {
+  return columnUserId === currentUserId;
+}

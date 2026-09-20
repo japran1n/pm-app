@@ -61,7 +61,7 @@ import {
 } from "@/components/calendar/calendar-block-popover-form";
 import { canWrite } from "@/lib/auth/permissions";
 import { useMembership } from "@/components/auth/membership-provider";
-import { isOwnBlock } from "@/lib/calendar/ownership";
+import { isOwnBlock, isOwnColumn } from "@/lib/calendar/ownership";
 import { cn } from "@/lib/utils";
 
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
@@ -205,7 +205,7 @@ export function WeekTimeGrid({
   // now -- but it's the same check F032's per-person columns will rely
   // on to keep create affordances off teammates' columns.
   function canCreateInColumn(columnUserId: string): boolean {
-    return columnUserId === currentUserId;
+    return isOwnColumn(columnUserId, currentUserId);
   }
 
   function handleAddSlotPointerDown(date: string, columnUserId: string, event: React.PointerEvent) {
