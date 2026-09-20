@@ -162,8 +162,17 @@ describe.skipIf(!haveAdminCreds)("Planner calendar_blocks RLS (F011)", () => {
     if (blockErr || !block) throw new Error(`Failed to seed block: ${blockErr?.message}`);
     memberBlockId = block.id;
     createdBlockIds.push(memberBlockId);
-    } catch (e) {
-      skipDueToNetwork = true;
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (
+        msg.toLowerCase().includes("fetch failed") ||
+        msg.includes("ECONNREFUSED") ||
+        msg.toLowerCase().includes("network")
+      ) {
+        skipDueToNetwork = true;
+        return;
+      }
+      throw e;
     }
   });
 
@@ -197,7 +206,7 @@ describe.skipIf(!haveAdminCreds)("Planner calendar_blocks RLS (F011)", () => {
     // otherwise see is still readable by any active workspace member.
     const { data: project, error: projectErr } = await adminClient
       .from("projects")
-      .insert({ workspace_id: workspaceId, name: "Private Project" })
+      .insert({ workspace_id: workspaceId, name: "Private Project", visibility: "private" })
       .select("id")
       .single();
     if (projectErr || !project) {
