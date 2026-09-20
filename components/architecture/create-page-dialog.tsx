@@ -19,10 +19,12 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { createPage } from "@/lib/actions/architecture";
+import type { BoardPageKind } from "@/lib/queries/architecture";
 import { slugify } from "@/lib/utils/slugify";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PageKindSelector } from "@/components/architecture/page-kind-selector";
 import {
   Dialog,
   DialogClose,
@@ -51,6 +53,7 @@ export function CreatePageDialog({
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [slugEdited, setSlugEdited] = useState(false);
+  const [pageKind, setPageKind] = useState<BoardPageKind>("static");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -58,6 +61,7 @@ export function CreatePageDialog({
     setName("");
     setSlug("");
     setSlugEdited(false);
+    setPageKind("static");
     setError(null);
     onOpenChange(false);
   }
@@ -89,7 +93,7 @@ export function CreatePageDialog({
       const result = await createPage(projectId, {
         name: trimmedName,
         slug: trimmedSlug,
-        page_kind: "static",
+        page_kind: pageKind,
       });
 
       if (result.ok) {
@@ -169,6 +173,10 @@ export function CreatePageDialog({
                 {error}
               </p>
             )}
+          </div>
+          <div className="flex items-center gap-2">
+            <Label htmlFor="page-kind">Page kind</Label>
+            <PageKindSelector value={pageKind} onChange={setPageKind} />
           </div>
           {error && !isSlugError && (
             <p id="page-name-error" role="alert" className="text-sm text-destructive">

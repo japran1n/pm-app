@@ -12,25 +12,45 @@ import type { BoardPageKind } from "@/lib/queries/architecture";
 // after creation. Renders the existing PageKindBadge (F007) plus a small
 // popover offering the three page kinds; selecting one calls
 // changePageKind (lib/actions/architecture.ts) and refreshes the board.
+//
+// Mission 20260919-150607, F045 (AS-152, AS-153, AS-154): extended to also
+// support a controlled value/onChange mode (mirrors
+// section-kind-selector.tsx's contract) so CreatePageDialog can let a user
+// pick a page_kind before a page (and therefore a taskId) exists yet.
+// Existing taskId/kind callers are unaffected -- the two modes are a
+// discriminated union on props.
 const KINDS: BoardPageKind[] = ["static", "cms", "cms_template", "utility"];
 
-export function PageKindSelector({
-  taskId,
-  kind,
-}: {
+type PersistedProps = {
   taskId: string;
   kind: BoardPageKind | null;
-}) {
+  value?: undefined;
+  onChange?: undefined;
+};
+
+type ControlledProps = {
+  value: BoardPageKind;
+  onChange: (kind: BoardPageKind) => void;
+  taskId?: undefined;
+  kind?: undefined;
+};
+
+export function PageKindSelector(props: PersistedProps | ControlledProps) {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
-  const resolved = kind ?? "static";
+  const isControlled = props.onChange !== undefined;
+  const resolved = isControlled ? props.value : (props.kind ?? "static");
 
   function handleSelect(next: BoardPageKind) {
     setOpen(false);
     if (next === resolved) return;
+    if (isControlled) {
+      props.onChange(next);
+      return;
+    }
     startTransition(async () => {
-      const result = await changePageKind(taskId, next);
+      const result = await changePageKind(props.taskId, next);
       if (result.success) {
         router.refresh();
       }
@@ -47,7 +67,7 @@ export function PageKindSelector({
         onClick={() => setOpen((o) => !o)}
         className="rounded-full outline-none focus-visible:ring-1 focus-visible:ring-ring"
       >
-        <PageKindBadge kind={kind} />
+        <PageKindBadge kind={resolved} />
       </button>
       {open ? (
         <div
