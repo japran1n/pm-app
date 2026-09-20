@@ -38,11 +38,6 @@ const plannerSource = readFileSync(
   path.join(process.cwd(), "components/calendar/stacked-planner.tsx"),
   "utf8",
 );
-const rowSource = readFileSync(
-  path.join(process.cwd(), "components/calendar/stacked-person-row.tsx"),
-  "utf8",
-);
-
 describe("F036 stacked planner colour + scroll", () => {
   it("AS-067: a block chip renders with its own `color` field, not a substituted per-person colour", () => {
     render(
@@ -103,18 +98,38 @@ describe("F036 stacked planner colour + scroll", () => {
     expect(hasMaxHeight).toBe(true);
   });
 
-  it("AS-069: neither stacked file mentions hours/capacity/utilisation/total/percent text", () => {
-    const forbidden = [
-      /\bcapacity\b/i,
-      /\butili[sz]ation\b/i,
-      /\btotal hours\b/i,
-      /\bhours total\b/i,
-      /%\s*(used|utilised|utilized|capacity)/i,
+  it("test_AS_069_no_capacity_figure_in_any_planner_file", () => {
+    const plannerFiles = [
+      "app/(workspace)/w/[workspaceSlug]/calendar/page.tsx",
+      "components/calendar/planner-header.tsx",
+      "components/calendar/stacked-planner.tsx",
+      "components/calendar/stacked-person-row.tsx",
+      "components/calendar/week-view.tsx",
+      "components/calendar/week-time-grid.tsx",
+      "components/calendar/people-switcher.tsx",
     ];
 
-    for (const pattern of forbidden) {
-      expect(plannerSource).not.toMatch(pattern);
-      expect(rowSource).not.toMatch(pattern);
+    const capacityPatterns = [
+      /\d+\s*h\s*(total|·|\/)/i, // "32h total" or "32h · " or "32h / 40h"
+      /utilis[ae]tion/i, // "utilisation" or "utilization"
+      /capacity/i,
+      /\d+%\s*(load|utilis|capac)/i, // "80% load" or "80% utilisation"
+      /load\s*:\s*\d/i, // "load: 80"
+      /\bh\s*·\s*\d+%/i, // "32h · 80%"
+    ];
+
+    for (const file of plannerFiles) {
+      const src = readFileSync(path.join(process.cwd(), file), "utf8");
+      // Strip comments
+      const stripped = src
+        .replace(/\/\/[^\n]*/g, "")
+        .replace(/\/\*[\s\S]*?\*\//g, "");
+      for (const pattern of capacityPatterns) {
+        expect(
+          stripped,
+          `${file} must not contain capacity figure matching ${pattern}`,
+        ).not.toMatch(pattern);
+      }
     }
   });
 });
