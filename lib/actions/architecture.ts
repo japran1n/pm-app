@@ -50,6 +50,7 @@ export {
   renameComponent,
   unlinkComponentFromSection,
   deleteComponent,
+  reorderComponents,
 } from "./architecture/components";
 
 export { setDisciplineEstimatesBulk } from "./architecture/estimates";

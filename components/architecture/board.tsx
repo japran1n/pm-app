@@ -392,6 +392,7 @@ export function ArchitectureBoard({
         <ComponentPanel
           components={components}
           pages={pages}
+          projectId={projectId}
           selectedComponentId={selectedComponentId}
           onSelectComponent={(component) => setSelectedComponentId(component.id)}
           onPageSelect={handlePageSelect}

@@ -23,10 +23,10 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Pencil, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Loader2, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { deleteComponent, renameComponent } from "@/lib/actions/architecture";
+import { deleteComponent, renameComponent, reorderComponents } from "@/lib/actions/architecture";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -44,9 +44,15 @@ import type { BoardComponent, BoardPage } from "@/lib/queries/architecture";
 function ComponentListItem({
   component,
   onSelectComponent,
+  projectId,
+  orderedComponentIds,
+  index,
 }: {
   component: BoardComponent;
   onSelectComponent?: (component: BoardComponent) => void;
+  projectId: string;
+  orderedComponentIds: string[];
+  index: number;
 }) {
   const router = useRouter();
   const [isEditing, setIsEditing] = useState(false);
@@ -55,7 +61,33 @@ function ComponentListItem({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [isRenamePending, startRenameTransition] = useTransition();
   const [isDeletePending, startDeleteTransition] = useTransition();
+  const [isReorderPending, startReorderTransition] = useTransition();
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // F047 (AS-159, AS-160, AS-161): move this component up/down by
+  // swapping it with its neighbour in the full ordered id list, then
+  // sending the complete list to reorderComponents -- the action requires
+  // every live component id to be present (AS-160), so a partial payload
+  // is never sent from here.
+  function move(direction: -1 | 1) {
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= orderedComponentIds.length) return;
+
+    const nextOrder = [...orderedComponentIds];
+    [nextOrder[index], nextOrder[targetIndex]] = [
+      nextOrder[targetIndex],
+      nextOrder[index],
+    ];
+
+    startReorderTransition(async () => {
+      const result = await reorderComponents(projectId, nextOrder);
+      if (!result.success) {
+        toast.error(result.error ?? "Something went wrong. Please try again.");
+        return;
+      }
+      router.refresh();
+    });
+  }
 
   function startEditing() {
     setValue(component.name);
@@ -173,6 +205,30 @@ function ComponentListItem({
           type="button"
           variant="ghost"
           size="sm"
+          aria-label={`Move ${component.name} up`}
+          className="shrink-0"
+          disabled={isReorderPending || index === 0}
+          onClick={() => move(-1)}
+        >
+          <ArrowUp className="size-4" aria-hidden="true" />
+        </Button>
+
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          aria-label={`Move ${component.name} down`}
+          className="shrink-0"
+          disabled={isReorderPending || index === orderedComponentIds.length - 1}
+          onClick={() => move(1)}
+        >
+          <ArrowDown className="size-4" aria-hidden="true" />
+        </Button>
+
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
           aria-label={`Rename ${component.name}`}
           className="shrink-0"
           onClick={startEditing}
@@ -239,6 +295,7 @@ export function ComponentPanel({
   onSelectComponent,
   onPageSelect,
   selectedComponentId,
+  projectId = "",
 }: {
   components: BoardComponent[];
   pages?: BoardPage[];
@@ -246,6 +303,7 @@ export function ComponentPanel({
   onSelectComponent?: (component: BoardComponent) => void;
   onPageSelect?: (pageId: string) => void;
   selectedComponentId?: string | null;
+  projectId?: string;
 }) {
   const [internalSelectedId, setInternalSelectedId] = useState<string | null>(null);
 
@@ -356,11 +414,14 @@ export function ComponentPanel({
         {components.length === 0 ? (
           <li className="p-2 text-sm text-muted-foreground">No components yet.</li>
         ) : (
-          components.map((component) => (
+          components.map((component, index) => (
             <ComponentListItem
               key={component.id}
               component={component}
               onSelectComponent={selectComponent}
+              projectId={projectId}
+              orderedComponentIds={components.map((c) => c.id)}
+              index={index}
             />
           ))
         )}

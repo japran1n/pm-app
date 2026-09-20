@@ -195,7 +195,7 @@ function parseBarrelExports(source: string): string[] {
 // lib/actions/architecture.ts at the time this guard was written (F107,
 // AS-130). If the barrel legitimately grows or shrinks, update this number
 // deliberately — do not let it drift silently.
-const EXPECTED_ACTION_COUNT = 24;
+const EXPECTED_ACTION_COUNT = 25;
 
 /**
  * Returns true only if a SINGLE file both (a) imports `actionName` from the

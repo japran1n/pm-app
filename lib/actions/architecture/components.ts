@@ -17,6 +17,8 @@ import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { canWrite } from "@/lib/auth/permissions";
 import { z } from "zod";
 
+import { reorderComponentsSchema } from "@/lib/validation/architecture";
+
 import type {
   MutationResult,
   MutationWithIdResult,
@@ -730,6 +732,132 @@ export async function deleteComponent(
 
   if (deleteComponentWorkspaceSlug) {
     revalidatePortalProject(deleteComponentWorkspaceSlug, componentRow.project_id);
+  }
+
+  return { success: true };
+}
+
+// F047 (AS-159, AS-160, AS-161): reorders the components list on the
+// Architecture board's Components panel. Components live in
+// `page_components` (standing decision: components are NOT tasks -- see
+// lib/queries/architecture.ts's `ComponentRow`/`page_components` query),
+// so -- unlike reorderPages/reorderSections, which patch a subset of
+// task rows by id/position pairs -- this takes the FULL ordered list of
+// component ids for one project and requires it to be complete (AS-160):
+// if the caller's list doesn't exactly match every live component id for
+// this project, the whole reorder is rejected rather than silently
+// dropping (or duplicating the position of) whichever component the
+// client's stale copy of the board was missing.
+export async function reorderComponents(
+  projectId: string,
+  componentIds: string[],
+): Promise<MutationResult> {
+  const parsed = reorderComponentsSchema.safeParse({ projectId, componentIds });
+
+  if (!parsed.success) {
+    return {
+      success: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid reorder payload.",
+    };
+  }
+
+  const { user } = await getCurrentUser();
+
+  if (!user) {
+    return { success: false, error: "You must be signed in to reorder components." };
+  }
+
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
+  const admin = createAdminClient();
+
+  const { data: projectRow, error: projectError } = await admin
+    .from("projects")
+    .select("id, workspace_id, workspaces(slug)")
+    .eq("id", parsed.data.projectId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (projectError || !projectRow) {
+    return { success: false, error: "Project not found." };
+  }
+
+  const reorderComponentsWorkspace = projectRow.workspaces as
+    | { slug: string }
+    | { slug: string }[]
+    | null;
+  const reorderComponentsWorkspaceSlug = extractWorkspaceSlug(reorderComponentsWorkspace);
+
+  const membership = await requireActiveMembership(admin, projectRow.workspace_id, user.id);
+
+  if (!membership.ok) {
+    return {
+      success: false,
+      error: "You don't have permission to reorder components in this project.",
+    };
+  }
+
+  if (!canWrite({ role: membership.role })) {
+    return {
+      success: false,
+      error: "Viewers don't have permission to reorder components.",
+    };
+  }
+
+  const { data: existingComponents, error: existingComponentsError } = await admin
+    .from("page_components")
+    .select("id")
+    .eq("project_id", parsed.data.projectId);
+
+  if (existingComponentsError) {
+    logger.error("reorderComponents: failed to load components", {
+      error: existingComponentsError,
+    });
+    return {
+      success: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  // AS-160: the submitted list must be exactly the full set of this
+  // project's components -- no fewer, no more, no unrelated ids.
+  const existingIds = new Set((existingComponents ?? []).map((row) => row.id));
+  const submittedIds = new Set(parsed.data.componentIds);
+
+  const isComplete =
+    existingIds.size === submittedIds.size &&
+    [...existingIds].every((id) => submittedIds.has(id));
+
+  if (!isComplete) {
+    return { success: false, error: "Component list is incomplete." };
+  }
+
+  // AS-161: batch-update every component's position to its index in the
+  // caller-supplied order.
+  const results = await Promise.all(
+    parsed.data.componentIds.map((id, index) =>
+      admin.from("page_components").update({ position: index }).eq("id", id),
+    ),
+  );
+
+  const failed = results.find((result) => result.error);
+  if (failed) {
+    logger.error("reorderComponents: update failed", { error: failed.error });
+    return {
+      success: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  try {
+    revalidatePath("/w", "layout");
+  } catch (revalidateError) {
+    logger.error("reorderComponents: revalidatePath failed (non-fatal)", {
+      error: revalidateError,
+    });
+  }
+
+  if (reorderComponentsWorkspaceSlug) {
+    revalidatePortalProject(reorderComponentsWorkspaceSlug, parsed.data.projectId);
   }
 
   return { success: true };

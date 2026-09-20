@@ -70,6 +70,19 @@ export const SECTION_KINDS = ["static", "cms"] as const;
 export const sectionKindEnum = z.enum(SECTION_KINDS);
 export type SectionKind = z.infer<typeof sectionKindEnum>;
 
+// F047 (AS-159, AS-160, AS-161): reorders the components list on the
+// Architecture board. Components live in `page_components` (not `tasks` --
+// see lib/queries/architecture.ts), so this is a full-list replacement of
+// `position` scoped to a single project, not a partial batch of
+// `{id, position}` pairs like reorderPages/reorderSections use for
+// task-backed rows.
+export const reorderComponentsSchema = z.object({
+  projectId: z.string().uuid(),
+  componentIds: z.array(z.string().uuid()).min(1),
+});
+
+export type ReorderComponentsInput = z.infer<typeof reorderComponentsSchema>;
+
 export const changeSectionKindSchema = z.object({
   taskId: z.string().uuid("Invalid task."),
   kind: sectionKindEnum,
