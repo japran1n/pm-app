@@ -227,6 +227,35 @@ describe("F036 stacked planner colour + scroll", () => {
     expect(text).not.toMatch(/\d+%\s*(load|booked|capacity)/i);
   });
 
+  // F116: scrutiny found that the existing render-level AS-069 checks all
+  // require a context word next to the digits (e.g. "8h total", "8h
+  // booked"), so a bare capacity figure like `{blocks.length * 8}h` with no
+  // surrounding word would render straight past every regex above. This
+  // test asserts the rendered text of StackedPersonRow never contains a
+  // bare "<digits>h" token anywhere, regardless of context.
+  it("test_AS_069_no_bare_hour_figure_rendered_in_stacked_row", () => {
+    const { container } = render(
+      <StackedPersonRow
+        userId="user-1"
+        userLabel="Alice"
+        blocks={[
+          makeBlock({ id: "block-1" }),
+          makeBlock({ id: "block-2", startsAt: "2026-09-14T11:00:00Z", endsAt: "2026-09-14T12:00:00Z" }),
+        ]}
+        weekKey={WEEK_KEY}
+      />,
+    );
+
+    const text = container.textContent ?? "";
+    // Matches "8h", "16h", "8 h", etc. -- any bare digit-hour token with no
+    // requirement for a neighbouring word like "total"/"booked". No trailing
+    // \b: sibling block-level elements (e.g. the "Mon" day label) concatenate
+    // directly onto the hour span in textContent with no separating
+    // whitespace, so "16h" can render as "...16hMon..." in the DOM text --
+    // a trailing \b would wrongly treat that as a non-match.
+    expect(text).not.toMatch(/\b\d+\s*h/i);
+  });
+
   // F107: the two tests above only render StackedPersonRow directly with a
   // single person, so a StackedPlanner-level bug that overwrites block.color
   // with a per-person palette color (e.g. `PERSON_PALETTE[i % 4]`) before
