@@ -1,0 +1,18 @@
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+  - ESM syntax in a file loaded as CommonJS (tests/realtime-live-delivery-tests.ts:18:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v4.1.11 /Users/sasajapranin/Desktop/pm-app
+
+ ✓ tests/unit/m9-regression.test.ts > M9 regression (AS-178, AS-179, AS-180, AS-181) > AS-178: resolveClientBucket (and its dependencies) is byte-identical to the locked implementation 2ms
+ ✓ tests/unit/m9-regression.test.ts > M9 regression (AS-178, AS-179, AS-180, AS-181) > AS-178b: resolveClientBucket pinned behaviour table 3ms
+ ✓ tests/unit/m9-regression.test.ts > M9 regression (AS-178, AS-179, AS-180, AS-181) > AS-179: resolveClientBucket stays reachable (exported) and components/portal is not excluded from typechecking 0ms
+ ✓ tests/unit/m9-regression.test.ts > M9 regression (AS-178, AS-179, AS-180, AS-181) > AS-180: architecture query selects the live task columns and excludes dropped page_components.description 0ms
+ ✓ tests/unit/m9-regression.test.ts > M9 regression (AS-178, AS-179, AS-180, AS-181) > AS-181: setNodeMetaClientVisibility removed tree-wide, not just from the barrel 180ms
+
+ Test Files  1 passed (1)
+      Tests  5 passed (5)
+   Start at  04:32:28
+   Duration  328ms (transform 29ms, setup 50ms, import 11ms, tests 186ms, environment 0ms)
+

@@ -81,7 +81,7 @@ produkciji — traži adversarijalni pregled.
 **Kapija M4:** `scrutiny-validator` + `ux-validator`. AS-103 se
 provjerava eksplicitno — copy brief je dokument koji ide klijentu.
 
-## M5 — Čišćenje i destruktivne izmjene
+## M5 — ✅ GREEN — Čišćenje i destruktivne izmjene
 
 | # | Feature | Tvrdnje |
 |---|---|---|
@@ -97,43 +97,43 @@ ne briše se. Ostatak milestona teče dalje.
 
 **Kapija M5:** `scrutiny-validator`. Migracije koje brišu kolone.
 
-## M6 — Trajne garde
+## M6 — ✅ GREEN — Trajne garde
 
 | # | Feature | Tvrdnje |
 |---|---|---|
-| F037 | Garda: svaka CHECK vrijednost ima UI poziv, čita iz migracija | AS-126…129 | [CLARIFIED-AUTO] |
-| F038 | Garda: svaka akcija ima poziv izvan barrela i testova | AS-130 | [CLARIFIED-AUTO] |
-| F039 | Obje obaraju build, bez allowlist unosa | AS-131, AS-134 | [CLARIFIED-AUTO] |
-| F040 | Ručno ukloniti po jedan poziv, dokazati da garde padaju, dokumentovati | AS-132, AS-133 | [CLARIFIED-AUTO] |
+| F037 | Garda: svaka CHECK vrijednost ima UI poziv, čita iz migracija | AS-126…129 | [CLARIFIED-AUTO] [COMPLETE] |
+| F038 | Garda: svaka akcija ima poziv izvan barrela i testova | AS-130 | [CLARIFIED-AUTO] [COMPLETE] |
+| F039 | Obje obaraju build, bez allowlist unosa | AS-131, AS-134 | [CLARIFIED-AUTO] [COMPLETE] |
+| F040 | Ručno ukloniti po jedan poziv, dokazati da garde padaju, dokumentovati | AS-132, AS-133 | [CLARIFIED-AUTO] [COMPLETE] |
 
 **F040 je jedini feature u misionu koji se ne može automatizovati.**
 Garda koja ne hvata gora je od nepostojeće jer daje lažnu sigurnost.
 
-## M7 — Izmjena sluga
+## M7 — ✅ GREEN — Izmjena sluga
 
 | # | Feature | Tvrdnje |
 |---|---|---|
-| F041 | `changePageSlugSchema` + provjera jedinstvenosti u projektu | AS-139…141 | [CLARIFIED-AUTO] |
-| F042 | `changePageSlug` akcija: RBAC, ugniježdene putanje, audit | AS-138, AS-142, AS-143, AS-149 | [CLARIFIED-AUTO] |
-| F043 | Testovi: sekcije, `page_order`, podstranice ostaju netaknuti | AS-144…146 | [CLARIFIED-AUTO] |
-| F044 | UI na zaglavlju kolone + poruka o grešci | AS-147, AS-148 | [CLARIFIED-AUTO] |
+| F041 | `changePageSlugSchema` + provjera jedinstvenosti u projektu | AS-139…141 | [CLARIFIED-AUTO] | [COMPLETE] |
+| F042 | `changePageSlug` akcija: RBAC, ugniježdene putanje, audit | AS-138, AS-142, AS-143, AS-149 | [CLARIFIED-AUTO] | [COMPLETE] |
+| F043 | Testovi: sekcije, `page_order`, podstranice ostaju netaknuti | AS-144…146 | [CLARIFIED-AUTO] | [COMPLETE] |
+| F044 | UI na zaglavlju kolone + poruka o grešci | AS-147, AS-148 | [CLARIFIED-AUTO] | [COMPLETE] |
 
-## M8 — `page_kind` pri kreiranju i reorder komponenti
-
-| # | Feature | Tvrdnje |
-|---|---|---|
-| F045 | Izbor `page_kind` u `create-page-dialog`, default `static` | AS-152…154 | [CLARIFIED-AUTO] |
-| F046 | `createPage` i dalje radi bez `page_kind` | AS-155, AS-156 | [CLARIFIED-AUTO] |
-| F047 | `reorderComponents` akcija + validacija potpune liste | AS-159…161 | [CLARIFIED-AUTO] |
-| F048 | Prevlačenje u panelu komponenti preko `dnd-kit` | AS-162…164 | [CLARIFIED-AUTO] |
-
-## M9 — Migracije i regresija
+## M8 — `page_kind` pri kreiranju i reorder komponenti ✅ GREEN
 
 | # | Feature | Tvrdnje |
 |---|---|---|
-| F049 | Header komentari i redoslijed aditivno→destruktivno | AS-168, AS-169 | [CLARIFIED-AUTO] |
-| F050 | `db:apply` po migraciji, `migrations:check` čist, `db:gen-types` | AS-170…174 | [CLARIFIED-AUTO] |
-| F051 | Regresijski prolaz: stari contract, portal, `resolveClientBucket` | AS-006, AS-178…182 | [CLARIFIED-AUTO] |
+| F045 | Izbor `page_kind` u `create-page-dialog`, default `static` | AS-152…154 | [CLARIFIED-AUTO] | [COMPLETE] |
+| F046 | `createPage` i dalje radi bez `page_kind` | AS-155, AS-156 | [CLARIFIED-AUTO] | [COMPLETE] |
+| F047 | `reorderComponents` akcija + validacija potpune liste | AS-159…161 | [CLARIFIED-AUTO] | [COMPLETE] |
+| F048 | Prevlačenje u panelu komponenti preko `dnd-kit` | AS-162…164 | [CLARIFIED-AUTO] | [COMPLETE] |
+
+## M9 — Migracije i regresija ✅ GREEN
+
+| # | Feature | Tvrdnje |
+|---|---|---|
+| F049 | Header komentari i redoslijed aditivno→destruktivno | AS-168, AS-169 | [CLARIFIED-AUTO] | [COMPLETE] |
+| F050 | `db:apply` po migraciji, `migrations:check` čist, `db:gen-types` | AS-170…174 | [CLARIFIED-AUTO] | [COMPLETE] |
+| F051 | Regresijski prolaz: stari contract, portal, `resolveClientBucket` | AS-006, AS-178…182 | [CLARIFIED-AUTO] | [COMPLETE] |
 
 **Kapija M9:** `scrutiny-validator` + `ux-validator`. Završna.
 
@@ -286,3 +286,82 @@ M0 ──▶ M1 ──▶ M2 ──▶ M3 ──▶ M4 ──▶ M5 ──▶ M6
 | F104 | Extend repaint chain test to cover PageColumn + make prop required | AS-089 | F096 | [CLARIFIED-AUTO] [COMPLETE] |
 | F105 | Fix copy-brief button unmount-on-save (focus lost bug) | AS-089 | F104 | [CLARIFIED-AUTO] [COMPLETE] |
 | F106 | Guard AS-118 + clean f096 fixtures | AS-117, AS-118 | F096, F101 | [CLARIFIED-AUTO] [COMPLETE] |
+
+## M6 follow-ups (from M6-scrutiny-1.md RED)
+
+| # | Feature | Tvrdnje | Parent |
+|---|---|---|---|
+| F107 | Fix AS-130: barrel guard detect import/call sites, not comments | AS-130 | F038 | [CLARIFIED-AUTO] [COMPLETE] |
+| F108 | Fix AS-127/128/129: harden CHECK parser + realign IDs | AS-127, AS-128, AS-129 | F037 | [CLARIFIED-AUTO] [COMPLETE] |
+| F109 | Fix AS-133: mutation proof for stale-comment scenario (needs F107) | AS-133 | F040 | [CLARIFIED-AUTO] [COMPLETE] |
+
+## M6 follow-ups round 2 (from M6-scrutiny-2.md RED)
+
+| # | Feature | Tvrdnje | Parent |
+|---|---|---|---|
+| F110 | Fix AS-130: bind call-site to verified architecture import | AS-130 | F107 | [CLARIFIED-AUTO] [COMPLETE] |
+| F111 | Fix AS-127: fixture-based parser proof + barrel parser hardening | AS-127 | F108 | [CLARIFIED-AUTO] [COMPLETE] |
+
+## M6 follow-ups round 3 (from M6-scrutiny-3.md RED)
+
+| # | Feature | Tvrdnje | Parent |
+|---|---|---|---|
+| F112 | Fix AS-127: runtime-generated fixtures prevent hardcoded-map bypass | AS-127 | F111 | [CLARIFIED-AUTO] [COMPLETE] |
+| F113 | Fix AS-130: barrel hardening whole-source export check | AS-130 | F111 | [CLARIFIED-AUTO] [COMPLETE] |
+
+## M7 Follow-ups (from M7-scrutiny-1.md RED)
+
+| # | Feature | Tvrdnje | Parent |
+|---|---|---|---|
+| F114 | Fix M7 test mocks: record filter tuples + assert revalidatePath | AS-141, AS-144, AS-146, AS-149, AS-140 | F042/F043 | [CLARIFIED-AUTO] | [COMPLETE] |
+| F115 | Harden slug editor UI + add tests | AS-147, AS-148 | F044 | [CLARIFIED-AUTO] | [COMPLETE] |
+
+## M8 Scrutiny Follow-ups (from M8-scrutiny-1.md RED)
+
+| # | Feature | Tvrdnje | Parent |
+|---|---|---|---|
+| F116 | Fix tsc errors in f048 test file | AS-006 | F048 | [CLARIFIED-AUTO] | [COMPLETE] |
+| F117 | Fix AS-155: createPage test without page_kind + z.input type | AS-155, AS-156 | F046 | [CLARIFIED-AUTO] | [COMPLETE] |
+| F118 | Make AS-162 falsifiable: SortableContext deletion breaks test | AS-162 | F048 | [CLARIFIED-AUTO] | [COMPLETE] |
+| F119 | Close duplicate-id hole in reorderComponents (AS-160) | AS-160 | F047 | [CLARIFIED-AUTO] | [COMPLETE] |
+| F120 | Harden AS-161 position write + tighten id↔position test | AS-161 | F047 | [CLARIFIED-AUTO] | [COMPLETE] |
+| F121 | Drag handler error path + pending state (AS-163/164) | AS-163, AS-164 | F048 | [CLARIFIED-AUTO] | [COMPLETE] |
+
+## M8 UX Follow-ups (from M8-ux.md RED)
+
+| # | Feature | Tvrdnje | Parent |
+|---|---|---|---|
+| F125 | Pass projectId to ComponentPanel in canvas-board.tsx | AS-163, AS-164 | F048 | [CLARIFIED-AUTO] | [COMPLETE] |
+
+## M8 Non-blocking follow-ups (from M8-scrutiny-2.md)
+
+| # | Feature | Tvrdnje | Parent |
+|---|---|---|---|
+| F122 | Real drag coverage: deleting listeners breaks test (AS-163) | AS-163 | F048 | [CLARIFIED-AUTO] |
+| F123 | Fix name-blanking fallback in reorder upsert (AS-161) | AS-161 | F120 | [CLARIFIED-AUTO] |
+| F124 | Add try/catch for thrown server action in startReorderTransition (AS-164) | AS-164 | F121 | [CLARIFIED-AUTO] |
+
+## M9 Follow-ups (from M9-scrutiny-1.md RED)
+
+| # | Feature | Tvrdnje | Parent |
+|---|---|---|---|
+| F126 | Fix AS-168: discover mission migrations via git, improve content floor | AS-168 | F049 | [CLARIFIED-AUTO] [COMPLETE] |
+| F127 | Fix AS-169: real directory read + SQL classifier for ordering rule | AS-169 | F049 | [CLARIFIED-AUTO] [COMPLETE] |
+| F128 | Fix AS-178: SHA-256 byte-identity guard for resolveClientBucket | AS-178 | F051 | [CLARIFIED-AUTO] [COMPLETE] |
+| F129 | Fix AS-180/181: positive column assertions + tree-wide removed-action scan | AS-180, AS-181 | F051 | [CLARIFIED-AUTO] [COMPLETE] |
+| F130 | Fix AS-006: 9 pre-existing unit test failures in tests/unit | AS-006 | — | [CLARIFIED-AUTO] [COMPLETE] |
+
+## M9 Follow-ups round 2 (from M9-scrutiny-2.md RED)
+
+| # | Feature | Tvrdnje | Parent |
+|---|---|---|---|
+| F131 | Fix AS-168/169: real discovery + semantic classifier | AS-168, AS-169 | F126, F127 | [CLARIFIED-AUTO] [COMPLETE] |
+| F132 | Fix AS-178: extend hash scope + truth table | AS-178 | F128 | [CLARIFIED-AUTO] [COMPLETE] |
+| F133 | Fix AS-180/181: COMPONENT_COLUMNS positive + dropped-column grep | AS-180, AS-181 | F129 | [CLARIFIED-AUTO] [COMPLETE] |
+| F134 | Fix AS-006: fix 7 lint warnings --max-warnings=0 | AS-006 | F130 | [CLARIFIED-AUTO] [COMPLETE] |
+
+## M9 UX Follow-ups (from M9-ux-1.md INCONCLUSIVE)
+
+| # | Feature | Tvrdnje | Parent |
+|---|---|---|---|
+| F135 | Add AS-179 it() block + AS-182 traceability labels | AS-179, AS-182 | F051 | [CLARIFIED-AUTO] [COMPLETE] |

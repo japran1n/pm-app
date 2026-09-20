@@ -1,0 +1,23 @@
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+  - ESM syntax in a file loaded as CommonJS (tests/realtime-live-delivery-tests.ts:18:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v4.1.11 /Users/sasajapranin/Desktop/pm-app
+
+ ✓ tests/unit/m9-migration-check.test.ts > M9 database types check (AS-172, AS-173) > AS-172: page_components.description is not in the types file 1ms
+ ✓ tests/unit/m9-migration-check.test.ts > M9 database types check (AS-172, AS-173) > AS-173: node_meta (architecture_node_meta).client_visible is not in the types file 0ms
+ ✓ tests/unit/m9-migration-headers.test.ts > M9 migration headers (AS-168, AS-169) > AS-168: real discovery finds mission migrations and each has a leading -- comment with a real description 1ms
+ ✓ tests/unit/m9-migration-headers.test.ts > M9 migration headers (AS-168, AS-169) > AS-169: destructive migrations are never dated before the additive migrations they depend on 0ms
+ ✓ tests/unit/m9-regression.test.ts > M9 regression (AS-178, AS-179, AS-180, AS-181) > AS-178: resolveClientBucket (and its dependencies) is byte-identical to the locked implementation 2ms
+ ✓ tests/unit/m9-regression.test.ts > M9 regression (AS-178, AS-179, AS-180, AS-181) > AS-178b: resolveClientBucket pinned behaviour table 4ms
+ ✓ tests/unit/m9-regression.test.ts > M9 regression (AS-178, AS-179, AS-180, AS-181) > AS-180: architecture query selects the live task columns and excludes dropped page_components.description 1ms
+ ✓ tests/unit/m9-regression.test.ts > M9 regression (AS-178, AS-179, AS-180, AS-181) > AS-181: setNodeMetaClientVisibility removed tree-wide, not just from the barrel 189ms
+ ✓ tests/unit/m6-action-barrel-guard.test.ts > AS-130: architecture action barrel guard > parses the expected number of exported actions from the barrel 1ms
+ ✓ tests/unit/m6-action-barrel-guard.test.ts > AS-130: architecture action barrel guard > every exported architecture action has at least one real import/call reference outside the barrel, leaf modules, and tests 371ms
+
+ Test Files  4 passed (4)
+      Tests  10 passed (10)
+   Start at  04:25:41
+   Duration  538ms (transform 123ms, setup 245ms, import 56ms, tests 573ms, environment 0ms)
+

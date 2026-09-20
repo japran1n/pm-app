@@ -1,0 +1,119 @@
+▲ Next.js 16.3.5 (Turbopack)
+- Environments: .env.local, .env
+✓ Running next.config.ts took 14ms
+- Experiments (use with caution):
+  · serverActions
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 2.4s
+  Running TypeScript ...
+  Finished TypeScript in 14.9s ...
+  Collecting page data using 9 workers ...
+  Generating static pages using 9 workers (0/17) ...
+  Generating static pages using 9 workers (4/17) 
+  Generating static pages using 9 workers (8/17) 
+  Generating static pages using 9 workers (12/17) 
+✓ Generating static pages using 9 workers (17/17) in 126ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ƒ /api/client-errors
+├ ƒ /api/csp-report
+├ ƒ /api/extension/attachments
+├ ƒ /api/extension/context
+├ ƒ /api/extension/tasks
+├ ƒ /api/health
+├ ƒ /api/site-preview/html
+├ ƒ /api/site-preview/probe
+├ ƒ /api/webflow-source
+├ ƒ /api/webflow-source/css
+├ ƒ /auth/callback
+├ ƒ /dev-login
+├ ƒ /extension-connect
+├ ƒ /extension-connect/exchange
+├ ○ /icon.svg
+├ ƒ /onboarding
+├ ƒ /portal/[workspaceSlug]
+├ ƒ /portal/[workspaceSlug]/closed/[projectId]
+├ ƒ /portal/[workspaceSlug]/files
+├ ƒ /portal/[workspaceSlug]/p/[projectId]
+├ ƒ /portal/[workspaceSlug]/p/[projectId]/approvals
+├ ƒ /portal/[workspaceSlug]/p/[projectId]/architecture
+├ ƒ /portal/[workspaceSlug]/p/[projectId]/brief
+├ ƒ /portal/[workspaceSlug]/p/[projectId]/conversation
+├ ƒ /portal/[workspaceSlug]/p/[projectId]/files
+├ ƒ /portal/[workspaceSlug]/p/[projectId]/for-you
+├ ƒ /portal/[workspaceSlug]/p/[projectId]/hours
+├ ƒ /portal/[workspaceSlug]/p/[projectId]/how-we-work
+├ ƒ /portal/[workspaceSlug]/p/[projectId]/pages
+├ ƒ /portal/[workspaceSlug]/p/[projectId]/requests
+├ ƒ /portal/[workspaceSlug]/p/[projectId]/results
+├ ƒ /portal/[workspaceSlug]/p/[projectId]/scope
+├ ƒ /portal/[workspaceSlug]/p/[projectId]/site
+├ ƒ /portal/[workspaceSlug]/p/[projectId]/staging
+├ ƒ /portal/[workspaceSlug]/p/[projectId]/t/[taskId]
+├ ƒ /portal/[workspaceSlug]/p/[projectId]/your-list
+├ ƒ /portal/[workspaceSlug]/requests
+├ ƒ /portal/[workspaceSlug]/t/[taskId]
+├ ƒ /sign-in
+├ ƒ /w/[workspaceSlug]
+├ ƒ /w/[workspaceSlug]/approvals
+├ ƒ /w/[workspaceSlug]/archive
+├ ƒ /w/[workspaceSlug]/calendar
+├ ƒ /w/[workspaceSlug]/chat
+├ ƒ /w/[workspaceSlug]/chat/[channelId]
+├ ƒ /w/[workspaceSlug]/docs
+├ ƒ /w/[workspaceSlug]/docs/[docId]
+├ ƒ /w/[workspaceSlug]/help
+├ ƒ /w/[workspaceSlug]/my-tasks
+├ ƒ /w/[workspaceSlug]/notifications
+├ ƒ /w/[workspaceSlug]/preview-as-client
+├ ƒ /w/[workspaceSlug]/projects
+├ ƒ /w/[workspaceSlug]/projects/[projectId]/architecture
+├ ƒ /w/[workspaceSlug]/projects/[projectId]/board
+├ ƒ /w/[workspaceSlug]/projects/[projectId]/brief
+├ ƒ /w/[workspaceSlug]/projects/[projectId]/docs
+├ ƒ /w/[workspaceSlug]/projects/[projectId]/docs/[docId]
+├ ƒ /w/[workspaceSlug]/projects/[projectId]/hours
+├ ƒ /w/[workspaceSlug]/projects/[projectId]/list
+├ ƒ /w/[workspaceSlug]/projects/[projectId]/print
+├ ƒ /w/[workspaceSlug]/projects/[projectId]/settings
+├ ƒ /w/[workspaceSlug]/projects/[projectId]/settings/budget
+├ ƒ /w/[workspaceSlug]/projects/[projectId]/settings/columns
+├ ƒ /w/[workspaceSlug]/projects/[projectId]/settings/custom-fields
+├ ƒ /w/[workspaceSlug]/projects/[projectId]/settings/deliverables
+├ ƒ /w/[workspaceSlug]/projects/[projectId]/settings/measurement
+├ ƒ /w/[workspaceSlug]/projects/[projectId]/settings/phases
+├ ƒ /w/[workspaceSlug]/projects/[projectId]/settings/portal
+├ ƒ /w/[workspaceSlug]/projects/[projectId]/settings/record
+├ ƒ /w/[workspaceSlug]/projects/[projectId]/settings/site
+├ ƒ /w/[workspaceSlug]/projects/[projectId]/staging
+├ ƒ /w/[workspaceSlug]/requests
+├ ƒ /w/[workspaceSlug]/search
+├ ƒ /w/[workspaceSlug]/settings
+├ ƒ /w/[workspaceSlug]/settings/audit
+├ ƒ /w/[workspaceSlug]/settings/members
+├ ƒ /w/[workspaceSlug]/settings/profile
+├ ƒ /w/[workspaceSlug]/settings/status-templates
+├ ƒ /w/[workspaceSlug]/settings/task-types
+├ ƒ /w/[workspaceSlug]/t/[taskKey]
+├ ƒ /w/[workspaceSlug]/team
+├ ƒ /w/[workspaceSlug]/team/[userId]
+├ ƒ /w/[workspaceSlug]/templates
+├ ƒ /w/[workspaceSlug]/time
+├ ƒ /w/[workspaceSlug]/time/[userId]
+├ ƒ /w/[workspaceSlug]/time/me
+├ ƒ /w/[workspaceSlug]/tools
+├ ƒ /w/[workspaceSlug]/tools/code-editor
+├ ƒ /w/[workspaceSlug]/tools/webflow
+├ ƒ /w/[workspaceSlug]/trash
+└ ƒ /w/[workspaceSlug]/watching
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
