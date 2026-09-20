@@ -136,6 +136,29 @@ describe("F035 stacked row reorder", () => {
   });
 });
 
+describe("F035 stacked planner wires listeners, not just attributes", () => {
+  // AS-064: aria-roledescription/tabIndex on the handle come from
+  // {...attributes}, not {...listeners}. A handle could keep {...attributes}
+  // (so the DOM assertions above still pass) while {...listeners} is
+  // deleted, silently making the row undraggable since pointer/keyboard
+  // drag handlers only come from {...listeners}. Guard the source directly.
+  it("test_AS_064_drag_listeners_wired_to_handle", () => {
+    const src = fs.readFileSync(
+      path.join(process.cwd(), "components/calendar/stacked-planner.tsx"),
+      "utf-8",
+    );
+
+    expect(src).toMatch(/\{\.\.\.attributes\}/);
+    expect(src).toMatch(/\{\.\.\.listeners\}/);
+
+    // {...listeners} must appear inside a JSX element (spread onto a tag),
+    // not merely destructured and left unused.
+    const jsxListenersUse = src.match(/<[a-zA-Z][^>]*\{\.\.\.listeners\}[^>]*>/g);
+    expect(jsxListenersUse).not.toBeNull();
+    expect(jsxListenersUse!.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
 describe("F035 stacked planner uses dnd-kit SortableContext", () => {
   it("AS-064/AS-065: stacked-planner.tsx imports and renders SortableContext (not a hand-rolled reorder list)", () => {
     const source = fs.readFileSync(
