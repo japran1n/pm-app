@@ -99,7 +99,13 @@ export default async function CalendarPage({
 
   // Week is the ONLY view -- the "?week=" param resolves to that week, or
   // "today"'s own week if absent/invalid.
-  const weekKey = parseWeekKey(weekParam) ?? currentWeekKey(timezone);
+  // F112 (AS-014): the DEFAULT week (no "?week=" param) must resolve from
+  // server time (UTC), not the viewer's own profile timezone -- otherwise
+  // two viewers with different timezones can land on different default
+  // weeks near a week boundary. `timezone` is still threaded to
+  // `buildCalendarWeek` below for per-day "isToday" highlighting, which is
+  // intentionally viewer-local.
+  const weekKey = parseWeekKey(weekParam) ?? currentWeekKey("UTC");
   const week = buildCalendarWeek(weekKey, timezone);
   const weekRange = weekDateRange(weekKey);
   // F029/F079 (AS-011): week navigation carries the raw `?people=` value

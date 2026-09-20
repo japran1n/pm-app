@@ -5,6 +5,9 @@
 // source-text regex checks -- every assertion here fails if the underlying
 // behaviour regresses, regardless of how the page happens to be wired.
 
+import fs from "node:fs";
+import path from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import { parsePeopleParam } from "@/lib/calendar/people-selection";
@@ -159,7 +162,7 @@ describe("F102: CalendarPage composition (page.tsx data-flow, replayed)", () => 
   });
 
   it("test_AS_014_parseWeekKey_returns_the_exact_valid_week_param", () => {
-    // page.tsx: `const weekKey = parseWeekKey(weekParam) ?? currentWeekKey(timezone);`
+    // page.tsx: `const weekKey = parseWeekKey(weekParam) ?? currentWeekKey("UTC");`
     // The actual "?week=" shape is a Monday-anchored "YYYY-MM-DD" DateOnly
     // string (lib/calendar/week-grid.ts), not an ISO-8601 week-of-year
     // string -- a valid param round-trips through parseWeekKey unchanged.
@@ -169,7 +172,7 @@ describe("F102: CalendarPage composition (page.tsx data-flow, replayed)", () => 
   });
 
   it("test_AS_014_parseWeekKey_falls_back_to_null_for_missing_or_invalid_param", () => {
-    // No param -> null, so page.tsx falls through to currentWeekKey(timezone).
+    // No param -> null, so page.tsx falls through to currentWeekKey("UTC").
     expect(parseWeekKey(undefined)).toBeNull();
     // Malformed/invalid calendar date -> also null, never throws.
     expect(parseWeekKey("not-a-week")).toBeNull();
@@ -205,13 +208,35 @@ describe("F102: CalendarPage composition (page.tsx data-flow, replayed)", () => 
     expect(blockUserIds).toEqual(selectedUserIds);
     expect(new Set(blockUserIds).size).toBe(blockUserIds.length);
     // The weekKey itself does not vary per user id -- it is one string,
-    // not a map/array keyed by userId.
+    // not a map/array keyed by userId, and it is threaded verbatim into the
+    // single getCalendarBlocks call regardless of which/how-many members
+    // are selected.
     expect(typeof weekKey).toBe("string");
-    for (const userId of blockUserIds) {
-      // Every member's block query is scoped by the SAME weekKey value.
-      expect(weekKey).toBe("2026-09-14");
-      expect(userId).not.toBe(weekKey);
-    }
+    expect(weekKey).toBe("2026-09-14");
+  });
+
+  it("test_AS_014_page_uses_server_time_not_viewer_timezone", () => {
+    // F112: two viewers with different profile timezones must land on the
+    // SAME default week when no "?week=" param is present, so the DEFAULT
+    // week must be derived from server time (UTC), never from the caller's
+    // own resolved `timezone` variable. Asserts against the real page.tsx
+    // source so a regression back to `currentWeekKey(timezone)` fails this
+    // test regardless of how the surrounding code is refactored.
+    const src = fs.readFileSync(
+      path.join(
+        process.cwd(),
+        "app/(workspace)/w/[workspaceSlug]/calendar/page.tsx",
+      ),
+      "utf-8",
+    );
+
+    // Mutation: reverting to `currentWeekKey(timezone)` (or any viewer-tz
+    // variable) MUST fail this assertion.
+    expect(src).not.toMatch(
+      /currentWeekKey\s*\(\s*(?:timezone|viewerTimezone|profile\.timezone)\s*\)/,
+    );
+    // The real call site passes the literal "UTC" instead.
+    expect(src).toMatch(/currentWeekKey\s*\(\s*["']UTC["']\s*\)/);
   });
 
   it("end-to-end replay of page.tsx's own call sequence for a full-team selection", () => {
