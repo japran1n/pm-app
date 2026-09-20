@@ -16,6 +16,7 @@
 export {
   createPage,
   changePageKind,
+  changePageSlug,
   renamePage,
   deletePage,
   reorderPages,

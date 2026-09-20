@@ -38,6 +38,7 @@ import type { BoardPageKind } from "@/lib/queries/architecture";
 import {
   createPageSchema,
   pageKindEnum,
+  changePageSlugSchema,
   type CreatePageInput,
 } from "@/lib/validation/architecture";
 import { z } from "zod";
@@ -335,6 +336,128 @@ export async function changePageKind(
 
   if (changePageKindWorkspaceSlug) {
     revalidatePortalProject(changePageKindWorkspaceSlug, taskRow.project_id);
+  }
+
+  return { success: true };
+}
+
+// AS-138/AS-141/AS-142/AS-143/AS-149: a page's slug can be changed after
+// creation. Same membership/permission re-check as changePageKind, plus a
+// project-scoped uniqueness check (AS-141): two pages in the same project
+// cannot share a slug, but the same slug is fine across different
+// projects -- identical contract to createPage's slug uniqueness check
+// above.
+export async function changePageSlug(
+  taskId: string,
+  newSlug: string,
+): Promise<MutationResult> {
+  const parsed = changePageSlugSchema.safeParse({ taskId, slug: newSlug });
+  if (!parsed.success) {
+    return {
+      success: false,
+      error: parsed.error.issues[0]?.message ?? "Enter a valid page slug.",
+    };
+  }
+
+  const { user } = await getCurrentUser();
+
+  if (!user) {
+    return { success: false, error: "You must be signed in to change a page's slug." };
+  }
+
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
+  const admin = createAdminClient();
+
+  const { data: taskRow, error: taskError } = await admin
+    .from("tasks")
+    .select("id, project_id, page_slug, projects(workspace_id, workspaces(slug))")
+    .eq("id", taskId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (
+    taskError ||
+    !taskRow ||
+    !taskRow.page_slug ||
+    !(taskRow as { projects?: { workspace_id?: string } }).projects?.workspace_id
+  ) {
+    return { success: false, error: "Page not found." };
+  }
+
+  const workspaceId = (taskRow as { projects: { workspace_id: string } }).projects
+    .workspace_id;
+  const changePageSlugWorkspace = (
+    taskRow as { projects: { workspaces: { slug: string } | { slug: string }[] | null } }
+  ).projects.workspaces;
+  const changePageSlugWorkspaceSlug = extractWorkspaceSlug(changePageSlugWorkspace);
+
+  const membership = await requireActiveMembership(admin, workspaceId, user.id);
+
+  if (!membership.ok) {
+    return {
+      success: false,
+      error: "You don't have permission to change this page's slug.",
+    };
+  }
+
+  if (!canWrite({ role: membership.role })) {
+    return {
+      success: false,
+      error: "Viewers don't have permission to change a page's slug.",
+    };
+  }
+
+  // AS-141: two pages in the same project cannot share a slug. Scoped to
+  // this project only -- same slug in a different project is fine.
+  const { data: existingPage, error: existingPageError } = await admin
+    .from("tasks")
+    .select("id")
+    .eq("project_id", taskRow.project_id)
+    .eq("page_slug", parsed.data.slug)
+    .neq("id", taskId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (existingPageError) {
+    logger.error("changePageSlug: failed to check slug uniqueness", {
+      error: existingPageError,
+    });
+    return {
+      success: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  if (existingPage) {
+    return {
+      success: false,
+      error: "A page with this slug already exists.",
+    };
+  }
+
+  const { error: updateError } = await admin
+    .from("tasks")
+    .update({ page_slug: parsed.data.slug })
+    .eq("id", taskId);
+
+  if (updateError) {
+    logger.error("changePageSlug: update failed", { error: updateError });
+    return {
+      success: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  try {
+    revalidatePath("/w", "layout");
+  } catch (revalidateError) {
+    logger.error("changePageSlug: revalidatePath failed (non-fatal)", {
+      error: revalidateError,
+    });
+  }
+
+  if (changePageSlugWorkspaceSlug) {
+    revalidatePortalProject(changePageSlugWorkspaceSlug, taskRow.project_id);
   }
 
   return { success: true };
