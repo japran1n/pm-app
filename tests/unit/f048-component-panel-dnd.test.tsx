@@ -19,11 +19,14 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 
-const reorderComponentsMock = vi.fn(async () => ({ success: true }));
+const reorderComponentsMock = vi.fn(
+  async (_projectId: string, _orderedIds: string[]) => ({ success: true }),
+);
 const refreshMock = vi.fn();
 
 vi.mock("@/lib/actions/architecture", () => ({
-  reorderComponents: (...args: unknown[]) => reorderComponentsMock(...args),
+  reorderComponents: (projectId: string, orderedIds: string[]) =>
+    reorderComponentsMock(projectId, orderedIds),
   renameComponent: vi.fn(async () => ({ success: true })),
   deleteComponent: vi.fn(async () => ({ success: true })),
 }));
@@ -65,6 +68,7 @@ function makeComponent(overrides: Partial<BoardComponent>): BoardComponent {
   return {
     id: "component-1",
     name: "Header",
+    position: 0,
     instanceCount: 0,
     ...overrides,
   };
