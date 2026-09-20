@@ -87,17 +87,34 @@ describe("PeopleSwitcher multi-select (AS-054)", () => {
   });
 
   it("test_AS_054_three_members_can_be_selected_simultaneously", async () => {
+    // Starts from an empty selection and drives every selection through real
+    // clicks on the trigger + CommandItems -- this fails if toggleMember is
+    // changed to replace the selection instead of accumulating it.
     const onChange = vi.fn();
-    const { rerender } = render(
-      createElement(PeopleSwitcher, {
-        members,
-        selectedUserIds: ["user-1", "user-2", "user-3"],
-        selfId: "user-1",
-        onSelectionChange: onChange,
-      }),
-    );
+    render(createElement(Controlled, { initial: [], onChangeSpy: onChange }));
 
-    fireEvent.click(screen.getByRole("button", { name: /people selected/i }));
+    fireEvent.click(screen.getByRole("button", { name: /select people/i }));
+
+    const adasItem = await waitFor(() => screen.getByText("Ada Lovelace"));
+    fireEvent.click(adasItem);
+
+    await waitFor(() => {
+      expect(onChange).toHaveBeenLastCalledWith(["user-1"]);
+    });
+
+    const gracesItem = await waitFor(() => screen.getByText("Grace Hopper"));
+    fireEvent.click(gracesItem);
+
+    await waitFor(() => {
+      expect(onChange).toHaveBeenLastCalledWith(["user-1", "user-2"]);
+    });
+
+    const katherinesItem = await waitFor(() => screen.getByText("Katherine Johnson"));
+    fireEvent.click(katherinesItem);
+
+    await waitFor(() => {
+      expect(onChange).toHaveBeenLastCalledWith(["user-1", "user-2", "user-3"]);
+    });
 
     await waitFor(() => {
       const item1 = screen.getByText("Ada Lovelace").closest('[data-checked]');
@@ -107,15 +124,6 @@ describe("PeopleSwitcher multi-select (AS-054)", () => {
       expect(item2).toHaveAttribute("data-checked", "true");
       expect(item3).toHaveAttribute("data-checked", "true");
     });
-
-    rerender(
-      createElement(PeopleSwitcher, {
-        members,
-        selectedUserIds: ["user-1", "user-2", "user-3"],
-        selfId: "user-1",
-        onSelectionChange: onChange,
-      }),
-    );
   });
 });
 
@@ -283,6 +291,64 @@ describe("PeopleSwitcher closed-trigger avatar group (AS-055)", () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  it("test_AS_055_overflow_shows_first_n_members_in_selection_order_not_last_n", () => {
+    const alice: PeopleSwitcherMember = {
+      userId: "user-1",
+      name: "Alice",
+      email: "alice@example.com",
+      avatarUrl: null,
+    };
+    const bob: PeopleSwitcherMember = {
+      userId: "user-2",
+      name: "Bob",
+      email: "bob@example.com",
+      avatarUrl: null,
+    };
+    const carol: PeopleSwitcherMember = {
+      userId: "user-3",
+      name: "Carol",
+      email: "carol@example.com",
+      avatarUrl: null,
+    };
+    const dave: PeopleSwitcherMember = {
+      userId: "user-4",
+      name: "Dave",
+      email: "dave@example.com",
+      avatarUrl: null,
+    };
+
+    render(
+      createElement(PeopleSwitcher, {
+        members: [alice, bob, carol, dave],
+        selectedUserIds: ["user-1", "user-2", "user-3", "user-4"],
+        selfId: "user-1",
+        onSelectionChange: vi.fn(),
+        maxVisibleAvatars: 2,
+      }),
+    );
+
+    const group = document.querySelector('[data-slot="people-switcher-avatar-group"]');
+    expect(group).not.toBeNull();
+
+    // Exactly 2 avatars are visible in the trigger.
+    expect(group!.querySelectorAll('[data-slot="avatar"]')).toHaveLength(2);
+
+    // Overflow badge shows "+2".
+    const overflow = document.querySelector('[data-slot="people-switcher-overflow-count"]');
+    expect(overflow).toBeInTheDocument();
+    expect(overflow).toHaveTextContent("+2");
+
+    // The FIRST 2 members in selection order (Alice, Bob) are visible --
+    // if slice(0, maxVisibleAvatars) were mutated to slice(-maxVisibleAvatars),
+    // Carol and Dave would be visible instead and this would fail.
+    const fallbacks = group!.querySelectorAll('[data-slot="avatar-fallback"]');
+    const texts = Array.from(fallbacks).map((el) => el.textContent);
+    expect(texts).toContain("AL");
+    expect(texts).toContain("BO");
+    expect(texts).not.toContain("CA");
+    expect(texts).not.toContain("DA");
   });
 
   it("test_AS_055_trigger_avatars_reflect_each_selected_members_own_identity_not_just_the_first", () => {
