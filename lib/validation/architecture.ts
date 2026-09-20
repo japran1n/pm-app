@@ -77,6 +77,25 @@ export const changeSectionKindSchema = z.object({
 
 export type ChangeSectionKindInput = z.infer<typeof changeSectionKindSchema>;
 
+// AS-139/AS-140: page slug change schema. Shape mirrors createPageSchema's
+// slug field. AS-141 (uniqueness among sibling pages) is a server-side
+// check that happens in the action (lib/actions/architecture/pages.ts,
+// F042) -- this schema only guards shape, same convention as
+// changeSectionKindSchema above.
+export const changePageSlugSchema = z.object({
+  taskId: z.string().uuid(),
+  slug: z
+    .string()
+    .min(1, "Page slug is required.")
+    .max(200, "Page slug must be 200 characters or fewer.")
+    .regex(
+      slugPattern,
+      'Page slug may only contain lowercase letters, numbers, and hyphens, optionally separated by "/".',
+    ),
+});
+
+export type ChangePageSlugInput = z.infer<typeof changePageSlugSchema>;
+
 // --- Architecture enrichment (mission 20260918) ---
 
 export { workCategorySchema };
