@@ -330,7 +330,10 @@ describe("F075: page.tsx's source guard -- must call buildPlannerNavHrefs", () =
 
     expect(source).toMatch(/import\s*\{\s*buildPlannerNavHrefs\s*\}\s*from\s*["']@\/lib\/calendar\/week-nav["']/);
     expect(source).toMatch(/buildPlannerNavHrefs\(/);
-    // peopleParam must actually be threaded into the call, not dropped.
-    expect(source).toMatch(/buildPlannerNavHrefs\(\{[\s\S]*?peopleParam[\s\S]*?\}\)/);
+    // F080: the old `peopleParam` token-presence regex guard was deleted
+    // here -- it matched even `peopleParam: undefined`, which is why the
+    // bug survived five scrutiny passes. The real, value-level guard for
+    // AS-011 now lives in tests/unit/f080-calendar-nav-hrefs.test.tsx,
+    // which renders WeekView and asserts on actual <a href> attributes.
   });
 });
