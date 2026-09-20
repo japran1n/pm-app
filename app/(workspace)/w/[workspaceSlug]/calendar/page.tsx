@@ -14,10 +14,9 @@
 // calendar is linkable/shareable and server-rendered, no client state at
 // all for this feature's own scope.
 //
-// F017 (AS-035): the status/priority/assignee/project filter bar
-// (`<CalendarFilters>`) and its URL-param resolver (resolveCalendarFilters,
-// lib/calendar/resolve-filters.ts) were deleted along with the rest of the
-// task surface -- the Planner no longer has tasks to narrow, so
+// F017 (AS-035): the status/priority/assignee/project filter bar and its
+// URL-param resolver were deleted along with the rest of the task
+// surface -- the Planner no longer has tasks to narrow, so
 // `weekHrefFor` below only ever carries the week itself through
 // navigation links.
 
@@ -25,7 +24,6 @@ import { Suspense } from "react";
 
 import { getCurrentUser, getRequestClient } from "@/lib/auth/current-user";
 import { getCurrentUserTimezone } from "@/lib/queries/profile";
-import { type CalendarTask } from "@/lib/queries/calendar";
 import { getCalendarBlocks } from "@/lib/queries/calendar-blocks";
 import { getTimeOffEntries } from "@/lib/queries/time-off";
 import { getWorkspaceMembers } from "@/lib/queries/members";
@@ -138,9 +136,7 @@ async function WeekGridSection({
   const rangeEndExclusiveDateOnly = rangeEndExclusive.toISOString().slice(0, 10);
 
   // F016 (AS-034): the Planner no longer fetches tasks at all -- the
-  // week grid renders blocks/time-off only. `tasksByDate` stays an empty
-  // Map (not removed as a WeekView prop yet -- that's F015's job) so the
-  // grid keeps rendering while the UI removal lands separately.
+  // week grid renders blocks/time-off only.
   const [blocks, timeOffEntries] = await Promise.all([
     getCalendarBlocks(
       workspaceId,
@@ -151,12 +147,9 @@ async function WeekGridSection({
     getTimeOffEntries(workspaceId, start, rangeEndExclusiveDateOnly),
   ]);
 
-  const tasksByDate = new Map<string, CalendarTask[]>();
-
   return (
     <WeekView
       week={week}
-      tasksByDate={tasksByDate}
       blocks={blocks}
       timeOffEntries={timeOffEntries}
       workspaceSlug={workspaceSlug}

@@ -1,8 +1,8 @@
 // F002 (AS-003, AS-004, AS-005, AS-006, AS-009, AS-010, AS-015) + F003
 // (AS-007, AS-008): parsing the Planner's `?people=` URL param.
 //
-// Same silent-drop posture as resolveCalendarFilters (lib/calendar/resolve-filters.ts,
-// deleted in F017) and resolveListViewFilters (lib/views/resolve-view.ts): a
+// Same silent-drop posture as the calendar's own filter resolver (deleted
+// in F017) and resolveListViewFilters (lib/views/resolve-view.ts): a
 // stale/tampered value is dropped rather than applied verbatim or thrown as
 // an error. Order is significant (AS-009) so ids are carried in an array,
 // never round-tripped through a Set.
