@@ -40,7 +40,6 @@ function makeBlock(): CalendarBlock {
     workspaceId: "workspace-1",
     projectId: null,
     userId: "user-1",
-    taskId: null,
     title: "Deep work",
     startsAt: new Date(2026, 5, 1, 9, 0, 0, 0).toISOString(),
     endsAt: new Date(2026, 5, 1, 10, 0, 0, 0).toISOString(),

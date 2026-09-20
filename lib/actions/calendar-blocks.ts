@@ -6,8 +6,7 @@
 // lib/actions/views.ts's own "session client performs the real write, the
 // checks above turn a bare RLS rejection into a specific, friendly
 // message" convention). A block is a freeform time range, not a task
-// entity -- `taskId` is always optional, never required by any check
-// here.
+// entity.
 //
 // Owner-only mutation, no admin exception (unlike saved_views' AS-430
 // "creator OR admin for shared views" case) -- this feature's clarified
@@ -42,7 +41,6 @@ function toBlock(row: {
   workspace_id: string;
   project_id: string | null;
   user_id: string;
-  task_id: string | null;
   title: string;
   starts_at: string;
   ends_at: string;
@@ -54,7 +52,6 @@ function toBlock(row: {
     workspaceId: row.workspace_id,
     projectId: row.project_id,
     userId: row.user_id,
-    taskId: row.task_id,
     title: row.title,
     startsAt: row.starts_at,
     endsAt: row.ends_at,
@@ -64,7 +61,7 @@ function toBlock(row: {
 }
 
 const SELECT_COLUMNS =
-  "id, workspace_id, project_id, user_id, task_id, title, starts_at, ends_at, color, block_type";
+  "id, workspace_id, project_id, user_id, title, starts_at, ends_at, color, block_type";
 
 type LoadedProject = { id: string; workspaceId: string; visibility: "workspace" | "private" };
 
@@ -192,7 +189,6 @@ export async function createCalendarBlock(
       workspace_id: parsed.data.workspaceId,
       project_id: projectId,
       user_id: user.id,
-      task_id: parsed.data.taskId ?? null,
       title: parsed.data.title,
       starts_at: parsed.data.startsAt,
       ends_at: parsed.data.endsAt,
@@ -269,14 +265,12 @@ export async function updateCalendarBlock(
     title?: string;
     starts_at?: string;
     ends_at?: string;
-    task_id?: string | null;
     color?: string | null;
     block_type?: string;
   } = {};
   if (parsed.data.title !== undefined) patch.title = parsed.data.title;
   if (parsed.data.startsAt !== undefined) patch.starts_at = parsed.data.startsAt;
   if (parsed.data.endsAt !== undefined) patch.ends_at = parsed.data.endsAt;
-  if (parsed.data.taskId !== undefined) patch.task_id = parsed.data.taskId;
   if (parsed.data.color !== undefined) patch.color = parsed.data.color;
   if (parsed.data.blockType !== undefined) patch.block_type = parsed.data.blockType;
 

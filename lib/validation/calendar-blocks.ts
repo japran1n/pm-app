@@ -16,7 +16,6 @@ export const createCalendarBlockSchema = z
   .object({
     workspaceId: z.string().uuid("Invalid workspace."),
     projectId: z.string().uuid("Invalid project.").nullable().optional(),
-    taskId: z.string().uuid("Invalid task.").nullable().optional(),
     title: z
       .string()
       .trim()
@@ -45,7 +44,6 @@ export const updateCalendarBlockSchema = z
       .optional(),
     startsAt: isoDateTime.optional(),
     endsAt: isoDateTime.optional(),
-    taskId: z.string().uuid("Invalid task.").nullable().optional(),
     color: z.string().trim().max(50).nullable().optional(),
     blockType: blockType.optional(),
   })
@@ -54,7 +52,6 @@ export const updateCalendarBlockSchema = z
       input.title !== undefined ||
       input.startsAt !== undefined ||
       input.endsAt !== undefined ||
-      input.taskId !== undefined ||
       input.color !== undefined ||
       input.blockType !== undefined,
     { message: "Choose at least one field to update." },

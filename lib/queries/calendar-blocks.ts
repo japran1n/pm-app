@@ -25,7 +25,6 @@ export type CalendarBlock = {
   workspaceId: string;
   projectId: string | null;
   userId: string;
-  taskId: string | null;
   title: string;
   startsAt: string;
   endsAt: string;
@@ -38,7 +37,6 @@ type CalendarBlockRow = {
   workspace_id: string;
   project_id: string | null;
   user_id: string;
-  task_id: string | null;
   title: string;
   starts_at: string;
   ends_at: string;
@@ -52,7 +50,6 @@ function toCalendarBlock(row: CalendarBlockRow): CalendarBlock {
     workspaceId: row.workspace_id,
     projectId: row.project_id,
     userId: row.user_id,
-    taskId: row.task_id,
     title: row.title,
     startsAt: row.starts_at,
     endsAt: row.ends_at,
@@ -77,7 +74,7 @@ export async function getCalendarBlocks(
   const { data, error } = await supabase
     .from("calendar_blocks")
     .select(
-      "id, workspace_id, project_id, user_id, task_id, title, starts_at, ends_at, color, block_type",
+      "id, workspace_id, project_id, user_id, title, starts_at, ends_at, color, block_type",
     )
     .eq("workspace_id", workspaceId)
     .lt("starts_at", rangeEndIsoExclusive)

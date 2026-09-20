@@ -218,16 +218,14 @@ describe.skipIf(!haveAdminCreds)("Planner calendar_blocks CRUD + RLS", () => {
     createdBlockIds.push(result.data.id);
     expect(result.data.userId).toBe(memberUserId);
     expect(result.data.title).toBe("Morning meeting");
-    expect(result.data.taskId).toBeNull();
 
     const { data: row } = await adminClient
       .from("calendar_blocks")
-      .select("title, user_id, workspace_id, task_id")
+      .select("title, user_id, workspace_id")
       .eq("id", result.data.id)
       .single();
     expect(row?.title).toBe("Morning meeting");
     expect(row?.user_id).toBe(memberUserId);
-    expect(row?.task_id).toBeNull();
   });
 
   it("test_calendar_blocks_create_rejects_end_before_start", async () => {
