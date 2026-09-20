@@ -17,6 +17,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 
 import { buildWeekNavHref } from "@/lib/calendar/people-selection";
+import { buildPlannerNavHrefs } from "@/lib/calendar/week-nav";
 
 if (typeof globalThis.ResizeObserver === "undefined") {
   globalThis.ResizeObserver = class {
@@ -168,38 +169,69 @@ describe("AS-059: deselecting every member falls back to the signed-in member", 
 });
 
 describe("AS-013: no Planner view state is written to localStorage or sessionStorage", () => {
-  it("selecting/deselecting people never calls Storage.setItem", async () => {
-    const setLocal = vi.spyOn(Storage.prototype, "setItem");
-    const PeopleSwitcherUrlBound = await importPeopleSwitcherUrlBound();
+  it("selecting/deselecting people never calls localStorage.setItem or sessionStorage.setItem (vi.stubGlobal runtime guard)", async () => {
+    const localSetItem = vi.fn();
+    const sessionSetItem = vi.fn();
 
-    render(
-      createElement(PeopleSwitcherUrlBound, {
-        members,
-        selectedUserIds: ["user-1"],
-        selfId: "user-1",
-        workspaceSlug: "acme",
-        weekParam: "2026-06-08",
-      }),
-    );
+    vi.stubGlobal("localStorage", {
+      getItem: vi.fn(),
+      setItem: localSetItem,
+      removeItem: vi.fn(),
+      clear: vi.fn(),
+      key: vi.fn(),
+      length: 0,
+    });
+    vi.stubGlobal("sessionStorage", {
+      getItem: vi.fn(),
+      setItem: sessionSetItem,
+      removeItem: vi.fn(),
+      clear: vi.fn(),
+      key: vi.fn(),
+      length: 0,
+    });
 
-    openSwitcher();
-    const row = await waitFor(() => screen.getByText("Grace Hopper"));
-    fireEvent.click(row);
+    try {
+      const PeopleSwitcherUrlBound = await importPeopleSwitcherUrlBound();
 
-    expect(setLocal).not.toHaveBeenCalled();
+      render(
+        createElement(PeopleSwitcherUrlBound, {
+          members,
+          selectedUserIds: ["user-1"],
+          selfId: "user-1",
+          workspaceSlug: "acme",
+          weekParam: "2026-06-08",
+        }),
+      );
 
-    setLocal.mockRestore();
+      openSwitcher();
+      const row = await waitFor(() => screen.getByText("Grace Hopper"));
+      fireEvent.click(row);
+
+      expect(localSetItem).not.toHaveBeenCalled();
+      expect(sessionSetItem).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
-  it("the people-switcher source never CALLS localStorage.*/sessionStorage.* (only doc-comment prose mentions them)", async () => {
+  it("no calendar source file references localStorage, sessionStorage, or indexedDB (source scan, primary guard)", async () => {
     const fs = await import("node:fs/promises");
     const path = await import("node:path");
-    const source = await fs.readFile(
-      path.join(process.cwd(), "components/calendar/people-switcher.tsx"),
-      "utf8",
-    );
-    expect(source).not.toMatch(/\blocalStorage\s*\./);
-    expect(source).not.toMatch(/\bsessionStorage\s*\./);
+
+    const calendarFiles = [
+      "app/(workspace)/w/[workspaceSlug]/calendar/page.tsx",
+      "components/calendar/week-view.tsx",
+      "components/calendar/week-time-grid.tsx",
+      "components/calendar/week-agenda.tsx",
+      "components/calendar/people-switcher.tsx",
+    ];
+
+    for (const file of calendarFiles) {
+      const source = await fs.readFile(path.join(process.cwd(), file), "utf8");
+      expect(source, `${file} must not use browser storage`).not.toMatch(
+        /localStorage|sessionStorage|indexedDB/i,
+      );
+    }
   });
 });
 
@@ -238,4 +270,67 @@ describe("F071 (AS-011): week nav hrefs carry a real, correct ?people= value end
     expect(url.searchParams.get("people")).toBe("member-a,member-b");
   });
 
+});
+
+// F075 (AS-011): tests the ACTUAL function page.tsx calls
+// (`buildPlannerNavHrefs`), not a copy of its logic. A mutation that drops
+// `peopleParam` inside `buildPlannerNavHrefs` itself must fail these tests.
+describe("F075 (AS-011): buildPlannerNavHrefs (page.tsx's real call site) preserves ?people=", () => {
+  it("prevHref and nextHref carry the current people selection forward", () => {
+    const { prevHref, nextHref } = buildPlannerNavHrefs({
+      workspaceSlug: "acme",
+      currentWeekKey: "2026-09-14",
+      prevWeekKey: "2026-09-07",
+      nextWeekKey: "2026-09-21",
+      peopleParam: "alice,bob",
+    });
+
+    expect(prevHref).toContain("people=alice%2Cbob");
+    expect(nextHref).toContain("people=alice%2Cbob");
+  });
+
+  it("todayHref is derived from peopleParam, carrying it forward when present", () => {
+    const { todayHref } = buildPlannerNavHrefs({
+      workspaceSlug: "acme",
+      currentWeekKey: "2026-09-14",
+      prevWeekKey: "2026-09-07",
+      nextWeekKey: "2026-09-21",
+      peopleParam: "alice,bob",
+    });
+
+    expect(todayHref).toContain("people=alice%2Cbob");
+  });
+
+  it("no people param present means none is added to any nav href", () => {
+    const { prevHref, nextHref, todayHref } = buildPlannerNavHrefs({
+      workspaceSlug: "acme",
+      currentWeekKey: "2026-09-14",
+      prevWeekKey: "2026-09-07",
+      nextWeekKey: "2026-09-21",
+      peopleParam: undefined,
+    });
+
+    expect(prevHref).not.toContain("people=");
+    expect(nextHref).not.toContain("people=");
+    expect(todayHref).not.toContain("people=");
+  });
+});
+
+describe("F075: page.tsx's source guard -- must call buildPlannerNavHrefs", () => {
+  it("imports and calls buildPlannerNavHrefs, not the old inline helper shape", async () => {
+    const fs = await import("node:fs/promises");
+    const path = await import("node:path");
+    const source = await fs.readFile(
+      path.join(
+        process.cwd(),
+        "app/(workspace)/w/[workspaceSlug]/calendar/page.tsx",
+      ),
+      "utf8",
+    );
+
+    expect(source).toMatch(/import\s*\{\s*buildPlannerNavHrefs\s*\}\s*from\s*["']@\/lib\/calendar\/week-nav["']/);
+    expect(source).toMatch(/buildPlannerNavHrefs\(/);
+    // peopleParam must actually be threaded into the call, not dropped.
+    expect(source).toMatch(/buildPlannerNavHrefs\(\{[\s\S]*?peopleParam[\s\S]*?\}\)/);
+  });
 });

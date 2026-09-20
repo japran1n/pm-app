@@ -14,7 +14,7 @@
 //
 // Selection is fully controlled by the caller (`selectedUserIds` +
 // `onSelectionChange`) rather than owning state internally. F029 (URL
-// wiring: ?people=, week-preservation, localStorage/sessionStorage bans)
+// wiring: ?people=, week-preservation, browser-storage bans)
 // and F028 ("just me" / "whole team" shortcuts) both need to drive
 // selection from outside this component, so this component never owns the
 // source of truth for who is selected — it only renders it and reports
@@ -258,8 +258,8 @@ export function PeopleSwitcher({
 // - AS-059: an empty next-selection (the caller deselected everyone) is
 //   coerced to `[selfId]` before it ever reaches the URL, so the Planner
 //   always has someone to show rather than rendering an empty view.
-// - AS-013: state lives in the URL alone — no localStorage/sessionStorage
-//   read or write anywhere in this file or PeopleSwitcher itself.
+// - AS-013: state lives in the URL alone — no browser storage of any
+//   kind is read or written anywhere in this file or PeopleSwitcher itself.
 //
 // `router.push` (not `.replace`) mirrors the plain `<Link>`-driven
 // navigation week-view.tsx's own prev/next/today controls already use, so
