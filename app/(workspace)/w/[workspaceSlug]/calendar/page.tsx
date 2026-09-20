@@ -38,7 +38,10 @@ import {
 import { parsePeopleParam } from "@/lib/calendar/people-selection";
 import { buildPlannerNavHrefs } from "@/lib/calendar/week-nav";
 import { buildSwitcherMembers } from "@/lib/calendar/workspace-members";
+import { resolvePlannerLayout } from "@/lib/calendar/planner-layout";
 import { WeekView } from "@/components/calendar/week-view";
+import { StackedPlanner } from "@/components/calendar/stacked-planner";
+import type { CalendarBlock } from "@/lib/queries/calendar-blocks";
 
 export default async function CalendarPage({
   params,
@@ -114,6 +117,10 @@ export default async function CalendarPage({
     activeMemberIds,
   });
 
+  // F031 (AS-001, AS-023): layout is derived purely from how many people
+  // are selected -- there is deliberately no `?view=` param (AS-015).
+  const layout = resolvePlannerLayout(selectedUserIds.length);
+
   return (
     <div className="flex flex-col gap-3 p-6 pt-4 lg:p-8 lg:pt-8">
       <Suspense fallback={<div className="animate-pulse h-32 rounded-lg bg-muted" />}>
@@ -126,11 +133,11 @@ export default async function CalendarPage({
           prevHref={prevHref}
           nextHref={nextHref}
           todayHref={todayHref}
-          // F012: getCalendarBlocks now takes an explicit userIds
-          // restriction. The real "?people=" selection lands in F013 --
-          // until then, every active member preserves today's
-          // whole-workspace behaviour.
-          blockUserIds={workspaceMembers.active.map((m) => m.userId)}
+          // F031 (AS-001): fetch blocks for exactly the selected people --
+          // no params means [selfId] alone, never the whole workspace.
+          blockUserIds={selectedUserIds}
+          layout={layout}
+          weekKey={weekKey}
           // F020 (AS-046): the signed-in member's id, threaded all the
           // way down to WeekView/WeekTimeGrid/WeekAgenda so the single
           // `isOwnBlock` predicate (lib/calendar/ownership.ts) has what
@@ -165,6 +172,8 @@ async function WeekGridSection({
   peopleSwitcherMembers,
   selectedUserIds,
   weekParam,
+  layout,
+  weekKey,
 }: {
   workspaceId: string;
   workspaceSlug: string;
@@ -184,6 +193,8 @@ async function WeekGridSection({
   }>;
   selectedUserIds: string[];
   weekParam?: string;
+  layout: "week-grid" | "stacked";
+  weekKey: string;
 }) {
   const rangeEndExclusive = new Date(`${end}T00:00:00.000Z`);
   rangeEndExclusive.setUTCDate(rangeEndExclusive.getUTCDate() + 1);
@@ -201,6 +212,28 @@ async function WeekGridSection({
     ),
     getTimeOffEntries(workspaceId, start, rangeEndExclusiveDateOnly),
   ]);
+
+  if (layout === "stacked") {
+    // F031: one fetch for all selected people, bucketed by user in memory
+    // (never one query per row) -- fleshed out in F032.
+    const blocksByUser = new Map<string, CalendarBlock[]>();
+    for (const block of blocks) {
+      const existing = blocksByUser.get(block.userId);
+      if (existing) {
+        existing.push(block);
+      } else {
+        blocksByUser.set(block.userId, [block]);
+      }
+    }
+
+    return (
+      <StackedPlanner
+        selectedUserIds={selectedUserIds}
+        blocksByUser={blocksByUser}
+        weekKey={weekKey}
+      />
+    );
+  }
 
   return (
     <WeekView
