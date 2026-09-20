@@ -61,9 +61,11 @@ import type { BoardComponent, BoardPage } from "@/lib/queries/architecture";
 function ComponentListItem({
   component,
   onSelectComponent,
+  isReorderPending = false,
 }: {
   component: BoardComponent;
   onSelectComponent?: (component: BoardComponent) => void;
+  isReorderPending?: boolean;
 }) {
   const router = useRouter();
   const [isEditing, setIsEditing] = useState(false);
@@ -190,7 +192,8 @@ function ComponentListItem({
         <button
           type="button"
           aria-label={`Reorder ${component.name}`}
-          className="shrink-0 cursor-grab touch-none rounded-sm p-1 text-muted-foreground/40 hover:text-muted-foreground active:cursor-grabbing"
+          disabled={isReorderPending}
+          className="shrink-0 cursor-grab touch-none rounded-sm p-1 text-muted-foreground/40 hover:text-muted-foreground active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-50"
           {...attributes}
           {...listeners}
         >
@@ -291,6 +294,7 @@ export function ComponentPanel({
 }) {
   const router = useRouter();
   const [internalSelectedId, setInternalSelectedId] = useState<string | null>(null);
+  const [isReorderPending, startReorderTransition] = useTransition();
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -301,6 +305,12 @@ export function ComponentPanel({
   // new order client-side with arrayMove, then send the full ordered id
   // list to reorderComponents (the action requires every live component
   // id to be present) and refresh to pick up the persisted order.
+  //
+  // F121 (AS-163, AS-164): the reorder call is wrapped in startTransition
+  // (isReorderPending mirrors the isRenamePending/isDeletePending pattern
+  // above) so a rejected/failed reorder surfaces via toast.error instead of
+  // an unhandled rejection, and so a second drag started mid-flight doesn't
+  // race a stale in-flight request undetected.
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
@@ -312,11 +322,14 @@ export function ComponentPanel({
 
     const nextOrder = arrayMove(ids, oldIndex, newIndex);
 
-    void reorderComponents(projectId, nextOrder).then((result) => {
+    startReorderTransition(async () => {
+      const result = await reorderComponents(projectId, nextOrder);
+
       if (!result.success) {
         toast.error(result.error ?? "Something went wrong. Please try again.");
         return;
       }
+
       router.refresh();
     });
   }
@@ -442,6 +455,7 @@ export function ComponentPanel({
                   key={component.id}
                   component={component}
                   onSelectComponent={selectComponent}
+                  isReorderPending={isReorderPending}
                 />
               ))}
             </SortableContext>

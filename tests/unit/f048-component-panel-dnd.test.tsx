@@ -21,7 +21,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 
 const reorderComponentsMock = vi.fn(
-  async (_projectId: string, _orderedIds: string[]) => ({ success: true }),
+  async (_projectId: string, _orderedIds: string[]) =>
+    ({ success: true }) as { success: boolean; error?: string },
 );
 const refreshMock = vi.fn();
 
@@ -152,5 +153,30 @@ describe("F048 ComponentPanel drag-and-drop reordering", () => {
     await vi.waitFor(() => {
       expect(refreshMock).toHaveBeenCalledTimes(1);
     });
+  });
+
+  // F121 (AS-163, AS-164): a rejected/failed reorder must surface via
+  // toast.error rather than an unhandled rejection, and must not trigger
+  // router.refresh() -- the panel should stay showing the pre-reorder order
+  // for the user to retry, not silently pretend the move succeeded.
+  it("AS-163/AS-164: onDragEnd surfaces a failed reorder via toast.error and does not refresh", async () => {
+    const { toast } = await import("sonner");
+    reorderComponentsMock.mockResolvedValueOnce({
+      success: false,
+      error: "Server error",
+    });
+
+    render(<ComponentPanel components={components} projectId="project-1" />);
+
+    capturedOnDragEnd?.({
+      active: { id: "comp-a" },
+      over: { id: "comp-b" },
+    });
+
+    expect(reorderComponentsMock).toHaveBeenCalled();
+    await vi.waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("Server error");
+    });
+    expect(refreshMock).not.toHaveBeenCalled();
   });
 });
