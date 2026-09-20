@@ -48,6 +48,20 @@ function readSource(filePath: string): string {
   return readFileSync(filePath, "utf8");
 }
 
+// F094 (AS-023/F088 hardening): `page.tsx` carries a source comment --
+// "... see <PlannerHeader> below." -- that literally contains the text
+// "<PlannerHeader" (and even a closing ">"). A naive
+// `source.indexOf("<PlannerHeader")` check matches that comment, not the
+// real JSX call site, so it stays green even if <PlannerHeader> is moved
+// INSIDE the "week-grid"/"stacked" layout branch (the exact regression
+// this feature guards against). Strip comments first so every check below
+// targets only live JSX/code.
+function stripComments(source: string): string {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, "") // block comments (incl. JSX {/* */})
+    .replace(/\/\/.*$/gm, ""); // line comments
+}
+
 describe("F088: PeopleSwitcherUrlBound is NOT rendered inside StackedPlanner", () => {
   it("StackedPlanner's own source never imports or references PeopleSwitcherUrlBound", () => {
     const source = readSource(STACKED_PLANNER_PATH);
@@ -82,7 +96,10 @@ describe("F088: WeekView no longer renders the switcher/nav header either", () =
 
 describe("F088: the switcher's props come from page-level data, not from inside a layout branch", () => {
   it("page.tsx renders <PlannerHeader> above the Suspense/layout boundary, not inside WeekGridSection", () => {
-    const source = readSource(PAGE_PATH);
+    // F094: work on comment-stripped source so a source comment mentioning
+    // "<PlannerHeader" in prose can never stand in for the real JSX call
+    // site below.
+    const source = stripComments(readSource(PAGE_PATH));
 
     // <PlannerHeader> must appear in the page's own top-level JSX, before
     // the <Suspense> boundary that wraps the layout branch (WeekGridSection
@@ -92,6 +109,31 @@ describe("F088: the switcher's props come from page-level data, not from inside 
     expect(plannerHeaderIndex).toBeGreaterThan(-1);
     expect(suspenseIndex).toBeGreaterThan(-1);
     expect(plannerHeaderIndex).toBeLessThan(suspenseIndex);
+  });
+
+  it("page.tsx's real <PlannerHeader> call site sits before the layout === conditional, and never inside it", () => {
+    const source = stripComments(readSource(PAGE_PATH));
+
+    const plannerHeaderIndex = source.indexOf("<PlannerHeader");
+    // The conditional that actually picks "week-grid" vs "stacked"
+    // (`if (layout === "stacked") { ... }` inside WeekGridSection) -- not
+    // `resolvePlannerLayout(...)`, which only computes the value and runs
+    // before PlannerHeader regardless of where the branch itself lives.
+    const layoutConditionalIndex = source.indexOf('layout === "');
+    expect(plannerHeaderIndex).toBeGreaterThan(-1);
+    expect(layoutConditionalIndex).toBeGreaterThan(-1);
+    expect(plannerHeaderIndex).toBeLessThan(layoutConditionalIndex);
+
+    // Mutation guard: if <PlannerHeader> were moved inside the
+    // "week-grid"/"stacked" branch, it would sit near one of these
+    // layout-branch keywords -- assert it never does.
+    expect(source).not.toMatch(/(layout|week-grid|stacked)[\s\S]{0,200}<PlannerHeader/);
+  });
+
+  it("<PlannerHeader> is rendered exactly once, never duplicated into both layout branches", () => {
+    const source = stripComments(readSource(PAGE_PATH));
+    const matches = source.match(/<PlannerHeader\b/g) ?? [];
+    expect(matches).toHaveLength(1);
   });
 
   it("PlannerHeader's peopleSwitcher prop is built from page-level switcherMembers/selectedUserIds, not theaded through WeekGridSection's layout branches", () => {
