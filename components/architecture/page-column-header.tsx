@@ -30,7 +30,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { FileText } from "lucide-react";
 
-import { renamePage } from "@/lib/actions/architecture";
+import { renamePage, changePageSlug } from "@/lib/actions/architecture";
 import { Input } from "@/components/ui/input";
 import type { BoardPage } from "@/lib/queries/architecture";
 import type { DisciplineEstimate, NodeMeta } from "@/lib/architecture/types";
@@ -84,6 +84,30 @@ export function PageColumnHeader({
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const inputRef = useRef<HTMLInputElement>(null);
+  const [isEditingSlug, setIsEditingSlug] = useState(false);
+  const [slugValue, setSlugValue] = useState("");
+  const [slugError, setSlugError] = useState<string | null>(null);
+  const [, startSlugTransition] = useTransition();
+
+  function handleSlugKeyDown(keyEvent: React.KeyboardEvent<HTMLInputElement>) {
+    if (keyEvent.key === "Escape") {
+      setIsEditingSlug(false);
+      setSlugError(null);
+      return;
+    }
+    if (keyEvent.key === "Enter") {
+      keyEvent.preventDefault();
+      startSlugTransition(async () => {
+        const result = await changePageSlug(page.id, slugValue);
+        if (!result.success) {
+          setSlugError(result.error ?? "Failed to update slug.");
+        } else {
+          setIsEditingSlug(false);
+          setSlugError(null);
+        }
+      });
+    }
+  }
 
   function startEditing() {
     setValue(page.title);
@@ -194,6 +218,37 @@ export function PageColumnHeader({
             >
               {page.title}
             </p>
+          )}
+          {!isEditingSlug ? (
+            <button
+              type="button"
+              className="text-xs text-muted-foreground font-mono hover:text-foreground truncate max-w-full text-left"
+              onClick={() => {
+                setSlugValue(page.pageSlug ?? "");
+                setIsEditingSlug(true);
+                setSlugError(null);
+              }}
+              aria-label={`Edit slug: ${page.pageSlug}`}
+            >
+              /{page.pageSlug}
+            </button>
+          ) : (
+            <div className="flex flex-col gap-0.5">
+              <Input
+                value={slugValue}
+                onChange={(changeEvent) => {
+                  setSlugValue(changeEvent.target.value);
+                  setSlugError(null);
+                }}
+                onKeyDown={handleSlugKeyDown}
+                onBlur={() => setIsEditingSlug(false)}
+                className="h-6 text-xs font-mono"
+                autoFocus
+              />
+              {slugError && (
+                <p className="text-xs text-destructive">{slugError}</p>
+              )}
+            </div>
           )}
           {showDetails && !isEditing && (
             <div className="flex items-center gap-1 pt-1.5">
