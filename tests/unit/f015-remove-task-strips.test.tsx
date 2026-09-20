@@ -69,9 +69,6 @@ describe("F015 Planner renders no task strips or chips (AS-033)", () => {
         workspaceSlug="acme"
         workspaceId="workspace-1"
         currentUserId="user-1"
-        prevHref="/w/acme/calendar?week=2026-05-25"
-        nextHref="/w/acme/calendar?week=2026-06-08"
-        todayHref="/w/acme/calendar"
       />,
     );
 
@@ -96,9 +93,6 @@ describe("F015 Planner renders no task strips or chips (AS-033)", () => {
         workspaceSlug="acme"
         workspaceId="workspace-1"
         currentUserId="user-1"
-        prevHref="/w/acme/calendar?week=2026-05-25"
-        nextHref="/w/acme/calendar?week=2026-06-08"
-        todayHref="/w/acme/calendar"
       />,
     );
 

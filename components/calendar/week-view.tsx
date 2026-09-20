@@ -5,8 +5,6 @@
 // resolved by the caller page into typed props, mirroring month-grid.tsx's
 // own split.
 
-import Link from "next/link";
-
 import type { CalendarWeek } from "@/lib/calendar/week-grid";
 import type { CalendarBlock } from "@/lib/queries/calendar-blocks";
 import type { TimeOffEntry } from "@/lib/queries/time-off";
@@ -15,12 +13,16 @@ import { isoToLocalDateOnly } from "@/lib/calendar/block-datetime";
 import { WeekTimeGrid } from "@/components/calendar/week-time-grid";
 import { WeekAgenda } from "@/components/calendar/week-agenda";
 import { TimeOffDayStrip } from "@/components/calendar/time-off-day-strip";
-import { AddTimeOffDialog } from "@/components/calendar/add-time-off-dialog";
-import {
-  PeopleSwitcherUrlBound,
-  type PeopleSwitcherMember,
-} from "@/components/calendar/people-switcher";
-import { Button } from "@/components/ui/button";
+
+// F088: the week label, the URL-bound people switcher, the "add time off"
+// affordance, and the prev/today/next nav controls used to live here --
+// they're now the shared <PlannerHeader> rendered once by page.tsx ABOVE
+// the "week-grid"/"stacked" layout branch, so the switcher survives a
+// switch to the stacked (2+ people) layout instead of disappearing along
+// with WeekView. See components/calendar/planner-header.tsx. `prevHref`/
+// `nextHref`/`todayHref`/`peopleSwitcher` are intentionally no longer
+// accepted here -- callers that still know about them should pass them to
+// PlannerHeader instead.
 
 export function WeekView({
   week,
@@ -29,10 +31,6 @@ export function WeekView({
   workspaceSlug,
   workspaceId,
   currentUserId,
-  prevHref,
-  nextHref,
-  todayHref,
-  peopleSwitcher,
 }: {
   week: CalendarWeek;
   blocks: CalendarBlock[];
@@ -47,23 +45,7 @@ export function WeekView({
    * through to WeekTimeGrid/WeekAgenda so the single `isOwnBlock`
    * predicate (lib/calendar/ownership.ts) has what it needs. */
   currentUserId: string;
-  prevHref: string;
-  nextHref: string;
-  todayHref: string;
-  /** F029 (AS-011, AS-012, AS-013, AS-059): props for the URL-bound people
-   * switcher, threaded down from the page's own `?people=`/`?week=`
-   * resolution. Optional/omitted renders no switcher at all -- keeps every
-   * existing caller/test (none of which know about the switcher yet)
-   * behaving exactly as before. */
-  peopleSwitcher?: {
-    members: PeopleSwitcherMember[];
-    selectedUserIds: string[];
-    selfId: string;
-    weekParam?: string;
-  };
 }) {
-  const rangeLabel = formatWeekRangeLabel(week);
-
   const blocksByDate: Record<string, CalendarBlock[]> = {};
   for (const block of blocks) {
     const date = isoToLocalDateOnly(block.startsAt);
@@ -83,49 +65,6 @@ export function WeekView({
 
   return (
     <div className="flex flex-col gap-3" data-testid="calendar-week-view">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="font-mono text-2xl font-semibold" data-testid="calendar-week-label">
-          {rangeLabel}
-        </h1>
-        <div className="flex items-center gap-1">
-          {peopleSwitcher ? (
-            <PeopleSwitcherUrlBound
-              members={peopleSwitcher.members}
-              selectedUserIds={peopleSwitcher.selectedUserIds}
-              selfId={peopleSwitcher.selfId}
-              workspaceSlug={workspaceSlug}
-              weekParam={peopleSwitcher.weekParam}
-            />
-          ) : null}
-          {workspaceId ? <AddTimeOffDialog workspaceId={workspaceId} /> : null}
-          <Button
-            variant="outline"
-            size="sm"
-            nativeButton={false}
-            render={
-              <Link href={prevHref} aria-label="Previous week">
-                &larr;
-              </Link>
-            }
-          />
-          <Button
-            variant="outline"
-            size="sm"
-            nativeButton={false}
-            render={<Link href={todayHref}>Today</Link>}
-          />
-          <Button
-            variant="outline"
-            size="sm"
-            nativeButton={false}
-            render={
-              <Link href={nextHref} aria-label="Next week">
-                &rarr;
-              </Link>
-            }
-          />
-        </div>
-      </div>
       <div className="hidden grid-cols-[3.5rem_repeat(7,1fr)] text-xs font-medium text-muted-foreground md:grid">
         <div />
         {week.days.map((day) => (
@@ -162,21 +101,6 @@ export function WeekView({
       />
     </div>
   );
-}
-
-function formatWeekRangeLabel(week: CalendarWeek): string {
-  const first = week.days[0]!.date;
-  const last = week.days[week.days.length - 1]!.date;
-  const format = (dateOnly: string) => {
-    const [year, month, day] = dateOnly.split("-").map(Number);
-    return new Intl.DateTimeFormat("en-US", {
-      month: "short",
-      day: "numeric",
-      timeZone: "UTC",
-    }).format(new Date(Date.UTC(year, month - 1, day)));
-  };
-  const yearLabel = first.slice(0, 4);
-  return `${format(first)} – ${format(last)}, ${yearLabel}`;
 }
 
 function formatDayHeaderLabel(dateOnly: string, isToday: boolean): string {

@@ -6,6 +6,12 @@
 // <WeekView> itself never renders a toggle, and that its own mobile
 // fallback copy no longer references a "Month view" that no longer
 // exists (a stale string would silently point users at a dead feature).
+//
+// F088: WeekView's own "Today" nav link moved out into the shared
+// <PlannerHeader> (rendered once by page.tsx, above the layout branch) --
+// that link's own view-param regression coverage now lives in
+// tests/unit/f088-planner-header-lift.test.tsx alongside the rest of the
+// header's rendered-href assertions.
 
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
@@ -27,9 +33,6 @@ describe("Week-only calendar view (month view removed)", () => {
         workspaceSlug="acme"
         workspaceId="workspace-1"
         currentUserId="user-1"
-        prevHref="/w/acme/calendar?week=2026-05-25"
-        nextHref="/w/acme/calendar?week=2026-06-08"
-        todayHref="/w/acme/calendar"
       />,
     );
 
@@ -37,25 +40,6 @@ describe("Week-only calendar view (month view removed)", () => {
     expect(screen.queryByTestId("calendar-view-toggle-month")).not.toBeInTheDocument();
     expect(screen.queryByTestId("calendar-view-toggle-week")).not.toBeInTheDocument();
     expect(screen.queryByText(/month view/i)).not.toBeInTheDocument();
-  });
-
-  it("test_week_view_own_today_link_never_carries_a_view_query_param", () => {
-    render(
-      <WeekView
-        week={WEEK}
-        blocks={[]}
-        workspaceSlug="acme"
-        workspaceId="workspace-1"
-        currentUserId="user-1"
-        prevHref="/w/acme/calendar?week=2026-05-25"
-        nextHref="/w/acme/calendar?week=2026-06-08"
-        todayHref="/w/acme/calendar"
-      />,
-    );
-
-    const todayLink = screen.getByText("Today").closest("a");
-    expect(todayLink).toHaveAttribute("href", "/w/acme/calendar");
-    expect(todayLink?.getAttribute("href")).not.toContain("view=");
   });
 
   it("test_week_view_renders_the_real_time_grid_body", () => {
@@ -66,9 +50,6 @@ describe("Week-only calendar view (month view removed)", () => {
         workspaceSlug="acme"
         workspaceId="workspace-1"
         currentUserId="user-1"
-        prevHref="/w/acme/calendar?week=2026-05-25"
-        nextHref="/w/acme/calendar?week=2026-06-08"
-        todayHref="/w/acme/calendar"
       />,
     );
 

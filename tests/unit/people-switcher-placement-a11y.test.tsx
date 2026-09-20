@@ -17,7 +17,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 
-// WeekView renders PeopleSwitcherUrlBound, which calls useRouter() --
+// PlannerHeader renders PeopleSwitcherUrlBound, which calls useRouter() --
 // mock next/navigation the same way other component tests in this repo do
 // (e.g. tests/unit/app-sidebar-trash-nav.test.tsx) so the mount doesn't
 // throw outside a real Next.js app router tree.
@@ -37,27 +37,27 @@ if (typeof HTMLElement.prototype.scrollIntoView !== "function") {
   HTMLElement.prototype.scrollIntoView = function scrollIntoView() {};
 }
 
-import { WeekView } from "@/components/calendar/week-view";
+import { PlannerHeader } from "@/components/calendar/planner-header";
 import { PeopleSwitcher, type PeopleSwitcherMember } from "@/components/calendar/people-switcher";
-import { buildCalendarWeek } from "@/lib/calendar/week-grid";
 
 afterEach(cleanup);
-
-const WEEK = buildCalendarWeek("2026-06-01", "UTC");
 
 const MEMBERS: PeopleSwitcherMember[] = [
   { userId: "user-1", name: "Ada Lovelace", email: "ada@example.com", avatarUrl: null },
   { userId: "user-2", name: "Grace Hopper", email: "grace@example.com", avatarUrl: null },
 ];
 
-function renderWeekViewWithSwitcher() {
+// F088: the switcher's placement (AS-051) moved from WeekView's own header
+// into the shared <PlannerHeader>, rendered once by page.tsx above BOTH the
+// "week-grid" and "stacked" layout branches -- these tests now exercise
+// that shared component directly, the thing that actually renders the
+// switcher alongside the week-nav controls today.
+function renderPlannerHeaderWithSwitcher() {
   return render(
-    <WeekView
-      week={WEEK}
-      blocks={[]}
+    <PlannerHeader
+      rangeLabel="Jun 1 – Jun 7, 2026"
       workspaceSlug="acme"
       workspaceId="workspace-1"
-      currentUserId="user-1"
       prevHref="/w/acme/calendar?week=2026-05-25"
       nextHref="/w/acme/calendar?week=2026-06-08"
       todayHref="/w/acme/calendar"
@@ -73,7 +73,7 @@ function renderWeekViewWithSwitcher() {
 
 describe("F030: people switcher placement (AS-051)", () => {
   it("test_AS_051_switcher_renders_in_the_same_header_row_as_the_week_nav_controls", () => {
-    renderWeekViewWithSwitcher();
+    renderPlannerHeaderWithSwitcher();
 
     const switcherTrigger = document.querySelector('[data-slot="people-switcher-trigger"]');
     expect(switcherTrigger).toBeInTheDocument();
@@ -94,12 +94,10 @@ describe("F030: people switcher placement (AS-051)", () => {
 
   it("test_AS_051_switcher_is_absent_when_no_peopleSwitcher_prop_is_passed", () => {
     render(
-      <WeekView
-        week={WEEK}
-        blocks={[]}
+      <PlannerHeader
+        rangeLabel="Jun 1 – Jun 7, 2026"
         workspaceSlug="acme"
         workspaceId="workspace-1"
-        currentUserId="user-1"
         prevHref="/w/acme/calendar?week=2026-05-25"
         nextHref="/w/acme/calendar?week=2026-06-08"
         todayHref="/w/acme/calendar"

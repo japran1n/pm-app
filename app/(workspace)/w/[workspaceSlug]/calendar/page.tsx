@@ -19,6 +19,13 @@
 // surface -- the Planner no longer has tasks to narrow, so
 // `buildPlannerNavHrefs` below only ever carries the week itself through
 // navigation links.
+//
+// F088: the Planner header (week label, week-nav controls, the URL-bound
+// people switcher) is rendered ONCE here, ABOVE the "week-grid"/"stacked"
+// layout branch -- see <PlannerHeader> below. It used to live inside
+// WeekView alone, so it disappeared whenever `resolvePlannerLayout` picked
+// "stacked" (StackedPlanner has no header of its own); multi-select was a
+// one-way trip. See components/calendar/planner-header.tsx.
 
 import { Suspense } from "react";
 
@@ -31,6 +38,7 @@ import { getWorkspaceMembers } from "@/lib/queries/members";
 import {
   buildCalendarWeek,
   currentWeekKey,
+  formatWeekRangeLabel,
   nextWeekKey,
   parseWeekKey,
   previousWeekKey,
@@ -41,6 +49,7 @@ import { buildPlannerNavHrefs } from "@/lib/calendar/week-nav";
 import { buildSwitcherMembers } from "@/lib/calendar/workspace-members";
 import type { SwitcherMember } from "@/lib/calendar/workspace-members";
 import { resolvePlannerLayout } from "@/lib/calendar/planner-layout";
+import { PlannerHeader } from "@/components/calendar/planner-header";
 import { WeekView } from "@/components/calendar/week-view";
 import { StackedPlanner } from "@/components/calendar/stacked-planner";
 import type { CalendarBlock } from "@/lib/queries/calendar-blocks";
@@ -125,6 +134,27 @@ export default async function CalendarPage({
 
   return (
     <div className="flex flex-col gap-3 p-6 pt-4 lg:p-8 lg:pt-8">
+      {/* F088: rendered ONCE, above the layout branch, so the switcher
+          (and nav/label) survive switching between "week-grid" and
+          "stacked" instead of vanishing along with WeekView's own header. */}
+      <PlannerHeader
+        rangeLabel={formatWeekRangeLabel(week)}
+        workspaceSlug={workspaceSlug}
+        workspaceId={workspace.id}
+        prevHref={prevHref}
+        nextHref={nextHref}
+        todayHref={todayHref}
+        // F029 (AS-011, AS-012, AS-013, AS-059): the URL-bound people
+        // switcher's own props -- these come straight from page-level
+        // data (switcherMembers/selectedUserIds resolved above), never
+        // from inside either layout branch.
+        peopleSwitcher={{
+          members: switcherMembers,
+          selectedUserIds,
+          selfId: user.id,
+          weekParam,
+        }}
+      />
       <Suspense fallback={<div className="animate-pulse h-32 rounded-lg bg-muted" />}>
         <WeekGridSection
           workspaceId={workspace.id}
@@ -132,9 +162,6 @@ export default async function CalendarPage({
           start={weekRange.start}
           end={weekRange.end}
           week={week}
-          prevHref={prevHref}
-          nextHref={nextHref}
-          todayHref={todayHref}
           // F031 (AS-001): fetch blocks for exactly the selected people --
           // no params means [selfId] alone, never the whole workspace.
           blockUserIds={selectedUserIds}
@@ -146,12 +173,13 @@ export default async function CalendarPage({
           // it needs at every call site -- no component re-derives "is
           // this mine" independently.
           currentUserId={user.id}
-          // F029 (AS-011, AS-012, AS-013, AS-059): the URL-bound people
-          // switcher's own props -- see WeekView/people-switcher.tsx.
           // F032 (AS-062): the same switcher member list, reused so the
           // stacked layout's row labels and the switcher can never desync.
           peopleSwitcherMembers={switcherMembers}
           selectedUserIds={selectedUserIds}
+          // F035: needed by StackedPlanner's own drag-to-reorder persistence
+          // (router.replace back to this same URL shape) -- unrelated to
+          // F088's header lift, kept intact from that feature's own wiring.
           weekParam={weekParam}
         />
       </Suspense>
@@ -161,39 +189,35 @@ export default async function CalendarPage({
 
 // Streams behind the grid's own Suspense boundary -- reuses the SAME
 // getCalendarBlocks/getTimeOffEntries queries, bounded to the 7-day week
-// window.
+// window. F088: no longer receives/threads prevHref/nextHref/todayHref/
+// weekParam -- those feed the shared <PlannerHeader> in the parent above,
+// not this section's own layout branch.
 async function WeekGridSection({
   workspaceId,
   workspaceSlug,
   start,
   end,
   week,
-  prevHref,
-  nextHref,
-  todayHref,
   blockUserIds,
   currentUserId,
   peopleSwitcherMembers,
   selectedUserIds,
-  weekParam,
   layout,
   weekKey,
+  weekParam,
 }: {
   workspaceId: string;
   workspaceSlug: string;
   start: string;
   end: string;
   week: ReturnType<typeof buildCalendarWeek>;
-  prevHref: string;
-  nextHref: string;
-  todayHref: string;
   blockUserIds: string[];
   currentUserId: string;
   peopleSwitcherMembers: SwitcherMember[];
   selectedUserIds: string[];
-  weekParam?: string;
   layout: "week-grid" | "stacked";
   weekKey: string;
+  weekParam?: string;
 }) {
   const rangeEndExclusive = new Date(`${end}T00:00:00.000Z`);
   rangeEndExclusive.setUTCDate(rangeEndExclusive.getUTCDate() + 1);
@@ -244,6 +268,11 @@ async function WeekGridSection({
         timeOffByUser={timeOffByUser}
         weekKey={weekKey}
         members={peopleSwitcherMembers}
+        // F035: reorder persistence -- unrelated to F088's header lift,
+        // kept so this fix doesn't regress drag-to-reorder.
+        workspaceSlug={workspaceSlug}
+        selfId={currentUserId}
+        weekParam={weekParam}
       />
     );
   }
@@ -256,15 +285,6 @@ async function WeekGridSection({
       workspaceSlug={workspaceSlug}
       workspaceId={workspaceId}
       currentUserId={currentUserId}
-      prevHref={prevHref}
-      nextHref={nextHref}
-      todayHref={todayHref}
-      peopleSwitcher={{
-        members: peopleSwitcherMembers,
-        selectedUserIds,
-        selfId: currentUserId,
-        weekParam,
-      }}
     />
   );
 }

@@ -129,3 +129,22 @@ export function weekDateRange(weekKey: DateOnly): { start: DateOnly; end: DateOn
   const week = buildCalendarWeek(weekKey, "UTC");
   return { start: week.days[0]!.date, end: week.days[week.days.length - 1]!.date };
 }
+
+// F088: lifted out of week-view.tsx so the shared Planner header (now
+// rendered once in page.tsx, above both the "week-grid" and "stacked"
+// layout branches) can format the same "Jun 1 – Jun 7, 2026" label
+// WeekView used to compute for itself.
+export function formatWeekRangeLabel(week: CalendarWeek): string {
+  const first = week.days[0]!.date;
+  const last = week.days[week.days.length - 1]!.date;
+  const format = (dateOnly: DateOnly) => {
+    const [year, month, day] = dateOnly.split("-").map(Number);
+    return new Intl.DateTimeFormat("en-US", {
+      month: "short",
+      day: "numeric",
+      timeZone: "UTC",
+    }).format(new Date(Date.UTC(year, month - 1, day)));
+  };
+  const yearLabel = first.slice(0, 4);
+  return `${format(first)} – ${format(last)}, ${yearLabel}`;
+}

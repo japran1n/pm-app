@@ -73,9 +73,6 @@ describe("F020 isOwnBlock predicate (AS-046)", () => {
         workspaceSlug: "acme",
         workspaceId: "workspace-1",
         currentUserId: "user-1",
-        prevHref: "/w/acme/calendar?week=2026-05-18",
-        nextHref: "/w/acme/calendar?week=2026-06-01",
-        todayHref: "/w/acme/calendar",
       }),
     );
 
