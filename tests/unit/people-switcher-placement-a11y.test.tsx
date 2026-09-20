@@ -112,7 +112,83 @@ describe("F030: people switcher placement (AS-051)", () => {
   });
 });
 
+// AS-060 ArrowDown coverage needs at least 3 members filtered into view --
+// with only 1-2 rows cmdk auto-highlights the sole/first row regardless of
+// whether ArrowDown ever fires, so a 1-2 member fixture gives zero real
+// coverage of arrow-key navigation (this is exactly what the scrutiny pass
+// caught). cmdk filters on each CommandItem's `value` prop, which
+// people-switcher.tsx sets to the member's display name -- so the shared
+// "Roster" suffix below is what narrows the filtered list to exactly these
+// three rows (the "Just me"/"Whole team" shortcut rows don't contain it and
+// get filtered out), leaving arrow-key order fully attributable to the
+// ArrowDown presses under test.
+const KEYBOARD_NAV_MEMBERS: PeopleSwitcherMember[] = [
+  { userId: "user-1", name: "Alice Roster", email: "alice@example.com", avatarUrl: null },
+  { userId: "user-2", name: "Bob Roster", email: "bob@example.com", avatarUrl: null },
+  { userId: "user-3", name: "Carol Roster", email: "carol@example.com", avatarUrl: null },
+];
+
 describe("F030: people switcher keyboard operability (AS-060)", () => {
+  it("test_AS_060_arrow_down_twice_highlights_the_third_filtered_member", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(
+      createElement(PeopleSwitcher, {
+        members: KEYBOARD_NAV_MEMBERS,
+        selectedUserIds: [],
+        selfId: "user-1",
+        onSelectionChange: onChange,
+      }),
+    );
+
+    await user.tab();
+    const trigger = screen.getByRole("button", { name: /select people/i });
+    expect(trigger).toHaveFocus();
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => screen.getByPlaceholderText("Find a person..."));
+
+    // Narrow to exactly the 3 members (excludes the "Just me"/"Whole team"
+    // shortcut rows, which don't match this filter text).
+    await user.keyboard("Roster");
+    await waitFor(() => {
+      expect(screen.getByText("Alice Roster")).toBeInTheDocument();
+      expect(screen.getByText("Bob Roster")).toBeInTheDocument();
+      expect(screen.getByText("Carol Roster")).toBeInTheDocument();
+      expect(screen.queryByText("Just me")).not.toBeInTheDocument();
+      expect(screen.queryByText("Whole team")).not.toBeInTheDocument();
+    });
+
+    const aliceOption = screen.getByRole("option", { name: /alice roster/i });
+    const bobOption = screen.getByRole("option", { name: /bob roster/i });
+    const carolOption = screen.getByRole("option", { name: /carol roster/i });
+
+    // cmdk highlights the first filtered row by default before any arrow
+    // press -- confirms the starting point so the ArrowDown presses below
+    // are the only thing that can move highlight onto Carol.
+    await waitFor(() => {
+      expect(aliceOption).toHaveAttribute("aria-selected", "true");
+    });
+    expect(bobOption).toHaveAttribute("aria-selected", "false");
+    expect(carolOption).toHaveAttribute("aria-selected", "false");
+
+    // The two ArrowDown presses under test: Alice -> Bob -> Carol.
+    await user.keyboard("{ArrowDown}{ArrowDown}");
+
+    await waitFor(() => {
+      expect(carolOption).toHaveAttribute("aria-selected", "true");
+    });
+    expect(carolOption).toHaveAttribute("data-selected", "true");
+    expect(aliceOption).toHaveAttribute("aria-selected", "false");
+    expect(bobOption).toHaveAttribute("aria-selected", "false");
+
+    const searchInput = screen.getByPlaceholderText("Find a person...");
+    expect(searchInput).toHaveAttribute(
+      "aria-activedescendant",
+      carolOption.id,
+    );
+  });
+
   it("test_AS_060_switcher_can_be_opened_searched_and_toggled_with_keyboard_alone", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
