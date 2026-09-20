@@ -87,25 +87,51 @@ export function PageColumnHeader({
   const [isEditingSlug, setIsEditingSlug] = useState(false);
   const [slugValue, setSlugValue] = useState("");
   const [slugError, setSlugError] = useState<string | null>(null);
-  const [, startSlugTransition] = useTransition();
+  const [isSlugPending, startSlugTransition] = useTransition();
 
-  function handleSlugKeyDown(keyEvent: React.KeyboardEvent<HTMLInputElement>) {
-    if (keyEvent.key === "Escape") {
+  function saveSlug() {
+    const trimmedSlug = slugValue.trim();
+
+    // No-op guard: nothing changed (or reverted, e.g. after Escape resets
+    // slugValue before the blur handler below fires) -- just close the
+    // editor without calling the action.
+    if (trimmedSlug === (page.pageSlug ?? "")) {
       setIsEditingSlug(false);
       setSlugError(null);
       return;
     }
-    if (keyEvent.key === "Enter") {
-      keyEvent.preventDefault();
-      startSlugTransition(async () => {
-        const result = await changePageSlug(page.id, slugValue);
+
+    startSlugTransition(async () => {
+      try {
+        const result = await changePageSlug(page.id, trimmedSlug);
         if (!result.success) {
           setSlugError(result.error ?? "Failed to update slug.");
         } else {
           setIsEditingSlug(false);
           setSlugError(null);
+          router.refresh();
         }
-      });
+      } catch {
+        toast.error("Something went wrong. Please try again.");
+      }
+    });
+  }
+
+  function cancelSlugEditing() {
+    setSlugValue(page.pageSlug ?? "");
+    setSlugError(null);
+    setIsEditingSlug(false);
+  }
+
+  function handleSlugKeyDown(keyEvent: React.KeyboardEvent<HTMLInputElement>) {
+    if (keyEvent.key === "Escape") {
+      keyEvent.preventDefault();
+      cancelSlugEditing();
+      return;
+    }
+    if (keyEvent.key === "Enter") {
+      keyEvent.preventDefault();
+      saveSlug();
     }
   }
 
@@ -220,33 +246,44 @@ export function PageColumnHeader({
             </p>
           )}
           {!isEditingSlug ? (
-            <button
-              type="button"
-              className="text-xs text-muted-foreground font-mono hover:text-foreground truncate max-w-full text-left"
-              onClick={() => {
-                setSlugValue(page.pageSlug ?? "");
-                setIsEditingSlug(true);
-                setSlugError(null);
-              }}
-              aria-label={`Edit slug: ${page.pageSlug}`}
-            >
-              /{page.pageSlug}
-            </button>
+            page.pageSlug != null && (
+              <button
+                type="button"
+                className="text-xs text-muted-foreground font-mono hover:text-foreground truncate max-w-full text-left"
+                onClick={() => {
+                  setSlugValue(page.pageSlug ?? "");
+                  setIsEditingSlug(true);
+                  setSlugError(null);
+                }}
+                aria-label={`Edit slug: ${page.pageSlug}`}
+              >
+                /{page.pageSlug}
+              </button>
+            )
           ) : (
             <div className="flex flex-col gap-0.5">
               <Input
                 value={slugValue}
+                disabled={isSlugPending}
                 onChange={(changeEvent) => {
                   setSlugValue(changeEvent.target.value);
                   setSlugError(null);
                 }}
                 onKeyDown={handleSlugKeyDown}
-                onBlur={() => setIsEditingSlug(false)}
+                onBlur={saveSlug}
+                aria-invalid={slugError != null}
+                aria-describedby={slugError ? `slug-error-${page.id}` : undefined}
                 className="h-6 text-xs font-mono"
                 autoFocus
               />
               {slugError && (
-                <p className="text-xs text-destructive">{slugError}</p>
+                <p
+                  id={`slug-error-${page.id}`}
+                  role="alert"
+                  className="text-xs text-destructive"
+                >
+                  {slugError}
+                </p>
               )}
             </div>
           )}
