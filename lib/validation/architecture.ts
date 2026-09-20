@@ -86,6 +86,7 @@ export const changePageSlugSchema = z.object({
   taskId: z.string().uuid(),
   slug: z
     .string()
+    .trim()
     .min(1, "Page slug is required.")
     .max(200, "Page slug must be 200 characters or fewer.")
     .regex(

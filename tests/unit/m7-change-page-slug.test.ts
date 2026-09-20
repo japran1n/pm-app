@@ -1,10 +1,19 @@
-// F042 (AS-138, AS-141, AS-142, AS-143, AS-149): server-side coverage for
-// changePageSlug (lib/actions/architecture/pages.ts). Mocks the Supabase
-// admin/server clients the same way
-// tests/unit/f003-set-page-section-client-visibility-action.test.ts does,
-// so the assertions exercise the actual query/update call sites.
+// F042 (AS-138, AS-140, AS-141, AS-142, AS-143, AS-144, AS-146, AS-149):
+// server-side coverage for changePageSlug (lib/actions/architecture/pages.ts).
+//
+// F114 fix: the previous chainable mocks (`buildSelectChain` /
+// `buildAdminMock`) never recorded which columns/values `.eq()`/`.neq()`/
+// `.is()` were called with -- they just returned themselves regardless of
+// arguments, so deleting the project_id filter or changing the update
+// target column would pass every test. This version records every filter
+// call as `{ op, col, val }` tuples per query "step" (select chains AND the
+// update chain), so assertions can prove the *actual* filters sent to
+// Supabase, not just the final resolved value. It also asserts
+// `revalidatePath` is called on success and never called on any failure
+// path (AS-149).
 
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { revalidatePath } from "next/cache";
 
 vi.mock("server-only", () => ({}));
 
@@ -44,25 +53,60 @@ vi.mock("@/lib/auth/permissions", () => ({
 }));
 
 type Row = Record<string, unknown>;
+type FilterCall = { op: "eq" | "neq" | "is"; col: string; val: unknown };
 
 let taskRow: Row | null;
 let duplicateRow: Row | null;
-let updateCalls: { table: string; payload: Row; matchId: string }[] = [];
 
-// Generic chainable query builder: tracks whether `.neq()` was called
-// anywhere in the chain to distinguish the task lookup (no `.neq()`) from
-// the slug-uniqueness check (`.eq().eq().neq().is().maybeSingle()`), since
-// both queries share the same `select().eq()...` prefix.
-function buildSelectChain(hasNeq: boolean) {
+// Records every .eq()/.neq()/.is() call made against the *uniqueness-check*
+// select chain (the query that follows the task lookup).
+let uniquenessFilters: FilterCall[] = [];
+
+// Records the filter(s) applied to the update chain, and the payload it was
+// called with -- one entry per `admin.from("tasks").update(payload)` call.
+let updateCalls: { payload: Row; filters: FilterCall[] }[] = [];
+
+let fromCallCount = 0;
+
+function buildTaskLookupChain() {
+  // .select(...).eq("id", taskId).is("deleted_at", null).maybeSingle()
   const chain: Record<string, unknown> = {
     eq: vi.fn(() => chain),
     is: vi.fn(() => chain),
-    neq: vi.fn(() => buildSelectChain(true)),
-    maybeSingle: vi.fn(async () =>
-      hasNeq
-        ? { data: duplicateRow, error: null }
-        : { data: taskRow, error: null },
-    ),
+    maybeSingle: vi.fn(async () => ({ data: taskRow, error: null })),
+  };
+  return chain;
+}
+
+function buildUniquenessChain() {
+  // .select("id").eq(project_id).eq(page_slug).neq(id).is(deleted_at).maybeSingle()
+  const chain: Record<string, unknown> = {
+    eq: vi.fn((col: string, val: unknown) => {
+      uniquenessFilters.push({ op: "eq", col, val });
+      return chain;
+    }),
+    neq: vi.fn((col: string, val: unknown) => {
+      uniquenessFilters.push({ op: "neq", col, val });
+      return chain;
+    }),
+    is: vi.fn((col: string, val: unknown) => {
+      uniquenessFilters.push({ op: "is", col, val });
+      return chain;
+    }),
+    maybeSingle: vi.fn(async () => ({ data: duplicateRow, error: null })),
+  };
+  return chain;
+}
+
+function buildUpdateChain(payload: Row) {
+  const filters: FilterCall[] = [];
+  const call = { payload, filters };
+  updateCalls.push(call);
+  const chain: Record<string, unknown> = {
+    eq: vi.fn((col: string, val: unknown) => {
+      filters.push({ op: "eq", col, val });
+      return { error: null };
+    }),
   };
   return chain;
 }
@@ -71,14 +115,15 @@ function buildAdminMock() {
   return {
     from: vi.fn((table: string) => {
       if (table === "tasks") {
+        fromCallCount += 1;
+        const thisCallIndex = fromCallCount;
         return {
-          select: vi.fn(() => buildSelectChain(false)),
-          update: vi.fn((payload: Row) => ({
-            eq: vi.fn((_col: string, matchId: string) => {
-              updateCalls.push({ table: "tasks", payload, matchId });
-              return { error: null };
-            }),
-          })),
+          select: vi.fn(() => {
+            // 1st call to admin.from("tasks") is always the task lookup;
+            // 2nd is the uniqueness check. Both start with `.select(...)`.
+            return thisCallIndex === 1 ? buildTaskLookupChain() : buildUniquenessChain();
+          }),
+          update: vi.fn((payload: Row) => buildUpdateChain(payload)),
         };
       }
       throw new Error(`unexpected table: ${table}`);
@@ -100,6 +145,8 @@ beforeEach(() => {
   membershipResult = { ok: true, role: "owner" };
   canWriteResult = true;
   updateCalls = [];
+  uniquenessFilters = [];
+  fromCallCount = 0;
   duplicateRow = null;
   taskRow = {
     id: TASK_ID,
@@ -107,7 +154,12 @@ beforeEach(() => {
     page_slug: "home",
     projects: { workspace_id: "ws-1", workspaces: { slug: "acme" } },
   };
+  vi.mocked(revalidatePath).mockClear();
 });
+
+function hasFilter(filters: FilterCall[], op: FilterCall["op"], col: string, val: unknown) {
+  return filters.some((f) => f.op === op && f.col === col && f.val === val);
+}
 
 describe("F042 changePageSlug", () => {
   it("AS-138: changePageSlug is exported from the architecture barrel", () => {
@@ -123,14 +175,37 @@ describe("F042 changePageSlug", () => {
     if (result.success) return;
     expect(result.error).toMatch(/already exists/i);
     expect(updateCalls.length).toBe(0);
+    expect(revalidatePath).not.toHaveBeenCalled();
   });
 
-  it("AS-141: allows the same slug when used in a different project", async () => {
+  it("AS-141: the uniqueness check queries project_id, page_slug, neq id, and deleted_at is null", async () => {
     duplicateRow = null;
 
     const result = await changePageSlug(TASK_ID, "new-slug");
 
     expect(result.success).toBe(true);
+    expect(hasFilter(uniquenessFilters, "eq", "project_id", "proj-1")).toBe(true);
+    expect(hasFilter(uniquenessFilters, "eq", "page_slug", "new-slug")).toBe(true);
+    expect(hasFilter(uniquenessFilters, "neq", "id", TASK_ID)).toBe(true);
+    expect(hasFilter(uniquenessFilters, "is", "deleted_at", null)).toBe(true);
+  });
+
+  it("AS-141: allows the same slug when used in a different project -- proven by the uniqueness query being scoped to THIS task's real project_id, not a wildcard", async () => {
+    duplicateRow = null;
+    taskRow = {
+      ...taskRow,
+      project_id: "proj-other",
+    };
+
+    const result = await changePageSlug(TASK_ID, "new-slug");
+
+    expect(result.success).toBe(true);
+    // The uniqueness chain was queried scoped to proj-other, not proj-1 or
+    // any other project -- proving the check is project-scoped rather than
+    // a global/wildcard slug check that would incorrectly reject cross-
+    // project reuse.
+    expect(hasFilter(uniquenessFilters, "eq", "project_id", "proj-other")).toBe(true);
+    expect(hasFilter(uniquenessFilters, "eq", "project_id", "proj-1")).toBe(false);
   });
 
   it("AS-142: an unauthenticated caller cannot change a page's slug", async () => {
@@ -141,6 +216,7 @@ describe("F042 changePageSlug", () => {
     expect(result.success).toBe(false);
     if (result.success) return;
     expect(result.error).toMatch(/signed in/i);
+    expect(revalidatePath).not.toHaveBeenCalled();
   });
 
   it("AS-143: a viewer without write permission cannot change a page's slug", async () => {
@@ -151,32 +227,38 @@ describe("F042 changePageSlug", () => {
     expect(result.success).toBe(false);
     if (result.success) return;
     expect(result.error).toMatch(/permission|viewers/i);
+    expect(revalidatePath).not.toHaveBeenCalled();
   });
 
-  it("AS-149: a successful call updates the page's slug", async () => {
+  it("AS-140/AS-149: rejects invalid input and never revalidates", async () => {
+    const result = await changePageSlug(TASK_ID, "Invalid Slug!!");
+
+    expect(result.success).toBe(false);
+    expect(revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it("AS-149: a successful call updates the page's slug and revalidates the layout path", async () => {
     const result = await changePageSlug(TASK_ID, "new-slug");
 
     expect(result.success).toBe(true);
-    expect(
-      updateCalls.some(
-        (call) =>
-          call.table === "tasks" &&
-          call.payload.page_slug === "new-slug" &&
-          call.matchId === TASK_ID,
-      ),
-    ).toBe(true);
+    expect(updateCalls.length).toBe(1);
+    expect(updateCalls[0].payload).toEqual({ page_slug: "new-slug" });
+    expect(hasFilter(updateCalls[0].filters, "eq", "id", TASK_ID)).toBe(true);
+    expect(revalidatePath).toHaveBeenCalledWith("/w", "layout");
   });
 });
 
 describe("side-effect isolation (AS-144, AS-145, AS-146)", () => {
-  it("AS-144: the update call targets only the given taskId and touches no other rows/sections", async () => {
+  it("AS-144: the update call targets only id=taskId (not project_id) and touches no other rows/sections", async () => {
     const result = await changePageSlug(TASK_ID, "new-slug");
 
     expect(result.success).toBe(true);
     expect(updateCalls.length).toBe(1);
     const call = updateCalls[0];
-    expect(call.table).toBe("tasks");
-    expect(call.matchId).toBe(TASK_ID);
+    expect(hasFilter(call.filters, "eq", "id", TASK_ID)).toBe(true);
+    // Must NOT be scoped by project_id -- that would touch every page in
+    // the project instead of just this one task.
+    expect(call.filters.some((f) => f.col === "project_id")).toBe(false);
     expect(call.payload).toEqual({ page_slug: "new-slug" });
   });
 
@@ -199,9 +281,10 @@ describe("side-effect isolation (AS-144, AS-145, AS-146)", () => {
     expect(result.success).toBe(true);
     expect(updateCalls.length).toBe(1);
     const call = updateCalls[0];
-    // Scoped to exactly this task id — not a broader/neq match that would
-    // also hit child pages (rows with parent_task_id = TASK_ID).
-    expect(call.matchId).toBe(TASK_ID);
+    // Scoped to exactly this task id via .eq("id", taskId) -- not a
+    // broader/neq match that would also hit child pages (rows with
+    // parent_task_id = TASK_ID).
+    expect(call.filters).toEqual([{ op: "eq", col: "id", val: TASK_ID }]);
     expect(call.payload.page_slug).toBe(nestedSlug);
     // Verbatim: no parsing/splitting of the nested path into segments.
     expect(call.payload).toEqual({ page_slug: nestedSlug });

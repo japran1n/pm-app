@@ -79,6 +79,18 @@ describe("changePageSlugSchema", () => {
     expect(result.success).toBe(false);
   });
 
+  it("AS-140: trims leading/trailing whitespace from the slug", () => {
+    const result = changePageSlugSchema.safeParse({
+      taskId: "123e4567-e89b-12d3-a456-426614174000",
+      slug: "  my-page  ",
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.slug).toBe("my-page");
+    }
+  });
+
   it("AS-140: rejects an invalid taskId that is not a uuid", () => {
     const result = changePageSlugSchema.safeParse({
       taskId: "not-a-uuid",

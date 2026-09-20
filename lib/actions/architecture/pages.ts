@@ -1071,11 +1071,3 @@ export async function importPages(
 
   return { ok: true, created: rows.length, skipped: pages.length - rows.length };
 }
-
-// TODO(F042): changePageSlug server action lands here. It must validate
-// input with changePageSlugSchema (lib/validation/architecture.ts), then
-// re-check membership/write permission the same way createPage does above,
-// and enforce AS-141 (slug uniqueness among sibling pages within the same
-// project) with a server-side query before the update -- the Zod schema
-// only guards shape, not uniqueness. AS-141's test coverage belongs to
-// F042/F043, not this schema-only feature (F041).
