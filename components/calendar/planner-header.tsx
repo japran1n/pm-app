@@ -84,7 +84,7 @@ export function PlannerHeader({
           </p>
         ) : null}
       </div>
-      <div className="flex items-center gap-1">
+      <div className="flex flex-wrap items-center gap-1">
         {peopleSwitcher ? (
           <PeopleSwitcherUrlBound
             members={peopleSwitcher.members}

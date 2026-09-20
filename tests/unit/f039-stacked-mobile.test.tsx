@@ -64,4 +64,16 @@ describe("F039 stacked planner mobile pass", () => {
     );
     expect(plannerSrc).not.toMatch(/min-w-\[(?:[5-9]\d{2}|[1-9]\d{3})px\]/);
   });
+
+  it("test_AS_082_planner_header_mobile_wraps", () => {
+    const src = fs.readFileSync(
+      path.join(process.cwd(), "components/calendar/planner-header.tsx"),
+      "utf-8",
+    );
+    // The header container must either flex-wrap or be scrollable
+    // It must not use flex-nowrap without an overflow-x-auto escape
+    const hasWrap = /flex-wrap/.test(src);
+    const hasOverflowAuto = /overflow-x-auto/.test(src);
+    expect(hasWrap || hasOverflowAuto).toBe(true);
+  });
 });
