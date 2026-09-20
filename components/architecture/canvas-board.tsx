@@ -481,6 +481,7 @@ function SitemapCanvas({
 
       {panelOpen ? (
         <ComponentPanel
+          projectId={projectId}
           components={components}
           pages={pages}
           selectedComponentId={selectedComponentId}

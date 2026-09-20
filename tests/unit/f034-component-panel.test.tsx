@@ -41,7 +41,7 @@ describe("ComponentPanel (F034)", () => {
       makeComponent({ id: "2", name: "Footer", instanceCount: 1 }),
     ];
 
-    render(<ComponentPanel components={components} />);
+    render(<ComponentPanel projectId="proj-1" components={components} />);
 
     expect(screen.getByRole("complementary", { name: "Components" })).toBeInTheDocument();
     expect(screen.getByText("Header")).toBeInTheDocument();
@@ -55,7 +55,7 @@ describe("ComponentPanel (F034)", () => {
       makeComponent({ id: "2", name: "Footer", instanceCount: 1 }),
     ];
 
-    render(<ComponentPanel components={components} />);
+    render(<ComponentPanel projectId="proj-1" components={components} />);
 
     expect(screen.getByText("3 instances")).toBeInTheDocument();
     expect(screen.getByText("1 instance")).toBeInTheDocument();
@@ -65,14 +65,14 @@ describe("ComponentPanel (F034)", () => {
   it("AS_083: shows a count of zero for a component with no instances", () => {
     const components = [makeComponent({ id: "1", name: "Orphan", instanceCount: 0 })];
 
-    render(<ComponentPanel components={components} />);
+    render(<ComponentPanel projectId="proj-1" components={components} />);
 
     expect(screen.getByText("0 instances")).toBeInTheDocument();
   });
 
   it("calls onClose when the close button is clicked", () => {
     const onClose = vi.fn();
-    render(<ComponentPanel components={[]} onClose={onClose} />);
+    render(<ComponentPanel projectId="proj-1" components={[]} onClose={onClose} />);
 
     screen.getByRole("button", { name: "Close components panel" }).click();
 
@@ -80,7 +80,7 @@ describe("ComponentPanel (F034)", () => {
   });
 
   it("shows an empty state when there are no components", () => {
-    render(<ComponentPanel components={[]} />);
+    render(<ComponentPanel projectId="proj-1" components={[]} />);
 
     expect(screen.getByText("No components yet.")).toBeInTheDocument();
   });

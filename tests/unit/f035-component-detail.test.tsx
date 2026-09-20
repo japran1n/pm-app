@@ -54,7 +54,7 @@ describe("ComponentPanel detail view (F035)", () => {
       makeComponent({ id: "2", name: "Footer", instanceCount: 1 }),
     ];
 
-    render(<ComponentPanel components={components} pages={[]} />);
+    render(<ComponentPanel projectId="proj-1" components={components} pages={[]} />);
 
     fireEvent.click(screen.getByText("Header"));
 
@@ -107,7 +107,7 @@ describe("ComponentPanel detail view (F035)", () => {
       }),
     ];
 
-    render(<ComponentPanel components={components} pages={pages} />);
+    render(<ComponentPanel projectId="proj-1" components={components} pages={pages} />);
 
     fireEvent.click(screen.getByText("Header"));
 
@@ -119,7 +119,7 @@ describe("ComponentPanel detail view (F035)", () => {
   it("shows an empty message when the component appears on no pages", async () => {
     const components = [makeComponent({ id: "1", name: "Orphan" })];
 
-    render(<ComponentPanel components={components} pages={[]} />);
+    render(<ComponentPanel projectId="proj-1" components={components} pages={[]} />);
 
     fireEvent.click(screen.getByText("Orphan"));
 
@@ -142,7 +142,7 @@ describe("ComponentPanel detail view (F035)", () => {
       }),
     ];
 
-    render(<ComponentPanel components={components} pages={pages} onPageSelect={onPageSelect} />);
+    render(<ComponentPanel projectId="proj-1" components={components} pages={pages} onPageSelect={onPageSelect} />);
 
     fireEvent.click(screen.getByText("Header"));
     fireEvent.click(screen.getByRole("button", { name: "Home" }));
@@ -153,7 +153,7 @@ describe("ComponentPanel detail view (F035)", () => {
   it("returns to the list view when Back is clicked", async () => {
     const components = [makeComponent({ id: "1", name: "Header" })];
 
-    render(<ComponentPanel components={components} pages={[]} />);
+    render(<ComponentPanel projectId="proj-1" components={components} pages={[]} />);
 
     fireEvent.click(screen.getByText("Header"));
     expect(screen.getByRole("button", { name: "Back to components list" })).toBeInTheDocument();
@@ -169,7 +169,7 @@ describe("ComponentPanel detail view (F035)", () => {
       makeComponent({ id: "2", name: "Footer" }),
     ];
 
-    render(<ComponentPanel components={components} pages={[]} selectedComponentId="2" />);
+    render(<ComponentPanel projectId="proj-1" components={components} pages={[]} selectedComponentId="2" />);
 
     expect(screen.getByRole("heading", { name: "Footer" })).toBeInTheDocument();
   });

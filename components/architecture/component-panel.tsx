@@ -282,7 +282,7 @@ export function ComponentPanel({
   onSelectComponent,
   onPageSelect,
   selectedComponentId,
-  projectId = "",
+  projectId,
 }: {
   components: BoardComponent[];
   pages?: BoardPage[];
@@ -290,7 +290,7 @@ export function ComponentPanel({
   onSelectComponent?: (component: BoardComponent) => void;
   onPageSelect?: (pageId: string) => void;
   selectedComponentId?: string | null;
-  projectId?: string;
+  projectId: string;
 }) {
   const router = useRouter();
   const [internalSelectedId, setInternalSelectedId] = useState<string | null>(null);

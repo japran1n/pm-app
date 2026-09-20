@@ -53,7 +53,7 @@ describe("F036: rename and delete from component panel", () => {
       makeComponent({ id: "2", name: "Footer" }),
     ];
 
-    render(<ComponentPanel components={components} />);
+    render(<ComponentPanel projectId="proj-1" components={components} />);
 
     expect(screen.getByLabelText("Rename Header")).toBeInTheDocument();
     expect(screen.getByLabelText("Rename Footer")).toBeInTheDocument();
@@ -65,7 +65,7 @@ describe("F036: rename and delete from component panel", () => {
       makeComponent({ id: "2", name: "Footer" }),
     ];
 
-    render(<ComponentPanel components={components} />);
+    render(<ComponentPanel projectId="proj-1" components={components} />);
 
     expect(screen.getByLabelText("Delete Header")).toBeInTheDocument();
     expect(screen.getByLabelText("Delete Footer")).toBeInTheDocument();
@@ -75,7 +75,7 @@ describe("F036: rename and delete from component panel", () => {
     renameComponentMock.mockResolvedValue({ success: true });
     const components = [makeComponent({ id: "comp-1", name: "Header" })];
 
-    render(<ComponentPanel components={components} />);
+    render(<ComponentPanel projectId="proj-1" components={components} />);
 
     fireEvent.click(screen.getByLabelText("Rename Header"));
 
@@ -94,7 +94,7 @@ describe("F036: rename and delete from component panel", () => {
   it("AS_088: clicking delete shows a confirmation and does not call deleteComponent until confirmed", () => {
     const components = [makeComponent({ id: "comp-1", name: "Header" })];
 
-    render(<ComponentPanel components={components} />);
+    render(<ComponentPanel projectId="proj-1" components={components} />);
 
     fireEvent.click(screen.getByLabelText("Delete Header"));
 
@@ -108,7 +108,7 @@ describe("F036: rename and delete from component panel", () => {
     deleteComponentMock.mockResolvedValue({ success: true });
     const components = [makeComponent({ id: "comp-42", name: "Header" })];
 
-    render(<ComponentPanel components={components} />);
+    render(<ComponentPanel projectId="proj-1" components={components} />);
 
     fireEvent.click(screen.getByLabelText("Delete Header"));
     fireEvent.click(screen.getByRole("button", { name: "Delete component" }));
