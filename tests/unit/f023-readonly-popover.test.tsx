@@ -26,21 +26,6 @@ import type { CalendarBlock } from "@/lib/queries/calendar-blocks";
 
 afterEach(cleanup);
 
-function makeBlock(overrides: Partial<CalendarBlock> = {}): CalendarBlock {
-  return {
-    id: "block-1",
-    workspaceId: "ws-1",
-    projectId: null,
-    userId: "user-owner",
-    title: "Standup",
-    startsAt: "2026-09-20T09:00:00.000Z",
-    endsAt: "2026-09-20T09:30:00.000Z",
-    color: null,
-    blockType: "general",
-    ...overrides,
-  };
-}
-
 describe("F023: read-only popover for another member's block", () => {
   it("test_AS_044_isOwn_true_renders_save_and_delete_buttons", () => {
     render(
