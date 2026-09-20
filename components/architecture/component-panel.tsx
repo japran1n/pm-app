@@ -23,8 +23,25 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowDown, ArrowUp, Loader2, Pencil, Trash2 } from "lucide-react";
+import { GripVertical, Loader2, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 import { deleteComponent, renameComponent, reorderComponents } from "@/lib/actions/architecture";
 import { Button } from "@/components/ui/button";
@@ -44,15 +61,9 @@ import type { BoardComponent, BoardPage } from "@/lib/queries/architecture";
 function ComponentListItem({
   component,
   onSelectComponent,
-  projectId,
-  orderedComponentIds,
-  index,
 }: {
   component: BoardComponent;
   onSelectComponent?: (component: BoardComponent) => void;
-  projectId: string;
-  orderedComponentIds: string[];
-  index: number;
 }) {
   const router = useRouter();
   const [isEditing, setIsEditing] = useState(false);
@@ -61,33 +72,20 @@ function ComponentListItem({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [isRenamePending, startRenameTransition] = useTransition();
   const [isDeletePending, startDeleteTransition] = useTransition();
-  const [isReorderPending, startReorderTransition] = useTransition();
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // F047 (AS-159, AS-160, AS-161): move this component up/down by
-  // swapping it with its neighbour in the full ordered id list, then
-  // sending the complete list to reorderComponents -- the action requires
-  // every live component id to be present (AS-160), so a partial payload
-  // is never sent from here.
-  function move(direction: -1 | 1) {
-    const targetIndex = index + direction;
-    if (targetIndex < 0 || targetIndex >= orderedComponentIds.length) return;
+  // F048 (AS-162, AS-163, AS-164): drag-and-drop reordering via dnd-kit,
+  // same pattern as SortableSectionCard -- a dedicated grip handle rather
+  // than making the whole row draggable, since the row's own click target
+  // (selecting the component) and its action buttons need to stay usable.
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: component.id, data: { type: "component" } });
 
-    const nextOrder = [...orderedComponentIds];
-    [nextOrder[index], nextOrder[targetIndex]] = [
-      nextOrder[targetIndex],
-      nextOrder[index],
-    ];
-
-    startReorderTransition(async () => {
-      const result = await reorderComponents(projectId, nextOrder);
-      if (!result.success) {
-        toast.error(result.error ?? "Something went wrong. Please try again.");
-        return;
-      }
-      router.refresh();
-    });
-  }
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
 
   function startEditing() {
     setValue(component.name);
@@ -154,7 +152,7 @@ function ComponentListItem({
 
   if (isEditing) {
     return (
-      <li>
+      <li ref={setNodeRef} style={style}>
         <div className="flex flex-col gap-1 px-2 py-2">
           <Input
             ref={inputRef}
@@ -187,8 +185,18 @@ function ComponentListItem({
   }
 
   return (
-    <li>
+    <li ref={setNodeRef} style={style}>
       <div className="flex w-full items-center justify-between gap-2 rounded-md border border-transparent px-2 py-2 text-sm hover:border-border-control-hover hover:bg-muted/50">
+        <button
+          type="button"
+          aria-label={`Reorder ${component.name}`}
+          className="shrink-0 cursor-grab touch-none rounded-sm p-1 text-muted-foreground/40 hover:text-muted-foreground active:cursor-grabbing"
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical className="size-4" aria-hidden="true" />
+        </button>
+
         <button
           type="button"
           onClick={() => onSelectComponent?.(component)}
@@ -200,30 +208,6 @@ function ComponentListItem({
             {component.instanceCount === 1 ? "instance" : "instances"}
           </span>
         </button>
-
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          aria-label={`Move ${component.name} up`}
-          className="shrink-0"
-          disabled={isReorderPending || index === 0}
-          onClick={() => move(-1)}
-        >
-          <ArrowUp className="size-4" aria-hidden="true" />
-        </Button>
-
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          aria-label={`Move ${component.name} down`}
-          className="shrink-0"
-          disabled={isReorderPending || index === orderedComponentIds.length - 1}
-          onClick={() => move(1)}
-        >
-          <ArrowDown className="size-4" aria-hidden="true" />
-        </Button>
 
         <Button
           type="button"
@@ -305,7 +289,37 @@ export function ComponentPanel({
   selectedComponentId?: string | null;
   projectId?: string;
 }) {
+  const router = useRouter();
   const [internalSelectedId, setInternalSelectedId] = useState<string | null>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  // F048 (AS-162, AS-163, AS-164): drag-and-drop reordering -- compute the
+  // new order client-side with arrayMove, then send the full ordered id
+  // list to reorderComponents (the action requires every live component
+  // id to be present) and refresh to pick up the persisted order.
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const ids = components.map((component) => component.id);
+    const oldIndex = ids.indexOf(String(active.id));
+    const newIndex = ids.indexOf(String(over.id));
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const nextOrder = arrayMove(ids, oldIndex, newIndex);
+
+    void reorderComponents(projectId, nextOrder).then((result) => {
+      if (!result.success) {
+        toast.error(result.error ?? "Something went wrong. Please try again.");
+        return;
+      }
+      router.refresh();
+    });
+  }
 
   // Allow a parent (board.tsx) to drive selection externally -- e.g. when
   // a section card's component label is clicked (AS-084) -- while still
@@ -414,16 +428,24 @@ export function ComponentPanel({
         {components.length === 0 ? (
           <li className="p-2 text-sm text-muted-foreground">No components yet.</li>
         ) : (
-          components.map((component, index) => (
-            <ComponentListItem
-              key={component.id}
-              component={component}
-              onSelectComponent={selectComponent}
-              projectId={projectId}
-              orderedComponentIds={components.map((c) => c.id)}
-              index={index}
-            />
-          ))
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={components.map((component) => component.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              {components.map((component) => (
+                <ComponentListItem
+                  key={component.id}
+                  component={component}
+                  onSelectComponent={selectComponent}
+                />
+              ))}
+            </SortableContext>
+          </DndContext>
         )}
       </ul>
     </aside>
