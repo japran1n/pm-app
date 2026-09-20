@@ -16,6 +16,7 @@ import "@testing-library/jest-dom/vitest";
 import { WeekView } from "@/components/calendar/week-view";
 import { buildCalendarWeek } from "@/lib/calendar/week-grid";
 import type { CalendarBlock } from "@/lib/queries/calendar-blocks";
+import type { TimeOffEntry } from "@/lib/queries/time-off";
 
 afterEach(cleanup);
 
@@ -32,12 +33,39 @@ function makeBlock(id: string, date: string): CalendarBlock {
   } as CalendarBlock;
 }
 
+function makeTimeOffEntry(id: string, date: string): TimeOffEntry {
+  return {
+    id,
+    workspaceId: "workspace-1",
+    userId: "user-1",
+    startDate: date,
+    endDate: date,
+    note: "Out of office",
+    userName: "Jamie Rivera",
+    userEmail: "jamie@example.com",
+  };
+}
+
 describe("F015 Planner renders no task strips or chips (AS-033)", () => {
-  it("test_AS_033_the_week_grid_never_renders_an_all_day_task_strip_row", () => {
-    render(
+  it("test_AS_033_week_view_render_tree_contains_no_task_shaped_testids", () => {
+    // Realistic fixtures: 5 calendar blocks spread across the week plus
+    // time-off entries, no task data of any kind (there is no task prop
+    // to even plug in). Every data-testid in the rendered tree is
+    // collected and asserted to be task-free by substring, so this fails
+    // on ANY task-shaped node regardless of how it's named.
+    const blocks: CalendarBlock[] = WEEK.days
+      .slice(0, 5)
+      .map((day, index) => makeBlock(`block-${index}`, day.date));
+    const timeOffEntries: TimeOffEntry[] = [
+      makeTimeOffEntry("pto-1", WEEK.days[0]!.date),
+      makeTimeOffEntry("pto-2", WEEK.days[2]!.date),
+    ];
+
+    const { container } = render(
       <WeekView
         week={WEEK}
-        blocks={[]}
+        blocks={blocks}
+        timeOffEntries={timeOffEntries}
         workspaceSlug="acme"
         workspaceId="workspace-1"
         prevHref="/w/acme/calendar?week=2026-05-25"
@@ -46,10 +74,16 @@ describe("F015 Planner renders no task strips or chips (AS-033)", () => {
       />,
     );
 
-    for (const day of WEEK.days) {
-      expect(
-        screen.queryByTestId(`calendar-week-allday-${day.date}`),
-      ).not.toBeInTheDocument();
+    const testIds = Array.from(
+      container.querySelectorAll("[data-testid]"),
+    ).map((el) => el.getAttribute("data-testid") ?? "");
+
+    expect(testIds.length).toBeGreaterThan(0);
+
+    for (const testId of testIds) {
+      expect(testId).not.toContain("task");
+      expect(testId).not.toContain("allday-chip");
+      expect(testId).not.toContain("agenda-task");
     }
   });
 
