@@ -20,6 +20,7 @@ import {
   isoToLocalTime,
 } from "@/lib/calendar/block-datetime";
 import { getCalendarBlockDisplayColor } from "@/lib/calendar/block-colors";
+import { isOwnBlock } from "@/lib/calendar/ownership";
 import {
   Popover,
   PopoverContent,
@@ -36,11 +37,18 @@ export const CALENDAR_BLOCK_DRAG_PREFIX = "block:";
 export function CalendarBlockChip({
   block,
   canDrag,
+  currentUserId,
   onUpdate,
   onDelete,
 }: {
   block: CalendarBlock;
   canDrag: boolean;
+  /** F022 (AS-043): drag-to-move is only ever enabled for the block's own
+   * owner -- `canDrag` alone (write permission) is not enough, same
+   * pattern as F021's `canResize` gate in week-time-grid.tsx. Callers
+   * pass the signed-in member's id; the actual `canDrag && isOwnBlock(...)`
+   * check happens inline below so this is the single call site. */
+  currentUserId: string;
   onUpdate: (
     blockId: string,
     values: {
@@ -56,9 +64,14 @@ export function CalendarBlockChip({
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
 
+  // F022 (AS-043): a block owned by another member cannot be dragged to a
+  // new time -- gate the drag affordance on ownership, not just the
+  // caller's general write permission.
+  const canMove = canDrag && isOwnBlock(block, currentUserId);
+
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `${CALENDAR_BLOCK_DRAG_PREFIX}${block.id}`,
-    disabled: !canDrag,
+    disabled: !canMove,
   });
 
   const displayColor = getCalendarBlockDisplayColor(block.color);
@@ -109,11 +122,13 @@ export function CalendarBlockChip({
             ref={setNodeRef}
             style={style}
             {...attributes}
-            {...listeners}
+            {...(canMove ? listeners : {})}
             type="button"
             data-testid={`calendar-block-chip-${block.id}`}
+            data-draggable={canMove}
             className={cn(
               "flex min-w-0 items-center gap-1 truncate rounded border px-1.5 py-0.5 text-left hover:brightness-95",
+              canMove ? "cursor-grab active:cursor-grabbing" : "cursor-default",
             )}
             title={block.title}
           >
