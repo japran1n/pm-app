@@ -20,6 +20,8 @@
 // pointer listeners for a block another member owns, regardless of the
 // caller's own write permission.
 
+import fs from "node:fs";
+import path from "node:path";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import "@testing-library/jest-dom/vitest";
@@ -27,6 +29,7 @@ import "@testing-library/jest-dom/vitest";
 import { parsePeopleParam } from "@/lib/calendar/people-selection";
 import { resolvePlannerLayout } from "@/lib/calendar/planner-layout";
 import { CalendarBlockChip } from "@/components/calendar/calendar-block-chip";
+import { StackedPersonRow } from "@/components/calendar/stacked-person-row";
 import type { CalendarBlock } from "@/lib/queries/calendar-blocks";
 
 afterEach(cleanup);
@@ -54,6 +57,24 @@ describe("F040 end-to-end assertions", () => {
     });
     expect(result).toEqual([SELF_ID]);
     expect(result).not.toContain(OTHER_ID);
+  });
+
+  it("test_AS_077_page_forwards_url_param_to_parsePeopleParam", () => {
+    // Call-site check: page.tsx must forward the real `peopleParam` variable
+    // (derived from the URL's `?people=` search param) into
+    // parsePeopleParam, not a hardcoded literal. A mutation that swaps the
+    // real variable for a hardcoded "all"/"me" string would still pass the
+    // unit test above (which calls parsePeopleParam directly), so this test
+    // exists to catch that call-site regression.
+    const src = fs.readFileSync(
+      path.join(
+        process.cwd(),
+        "app/(workspace)/w/[workspaceSlug]/calendar/page.tsx",
+      ),
+      "utf-8",
+    );
+    expect(src).toMatch(/parsePeopleParam\s*\(\s*peopleParam/);
+    expect(src).not.toMatch(/parsePeopleParam\s*\(\s*["'`](all|me)/);
   });
 
   it("test_AS_078_two_people_gives_stacked_layout", () => {
@@ -101,5 +122,36 @@ describe("F040 end-to-end assertions", () => {
 
     const chip = screen.getByTestId(`calendar-block-chip-${block.id}`);
     expect(chip).toHaveAttribute("data-draggable", "true");
+  });
+
+  it("test_AS_079_stacked_other_blocks_not_draggable", () => {
+    // StackedPersonRow (the stacked planner layout, distinct from the
+    // week-grid's CalendarBlockChip) renders every block as a plain,
+    // non-interactive div -- no dnd-kit wiring at all, for anyone's row.
+    // This proves the stacked layout itself never offers a drag affordance,
+    // regardless of ownership.
+    const block = makeBlock({ userId: OTHER_ID });
+
+    render(
+      <StackedPersonRow
+        userId={OTHER_ID}
+        userLabel="Bob"
+        blocks={[block]}
+        weekKey="2026-09-14"
+      />,
+    );
+
+    // No drag handles anywhere in the stacked row.
+    expect(screen.queryAllByTestId(/drag-handle/)).toHaveLength(0);
+
+    // No element in the rendered tree carries a draggable attribute.
+    const draggable = document.querySelectorAll("[draggable='true']");
+    expect(draggable.length).toBe(0);
+
+    // The block itself renders as a plain div with no drag-related data
+    // attribute at all (unlike CalendarBlockChip's data-draggable).
+    const blockEl = screen.getByTestId(`stacked-block-${block.id}-1`);
+    expect(blockEl).not.toHaveAttribute("data-draggable");
+    expect(blockEl).not.toHaveAttribute("draggable");
   });
 });
