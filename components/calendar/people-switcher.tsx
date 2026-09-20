@@ -30,7 +30,7 @@
 // `selfId` is required so this component can tell which member is "me";
 // it's the only new prop this feature adds.
 import * as React from "react";
-import { UsersIcon } from "lucide-react";
+import { CheckIcon, UsersIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { orderPeopleForWholeTeam, serializePeopleParam } from "@/lib/calendar/people-selection";
@@ -226,6 +226,7 @@ export function PeopleSwitcher({
                     data-checked={isSelected}
                     aria-selected={isSelected}
                     onSelect={() => toggleMember(member.userId)}
+                    className={cn(isSelected && "bg-accent text-accent-foreground")}
                   >
                     <Avatar size="sm">
                       {member.avatarUrl ? (
@@ -237,6 +238,9 @@ export function PeopleSwitcher({
                       <AvatarFallback>{initialsFor(member)}</AvatarFallback>
                     </Avatar>
                     <span className="truncate">{displayNameFor(member)}</span>
+                    {isSelected ? (
+                      <CheckIcon className="ml-auto size-4 shrink-0" />
+                    ) : null}
                   </CommandItem>
                 );
               })}
