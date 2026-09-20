@@ -39,6 +39,7 @@ import type {
 
 export type SitemapListItem = {
   id: string;
+  workspaceId: string;
   name: string;
   createdBy: string | null;
   createdAt: string;
@@ -207,7 +208,7 @@ export async function listSitemaps(
 
   const { data, error } = await supabase
     .from("sitemaps")
-    .select("id, name, created_by, created_at, updated_at, archived_at")
+    .select("id, workspace_id, name, created_by, created_at, updated_at, archived_at")
     .eq("workspace_id", workspaceId)
     .order("updated_at", { ascending: false });
 
@@ -220,12 +221,52 @@ export async function listSitemaps(
     ok: true,
     data: (data ?? []).map((row) => ({
       id: row.id,
+      workspaceId: row.workspace_id,
       name: row.name,
       createdBy: row.created_by,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       archivedAt: row.archived_at,
     })),
+  };
+}
+
+// Phase 2 (sitemap editor top bar): the sitemap's own name/metadata --
+// getSitemapBoard below returns only the board shape (pages/components,
+// shared with the project-backed Architecture tab), which has no `name`
+// field of its own, same reasoning as SitemapShareData's own header note
+// further down this file.
+export async function getSitemapById(
+  sitemapId: string,
+): Promise<PortalQueryResult<SitemapListItem | null>> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("sitemaps")
+    .select("id, workspace_id, name, created_by, created_at, updated_at, archived_at")
+    .eq("id", sitemapId)
+    .maybeSingle();
+
+  if (error) {
+    logger.error("getSitemapById: failed to load sitemap", { error });
+    return { ok: false, error: error.message };
+  }
+
+  if (!data) {
+    return { ok: true, data: null };
+  }
+
+  return {
+    ok: true,
+    data: {
+      id: data.id,
+      workspaceId: data.workspace_id,
+      name: data.name,
+      createdBy: data.created_by,
+      createdAt: data.created_at,
+      updatedAt: data.updated_at,
+      archivedAt: data.archived_at,
+    },
   };
 }
 
@@ -239,13 +280,68 @@ export async function getSitemapBoard(
   return loadBoard(supabase, sitemapId);
 }
 
+// Phase 2 (sitemap list + editor share dialog): "is this sitemap
+// currently shared, and if so what's its active token" for one or many
+// sitemaps at once -- an ordinary member-RLS read (sitemap_shares does
+// have a member select policy, see the migration), never the admin
+// client. `revoked_at is null` is "active"; a sitemap can have at most
+// one active share by construction of createSitemapShare/revokeSitemapShare
+// (revoke marks the row revoked rather than deleting it, so old tokens
+// stay inert forever instead of being reusable).
+export async function listActiveSitemapShareTokens(
+  sitemapIds: string[],
+): Promise<PortalQueryResult<Record<string, string>>> {
+  if (sitemapIds.length === 0) {
+    return { ok: true, data: {} };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("sitemap_shares")
+    .select("sitemap_id, token")
+    .in("sitemap_id", sitemapIds)
+    .is("revoked_at", null);
+
+  if (error) {
+    logger.error("listActiveSitemapShareTokens: failed to load shares", { error });
+    return { ok: false, error: error.message };
+  }
+
+  const byId: Record<string, string> = {};
+  for (const row of data ?? []) {
+    byId[row.sitemap_id] = row.token;
+  }
+
+  return { ok: true, data: byId };
+}
+
+export async function getActiveSitemapShareToken(
+  sitemapId: string,
+): Promise<PortalQueryResult<string | null>> {
+  const result = await listActiveSitemapShareTokens([sitemapId]);
+  if (!result.ok) return result;
+  return { ok: true, data: result.data[sitemapId] ?? null };
+}
+
+// Phase 3 (public share route): the board shape alone has no `name` --
+// that lives on the parent `sitemaps` row, not on `ArchitectureBoard`
+// (which is shared with the project-backed Architecture tab and never
+// carries a title of its own). The share route's top bar needs the
+// sitemap's name, so this wraps the board with it rather than adding a
+// name field to the shared `ArchitectureBoard` type (that type is
+// imported, never redeclared or widened, per this file's header).
+export type SitemapShareData = {
+  name: string;
+  board: ArchitectureBoard;
+};
+
 // Resolves a share token to a sitemap board, entirely via the admin
 // client (bypasses RLS by design -- see this file's header and the
 // migration's header note). Returns `{ ok: true, data: null }` for an
 // unknown or revoked token -- not found is not a query failure.
 export async function resolveSitemapShareToken(
   token: string,
-): Promise<PortalQueryResult<ArchitectureBoard | null>> {
+): Promise<PortalQueryResult<SitemapShareData | null>> {
   // Public share route: no authenticated caller, no RLS to lean on;
   // ARCH-003's admin-client restriction only applies to lib/actions/**
   // (see eslint.config.mjs) -- this is a query module. Token itself is
@@ -269,10 +365,28 @@ export async function resolveSitemapShareToken(
     return { ok: true, data: null };
   }
 
-  const boardResult = await loadBoard(admin, shareRow.sitemap_id);
+  const [sitemapResult, boardResult] = await Promise.all([
+    admin.from("sitemaps").select("name").eq("id", shareRow.sitemap_id).maybeSingle(),
+    loadBoard(admin, shareRow.sitemap_id),
+  ]);
+
+  if (sitemapResult.error) {
+    logger.error("resolveSitemapShareToken: failed to load sitemap name", {
+      error: sitemapResult.error,
+    });
+    return { ok: false, error: sitemapResult.error.message };
+  }
+
+  if (!sitemapResult.data) {
+    // Sitemap row itself is gone even though the share row still exists
+    // (should not happen given the FK, but treat it the same as an
+    // unknown/revoked token rather than surfacing a query error).
+    return { ok: true, data: null };
+  }
+
   if (!boardResult.ok) {
     return boardResult;
   }
 
-  return { ok: true, data: boardResult.data };
+  return { ok: true, data: { name: sitemapResult.data.name, board: boardResult.data } };
 }
