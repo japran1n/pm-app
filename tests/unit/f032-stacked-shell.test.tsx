@@ -85,10 +85,15 @@ describe("F032 StackedPlanner shell", () => {
     const ALICE_ID = "alice-id";
     const BOB_ID = "bob-id";
     const orderedSelectedUserIds = [CAROL_ID, ALICE_ID, BOB_ID];
+    // Members roster is in alphabetical order -- deliberately DIFFERENT
+    // from selectedUserIds order above. If StackedPlanner iterated the
+    // members array (roster order) instead of selectedUserIds (URL param
+    // order), rows would render Alice, Bob, Carol instead of Carol, Alice,
+    // Bob, and this test would catch it.
     const orderedMembers: SwitcherMember[] = [
-      { userId: CAROL_ID, name: "Carol", email: "carol@example.com", avatarUrl: null },
       { userId: ALICE_ID, name: "Alice", email: "alice@example.com", avatarUrl: null },
       { userId: BOB_ID, name: "Bob", email: "bob@example.com", avatarUrl: null },
+      { userId: CAROL_ID, name: "Carol", email: "carol@example.com", avatarUrl: null },
     ];
 
     const { container } = render(
