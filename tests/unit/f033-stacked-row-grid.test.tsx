@@ -125,4 +125,24 @@ describe("F033 StackedPersonRow", () => {
     // 08:00-10:00 out of an 8-hour window is 25% tall.
     expect(chip.style.height).toBe("25%");
   });
+
+  it("test_AS_022_block_top_position_nonzero: a block starting at 10:00 has a top of 25%", () => {
+    // Not clipped -- fully inside the 08:00-16:00 window, so this exercises
+    // a non-zero top: 10:00 is 2h into the 8h window == 25% from the top.
+    const block = makeBlock({
+      id: "nonzero-top-block",
+      startsAt: "2026-09-14T10:00:00Z",
+      endsAt: "2026-09-14T11:00:00Z",
+    });
+
+    render(
+      <StackedPersonRow userId="user-1" blocks={[block]} weekKey={WEEK_KEY} />,
+    );
+
+    const chip = screen.getByTestId(`stacked-block-${block.id}-1`);
+    expect(chip).toBeInTheDocument();
+    expect(chip.style.top).toBe("25%");
+    // 10:00-11:00 out of an 8-hour window is 12.5% tall.
+    expect(chip.style.height).toBe("12.5%");
+  });
 });
