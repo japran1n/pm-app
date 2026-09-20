@@ -179,9 +179,14 @@ describe("F030: people switcher at mobile viewport width (AS-061)", () => {
     // `sm:hidden` either, so this test also catches that class of bug even
     // though it isn't the mutation under test here).
     const classTokens = (switcherTrigger?.className ?? "").split(/\s+/).filter(Boolean);
-    // A bare `hidden` token (no responsive prefix like `sm:hidden`) applies
-    // `display: none` unconditionally at every breakpoint.
-    const hasUnconditionalHiddenClass = classTokens.includes("hidden");
+    // Reject bare `hidden` AND every responsive-prefixed variant
+    // (`sm:hidden`, `md:hidden`, `lg:hidden`, `xl:hidden`, `2xl:hidden`,
+    // `max-sm:hidden`, `max-md:hidden`, etc.) -- any of these applies
+    // `display: none` at some breakpoint with no guaranteed un-hide
+    // variant, which jsdom's non-CSS-evaluating renderer would otherwise
+    // let slip through undetected.
+    const hiddenVariantPattern = /^((max-)?(sm|md|lg|xl|2xl):)?hidden$/;
+    const hasUnconditionalHiddenClass = classTokens.some((token) => hiddenVariantPattern.test(token));
     expect(hasUnconditionalHiddenClass).toBe(false);
 
     const style = switcherTrigger ? window.getComputedStyle(switcherTrigger) : null;
