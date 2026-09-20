@@ -271,11 +271,11 @@ describe("AS-130: architecture action barrel guard", () => {
   const barrelSource = fs.readFileSync(BARREL_PATH, "utf8");
   const actionNames = parseBarrelExports(barrelSource);
 
-  it("parses the expected number of exported actions from the barrel", () => {
+  it("AS-182: parses the expected number of exported actions from the barrel", () => {
     expect(actionNames.length).toBe(EXPECTED_ACTION_COUNT);
   });
 
-  it("every exported architecture action has at least one real import/call reference outside the barrel, leaf modules, and tests", () => {
+  it("AS-182: every exported architecture action has at least one real import/call reference outside the barrel, leaf modules, and tests", () => {
     const allFiles = collectScannableFiles(ROOT);
 
     const candidateFiles = allFiles.filter((filePath) => {

@@ -135,6 +135,19 @@ describe("M9 regression (AS-178, AS-179, AS-180, AS-181)", () => {
     expect(resolveClientBucket("not_started", null)).toBe("progress")
   })
 
+  it("AS-179: resolveClientBucket stays reachable (exported) and components/portal is not excluded from typechecking", () => {
+    const content = readFileSync(join(process.cwd(), "components/portal/status-label.ts"), "utf8")
+    expect(content).toMatch(/export\s+(function|const)\s+resolveClientBucket/)
+
+    const tsconfig = readFileSync(join(process.cwd(), "tsconfig.json"), "utf8")
+    const parsed = JSON.parse(tsconfig)
+    const excludes: string[] = Array.isArray(parsed.exclude) ? parsed.exclude : []
+    const excludesPortal = excludes.some((entry) =>
+      entry.includes("components/portal")
+    )
+    expect(excludesPortal, "components/portal must not be excluded from tsconfig").toBe(false)
+  })
+
   it("AS-180: architecture query selects the live task columns and excludes dropped page_components.description", () => {
     const content = readFileSync(join(process.cwd(), "lib/queries/architecture.ts"), "utf8")
 
