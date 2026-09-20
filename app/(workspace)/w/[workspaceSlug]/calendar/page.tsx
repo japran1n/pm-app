@@ -26,6 +26,7 @@ import { getCurrentUser, getRequestClient } from "@/lib/auth/current-user";
 import { getCurrentUserTimezone } from "@/lib/queries/profile";
 import { getCalendarBlocks } from "@/lib/queries/calendar-blocks";
 import { getTimeOffEntries } from "@/lib/queries/time-off";
+import type { TimeOffEntry } from "@/lib/queries/time-off";
 import { getWorkspaceMembers } from "@/lib/queries/members";
 import {
   buildCalendarWeek,
@@ -38,6 +39,7 @@ import {
 import { parsePeopleParam } from "@/lib/calendar/people-selection";
 import { buildPlannerNavHrefs } from "@/lib/calendar/week-nav";
 import { buildSwitcherMembers } from "@/lib/calendar/workspace-members";
+import type { SwitcherMember } from "@/lib/calendar/workspace-members";
 import { resolvePlannerLayout } from "@/lib/calendar/planner-layout";
 import { WeekView } from "@/components/calendar/week-view";
 import { StackedPlanner } from "@/components/calendar/stacked-planner";
@@ -146,6 +148,8 @@ export default async function CalendarPage({
           currentUserId={user.id}
           // F029 (AS-011, AS-012, AS-013, AS-059): the URL-bound people
           // switcher's own props -- see WeekView/people-switcher.tsx.
+          // F032 (AS-062): the same switcher member list, reused so the
+          // stacked layout's row labels and the switcher can never desync.
           peopleSwitcherMembers={switcherMembers}
           selectedUserIds={selectedUserIds}
           weekParam={weekParam}
@@ -185,12 +189,7 @@ async function WeekGridSection({
   todayHref: string;
   blockUserIds: string[];
   currentUserId: string;
-  peopleSwitcherMembers: Array<{
-    userId: string;
-    name: string | null;
-    email: string | null;
-    avatarUrl: string | null;
-  }>;
+  peopleSwitcherMembers: SwitcherMember[];
   selectedUserIds: string[];
   weekParam?: string;
   layout: "week-grid" | "stacked";
@@ -226,11 +225,25 @@ async function WeekGridSection({
       }
     }
 
+    // F034 (AS-066): bucket time-off entries by user, mirroring
+    // blocksByUser above, so each row can render its own strip.
+    const timeOffByUser = new Map<string, TimeOffEntry[]>();
+    for (const entry of timeOffEntries) {
+      const existing = timeOffByUser.get(entry.userId);
+      if (existing) {
+        existing.push(entry);
+      } else {
+        timeOffByUser.set(entry.userId, [entry]);
+      }
+    }
+
     return (
       <StackedPlanner
         selectedUserIds={selectedUserIds}
         blocksByUser={blocksByUser}
+        timeOffByUser={timeOffByUser}
         weekKey={weekKey}
+        members={peopleSwitcherMembers}
       />
     );
   }

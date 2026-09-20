@@ -5,6 +5,8 @@
 // segments and are not rendered.
 
 import type { CalendarBlock } from "@/lib/queries/calendar-blocks";
+import type { TimeOffEntry } from "@/lib/queries/time-off";
+import { eachDateInRange } from "@/lib/queries/time-off";
 import {
   clipBlockToStackedWindow,
   STACKED_DAYS,
@@ -12,6 +14,7 @@ import {
   STACKED_END_HOUR,
 } from "@/lib/calendar/stacked-window";
 import { getCalendarBlockDisplayColor } from "@/lib/calendar/block-colors";
+import { TimeOffDayStrip } from "@/components/calendar/time-off-day-strip";
 
 const DAY_LABELS: Record<number, string> = {
   1: "Mon",
@@ -94,19 +97,65 @@ export function StackedPersonRow({
   userId,
   userLabel,
   blocks,
+  timeOffEntries,
   weekKey,
 }: {
   userId: string;
   userLabel?: string;
   blocks: CalendarBlock[];
+  /** F034 (AS-066): this person's approved time-off entries overlapping the
+   * visible week -- `?? []` (default) means no strip renders at all, so
+   * existing callers/tests that don't pass this keep behaving exactly as
+   * before. */
+  timeOffEntries?: TimeOffEntry[];
   weekKey: string;
 }) {
   const segments = buildSegments(blocks, weekKey);
+
+  // Bucket each PTO entry onto every DateOnly it covers (inclusive range),
+  // same "one row per date it touches" posture week-view.tsx already uses
+  // for its own timeOffByDate map.
+  const timeOffByDate: Record<string, TimeOffEntry[]> = {};
+  for (const entry of timeOffEntries ?? []) {
+    for (const date of eachDateInRange(entry.startDate, entry.endDate)) {
+      timeOffByDate[date] = [...(timeOffByDate[date] ?? []), entry];
+    }
+  }
+  // Only the visible Mon-Fri dates count -- an entry whose range falls
+  // entirely outside this week's window buckets to dates that never match
+  // one of the five rendered columns, so it must not trigger a strip.
+  const visibleDateKeys = STACKED_DAYS.map((isoWeekday) =>
+    dateForIsoWeekday(weekKey, isoWeekday).toISOString().slice(0, 10),
+  );
+  const hasTimeOff = visibleDateKeys.some(
+    (dateKey) => (timeOffByDate[dateKey] ?? []).length > 0,
+  );
 
   return (
     <div data-testid={`stacked-person-row-${userId}`} className="w-full">
       {userLabel && (
         <div className="mb-1 text-sm font-medium">{userLabel}</div>
+      )}
+      {hasTimeOff && (
+        // AS-066: the strip is a sibling rendered BEFORE the time-grid
+        // below, never inside it -- it sits above the grid, one column
+        // per Mon-Fri day, aligned to the same 5-column layout.
+        <div
+          data-testid="stacked-time-off-strip"
+          className="mb-1 grid w-full"
+          style={{ gridTemplateColumns: "repeat(5, minmax(0, 1fr))" }}
+        >
+          {STACKED_DAYS.map((isoWeekday) => {
+            const dayDate = dateForIsoWeekday(weekKey, isoWeekday);
+            const dateKey = dayDate.toISOString().slice(0, 10);
+            return (
+              <TimeOffDayStrip
+                key={isoWeekday}
+                entries={timeOffByDate[dateKey] ?? []}
+              />
+            );
+          })}
+        </div>
       )}
       <div
         data-testid="stacked-grid"
