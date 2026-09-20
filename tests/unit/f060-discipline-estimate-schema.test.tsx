@@ -265,26 +265,26 @@ describe("DisciplineEstimatePopover prefill (AS-060, AS-061, AS-062 read-back)",
     cleanup();
   });
 
-  it("test_AS_060_AS_061_AS_062_prefills_content_seo_pm_qa_inputs_from_the_estimates_prop", () => {
+  it("test_AS_060_AS_061_AS_062_prefills_design_development_inputs_from_the_estimates_prop", () => {
+    // The popover UI only surfaces design and development rows
+    // (content_seo/pm/qa remain valid disciplines in the DB/actions but are
+    // hidden from this view), so prefill is only asserted for those two.
     render(
       <DisciplineEstimatePopover
         taskId="task-1"
         taskTitle="Task 1"
         estimates={[
-          { discipline: "content_seo", minutes: 90, note: null },
-          { discipline: "pm", minutes: 45, note: null },
-          { discipline: "qa", minutes: 120, note: null },
+          { discipline: "design", minutes: 90, note: null },
+          { discipline: "development", minutes: 45, note: null },
         ]}
       />,
     );
 
-    // formatMinutes(90) === "1h 30m", formatMinutes(45) === "45m",
-    // formatMinutes(120) === "2h". Reading these back from the rendered
-    // <input value=...> is the prefill path the write-only F060 tests never
-    // touched.
+    // formatMinutes(90) === "1h 30m", formatMinutes(45) === "45m". Reading
+    // these back from the rendered <input value=...> is the prefill path
+    // the write-only F060 tests never touched.
     expect(screen.getByDisplayValue("1h 30m")).toBeInTheDocument();
     expect(screen.getByDisplayValue("45m")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("2h")).toBeInTheDocument();
   });
 });
 
@@ -324,10 +324,14 @@ describe("EstimateSummary read-back for distinct discipline values (AS-060, AS-0
     render(<EstimateSummary pages={[makePage("page-1", "Home")]} detailsData={details} />);
 
     const cells = screen.getAllByRole("cell").map(c => c.textContent);
-    // design=30m, development=1h, content_seo=1h 30m, pm=45m, qa=2h,
-    // total=5h 45m.
+    // The summary table UI only surfaces design and development columns
+    // (content_seo/pm/qa remain valid in the DB but are hidden here).
+    // design=30m, development=1h, total across all five disciplines=5h 45m.
     expect(cells).toEqual(
-      expect.arrayContaining(["30m", "1h", "1h 30m", "45m", "2h", "5h 45m"]),
+      expect.arrayContaining(["30m", "1h", "5h 45m"]),
     );
+    expect(cells).not.toContain("1h 30m");
+    expect(cells).not.toContain("45m");
+    expect(cells).not.toContain("2h");
   });
 });

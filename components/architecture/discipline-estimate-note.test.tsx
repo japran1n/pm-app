@@ -32,13 +32,16 @@ afterEach(() => {
 });
 
 describe("DisciplineEstimatePopover note field (AS-070, AS-071, AS-072)", () => {
-  it("test_AS_070_renders_a_note_input_for_every_discipline_row", () => {
+  it("test_AS_070_renders_a_note_input_for_every_visible_discipline_row", () => {
     render(
       <DisciplineEstimatePopover taskId="task-1" taskTitle="Task 1" estimates={[]} />,
     );
 
+    // WORK_CATEGORIES remains the DB/actions source of truth for all five
+    // disciplines, but the popover UI only surfaces design + development.
+    expect(WORK_CATEGORIES.length).toBe(5);
     const noteInputs = screen.getAllByPlaceholderText("Note (optional)");
-    expect(noteInputs).toHaveLength(WORK_CATEGORIES.length);
+    expect(noteInputs).toHaveLength(2);
   });
 
   it("test_AS_071_a_previously_saved_note_reads_back_into_its_discipline_row", () => {

@@ -15,6 +15,11 @@ import { WORK_CATEGORIES } from "@/lib/architecture/types";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
+// UI-only restriction: content_seo, pm, and qa remain valid disciplines in
+// the DB and actions, but the estimate popover only surfaces design and
+// development.
+const VISIBLE_DISCIPLINES: WorkCategory[] = ["design", "development"];
+
 const DISCIPLINE_LABELS: Record<WorkCategory, string> = {
   design: "Design",
   development: "Development",
@@ -145,7 +150,7 @@ export function DisciplineEstimatePopover({
         )}
       </div>
       <div className="flex flex-col gap-2">
-        {WORK_CATEGORIES.map((d) => (
+        {VISIBLE_DISCIPLINES.map((d) => (
           <div key={d} className="flex flex-col gap-0.5">
             <div className="flex items-center gap-2">
               <label className="w-28 shrink-0 text-xs text-muted-foreground">

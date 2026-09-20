@@ -6,6 +6,10 @@ import type { ArchitectureNodeDetails, WorkCategory } from "@/lib/architecture/t
 import { WORK_CATEGORIES } from "@/lib/architecture/types";
 import { computeRollups, computeSiteTotals } from "@/lib/architecture/estimate-rollup";
 
+// UI-only restriction: content_seo, pm, and qa remain valid disciplines in
+// the DB, but the summary only surfaces design and development.
+const VISIBLE_DISCIPLINES: WorkCategory[] = ["design", "development"];
+
 const DISCIPLINE_LABELS: Record<WorkCategory, string> = {
   design: "Design",
   development: "Dev",
@@ -46,7 +50,9 @@ export function EstimateSummary({
     );
   }
 
-  const activeDisciplines = WORK_CATEGORIES.filter(d => siteTotals[d]);
+  const activeDisciplines = WORK_CATEGORIES.filter(d => siteTotals[d]).filter(d =>
+    VISIBLE_DISCIPLINES.includes(d)
+  );
 
   return (
     <div className="flex flex-col gap-3 rounded-md border border-border bg-card px-4 py-3 shadow-xs">
@@ -74,7 +80,7 @@ export function EstimateSummary({
           <thead>
             <tr className="border-b text-left">
               <th className="pb-1.5 pr-4 text-xs font-medium text-muted-foreground">Page</th>
-              {WORK_CATEGORIES.map(d => (
+              {VISIBLE_DISCIPLINES.map(d => (
                 <th key={d} className="pb-1.5 pr-3 text-xs font-medium text-muted-foreground">
                   {DISCIPLINE_LABELS[d]}
                 </th>
@@ -88,7 +94,7 @@ export function EstimateSummary({
               return (
                 <tr key={page.id} className="border-b last:border-0">
                   <td className="py-1.5 pr-4 text-xs">{page.title}</td>
-                  {WORK_CATEGORIES.map(d => (
+                  {VISIBLE_DISCIPLINES.map(d => (
                     <td key={d} className="py-1.5 pr-3 font-mono text-xs tabular-nums text-muted-foreground">
                       {rollup.byDiscipline[d] ? formatMinutes(rollup.byDiscipline[d]!) : "—"}
                     </td>

@@ -43,20 +43,21 @@ function makeDetails(): ArchitectureNodeDetails {
 }
 
 describe("EstimateSummary (AS-065, AS-066, AS-067)", () => {
-  it("test_AS_065_renders_all_five_discipline_columns_without_widening_beyond_a_narrow_viewport", () => {
+  it("test_AS_065_renders_visible_discipline_columns_without_widening_beyond_a_narrow_viewport", () => {
     // jsdom has no layout engine, so we cannot assert actual pixel widths or
     // that body scroll doesn't occur. Instead we assert the DOM structure
     // that is *responsible* for that behaviour: a scroll container with
     // `overflow-x-auto` wraps a table that is allowed to grow past its
-    // container (`min-w-max`), and all five discipline columns are present
-    // as headers. If `overflow-x-auto` is removed from the component, this
-    // test fails.
+    // container (`min-w-max`). The UI only surfaces design + development
+    // columns (content_seo/pm/qa remain valid disciplines in the DB but are
+    // hidden here). If `overflow-x-auto` is removed from the component,
+    // this test fails.
     render(<EstimateSummary pages={[makePage("page-1", "Home")]} detailsData={makeDetails()} />);
 
     const table = screen.getByRole("table");
     const headerCells = screen.getAllByRole("columnheader");
-    // Page + 5 disciplines + Total = 7 header cells.
-    expect(headerCells).toHaveLength(WORK_CATEGORIES.length + 2);
+    // Page + 2 visible disciplines + Total = 4 header cells.
+    expect(headerCells).toHaveLength(4);
 
     const scrollContainer = table.parentElement;
     expect(scrollContainer).not.toBeNull();
@@ -64,8 +65,9 @@ describe("EstimateSummary (AS-065, AS-066, AS-067)", () => {
     expect(table.className).toContain("min-w-max");
 
     const headerText = headerCells.map(h => h.textContent);
-    expect(headerText).toEqual(
-      expect.arrayContaining(["Design", "Dev", "Content/SEO", "PM", "QA"]),
+    expect(headerText).toEqual(expect.arrayContaining(["Design", "Dev"]));
+    expect(headerText).not.toEqual(
+      expect.arrayContaining(["Content/SEO", "PM", "QA"]),
     );
   });
 

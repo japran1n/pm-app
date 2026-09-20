@@ -31,31 +31,29 @@ afterEach(() => {
 });
 
 describe("DisciplineEstimatePopover (AS-058, AS-059)", () => {
-  it("test_AS_058_renders_a_row_for_all_five_work_categories", () => {
+  it("test_AS_058_renders_a_row_for_only_the_two_visible_disciplines", () => {
     render(
       <DisciplineEstimatePopover taskId="task-1" taskTitle="Task 1" estimates={[]} />,
     );
 
-    // WORK_CATEGORIES is the single source of truth for "all five values,
-    // in canonical order" (lib/architecture/types.ts re-export of F011's
-    // workCategorySchema.options). Asserting against it directly -- rather
-    // than hardcoding a length of 5 -- means this test fails if the popover
-    // ever drops a row, without needing to know the category list by heart.
+    // WORK_CATEGORIES remains the DB/actions source of truth for all five
+    // disciplines, but the popover UI only surfaces design + development
+    // (content_seo/pm/qa stay valid in the DB but are hidden here).
     expect(WORK_CATEGORIES.length).toBe(5);
     const inputs = screen.getAllByPlaceholderText("—");
-    expect(inputs).toHaveLength(WORK_CATEGORIES.length);
+    expect(inputs).toHaveLength(2);
   });
 
-  it("test_AS_059_shows_the_correct_label_for_each_of_the_five_disciplines", () => {
+  it("test_AS_059_shows_the_correct_label_for_each_visible_discipline", () => {
     render(
       <DisciplineEstimatePopover taskId="task-1" taskTitle="Task 1" estimates={[]} />,
     );
 
     expect(screen.getByText("Design")).toBeInTheDocument();
     expect(screen.getByText("Development")).toBeInTheDocument();
-    expect(screen.getByText("Content & SEO")).toBeInTheDocument();
-    expect(screen.getByText("PM")).toBeInTheDocument();
-    expect(screen.getByText("QA")).toBeInTheDocument();
+    expect(screen.queryByText("Content & SEO")).not.toBeInTheDocument();
+    expect(screen.queryByText("PM")).not.toBeInTheDocument();
+    expect(screen.queryByText("QA")).not.toBeInTheDocument();
   });
 
   it("test_AS_079_handleSaveAll_calls_bulk_action_exactly_once", async () => {
