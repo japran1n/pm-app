@@ -338,40 +338,49 @@ describe("F075: page.tsx's source guard -- must call buildPlannerNavHrefs", () =
   });
 });
 
-// F085 (AS-052): only ACTIVE members may appear in the people switcher --
-// pending/inactive members must never be selectable. This is a source
-// scan (not a render test) so it catches the call site itself: a mutation
-// swapping `workspaceMembers.active` for `workspaceMembers.pending` (or a
-// combined `[...active, ...pending]` spread) at the `peopleSwitcherMembers`
-// call site in page.tsx MUST fail this test.
-describe("F085 (AS-052): page.tsx passes only workspaceMembers.active to the people switcher", () => {
-  it("the peopleSwitcherMembers prop is derived from workspaceMembers.active, and that line never references .pending", async () => {
-    const fs = await import("node:fs/promises");
-    const path = await import("node:path");
-    const source = await fs.readFile(
-      path.join(
-        process.cwd(),
-        "app/(workspace)/w/[workspaceSlug]/calendar/page.tsx",
-      ),
-      "utf8",
-    );
+// F087 (AS-052): only ACTIVE members may appear in the people switcher, and
+// only active member ids may feed the `?people=` allowlist -- pending
+// invites must never leak into either output. This is a data-flow test of
+// the extracted `buildSwitcherMembers` helper (not a source regex), so it
+// can't be defeated by a decoy comment or a correct refactor of the call
+// site's shape -- see lib/calendar/workspace-members.ts.
+describe("F087 (AS-052): buildSwitcherMembers excludes pending members from both outputs", () => {
+  it("test_AS_052_only_active_members_reach_switcher_and_allowlist", async () => {
+    const { buildSwitcherMembers } = await import("@/lib/calendar/workspace-members");
 
-    const lines = source.split("\n");
-    const assignmentLineIndex = lines.findIndex((line) =>
-      /peopleSwitcherMembers[:=]\s*\{?\s*workspaceMembers\.\w+\.map/.test(line),
-    );
+    const active = [
+      { id: "m1", userId: "u1", role: "member" as const, email: "alice@example.com", name: "Alice", avatarUrl: null, statusNote: null, statusNoteUntil: null },
+      { id: "m2", userId: "u2", role: "member" as const, email: "bob@example.com", name: "Bob", avatarUrl: null, statusNote: null, statusNoteUntil: null },
+    ];
+    // Deliberately shaped like a pending invite, tagged with a userId so we
+    // can assert it never surfaces -- buildSwitcherMembers only reads
+    // `.pending` for the purpose of proving it does NOT feed either output.
+    const pendingUserId = "u3";
+    const pending = [
+      {
+        id: "i1",
+        invitedEmail: "carol@example.com",
+        role: "member" as const,
+        createdAt: new Date().toISOString(),
+        userId: pendingUserId,
+        name: "Carol (pending)",
+      },
+    ];
 
-    expect(
-      assignmentLineIndex,
-      "expected a `peopleSwitcherMembers: workspaceMembers.<field>.map(...)` line in page.tsx",
-    ).toBeGreaterThanOrEqual(0);
+    const result = buildSwitcherMembers({
+      active,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      pending: pending as any,
+    });
 
-    const assignmentLine = lines[assignmentLineIndex]!;
+    // switcherMembers must be exactly the active list
+    expect(result.switcherMembers).toHaveLength(2);
+    expect(result.switcherMembers.map((m) => m.userId)).toEqual(["u1", "u2"]);
+    // pending member must not appear
+    expect(result.switcherMembers.some((m) => m.userId === pendingUserId)).toBe(false);
 
-    // Positive: must reference the active-only field.
-    expect(assignmentLine).toMatch(/peopleSwitcherMembers[:=]\s*\{?\s*workspaceMembers\.active\.map/);
-
-    // Negative: must NOT reference pending members on that same line.
-    expect(assignmentLine).not.toContain(".pending");
+    // activeMemberIds feeds parsePeopleParam's allowlist
+    expect(result.activeMemberIds).toEqual(["u1", "u2"]);
+    expect(result.activeMemberIds).not.toContain(pendingUserId);
   });
 });

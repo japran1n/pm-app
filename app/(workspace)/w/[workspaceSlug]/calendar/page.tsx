@@ -37,6 +37,7 @@ import {
 } from "@/lib/calendar/week-grid";
 import { parsePeopleParam } from "@/lib/calendar/people-selection";
 import { buildPlannerNavHrefs } from "@/lib/calendar/week-nav";
+import { buildSwitcherMembers } from "@/lib/calendar/workspace-members";
 import { WeekView } from "@/components/calendar/week-view";
 
 export default async function CalendarPage({
@@ -100,12 +101,17 @@ export default async function CalendarPage({
     peopleParam,
   });
 
+  // F087 (AS-052): ONE call, so the switcher's member list and the
+  // `?people=` allowlist can never desync -- pending invites never reach
+  // either.
+  const { switcherMembers, activeMemberIds } = buildSwitcherMembers(workspaceMembers);
+
   // F029: the switcher's own current selection, resolved the same way any
   // other `?people=` consumer would (AS-059's empty-selection fallback to
   // `[selfId]` already lives inside parsePeopleParam itself).
   const selectedUserIds = parsePeopleParam(peopleParam, {
     selfId: user.id,
-    activeMemberIds: workspaceMembers.active.map((m) => m.userId),
+    activeMemberIds,
   });
 
   return (
@@ -133,12 +139,7 @@ export default async function CalendarPage({
           currentUserId={user.id}
           // F029 (AS-011, AS-012, AS-013, AS-059): the URL-bound people
           // switcher's own props -- see WeekView/people-switcher.tsx.
-          peopleSwitcherMembers={workspaceMembers.active.map((m) => ({
-            userId: m.userId,
-            name: m.name,
-            email: m.email,
-            avatarUrl: m.avatarUrl,
-          }))}
+          peopleSwitcherMembers={switcherMembers}
           selectedUserIds={selectedUserIds}
           weekParam={weekParam}
         />
