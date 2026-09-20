@@ -17,7 +17,7 @@
 // F017 (AS-035): the status/priority/assignee/project filter bar and its
 // URL-param resolver were deleted along with the rest of the task
 // surface -- the Planner no longer has tasks to narrow, so
-// `weekHrefFor` below only ever carries the week itself through
+// `buildPlannerNavHrefs` below only ever carries the week itself through
 // navigation links.
 
 import { Suspense } from "react";
@@ -87,24 +87,18 @@ export default async function CalendarPage({
   const weekKey = parseWeekKey(weekParam) ?? currentWeekKey(timezone);
   const week = buildCalendarWeek(weekKey, timezone);
   const weekRange = weekDateRange(weekKey);
-  // F029 (AS-011): week navigation carries the raw `?people=` value forward
-  // untouched -- never re-derived/re-serialized -- so a stale-but-valid
-  // selection string round-trips exactly as given.
-  const weekHrefFor = (key: string) =>
-    buildPlannerNavHrefs({
-      workspaceSlug,
-      currentWeekKey: weekKey,
-      prevWeekKey: key,
-      nextWeekKey: key,
-      peopleParam,
-    }).prevHref;
-  const todayHref = buildPlannerNavHrefs({
+  // F029/F079 (AS-011): week navigation carries the raw `?people=` value
+  // forward untouched -- never re-derived/re-serialized -- so a
+  // stale-but-valid selection string round-trips exactly as given. ONE call
+  // site, exactly once, so a mutation to that function's peopleParam
+  // handling cannot be gamed by a local closure re-deriving hrefs.
+  const { prevHref, nextHref, todayHref } = buildPlannerNavHrefs({
     workspaceSlug,
     currentWeekKey: weekKey,
-    prevWeekKey: weekKey,
-    nextWeekKey: weekKey,
+    prevWeekKey: previousWeekKey(weekKey),
+    nextWeekKey: nextWeekKey(weekKey),
     peopleParam,
-  }).todayHref;
+  });
 
   // F029: the switcher's own current selection, resolved the same way any
   // other `?people=` consumer would (AS-059's empty-selection fallback to
@@ -123,8 +117,8 @@ export default async function CalendarPage({
           start={weekRange.start}
           end={weekRange.end}
           week={week}
-          weekKey={weekKey}
-          weekHrefFor={weekHrefFor}
+          prevHref={prevHref}
+          nextHref={nextHref}
           todayHref={todayHref}
           // F012: getCalendarBlocks now takes an explicit userIds
           // restriction. The real "?people=" selection lands in F013 --
@@ -162,8 +156,8 @@ async function WeekGridSection({
   start,
   end,
   week,
-  weekKey,
-  weekHrefFor,
+  prevHref,
+  nextHref,
   todayHref,
   blockUserIds,
   currentUserId,
@@ -176,8 +170,8 @@ async function WeekGridSection({
   start: string;
   end: string;
   week: ReturnType<typeof buildCalendarWeek>;
-  weekKey: string;
-  weekHrefFor: (key: string) => string;
+  prevHref: string;
+  nextHref: string;
   todayHref: string;
   blockUserIds: string[];
   currentUserId: string;
@@ -215,8 +209,8 @@ async function WeekGridSection({
       workspaceSlug={workspaceSlug}
       workspaceId={workspaceId}
       currentUserId={currentUserId}
-      prevHref={weekHrefFor(previousWeekKey(weekKey))}
-      nextHref={weekHrefFor(nextWeekKey(weekKey))}
+      prevHref={prevHref}
+      nextHref={nextHref}
       todayHref={todayHref}
       peopleSwitcher={{
         members: peopleSwitcherMembers,
