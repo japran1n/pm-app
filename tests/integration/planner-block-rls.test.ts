@@ -1,6 +1,6 @@
 // Integration test for F011: RLS coverage proving F010's calendar_blocks
-// widening (supabase/migrations/20260920113500_calendar_blocks_workspace_wide_select.sql,
-// 20260920113501_calendar_blocks_drop_task_id.sql) only widened SELECT to
+// widening (supabase/migrations/20261128010001_calendar_blocks_workspace_wide_select.sql,
+// 20261128010002_calendar_blocks_drop_task_id.sql) only widened SELECT to
 // "any active workspace member" and left writes (UPDATE/DELETE) gated to
 // the block's own owner (auth.uid() = user_id), mirroring the
 // loadDotEnv/admin-client/session-client pattern established by
@@ -280,7 +280,7 @@ describe.skipIf(!haveAdminCreds)("Planner calendar_blocks RLS (F011)", () => {
     // calendar_blocks_update_own / calendar_blocks_delete_own both `using
     // (user_id = auth.uid())` per
     // supabase/migrations/20261107010000_calendar_blocks.sql -- F010's
-    // migrations (20260920113500/20260920113501) only touched the SELECT
+    // migrations (20261128010001/20261128010002) only touched the SELECT
     // policy and the task_id column, never these write policies. An
     // admin-key client (RLS bypass) can still update the row otherClient
     // failed to touch, proving the row was reachable and RLS -- not a
