@@ -30,35 +30,42 @@ const PACKAGE_JSON_PATH = path.join(process.cwd(), "package.json");
 const MISSION_START_COMMIT = "1ab50a12~1";
 
 describe("F041 (AS-075): calendar-specific unit tests all pass", () => {
-  it("test_AS_075_calendar_unit_tests_all_pass", () => {
-    // AS-075 is scoped to this mission's own calendar-planner test files.
-    // The full repo-wide `vitest run` also covers 41 pre-existing failures
-    // in unrelated board/list/webflow suites that predate this mission and
-    // are out of its scope -- asserting the entire suite here would make
-    // this gate fail for reasons this mission cannot fix. Instead this
-    // confirms every calendar test file this mission depends on exists and
-    // contains real tests; actually running them (and requiring a zero
-    // exit code) is the worker/CI's `npx vitest run tests/unit/f0*` step.
-    const calendarTestFiles = [
-      "tests/unit/f031-page-layout-derivation.test.tsx",
-      "tests/unit/f032-stacked-shell.test.tsx",
-      "tests/unit/f033-stacked-row-grid.test.tsx",
-      "tests/unit/f035-stacked-reorder.test.tsx",
-      "tests/unit/f036-stacked-scroll-colour.test.tsx",
-      "tests/unit/f037-planner-header-subtitle.test.tsx",
-      "tests/unit/f038-stacked-a11y.test.tsx",
-      "tests/unit/f039-stacked-mobile.test.tsx",
-      "tests/unit/f040-e2e-assertions.test.tsx",
-      "tests/unit/f098-week-grid-24h.test.tsx",
-      "tests/unit/f102-calendar-page-composition.test.tsx",
-    ].filter((f) => fs.existsSync(path.join(process.cwd(), f)));
+  it(
+    "test_AS_075_calendar_unit_tests_pass",
+    () => {
+      // AS-075 is scoped to this mission's own calendar-planner test files.
+      // The full repo-wide `vitest run` also covers 41 pre-existing failures
+      // in unrelated board/list/webflow suites that predate this mission and
+      // are out of its scope. This test actually spawns vitest against the
+      // calendar-scoped files and requires a zero exit code -- a file whose
+      // assertions are broken (or replaced with a trivially-passing stub)
+      // will make execSync throw and this test fail.
+      const calendarFiles = [
+        "tests/unit/f031-page-layout-derivation.test.tsx",
+        "tests/unit/f032-stacked-shell.test.tsx",
+        "tests/unit/f033-stacked-row-grid.test.tsx",
+        "tests/unit/f035-stacked-reorder.test.tsx",
+        "tests/unit/f036-stacked-scroll-colour.test.tsx",
+        "tests/unit/f037-planner-header-subtitle.test.tsx",
+        "tests/unit/f038-stacked-a11y.test.tsx",
+        "tests/unit/f039-stacked-mobile.test.tsx",
+        "tests/unit/f040-e2e-assertions.test.tsx",
+        "tests/unit/f098-week-grid-24h.test.tsx",
+        "tests/unit/f102-calendar-page-composition.test.tsx",
+      ].filter((f) => fs.existsSync(path.join(process.cwd(), f)));
 
-    expect(calendarTestFiles.length).toBeGreaterThanOrEqual(10);
-    calendarTestFiles.forEach((f) => {
-      const content = readFileSync(path.join(process.cwd(), f), "utf-8");
-      expect(content).toMatch(/it\(|test\(/);
-    });
-  });
+      expect(calendarFiles.length).toBeGreaterThanOrEqual(10);
+
+      // Actually run vitest on calendar files and assert exit 0.
+      expect(() => {
+        execSync(
+          `npx vitest run ${calendarFiles.join(" ")} --reporter=verbose`,
+          { cwd: process.cwd(), stdio: "pipe", timeout: 120_000 },
+        );
+      }).not.toThrow();
+    },
+    150_000,
+  );
 });
 
 describe("F041 (AS-076): migrations:check passes", () => {

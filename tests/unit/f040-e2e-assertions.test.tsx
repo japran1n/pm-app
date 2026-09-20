@@ -75,6 +75,16 @@ describe("F040 end-to-end assertions", () => {
     );
     expect(src).toMatch(/parsePeopleParam\s*\(\s*peopleParam/);
     expect(src).not.toMatch(/parsePeopleParam\s*\(\s*["'`](all|me)/);
+
+    // peopleParam must NOT be assigned a string literal anywhere in the file
+    // (would catch: const peopleParam = "all" or let peopleParam = "me" etc.)
+    expect(src).not.toMatch(/\bpeopleParam\s*=\s*["'`][^{]/);
+
+    // peopleParam must come from searchParams destructuring
+    // (pattern: { people: peopleParam } or people = searchParams.people etc.)
+    expect(src).toMatch(
+      /(?:people\s*:\s*peopleParam|searchParams\.people\s*as\s*peopleParam|peopleParam\s*=\s*(?:await\s+)?searchParams\.people)/,
+    );
   });
 
   it("test_AS_078_two_people_gives_stacked_layout", () => {
