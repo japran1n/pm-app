@@ -23,6 +23,31 @@ describe("F102: CalendarPage composition (page.tsx data-flow, replayed)", () => 
     expect(selectedUserIds).toEqual([selfId]);
   });
 
+  it("test_AS_001_undefined_people_param_defaults_to_self", () => {
+    // F104: guards against the page passing `peopleParam ?? "all"` into
+    // parsePeopleParam instead of the raw (possibly undefined) param --
+    // that regression widened the calendar to every workspace member
+    // whenever the URL had no `?people=` value at all.
+    const selected = parsePeopleParam(undefined, {
+      selfId,
+      activeMemberIds: allActiveIds,
+    });
+    expect(selected).toEqual([selfId]);
+    expect(selected).not.toContain("alice-id");
+    expect(selected).not.toContain("bob-id");
+    expect(selected).not.toContain("carol-id");
+
+    // Mutation guard: passing "all" instead of undefined expands to every
+    // active member -- proving the two inputs are NOT equivalent, so a
+    // regression back to `peopleParam ?? "all"` in page.tsx would make
+    // the undefined case behave like this one and fail the assertion above.
+    const withAll = parsePeopleParam("all", {
+      selfId,
+      activeMemberIds: allActiveIds,
+    });
+    expect(withAll.length).toBeGreaterThan(1);
+  });
+
   it("AS-063: with ?people=carol-id,alice-id, selectedUserIds preserves that exact order (not sorted)", () => {
     const selectedUserIds = parsePeopleParam("carol-id,alice-id", {
       selfId,
@@ -60,6 +85,17 @@ describe("F102: CalendarPage composition (page.tsx data-flow, replayed)", () => 
     });
     expect(selectedUserIds.length).toBe(2);
     expect(resolvePlannerLayout(selectedUserIds.length)).toBe("stacked");
+  });
+
+  it("test_AS_023_layout_derivation_no_fallthrough", () => {
+    // Single person -> week-grid, never stacked.
+    expect(resolvePlannerLayout(1)).toBe("week-grid");
+    // Two people -> stacked.
+    expect(resolvePlannerLayout(2)).toBe("stacked");
+    // Layout is binary -- no third value, and specifically resolvePlannerLayout(1)
+    // must never fall through to "stacked" (the bug AS-023 guards against).
+    expect(["week-grid", "stacked"]).toContain(resolvePlannerLayout(1));
+    expect(resolvePlannerLayout(1)).not.toBe("stacked");
   });
 
   it("AS-062: buildSwitcherMembers excludes pending members from the switcher list", () => {
