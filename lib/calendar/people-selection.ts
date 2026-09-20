@@ -38,12 +38,15 @@ export function parsePeopleParam(
     return [selfId];
   }
 
-  if (raw === "me") {
+  const trimmed = (raw ?? "").trim().replace(/,$/, "").trim();
+
+  if (trimmed === "me") {
     return [selfId];
   }
 
-  if (raw === "all") {
-    return [...activeMemberIds];
+  if (trimmed === "all") {
+    const all = [...activeMemberIds];
+    return all.length > 0 ? all : [selfId];
   }
 
   const activeSet = new Set(activeMemberIds);
@@ -93,7 +96,7 @@ export function orderPeopleForWholeTeam(
     if (a.name === null && b.name === null) return 0;
     if (a.name === null) return 1;
     if (b.name === null) return -1;
-    return a.name.localeCompare(b.name);
+    return a.name.localeCompare(b.name, "en", { sensitivity: "base" });
   });
 
   return [...self, ...rest].map((m) => m.id);

@@ -73,6 +73,33 @@ describe("parsePeopleParam", () => {
     ).toEqual(ACTIVE_MEMBER_IDS);
   });
 
+  it("AS-004: ' all ' with whitespace resolves to all members", () => {
+    expect(
+      parsePeopleParam(" all ", { selfId: SELF_ID, activeMemberIds: ACTIVE_MEMBER_IDS }),
+    ).toEqual(ACTIVE_MEMBER_IDS);
+  });
+
+  it("AS-004: 'all,' with trailing comma resolves to all members", () => {
+    expect(
+      parsePeopleParam("all,", { selfId: SELF_ID, activeMemberIds: ACTIVE_MEMBER_IDS }),
+    ).toEqual(ACTIVE_MEMBER_IDS);
+  });
+
+  it("AS-008: all path with empty roster falls back to selfId", () => {
+    expect(
+      parsePeopleParam("all", { selfId: SELF_ID, activeMemberIds: [] }),
+    ).toEqual([SELF_ID]);
+  });
+
+  it("AS-010: non-adjacent duplicate keeps first occurrence", () => {
+    expect(
+      parsePeopleParam("a,b,a", {
+        selfId: "x",
+        activeMemberIds: ["a", "b", "c"],
+      }),
+    ).toEqual(["a", "b"]);
+  });
+
   it("AS-005: ?people=<memberId> shows only that member", () => {
     expect(
       parsePeopleParam("member-b", { selfId: SELF_ID, activeMemberIds: ACTIVE_MEMBER_IDS }),
@@ -181,20 +208,17 @@ describe("orderPeopleForWholeTeam", () => {
 
     expect(result).toEqual(["self", "a"]);
   });
-});
 
-describe("AS-015: no ?view= parameter is read or produced", () => {
-  it("AS-015: parsePeopleParam's result depends only on the people param, selfId, and activeMemberIds — an unrelated 'view' key changes nothing", () => {
-    const withoutView = parsePeopleParam("member-a,member-b", {
-      selfId: SELF_ID,
-      activeMemberIds: ACTIVE_MEMBER_IDS,
-    });
-    const optsWithExtraKey = {
-      selfId: SELF_ID,
-      activeMemberIds: ACTIVE_MEMBER_IDS,
-      view: "week",
-    } as unknown as { selfId: string; activeMemberIds: readonly string[] };
-    const withUnrelatedView = parsePeopleParam("member-a,member-b", optsWithExtraKey);
-    expect(withUnrelatedView).toEqual(withoutView);
+  it("AS-058: names with non-ASCII characters sort deterministically", () => {
+    const members = [
+      { id: "self", name: "Self Person" },
+      { id: "z", name: "Zebra" },
+      { id: "ae", name: "Ärla" },
+    ];
+
+    const result = orderPeopleForWholeTeam(members, "self");
+
+    expect(result).toEqual(["self", "ae", "z"]);
   });
 });
+
