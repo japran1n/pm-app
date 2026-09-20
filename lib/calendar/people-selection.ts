@@ -38,13 +38,16 @@ export function parsePeopleParam(
     return [selfId];
   }
 
-  const trimmed = (raw ?? "").trim().replace(/,$/, "").trim();
+  const normalized = (raw ?? "")
+    .trim()
+    .replace(/[,\s]+$/g, "")
+    .toLowerCase();
 
-  if (trimmed === "me") {
+  if (normalized === "me") {
     return [selfId];
   }
 
-  if (trimmed === "all") {
+  if (normalized === "all") {
     const all = [...activeMemberIds];
     return all.length > 0 ? all : [selfId];
   }
@@ -86,16 +89,16 @@ export function serializePeopleParam(ids: readonly string[], selfId: string): st
  * display name. Members with a null name sort last among the remainder.
  */
 export function orderPeopleForWholeTeam(
-  members: Array<{ id: string; name: string | null }>,
+  members: Array<{ id: string; name: string | null | undefined }>,
   selfId: string,
 ): string[] {
   const self = members.filter((m) => m.id === selfId);
   const rest = members.filter((m) => m.id !== selfId);
 
   rest.sort((a, b) => {
-    if (a.name === null && b.name === null) return 0;
-    if (a.name === null) return 1;
-    if (b.name === null) return -1;
+    if (a.name == null && b.name == null) return 0;
+    if (a.name == null) return 1;
+    if (b.name == null) return -1;
     return a.name.localeCompare(b.name, "en", { sensitivity: "base" });
   });
 

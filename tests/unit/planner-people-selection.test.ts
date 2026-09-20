@@ -85,6 +85,18 @@ describe("parsePeopleParam", () => {
     ).toEqual(ACTIVE_MEMBER_IDS);
   });
 
+  it("AS-004: ALL uppercase resolves to all members", () => {
+    expect(
+      parsePeopleParam("ALL", { selfId: SELF_ID, activeMemberIds: ACTIVE_MEMBER_IDS }),
+    ).toEqual(ACTIVE_MEMBER_IDS);
+  });
+
+  it("AS-004: all,, multiple commas resolves to all members", () => {
+    expect(
+      parsePeopleParam("all,,", { selfId: SELF_ID, activeMemberIds: ACTIVE_MEMBER_IDS }),
+    ).toEqual(ACTIVE_MEMBER_IDS);
+  });
+
   it("AS-008: all path with empty roster falls back to selfId", () => {
     expect(
       parsePeopleParam("all", { selfId: SELF_ID, activeMemberIds: [] }),
@@ -209,16 +221,28 @@ describe("orderPeopleForWholeTeam", () => {
     expect(result).toEqual(["self", "a"]);
   });
 
-  it("AS-058: names with non-ASCII characters sort deterministically", () => {
+  it("AS-058: Öl sorts before Pa under en locale (Ö collates near O)", () => {
     const members = [
       { id: "self", name: "Self Person" },
-      { id: "z", name: "Zebra" },
-      { id: "ae", name: "Ärla" },
+      { id: "pa", name: "Pa" },
+      { id: "oel", name: "Öl" },
     ];
 
     const result = orderPeopleForWholeTeam(members, "self");
 
-    expect(result).toEqual(["self", "ae", "z"]);
+    expect(result).toEqual(["self", "oel", "pa"]);
+  });
+
+  it("AS-058: member with undefined name sorts last", () => {
+    const members = [
+      { id: "self", name: "Self Person" },
+      { id: "a", name: "Alice" },
+      { id: "x", name: undefined },
+    ];
+
+    const result = orderPeopleForWholeTeam(members, "self");
+
+    expect(result).toEqual(["self", "a", "x"]);
   });
 });
 
