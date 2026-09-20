@@ -23,7 +23,6 @@ describe("Week-only calendar view (month view removed)", () => {
     render(
       <WeekView
         week={WEEK}
-        tasksByDate={new Map()}
         blocks={[]}
         workspaceSlug="acme"
         workspaceId="workspace-1"
@@ -43,7 +42,6 @@ describe("Week-only calendar view (month view removed)", () => {
     render(
       <WeekView
         week={WEEK}
-        tasksByDate={new Map()}
         blocks={[]}
         workspaceSlug="acme"
         workspaceId="workspace-1"
@@ -62,7 +60,6 @@ describe("Week-only calendar view (month view removed)", () => {
     render(
       <WeekView
         week={WEEK}
-        tasksByDate={new Map()}
         blocks={[]}
         workspaceSlug="acme"
         workspaceId="workspace-1"

@@ -19,24 +19,19 @@
 // Mirrors calendar-day-grid.tsx's ownership split: this client component
 // owns the local optimistic `blocksState` copy and the create/update/
 // delete calls into the SAME Server Actions (lib/actions/calendar-blocks)
-// the month grid already uses -- one mutation path, two views. Dragging a
-// task chip to reschedule is intentionally NOT reimplemented here (tasks
-// carry no time-of-day at all -- `due_date` is a bare calendar date, see
-// lib/queries/calendar.ts's own doc comment -- so a task is rendered as an
-// all-day strip at the top of each day column, matching how Google
-// Calendar itself renders all-day events above the timed grid); moving a
-// task's DAY still goes through the month view's existing drag-to-move,
-// which this view does not duplicate.
+// the month grid already uses -- one mutation path, two views.
+//
+// F015 (AS-033): the all-day task strip that used to render above the
+// timed grid was removed by product decision -- tasks no longer appear in
+// this view at all (they never fetch here either, see F016/AS-034).
 
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { Plus } from "lucide-react";
 import { toast as sonnerToast } from "sonner";
 
 import type { CalendarWeekDay } from "@/lib/calendar/week-grid";
-import type { CalendarTask } from "@/lib/queries/calendar";
 import type { CalendarBlock } from "@/lib/queries/calendar-blocks";
 import {
   createCalendarBlock,
@@ -64,8 +59,6 @@ import {
   CalendarBlockPopoverForm,
   type CalendarBlockFormValues,
 } from "@/components/calendar/calendar-block-popover-form";
-import { formatTaskKey } from "@/lib/tasks/task-key";
-import { PRIORITY_COLORS, PRIORITY_LABELS } from "@/lib/task-colors";
 import { canWrite } from "@/lib/auth/permissions";
 import { useMembership } from "@/components/auth/membership-provider";
 import { cn } from "@/lib/utils";
@@ -123,13 +116,11 @@ type ResizeState = {
 
 export function WeekTimeGrid({
   days,
-  tasksByDate,
   blocksByDate,
-  workspaceSlug,
+  workspaceSlug: _workspaceSlug,
   workspaceId,
 }: {
   days: CalendarWeekDay[];
-  tasksByDate: Record<string, CalendarTask[]>;
   blocksByDate: Record<string, CalendarBlock[]>;
   workspaceSlug: string;
   workspaceId?: string;
@@ -436,20 +427,6 @@ export function WeekTimeGrid({
 
   return (
     <div className="flex flex-col gap-2" data-testid="calendar-week-time-grid">
-      {/* All-day task row -- tasks carry no time-of-day (due_date only),
-          so they render as a strip above the timed grid, matching how
-          Google Calendar itself separates all-day events. */}
-      <div className="grid grid-cols-[3.5rem_repeat(7,1fr)] gap-px border-b border-border/60 pb-1">
-        <div />
-        {days.map((day) => (
-          <div key={day.date} className="min-h-6 px-1" data-testid={`calendar-week-allday-${day.date}`}>
-            {(tasksByDate[day.date] ?? []).map((task) => (
-              <AllDayTaskChip key={task.id} task={task} workspaceSlug={workspaceSlug} />
-            ))}
-          </div>
-        ))}
-      </div>
-
       <div
         className="relative grid max-h-[36rem] grid-cols-[3.5rem_repeat(7,1fr)] gap-px overflow-y-auto rounded-md border border-border/60"
         style={{ scrollPaddingTop: defaultScrollTop }}
@@ -798,33 +775,3 @@ function formatHHMMLocal(iso: string): string {
   return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
-function AllDayTaskChip({
-  task,
-  workspaceSlug,
-}: {
-  task: CalendarTask;
-  workspaceSlug: string;
-}) {
-  const key = formatTaskKey(task.projectKey, task.number);
-  const priority = (task.priority ?? "none") as keyof typeof PRIORITY_COLORS;
-
-  return (
-    <Link
-      href={`/w/${workspaceSlug}/projects/${task.projectId}/board?taskId=${task.id}`}
-      className={cn(
-        "mb-1 flex min-w-0 items-center gap-1 truncate rounded border border-border/60 bg-card px-1.5 py-0.5 text-xs hover:bg-muted/60",
-        task.isDone && "opacity-60 line-through",
-      )}
-      title={task.title}
-    >
-      <span
-        className="h-1.5 w-1.5 shrink-0 rounded-full"
-        style={{ backgroundColor: PRIORITY_COLORS[priority] }}
-        aria-hidden="true"
-      />
-      <span className="sr-only">{PRIORITY_LABELS[priority]}</span>
-      {key && <span className="shrink-0 font-mono text-[10px] text-muted-foreground">{key}</span>}
-      <span className="min-w-0 flex-1 truncate">{task.title}</span>
-    </Link>
-  );
-}

@@ -70,7 +70,6 @@ describe("Week time-grid hover-\"+\"-to-create (UI polish: a plain click on the 
     render(
       <WeekTimeGrid
         days={[DAY]}
-        tasksByDate={{}}
         blocksByDate={{}}
         workspaceSlug="acme"
         workspaceId="workspace-1"
@@ -92,7 +91,6 @@ describe("Week time-grid hover-\"+\"-to-create (UI polish: a plain click on the 
     render(
       <WeekTimeGrid
         days={[DAY]}
-        tasksByDate={{}}
         blocksByDate={{}}
         workspaceSlug="acme"
         workspaceId="workspace-1"
@@ -117,7 +115,6 @@ describe("Week time-grid hover-\"+\"-to-create (UI polish: a plain click on the 
     render(
       <WeekTimeGrid
         days={[DAY]}
-        tasksByDate={{}}
         blocksByDate={{}}
         workspaceSlug="acme"
         workspaceId="workspace-1"
@@ -148,7 +145,6 @@ describe("Week time-grid hover-\"+\"-to-create (UI polish: a plain click on the 
     render(
       <WeekTimeGrid
         days={[DAY]}
-        tasksByDate={{}}
         blocksByDate={{}}
         workspaceSlug="acme"
         workspaceId="workspace-1"

@@ -8,7 +8,6 @@
 import Link from "next/link";
 
 import type { CalendarWeek } from "@/lib/calendar/week-grid";
-import type { CalendarTask } from "@/lib/queries/calendar";
 import type { CalendarBlock } from "@/lib/queries/calendar-blocks";
 import type { TimeOffEntry } from "@/lib/queries/time-off";
 import { eachDateInRange } from "@/lib/queries/time-off";
@@ -21,7 +20,6 @@ import { Button } from "@/components/ui/button";
 
 export function WeekView({
   week,
-  tasksByDate,
   blocks,
   timeOffEntries,
   workspaceSlug,
@@ -31,7 +29,6 @@ export function WeekView({
   todayHref,
 }: {
   week: CalendarWeek;
-  tasksByDate: Map<string, CalendarTask[]>;
   blocks: CalendarBlock[];
   /** F(PTO): every PTO entry overlapping the visible week -- see
    * lib/queries/time-off.ts's own doc comment for RLS/visibility. Empty
@@ -45,8 +42,6 @@ export function WeekView({
   todayHref: string;
 }) {
   const rangeLabel = formatWeekRangeLabel(week);
-
-  const tasksByDateObject: Record<string, CalendarTask[]> = Object.fromEntries(tasksByDate);
 
   const blocksByDate: Record<string, CalendarBlock[]> = {};
   for (const block of blocks) {
@@ -123,7 +118,6 @@ export function WeekView({
       <div className="hidden md:block">
         <WeekTimeGrid
           days={week.days}
-          tasksByDate={tasksByDateObject}
           blocksByDate={blocksByDate}
           workspaceSlug={workspaceSlug}
           workspaceId={workspaceId}
@@ -131,7 +125,6 @@ export function WeekView({
       </div>
       <WeekAgenda
         days={week.days}
-        tasksByDate={tasksByDateObject}
         blocksByDate={blocksByDate}
         workspaceSlug={workspaceSlug}
       />

@@ -53,7 +53,6 @@ describe("Week time-grid live-synced resize (AS: resize is synced with time as i
     render(
       <WeekTimeGrid
         days={[DAY]}
-        tasksByDate={{}}
         blocksByDate={{ [DAY.date]: [makeBlock()] }}
         workspaceSlug="acme"
         workspaceId="workspace-1"
@@ -92,7 +91,6 @@ describe("Week time-grid live-synced resize (AS: resize is synced with time as i
     render(
       <WeekTimeGrid
         days={[DAY]}
-        tasksByDate={{}}
         blocksByDate={{ [DAY.date]: [makeBlock()] }}
         workspaceSlug="acme"
         workspaceId="workspace-1"
@@ -128,7 +126,6 @@ describe("Week time-grid live-synced resize (AS: resize is synced with time as i
     render(
       <WeekTimeGrid
         days={[DAY]}
-        tasksByDate={{}}
         blocksByDate={{ [DAY.date]: [makeBlock()] }}
         workspaceSlug="acme"
         workspaceId="workspace-1"
