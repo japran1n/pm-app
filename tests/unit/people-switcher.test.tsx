@@ -199,14 +199,38 @@ describe("PeopleSwitcher", () => {
 // F028 (AS-056, AS-057): the "Just me" and "whole team" shortcuts.
 describe("PeopleSwitcher shortcuts (F028)", () => {
   it("test_AS_056_just_me_shortcut_returns_selection_to_the_signed_in_member_alone", async () => {
+    // Regression guard for F073: selfId is deliberately NOT members[0] here.
+    // A shortcut implementation that falls back to members[0]!.userId
+    // instead of selfId would return "member-a" and this test would catch
+    // it, since the real self is "member-c".
+    const membersWithSelfNotFirst = [
+      {
+        userId: "member-a",
+        name: "Member A",
+        email: "a@example.com",
+        avatarUrl: null,
+      },
+      {
+        userId: "member-b",
+        name: "Member B",
+        email: "b@example.com",
+        avatarUrl: null,
+      },
+      {
+        userId: "member-c",
+        name: "Member C",
+        email: "c@example.com",
+        avatarUrl: null,
+      },
+    ];
     const onSelectionChange = vi.fn();
 
     render(
       createElement(PeopleSwitcher, {
-        members,
-        selectedUserIds: ["user-1", "user-2"],
+        members: membersWithSelfNotFirst,
+        selectedUserIds: ["member-a", "member-b", "member-c"],
         onSelectionChange,
-        selfId: "user-1",
+        selfId: "member-c",
       }),
     );
 
@@ -215,7 +239,8 @@ describe("PeopleSwitcher shortcuts (F028)", () => {
     const justMe = await waitFor(() => screen.getByText("Just me"));
     fireEvent.click(justMe);
 
-    expect(onSelectionChange).toHaveBeenCalledWith(["user-1"]);
+    expect(onSelectionChange).toHaveBeenCalledWith(["member-c"]);
+    expect(onSelectionChange).not.toHaveBeenCalledWith(["member-a"]);
   });
 
   it("test_AS_056_just_me_shortcut_is_offered_even_when_nobody_else_is_selected", async () => {
