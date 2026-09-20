@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { eachDateInRange } from "@/lib/queries/time-off";
+import { eachDateInRange } from "@/lib/calendar/date-utils";
 import { createTimeOffSchema } from "@/lib/validation/time-off";
 
 describe("eachDateInRange", () => {

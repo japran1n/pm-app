@@ -8,7 +8,7 @@
 import type { CalendarWeek } from "@/lib/calendar/week-grid";
 import type { CalendarBlock } from "@/lib/queries/calendar-blocks";
 import type { TimeOffEntry } from "@/lib/queries/time-off";
-import { eachDateInRange } from "@/lib/queries/time-off";
+import { eachDateInRange } from "@/lib/calendar/date-utils";
 import { isoToLocalDateOnly } from "@/lib/calendar/block-datetime";
 import { WeekTimeGrid } from "@/components/calendar/week-time-grid";
 import { WeekAgenda } from "@/components/calendar/week-agenda";

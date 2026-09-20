@@ -6,7 +6,7 @@
 
 import type { CalendarBlock } from "@/lib/queries/calendar-blocks";
 import type { TimeOffEntry } from "@/lib/queries/time-off";
-import { eachDateInRange } from "@/lib/queries/time-off";
+import { eachDateInRange } from "@/lib/calendar/date-utils";
 import {
   clipBlockToStackedWindow,
   STACKED_DAYS,

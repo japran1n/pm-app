@@ -12,6 +12,8 @@
 // the whole window) must still appear. Dates are DateOnly strings
 // ("YYYY-MM-DD"), never full ISO timestamps -- PTO has no time-of-day.
 
+import "server-only";
+
 import { createClient } from "@/lib/supabase/server";
 import { resolvePeople } from "@/lib/queries/people";
 
@@ -75,25 +77,4 @@ export async function getTimeOffEntries(
       userEmail: person?.email ?? null,
     };
   });
-}
-
-/**
- * Every DateOnly string ("YYYY-MM-DD") a given PTO entry covers,
- * inclusive of both endpoints -- used to bucket entries per day for the
- * week grid's per-day strip.
- */
-export function eachDateInRange(startDate: string, endDate: string): string[] {
-  const dates: string[] = [];
-  const [sy, sm, sd] = startDate.split("-").map(Number);
-  const [ey, em, ed] = endDate.split("-").map(Number);
-  const cursor = new Date(Date.UTC(sy, sm - 1, sd));
-  const end = new Date(Date.UTC(ey, em - 1, ed));
-  while (cursor.getTime() <= end.getTime()) {
-    const year = cursor.getUTCFullYear();
-    const month = String(cursor.getUTCMonth() + 1).padStart(2, "0");
-    const day = String(cursor.getUTCDate()).padStart(2, "0");
-    dates.push(`${year}-${month}-${day}`);
-    cursor.setUTCDate(cursor.getUTCDate() + 1);
-  }
-  return dates;
 }
