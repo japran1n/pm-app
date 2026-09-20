@@ -164,6 +164,42 @@ describe("parsePeopleParam", () => {
     expect(result).not.toEqual([]);
   });
 
+  it("'me' resolves to selfId when selfId is NOT the first roster member", () => {
+    expect(
+      parsePeopleParam("me", {
+        selfId: "member-c",
+        activeMemberIds: ["member-a", "member-b", "member-c"],
+      }),
+    ).toEqual(["member-c"]);
+  });
+
+  it("null param resolves to selfId when selfId is NOT first in roster", () => {
+    expect(
+      parsePeopleParam(null, {
+        selfId: "member-c",
+        activeMemberIds: ["member-a", "member-b", "member-c"],
+      }),
+    ).toEqual(["member-c"]);
+  });
+
+  it("empty param resolves to selfId when selfId is NOT first in roster", () => {
+    expect(
+      parsePeopleParam("", {
+        selfId: "member-c",
+        activeMemberIds: ["member-a", "member-b", "member-c"],
+      }),
+    ).toEqual(["member-c"]);
+  });
+
+  it("all-invalid fallback resolves to selfId when selfId is NOT first in roster", () => {
+    expect(
+      parsePeopleParam("unknown-id", {
+        selfId: "member-c",
+        activeMemberIds: ["member-a", "member-b", "member-c"],
+      }),
+    ).toEqual(["member-c"]);
+  });
+
   it("defaults to [selfId] when no param is present", () => {
     expect(
       parsePeopleParam(undefined, { selfId: SELF_ID, activeMemberIds: ACTIVE_MEMBER_IDS }),
