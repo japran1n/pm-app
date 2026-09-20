@@ -71,6 +71,26 @@ describe("F033 StackedPersonRow", () => {
     expect(screen.queryByTestId("stacked-day-7")).not.toBeInTheDocument();
   });
 
+  it("test_AS_019_stacked_row_shows_mon_to_fri_labels: rendered day-column labels are Mon..Fri in order, no Sat/Sun", () => {
+    render(
+      <StackedPersonRow userId="user-1" blocks={[]} weekKey={WEEK_KEY} />,
+    );
+
+    const labels = [1, 2, 3, 4, 5].map(
+      (isoWeekday) =>
+        screen.getByTestId(`stacked-day-${isoWeekday}`).textContent?.trim(),
+    );
+
+    expect(labels).toEqual(["Mon", "Tue", "Wed", "Thu", "Fri"]);
+    expect(labels).not.toContain("Sun");
+    expect(labels).not.toContain("Sat");
+
+    const monIdx = labels.indexOf("Mon");
+    const friIdx = labels.indexOf("Fri");
+    expect(monIdx).toBeGreaterThanOrEqual(0);
+    expect(monIdx).toBeLessThan(friIdx);
+  });
+
   it("AS-020: a block from 17:00-18:00 (outside 08:00-16:00) is not rendered", () => {
     const block = makeBlock({
       id: "outside-block",
