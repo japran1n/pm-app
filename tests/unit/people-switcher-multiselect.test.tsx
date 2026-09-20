@@ -389,17 +389,18 @@ describe("PeopleSwitcher closed-trigger avatar group (AS-055)", () => {
 });
 
 describe("PeopleSwitcher check indicator coverage (AS-054)", () => {
-  // AS-054/F081: beyond `data-checked`/`aria-selected` bookkeeping, a
-  // selected member's row must render a visible check glyph. The base
-  // CommandItem primitive always mounts *a* <CheckIcon> (opacity-controlled,
-  // used for cmdk's own selected-row affordance), so presence-of-svg alone
-  // can't distinguish selected/unselected -- this asserts on the explicit,
-  // always-visible (no `opacity-0`) CheckIcon that people-switcher.tsx itself
-  // renders only `{isSelected ? <CheckIcon .../> : null}`.
-  function explicitCheckIcon(item: Element): SVGSVGElement | null {
-    return Array.from(item.querySelectorAll("svg")).find(
-      (svg) => !svg.getAttribute("class")?.includes("opacity-0"),
-    ) as SVGSVGElement | undefined ?? null;
+  // AS-054/F081/F089: a selected member's row must render a visible check
+  // glyph. F089 removed people-switcher.tsx's own duplicate <CheckIcon> --
+  // there was previously one explicit icon (from people-switcher.tsx) PLUS
+  // command.tsx's own built-in CommandItem check, which rendered two tick
+  // marks for a single selected row. Now the single check glyph is the
+  // CommandItem primitive's built-in icon, whose visibility is driven purely
+  // by the `data-checked` attribute (via the `group-data-[checked=true]`
+  // Tailwind variant in command.tsx). jsdom doesn't evaluate CSS, so these
+  // tests assert on the source of truth for visibility -- the `data-checked`
+  // attribute -- and that exactly one check icon is mounted in the row.
+  function checkIcon(item: Element): SVGSVGElement | null {
+    return item.querySelector("svg") as SVGSVGElement | null;
   }
 
   it("test_AS_054_selected_member_renders_a_visible_check_indicator", async () => {
@@ -418,10 +419,13 @@ describe("PeopleSwitcher check indicator coverage (AS-054)", () => {
       screen.getByText("Ada Lovelace").closest('[data-checked]'),
     );
     expect(adasItem).toHaveAttribute("data-checked", "true");
-    expect(explicitCheckIcon(adasItem!)).not.toBeNull();
+    // Exactly one check icon -- no duplicate tick marks (F089).
+    const icons = adasItem!.querySelectorAll("svg");
+    expect(icons.length).toBe(1);
+    expect(checkIcon(adasItem!)).not.toBeNull();
   });
 
-  it("test_AS_054_unselected_member_renders_no_check_indicator", async () => {
+  it("test_AS_054_unselected_member_renders_no_visible_check_indicator", async () => {
     render(
       createElement(PeopleSwitcher, {
         members,
@@ -437,6 +441,11 @@ describe("PeopleSwitcher check indicator coverage (AS-054)", () => {
       screen.getByText("Grace Hopper").closest('[data-checked]'),
     );
     expect(gracesItem).toHaveAttribute("data-checked", "false");
-    expect(explicitCheckIcon(gracesItem!)).toBeNull();
+    // The built-in CommandItem check icon is still mounted (opacity-0 via
+    // CSS when unchecked) -- exactly one, matching the selected case, since
+    // its visibility is CSS-driven off `data-checked`, not conditional
+    // mounting.
+    const icons = gracesItem!.querySelectorAll("svg");
+    expect(icons.length).toBe(1);
   });
 });
