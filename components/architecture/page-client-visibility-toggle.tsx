@@ -20,7 +20,7 @@ import { useState, useTransition } from "react";
 import { Eye, Loader2, Lock } from "lucide-react";
 import { toast } from "sonner";
 
-import { setPageClientVisibility } from "@/lib/actions/architecture";
+import { useArchitectureActions } from "@/lib/architecture/actions-context";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -35,6 +35,7 @@ import {
 import type { BoardPage } from "@/lib/queries/architecture";
 
 export function PageClientVisibilityToggle({ page }: { page: BoardPage }) {
+  const { readOnly, clientVisibility } = useArchitectureActions();
   const serverValue = page.clientVisible ?? false;
   const [isShared, setIsShared] = useState(serverValue);
   const [isPending, startTransition] = useTransition();
@@ -52,11 +53,19 @@ export function PageClientVisibilityToggle({ page }: { page: BoardPage }) {
     setIsShared(serverValue);
   }
 
+  if (readOnly || !clientVisibility) {
+    return null;
+  }
+
+  const { setPageClientVisibility } = clientVisibility;
+
   function apply(next: boolean, includeSections: boolean) {
     setIsShared(next);
 
     startTransition(async () => {
-      const result = await setPageClientVisibility(page.id, next, { includeSections });
+      const result = await setPageClientVisibility(page.id, next, {
+        includeSections,
+      });
 
       if (!result.ok) {
         setIsShared(!next);

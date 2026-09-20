@@ -10,7 +10,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { X } from "lucide-react";
 
-import { setNodeMeta } from "@/lib/actions/architecture";
+import { useArchitectureActions } from "@/lib/architecture/actions-context";
 import type { NodeMeta } from "@/lib/architecture/types";
 import {
   Dialog,
@@ -56,6 +56,7 @@ export function NodeMetaDialog({
    *  refreshes server components). */
   onSaved?: () => void;
 }) {
+  const { nodeMeta: nodeMetaActions } = useArchitectureActions();
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
@@ -82,8 +83,9 @@ export function NodeMetaDialog({
   }
 
   function handleSave() {
+    if (!nodeMetaActions) return;
     startTransition(async () => {
-      const result = await setNodeMeta(taskId, {
+      const result = await nodeMetaActions.setNodeMeta(taskId, {
         intent: intent || undefined,
         audience: audience || undefined,
         primaryCta: primaryCta || undefined,

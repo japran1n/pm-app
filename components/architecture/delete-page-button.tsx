@@ -14,7 +14,7 @@ import { Loader2, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
-import { deletePage } from "@/lib/actions/architecture";
+import { useArchitectureActions } from "@/lib/architecture/actions-context";
 import type { BoardPage } from "@/lib/queries/architecture";
 import { Button } from "@/components/ui/button";
 import {
@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/dialog";
 
 export function DeletePageButton({ page }: { page: BoardPage }) {
+  const { deletePage, readOnly } = useArchitectureActions();
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -49,6 +50,10 @@ export function DeletePageButton({ page }: { page: BoardPage }) {
       setOpen(false);
       router.refresh();
     });
+  }
+
+  if (readOnly) {
+    return null;
   }
 
   return (

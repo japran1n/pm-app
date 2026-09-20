@@ -23,11 +23,7 @@ import { PageColumn } from "@/components/architecture/page-column";
 import { ComponentPanel } from "@/components/architecture/component-panel";
 import { CreatePageDialog } from "@/components/architecture/create-page-dialog";
 import { useComponentHover } from "@/lib/architecture/use-component-hover";
-import {
-  reorderSections,
-  moveSectionToPage,
-  reorderPages,
-} from "@/lib/actions/architecture";
+import { useArchitectureActions } from "@/lib/architecture/actions-context";
 
 // Mission 20260910-182104, F006 (AS-019): the Architecture board container.
 // Renders one PageColumn per page in a horizontally scrolling row. The
@@ -78,6 +74,8 @@ export function ArchitectureBoard({
   // F034 (AS-081): toggles the right-side ComponentPanel listing every
   // component in the project, closed by default so the board's default
   // view is unchanged.
+  const { readOnly, reorderSections, moveSectionToPage, reorderPages } =
+    useArchitectureActions();
   const [panelOpen, setPanelOpen] = useState(false);
   const [addPageOpen, setAddPageOpen] = useState(false);
 
@@ -212,6 +210,7 @@ export function ArchitectureBoard({
   // rationale F021's doc comment gives for why sections needed a single
   // shared context to cross columns.
   function handleColumnDragEnd(activeId: string, overId: string) {
+    if (readOnly) return;
     const oldIndex = pageOrder.indexOf(activeId);
     const newIndex = pageOrder.indexOf(overId);
     if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return;
@@ -230,6 +229,7 @@ export function ArchitectureBoard({
   }
 
   function handleDragEnd(event: DragEndEvent) {
+    if (readOnly) return;
     const { active, over } = event;
     if (!over) return;
 
@@ -370,21 +370,23 @@ export function ArchitectureBoard({
                 onDetailsInvalidate={onDetailsInvalidate ?? (() => {})}
               />
             ))}
-            <div className="shrink-0 w-52">
-              <button
-                type="button"
-                onClick={() => setAddPageOpen(true)}
-                className="flex h-9 w-full items-center gap-1.5 rounded-md border border-dashed border-border px-3 text-sm text-muted-foreground hover:border-border-control-hover hover:text-foreground transition-colors"
-              >
-                <span className="text-base leading-none">+</span>
-                <span>Add page</span>
-              </button>
-              <CreatePageDialog
-                projectId={projectId}
-                open={addPageOpen}
-                onOpenChange={setAddPageOpen}
-              />
-            </div>
+            {!readOnly && (
+              <div className="shrink-0 w-52">
+                <button
+                  type="button"
+                  onClick={() => setAddPageOpen(true)}
+                  className="flex h-9 w-full items-center gap-1.5 rounded-md border border-dashed border-border px-3 text-sm text-muted-foreground hover:border-border-control-hover hover:text-foreground transition-colors"
+                >
+                  <span className="text-base leading-none">+</span>
+                  <span>Add page</span>
+                </button>
+                <CreatePageDialog
+                  projectId={projectId}
+                  open={addPageOpen}
+                  onOpenChange={setAddPageOpen}
+                />
+              </div>
+            )}
           </div>
         </SortableContext>
       </DndContext>

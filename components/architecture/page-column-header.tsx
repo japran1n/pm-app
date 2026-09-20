@@ -30,7 +30,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { FileText } from "lucide-react";
 
-import { renamePage, changePageSlug } from "@/lib/actions/architecture";
+import { useArchitectureActions } from "@/lib/architecture/actions-context";
 import { Input } from "@/components/ui/input";
 import type { BoardPage } from "@/lib/queries/architecture";
 import type { DisciplineEstimate, NodeMeta } from "@/lib/architecture/types";
@@ -77,6 +77,13 @@ export function PageColumnHeader({
    *  difference between the two views' headers. */
   grip?: React.ReactNode;
 }) {
+  const {
+    renamePage,
+    changePageSlug,
+    readOnly,
+    estimates: estimatesCapability,
+    nodeMeta,
+  } = useArchitectureActions();
   const router = useRouter();
   const [isEditing, setIsEditing] = useState(false);
   const [metaOpen, setMetaOpen] = useState(false);
@@ -187,7 +194,7 @@ export function PageColumnHeader({
 
   return (
     <>
-      {showDetails && (
+      {showDetails && nodeMeta && (
         <NodeMetaDialog
           taskId={page.id}
           taskTitle={page.title}
@@ -228,6 +235,8 @@ export function PageColumnHeader({
                 </p>
               )}
             </div>
+          ) : readOnly ? (
+            <p className="min-w-0 truncate text-sm font-medium">{page.title}</p>
           ) : (
             <p
               role="button"
@@ -245,7 +254,13 @@ export function PageColumnHeader({
               {page.title}
             </p>
           )}
-          {!isEditingSlug ? (
+          {readOnly ? (
+            page.pageSlug != null && (
+              <span className="text-xs text-muted-foreground font-mono truncate max-w-full block">
+                /{page.pageSlug}
+              </span>
+            )
+          ) : !isEditingSlug ? (
             page.pageSlug != null && (
               <button
                 type="button"
@@ -287,36 +302,40 @@ export function PageColumnHeader({
               )}
             </div>
           )}
-          {showDetails && !isEditing && (
+          {showDetails && !isEditing && (estimatesCapability || nodeMeta) && (
             <div className="flex items-center gap-1 pt-1.5">
-              <EstimateChip
-                taskId={page.id}
-                taskTitle={page.title}
-                estimates={estimates ?? []}
-                loading={detailsLoading}
-                onDetailsInvalidate={onDetailsInvalidate}
-              />
-              <button
-                type="button"
-                aria-label={
-                  hasNodeMetaContent(meta)
-                    ? `Edit copy brief for ${page.title}`
-                    : `Add copy brief for ${page.title}`
-                }
-                aria-haspopup="dialog"
-                title="Copy brief"
-                onClick={() => setMetaOpen(true)}
-                className="shrink-0 rounded-md border border-transparent p-1 text-muted-foreground transition-colors hover:border-border-control-hover hover:text-foreground"
-              >
-                <FileText
-                  className="size-3.5"
-                  aria-hidden="true"
-                  fill={hasNodeMetaContent(meta) ? "currentColor" : "none"}
-                  data-node-meta-icon-state={
-                    hasNodeMetaContent(meta) ? "full" : "empty"
-                  }
+              {estimatesCapability && (
+                <EstimateChip
+                  taskId={page.id}
+                  taskTitle={page.title}
+                  estimates={estimates ?? []}
+                  loading={detailsLoading}
+                  onDetailsInvalidate={onDetailsInvalidate}
                 />
-              </button>
+              )}
+              {nodeMeta && (
+                <button
+                  type="button"
+                  aria-label={
+                    hasNodeMetaContent(meta)
+                      ? `Edit copy brief for ${page.title}`
+                      : `Add copy brief for ${page.title}`
+                  }
+                  aria-haspopup="dialog"
+                  title="Copy brief"
+                  onClick={() => setMetaOpen(true)}
+                  className="shrink-0 rounded-md border border-transparent p-1 text-muted-foreground transition-colors hover:border-border-control-hover hover:text-foreground"
+                >
+                  <FileText
+                    className="size-3.5"
+                    aria-hidden="true"
+                    fill={hasNodeMetaContent(meta) ? "currentColor" : "none"}
+                    data-node-meta-icon-state={
+                      hasNodeMetaContent(meta) ? "full" : "empty"
+                    }
+                  />
+                </button>
+              )}
             </div>
           )}
         </div>

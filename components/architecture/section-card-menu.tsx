@@ -18,11 +18,7 @@ import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Boxes, Link2, MoreHorizontal, Unlink } from "lucide-react";
 
-import {
-  changeSectionKind,
-  createComponentFromSection,
-  unlinkComponentFromSection,
-} from "@/lib/actions/architecture";
+import { useArchitectureActions } from "@/lib/architecture/actions-context";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ComponentPicker } from "@/components/architecture/component-picker";
@@ -56,6 +52,7 @@ export function SectionCardMenu({
   section: BoardSection;
   components?: BoardComponent[];
 }) {
+  const { changeSectionKind, componentLinks, clientVisibility } = useArchitectureActions();
   const router = useRouter();
   const params = useParams<{ projectId: string }>();
   const projectId = params.projectId;
@@ -87,8 +84,9 @@ export function SectionCardMenu({
   // component are unaffected, and the section's own name (`title`) is
   // never part of that update -- it survives unlinking untouched.
   function handleUnlink() {
+    if (!componentLinks) return;
     startUnlinking(async () => {
-      const result = await unlinkComponentFromSection(section.id);
+      const result = await componentLinks.unlinkComponentFromSection(section.id);
 
       if (result.success) {
         router.refresh();
@@ -99,8 +97,9 @@ export function SectionCardMenu({
   }
 
   function handleCreateComponent() {
+    if (!componentLinks) return;
     startCreatingComponent(async () => {
-      const result = await createComponentFromSection(section.id, projectId);
+      const result = await componentLinks.createComponentFromSection(section.id, projectId);
 
       if (result.success) {
         router.refresh();
@@ -124,63 +123,64 @@ export function SectionCardMenu({
         }
       />
       <PopoverContent align="end" className="w-56 p-1">
-        {section.component === null ? (
-          <>
-            <MenuRow label="Link component">
-              <Popover open={isPickerOpen} onOpenChange={setIsPickerOpen}>
-                <PopoverTrigger
-                  render={
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      aria-label="Link component"
-                      className="shrink-0"
-                    >
-                      <Link2 className="size-4" aria-hidden="true" />
-                    </Button>
-                  }
-                />
-                <PopoverContent align="end" className="w-64 p-0">
-                  <ComponentPicker
-                    projectId={projectId}
-                    sectionId={section.id}
-                    currentComponentId={null}
-                    components={components}
-                    onClose={() => setIsPickerOpen(false)}
+        {componentLinks &&
+          (section.component === null ? (
+            <>
+              <MenuRow label="Link component">
+                <Popover open={isPickerOpen} onOpenChange={setIsPickerOpen}>
+                  <PopoverTrigger
+                    render={
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        aria-label="Link component"
+                        className="shrink-0"
+                      >
+                        <Link2 className="size-4" aria-hidden="true" />
+                      </Button>
+                    }
                   />
-                </PopoverContent>
-              </Popover>
-            </MenuRow>
-            <MenuRow label="Create component">
+                  <PopoverContent align="end" className="w-64 p-0">
+                    <ComponentPicker
+                      projectId={projectId}
+                      sectionId={section.id}
+                      currentComponentId={null}
+                      components={components}
+                      onClose={() => setIsPickerOpen(false)}
+                    />
+                  </PopoverContent>
+                </Popover>
+              </MenuRow>
+              <MenuRow label="Create component">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  aria-label="Create component"
+                  className="shrink-0"
+                  disabled={isCreatingComponent}
+                  onClick={handleCreateComponent}
+                >
+                  <Boxes className="size-4" aria-hidden="true" />
+                </Button>
+              </MenuRow>
+            </>
+          ) : (
+            <MenuRow label="Unlink component">
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
-                aria-label="Create component"
+                aria-label="Unlink component"
                 className="shrink-0"
-                disabled={isCreatingComponent}
-                onClick={handleCreateComponent}
+                disabled={isUnlinking}
+                onClick={handleUnlink}
               >
-                <Boxes className="size-4" aria-hidden="true" />
+                <Unlink className="size-4" aria-hidden="true" />
               </Button>
             </MenuRow>
-          </>
-        ) : (
-          <MenuRow label="Unlink component">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              aria-label="Unlink component"
-              className="shrink-0"
-              disabled={isUnlinking}
-              onClick={handleUnlink}
-            >
-              <Unlink className="size-4" aria-hidden="true" />
-            </Button>
-          </MenuRow>
-        )}
+          ))}
         <MenuRow label="Section kind">
           <SectionKindSelector
             value={section.kind}
@@ -188,9 +188,11 @@ export function SectionCardMenu({
             disabled={isChangingKind}
           />
         </MenuRow>
-        <MenuRow label="Client visibility">
-          <SectionClientVisibilityToggle section={section} />
-        </MenuRow>
+        {clientVisibility && (
+          <MenuRow label="Client visibility">
+            <SectionClientVisibilityToggle section={section} />
+          </MenuRow>
+        )}
         <MenuRow label="Delete section">
           <DeleteSectionButton sectionId={section.id} sectionTitle={section.title} />
         </MenuRow>

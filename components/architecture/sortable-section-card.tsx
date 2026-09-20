@@ -12,6 +12,7 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
 import { SectionCard } from "@/components/architecture/section-card";
+import { useArchitectureActions } from "@/lib/architecture/actions-context";
 import type { BoardComponent, BoardSection } from "@/lib/queries/architecture";
 import type { ArchitectureNodeDetails } from "@/lib/architecture/types";
 
@@ -28,6 +29,7 @@ export function SortableSectionCard({
   detailsData?: ArchitectureNodeDetails | null;
   onDetailsInvalidate: () => void;
 }) {
+  const { readOnly } = useArchitectureActions();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: section.id, data: { type: "section" } });
 
@@ -39,15 +41,17 @@ export function SortableSectionCard({
 
   return (
     <div ref={setNodeRef} style={style} className="group/section relative">
-      <button
-        type="button"
-        aria-label={`Reorder ${section.title}`}
-        className="absolute -left-1 top-1/2 z-10 -translate-x-full -translate-y-1/2 cursor-grab touch-none rounded-sm p-1 text-muted-foreground/40 opacity-0 hover:text-muted-foreground group-hover/section:opacity-100 active:cursor-grabbing"
-        {...attributes}
-        {...listeners}
-      >
-        <GripVertical className="size-3.5" aria-hidden="true" />
-      </button>
+      {!readOnly && (
+        <button
+          type="button"
+          aria-label={`Reorder ${section.title}`}
+          className="absolute -left-1 top-1/2 z-10 -translate-x-full -translate-y-1/2 cursor-grab touch-none rounded-sm p-1 text-muted-foreground/40 opacity-0 hover:text-muted-foreground group-hover/section:opacity-100 active:cursor-grabbing"
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical className="size-3.5" aria-hidden="true" />
+        </button>
+      )}
       <SectionCard
         section={section}
         components={components}

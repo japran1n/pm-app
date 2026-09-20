@@ -12,7 +12,7 @@ import { Loader2, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
-import { deleteSection } from "@/lib/actions/architecture";
+import { useArchitectureActions } from "@/lib/architecture/actions-context";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -32,6 +32,7 @@ export function DeleteSectionButton({
   sectionId: string;
   sectionTitle?: string;
 }) {
+  const { deleteSection, readOnly } = useArchitectureActions();
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -52,6 +53,10 @@ export function DeleteSectionButton({
       setOpen(false);
       router.refresh();
     });
+  }
+
+  if (readOnly) {
+    return null;
   }
 
   return (

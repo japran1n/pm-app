@@ -18,7 +18,7 @@ import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { createPage } from "@/lib/actions/architecture";
+import { useArchitectureActions } from "@/lib/architecture/actions-context";
 import type { BoardPageKind } from "@/lib/queries/architecture";
 import { slugify } from "@/lib/utils/slugify";
 import { Button } from "@/components/ui/button";
@@ -49,6 +49,7 @@ export function CreatePageDialog({
    *  child page" lands in the right place in the hierarchy (AS-016). */
   parentSlug?: string;
 }) {
+  const { createPage } = useArchitectureActions();
   const router = useRouter();
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");

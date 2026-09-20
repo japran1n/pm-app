@@ -18,7 +18,7 @@ import { useParams, useRouter } from "next/navigation";
 import { Check, Plus } from "lucide-react";
 import { toast } from "sonner";
 
-import { createSection } from "@/lib/actions/architecture";
+import { useArchitectureActions } from "@/lib/architecture/actions-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -27,6 +27,7 @@ export function AddSectionButton({
 }: {
   pageTaskId: string;
 }) {
+  const { createSection, readOnly } = useArchitectureActions();
   const router = useRouter();
   // The board route is scoped to a single project
   // (app/(workspace)/w/[workspaceSlug]/projects/[projectId]/architecture),
@@ -64,6 +65,10 @@ export function AddSectionButton({
         toast.error(result.error ?? "Something went wrong. Please try again in a moment.");
       }
     });
+  }
+
+  if (readOnly) {
+    return null;
   }
 
   if (!isOpen) {

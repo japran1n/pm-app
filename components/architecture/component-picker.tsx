@@ -20,10 +20,7 @@ import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 
-import {
-  createComponent,
-  linkComponentToSection,
-} from "@/lib/actions/architecture";
+import { useArchitectureActions } from "@/lib/architecture/actions-context";
 import type { BoardComponent } from "@/lib/queries/architecture";
 import {
   Command,
@@ -47,6 +44,7 @@ export function ComponentPicker({
   components: BoardComponent[];
   onClose: () => void;
 }) {
+  const { componentLinks } = useArchitectureActions();
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [isPending, startTransition] = useTransition();
@@ -67,8 +65,9 @@ export function ComponentPicker({
   );
 
   function linkExisting(componentId: string) {
+    if (!componentLinks) return;
     startTransition(async () => {
-      const result = await linkComponentToSection(sectionId, componentId);
+      const result = await componentLinks.linkComponentToSection(sectionId, componentId);
 
       if (result.success) {
         router.refresh();
@@ -80,10 +79,10 @@ export function ComponentPicker({
   }
 
   function createAndLink() {
-    if (!trimmedSearch) return;
+    if (!trimmedSearch || !componentLinks) return;
 
     startTransition(async () => {
-      const createResult = await createComponent(projectId, trimmedSearch);
+      const createResult = await componentLinks.createComponent(projectId, trimmedSearch);
 
       if (!createResult.success || !createResult.id) {
         toast.error(
@@ -92,7 +91,7 @@ export function ComponentPicker({
         return;
       }
 
-      const linkResult = await linkComponentToSection(
+      const linkResult = await componentLinks.linkComponentToSection(
         sectionId,
         createResult.id,
       );

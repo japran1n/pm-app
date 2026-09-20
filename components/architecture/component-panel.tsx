@@ -43,7 +43,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
-import { deleteComponent, renameComponent, reorderComponents } from "@/lib/actions/architecture";
+import { useArchitectureActions } from "@/lib/architecture/actions-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -67,6 +67,7 @@ function ComponentListItem({
   onSelectComponent?: (component: BoardComponent) => void;
   isReorderPending?: boolean;
 }) {
+  const { componentLinks } = useArchitectureActions();
   const router = useRouter();
   const [isEditing, setIsEditing] = useState(false);
   const [value, setValue] = useState(component.name);
@@ -114,8 +115,10 @@ function ComponentListItem({
       return;
     }
 
+    if (!componentLinks) return;
+
     startRenameTransition(async () => {
-      const result = await renameComponent(component.id, trimmed);
+      const result = await componentLinks.renameComponent(component.id, trimmed);
 
       if (result.success) {
         setIsEditing(false);
@@ -138,8 +141,9 @@ function ComponentListItem({
   }
 
   function handleDelete() {
+    if (!componentLinks) return;
     startDeleteTransition(async () => {
-      const result = await deleteComponent(component.id);
+      const result = await componentLinks.deleteComponent(component.id);
 
       if (!result.success) {
         const message = result.error ?? "Something went wrong.";
@@ -275,6 +279,34 @@ function ComponentListItem({
   );
 }
 
+// Read-only rendering of a component row: no drag handle, no rename, no
+// delete. Selecting a component (for the hover highlight / detail view)
+// still works -- pan/zoom, collapse/expand and the component-panel hover
+// highlight are the explicitly preserved affordances in a read-only board.
+function ReadOnlyComponentListItem({
+  component,
+  onSelectComponent,
+}: {
+  component: BoardComponent;
+  onSelectComponent?: (component: BoardComponent) => void;
+}) {
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={() => onSelectComponent?.(component)}
+        className="flex w-full items-center justify-between gap-2 rounded-md border border-transparent px-2 py-2 text-left text-sm hover:border-border-control-hover hover:bg-muted/50"
+      >
+        <span className="truncate">{component.name}</span>
+        <span className="shrink-0 rounded-full border border-border px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.07em] text-muted-foreground">
+          {component.instanceCount}{" "}
+          {component.instanceCount === 1 ? "instance" : "instances"}
+        </span>
+      </button>
+    </li>
+  );
+}
+
 export function ComponentPanel({
   components,
   pages = [],
@@ -292,6 +324,7 @@ export function ComponentPanel({
   selectedComponentId?: string | null;
   projectId: string;
 }) {
+  const { readOnly, componentLinks } = useArchitectureActions();
   const router = useRouter();
   const [internalSelectedId, setInternalSelectedId] = useState<string | null>(null);
   const [isReorderPending, startReorderTransition] = useTransition();
@@ -322,8 +355,10 @@ export function ComponentPanel({
 
     const nextOrder = arrayMove(ids, oldIndex, newIndex);
 
+    if (!componentLinks) return;
+
     startReorderTransition(async () => {
-      const result = await reorderComponents(projectId, nextOrder);
+      const result = await componentLinks.reorderComponents(projectId, nextOrder);
 
       if (!result.success) {
         toast.error(result.error ?? "Something went wrong. Please try again.");
@@ -440,6 +475,14 @@ export function ComponentPanel({
       <ul className="flex-1 overflow-y-auto p-2">
         {components.length === 0 ? (
           <li className="p-2 text-sm text-muted-foreground">No components yet.</li>
+        ) : readOnly || !componentLinks ? (
+          components.map((component) => (
+            <ReadOnlyComponentListItem
+              key={component.id}
+              component={component}
+              onSelectComponent={selectComponent}
+            />
+          ))
         ) : (
           <DndContext
             sensors={sensors}

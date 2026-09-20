@@ -5,7 +5,7 @@ import { X } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 
-import { setDisciplineEstimatesBulk } from "@/lib/actions/architecture";
+import { useArchitectureActions } from "@/lib/architecture/actions-context";
 import {
   parseEstimateInput,
   disciplineEstimateNoteSchema,
@@ -51,6 +51,7 @@ export function DisciplineEstimatePopover({
   onSaved?: () => void;
   onClose?: () => void;
 }) {
+  const { estimates: estimateActions } = useArchitectureActions();
   const router = useRouter();
   const estimateByDiscipline = new Map(estimates.map((e) => [e.discipline, e]));
 
@@ -107,6 +108,7 @@ export function DisciplineEstimatePopover({
 
   function handleSaveAll() {
     if (!validate()) return;
+    if (!estimateActions) return;
     startTransition(async () => {
       // AS-079: a single setDisciplineEstimatesBulk call handles all five
       // disciplines (set + clear + notes) in one round-trip, instead of the
@@ -120,7 +122,7 @@ export function DisciplineEstimatePopover({
       }));
 
       try {
-        const result = await setDisciplineEstimatesBulk(taskId, entries);
+        const result = await estimateActions.setDisciplineEstimatesBulk(taskId, entries);
 
         if (!result.success) {
           toast.error(result.error ?? "Something went wrong. Please try again.");

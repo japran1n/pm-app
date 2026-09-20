@@ -20,25 +20,52 @@ vi.mock("@/lib/actions/architecture", () => ({
 }));
 
 import { EstimateChip } from "./estimate-chip";
+import { ArchitectureActionsProvider } from "@/lib/architecture/actions-context";
+import type { ArchitectureActions } from "@/lib/architecture/actions-context";
 
 afterEach(() => {
   cleanup();
 });
 
+const testActions: ArchitectureActions = {
+  createSection: vi.fn(),
+  deleteSection: vi.fn(),
+  renameSection: vi.fn(),
+  reorderSections: vi.fn(),
+  moveSectionToPage: vi.fn(),
+  changeSectionKind: vi.fn(),
+  createPage: vi.fn(),
+  changePageKind: vi.fn(),
+  changePageSlug: vi.fn(),
+  renamePage: vi.fn(),
+  deletePage: vi.fn(),
+  reorderPages: vi.fn(),
+  importPages: vi.fn(),
+  readOnly: false,
+  estimates: {
+    setDisciplineEstimatesBulk: vi.fn(),
+    getNodeDetailsForToggle: vi.fn(),
+  },
+} as unknown as ArchitectureActions;
+
+function renderChip(props: React.ComponentProps<typeof EstimateChip>) {
+  return render(
+    <ArchitectureActionsProvider actions={testActions}>
+      <EstimateChip {...props} />
+    </ArchitectureActionsProvider>,
+  );
+}
+
 describe("EstimateChip (F084)", () => {
   it("test_F084_chip_is_disabled_while_loading_even_with_empty_estimates", () => {
-    render(
-      <EstimateChip taskId="task-1" taskTitle="Task 1" estimates={[]} loading />,
-    );
+    renderChip({ taskId: "task-1", taskTitle: "Task 1", estimates: [], loading: true });
 
     const button = screen.getByRole("button", { name: "Estimate for Task 1" });
     expect(button).toBeDisabled();
   });
 
   it("test_F084_clicking_the_chip_while_loading_does_not_open_the_popover", () => {
-    render(
-      <EstimateChip taskId="task-1" taskTitle="Task 1" estimates={[]} loading />,
-    );
+    renderChip({ taskId: "task-1", taskTitle: "Task 1", estimates: [], loading: true });
 
     const button = screen.getByRole("button", { name: "Estimate for Task 1" });
     fireEvent.click(button);
@@ -50,9 +77,7 @@ describe("EstimateChip (F084)", () => {
   });
 
   it("test_F084_chip_is_interactive_once_loading_resolves", () => {
-    render(
-      <EstimateChip taskId="task-1" taskTitle="Task 1" estimates={[]} loading={false} />,
-    );
+    renderChip({ taskId: "task-1", taskTitle: "Task 1", estimates: [], loading: false });
 
     const button = screen.getByRole("button", { name: "Estimate for Task 1" });
     expect(button).not.toBeDisabled();

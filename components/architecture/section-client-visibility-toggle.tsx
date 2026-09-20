@@ -11,11 +11,12 @@ import { useState, useTransition } from "react";
 import { Eye, Loader2, Lock } from "lucide-react";
 import { toast } from "sonner";
 
-import { setSectionClientVisibility } from "@/lib/actions/architecture";
+import { useArchitectureActions } from "@/lib/architecture/actions-context";
 import { Button } from "@/components/ui/button";
 import type { BoardSection } from "@/lib/queries/architecture";
 
 export function SectionClientVisibilityToggle({ section }: { section: BoardSection }) {
+  const { readOnly, clientVisibility } = useArchitectureActions();
   const serverValue = section.clientVisible ?? false;
   const [isShared, setIsShared] = useState(serverValue);
   const [isPending, startTransition] = useTransition();
@@ -31,6 +32,12 @@ export function SectionClientVisibilityToggle({ section }: { section: BoardSecti
     setLastServerValue(serverValue);
     setIsShared(serverValue);
   }
+
+  if (readOnly || !clientVisibility) {
+    return null;
+  }
+
+  const { setSectionClientVisibility } = clientVisibility;
 
   function handleToggle() {
     const next = !isShared;

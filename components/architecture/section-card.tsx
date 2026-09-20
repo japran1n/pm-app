@@ -35,7 +35,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { FileText } from "lucide-react";
 
-import { renameSection } from "@/lib/actions/architecture";
+import { useArchitectureActions } from "@/lib/architecture/actions-context";
 import { Input } from "@/components/ui/input";
 import type { BoardComponent, BoardSection } from "@/lib/queries/architecture";
 import { SectionCardMenu } from "@/components/architecture/section-card-menu";
@@ -104,6 +104,7 @@ export function SectionCard({
    *  full page reload. */
   onDetailsInvalidate: () => void;
 }) {
+  const { renameSection, readOnly, nodeMeta: nodeMetaCapability } = useArchitectureActions();
   const router = useRouter();
   const [isEditing, setIsEditing] = useState(false);
   const [value, setValue] = useState(section.title);
@@ -238,21 +239,29 @@ export function SectionCard({
               >
                 {section.component.name}
               </button>
-              <p
-                role="button"
-                tabIndex={0}
-                onClick={startEditing}
-                onKeyDown={(keyEvent) => {
-                  if (keyEvent.key === "Enter" || keyEvent.key === " ") {
-                    keyEvent.preventDefault();
-                    startEditing();
-                  }
-                }}
-                className="truncate rounded-sm text-xs text-muted-foreground hover:bg-muted/50"
-              >
-                {section.title}
-              </p>
+              {readOnly ? (
+                <p className="truncate rounded-sm text-xs text-muted-foreground">
+                  {section.title}
+                </p>
+              ) : (
+                <p
+                  role="button"
+                  tabIndex={0}
+                  onClick={startEditing}
+                  onKeyDown={(keyEvent) => {
+                    if (keyEvent.key === "Enter" || keyEvent.key === " ") {
+                      keyEvent.preventDefault();
+                      startEditing();
+                    }
+                  }}
+                  className="truncate rounded-sm text-xs text-muted-foreground hover:bg-muted/50"
+                >
+                  {section.title}
+                </p>
+              )}
             </>
+          ) : readOnly ? (
+            <p className="truncate rounded-sm text-sm font-medium">{section.title}</p>
           ) : (
             <p
               role="button"
@@ -281,7 +290,7 @@ export function SectionCard({
             withheld only when the details fetch has genuinely never run
             (the true "unknown" state), matching the original intent of
             F025's comment above without unmounting on every save. */}
-        {detailsData !== undefined && (
+        {detailsData !== undefined && nodeMetaCapability && (
           <>
             <button
               type="button"
@@ -315,7 +324,7 @@ export function SectionCard({
             />
           </>
         )}
-        <SectionCardMenu section={section} components={components} />
+        {!readOnly && <SectionCardMenu section={section} components={components} />}
       </div>
     </div>
   );

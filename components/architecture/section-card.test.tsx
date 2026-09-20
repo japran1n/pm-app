@@ -26,11 +26,41 @@ vi.mock("@/lib/actions/architecture", () => ({
 import { SectionCard } from "./section-card";
 import type { ArchitectureNodeDetails } from "@/lib/architecture/types";
 import type { BoardSection } from "@/lib/queries/architecture";
+import { ArchitectureActionsProvider } from "@/lib/architecture/actions-context";
+import type { ArchitectureActions } from "@/lib/architecture/actions-context";
 
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
 });
+
+const testActions: ArchitectureActions = {
+  createSection: vi.fn(),
+  deleteSection: vi.fn(),
+  renameSection: vi.fn(),
+  reorderSections: vi.fn(),
+  moveSectionToPage: vi.fn(),
+  changeSectionKind: vi.fn(),
+  createPage: vi.fn(),
+  changePageKind: vi.fn(),
+  changePageSlug: vi.fn(),
+  renamePage: vi.fn(),
+  deletePage: vi.fn(),
+  reorderPages: vi.fn(),
+  importPages: vi.fn(),
+  readOnly: false,
+  nodeMeta: {
+    setNodeMeta: (...args: unknown[]) => setNodeMetaMock(...args),
+  },
+} as unknown as ArchitectureActions;
+
+function renderSectionCard(props: React.ComponentProps<typeof SectionCard>) {
+  return render(
+    <ArchitectureActionsProvider actions={testActions}>
+      <SectionCard {...props} />
+    </ArchitectureActionsProvider>,
+  );
+}
 
 const section: BoardSection = {
   id: "section-1",
@@ -49,13 +79,11 @@ describe("SectionCard copy-brief save (F094)", () => {
     setNodeMetaMock.mockResolvedValue({ success: true });
     const onDetailsInvalidate = vi.fn();
 
-    render(
-      <SectionCard
-        section={section}
-        detailsData={emptyDetailsData()}
-        onDetailsInvalidate={onDetailsInvalidate}
-      />,
-    );
+    renderSectionCard({
+      section,
+      detailsData: emptyDetailsData(),
+      onDetailsInvalidate,
+    });
 
     fireEvent.click(
       screen.getByRole("button", { name: `Add copy brief for ${section.title}` }),
@@ -73,13 +101,11 @@ describe("SectionCard copy-brief save (F094)", () => {
   it("test_F094_save_does_not_throw_when_onDetailsInvalidate_is_a_noop", async () => {
     setNodeMetaMock.mockResolvedValue({ success: true });
 
-    render(
-      <SectionCard
-        section={section}
-        detailsData={emptyDetailsData()}
-        onDetailsInvalidate={() => {}}
-      />,
-    );
+    renderSectionCard({
+      section,
+      detailsData: emptyDetailsData(),
+      onDetailsInvalidate: () => {},
+    });
 
     fireEvent.click(
       screen.getByRole("button", { name: `Add copy brief for ${section.title}` }),

@@ -7,9 +7,72 @@ import { toast } from "sonner";
 
 import type { BoardComponent, BoardPage } from "@/lib/queries/architecture";
 import { ArchitectureBoard } from "@/components/architecture/board";
-import { getNodeDetailsForToggle } from "@/lib/actions/architecture";
+import * as architectureActions from "@/lib/actions/architecture";
+import {
+  ArchitectureActionsProvider,
+  type ArchitectureActions,
+} from "@/lib/architecture/actions-context";
 import type { ArchitectureNodeDetails } from "@/lib/architecture/types";
 import { EstimateSummary } from "@/components/architecture/estimate-summary";
+
+// Phase 0 of the standalone Sitemap tool (decoupling the board UI from its
+// server actions): the existing Architecture tab is the ONE place that
+// still wires the board directly to the project/tasks-backed server
+// actions in lib/actions/architecture/*. Every optional capability group
+// is present and readOnly is false -- this is a pure passthrough of
+// today's exact behaviour, just routed through the context instead of each
+// leaf component importing the actions module for itself.
+//
+// Each capability below is a thin passthrough wrapper (rather than a bare
+// function reference) so this file keeps one real, statically-analysable
+// `architectureActions.<name>(...)` call site per barrel export -- the
+// same guarantee tests/unit/m6-action-barrel-guard.test.ts already checks
+// for every export of lib/actions/architecture.ts.
+function getNodeDetailsForToggle(projectId: string) {
+  return architectureActions.getNodeDetailsForToggle(projectId);
+}
+
+const projectBackedActions: ArchitectureActions = {
+  createSection: (...args) => architectureActions.createSection(...args),
+  deleteSection: (...args) => architectureActions.deleteSection(...args),
+  renameSection: (...args) => architectureActions.renameSection(...args),
+  reorderSections: (...args) => architectureActions.reorderSections(...args),
+  moveSectionToPage: (...args) => architectureActions.moveSectionToPage(...args),
+  changeSectionKind: (...args) => architectureActions.changeSectionKind(...args),
+  createPage: (...args) => architectureActions.createPage(...args),
+  changePageKind: (...args) => architectureActions.changePageKind(...args),
+  changePageSlug: (...args) => architectureActions.changePageSlug(...args),
+  renamePage: (...args) => architectureActions.renamePage(...args),
+  deletePage: (...args) => architectureActions.deletePage(...args),
+  reorderPages: (...args) => architectureActions.reorderPages(...args),
+  importPages: (...args) => architectureActions.importPages(...args),
+  readOnly: false,
+  estimates: {
+    setDisciplineEstimatesBulk: (...args) =>
+      architectureActions.setDisciplineEstimatesBulk(...args),
+    getNodeDetailsForToggle: (...args) => architectureActions.getNodeDetailsForToggle(...args),
+  },
+  nodeMeta: {
+    setNodeMeta: (...args) => architectureActions.setNodeMeta(...args),
+  },
+  clientVisibility: {
+    setPageClientVisibility: (...args) =>
+      architectureActions.setPageClientVisibility(...args),
+    setSectionClientVisibility: (...args) =>
+      architectureActions.setSectionClientVisibility(...args),
+  },
+  componentLinks: {
+    createComponent: (...args) => architectureActions.createComponent(...args),
+    createComponentFromSection: (...args) =>
+      architectureActions.createComponentFromSection(...args),
+    linkComponentToSection: (...args) => architectureActions.linkComponentToSection(...args),
+    unlinkComponentFromSection: (...args) =>
+      architectureActions.unlinkComponentFromSection(...args),
+    renameComponent: (...args) => architectureActions.renameComponent(...args),
+    deleteComponent: (...args) => architectureActions.deleteComponent(...args),
+    reorderComponents: (...args) => architectureActions.reorderComponents(...args),
+  },
+};
 
 // NX-006: CanvasBoard is the only consumer of @xyflow/react — statically
 // importing it here pulled the whole flow-graph library into the shared
@@ -158,6 +221,7 @@ export function ArchitectureViewToggle({
   }
 
   return (
+    <ArchitectureActionsProvider actions={projectBackedActions}>
     <div className="flex min-h-0 flex-1 flex-col gap-2">
       {/* Toggle */}
       <div className="flex items-center justify-between gap-3 px-1">
@@ -250,5 +314,6 @@ export function ArchitectureViewToggle({
         />
       )}
     </div>
+    </ArchitectureActionsProvider>
   );
 }

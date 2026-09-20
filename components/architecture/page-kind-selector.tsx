@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import { cn } from "@/lib/utils";
-import { changePageKind } from "@/lib/actions/architecture";
+import { useArchitectureActions } from "@/lib/architecture/actions-context";
 import { PageKindBadge } from "@/components/architecture/page-kind-badge";
 import type { BoardPageKind } from "@/lib/queries/architecture";
 
@@ -36,11 +36,19 @@ type ControlledProps = {
 };
 
 export function PageKindSelector(props: PersistedProps | ControlledProps) {
+  const { changePageKind, readOnly } = useArchitectureActions();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
   const isControlled = props.onChange !== undefined;
   const resolved = isControlled ? props.value : (props.kind ?? "static");
+
+  // Persisted mode is a board mutation -- not available read-only. The
+  // controlled mode (CreatePageDialog) never reaches a read-only board
+  // since create affordances don't render there at all.
+  if (readOnly && !isControlled) {
+    return <PageKindBadge kind={resolved} />;
+  }
 
   function handleSelect(next: BoardPageKind) {
     setOpen(false);

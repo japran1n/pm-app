@@ -8,6 +8,7 @@ import type { BoardComponent, BoardPage, BoardSection } from "@/lib/queries/arch
 import { PageColumnHeader } from "@/components/architecture/page-column-header";
 import { SortableSectionList } from "@/components/architecture/sortable-section-list";
 import { AddSectionButton } from "@/components/architecture/add-section-button";
+import { useArchitectureActions } from "@/lib/architecture/actions-context";
 import type { ArchitectureNodeDetails } from "@/lib/architecture/types";
 
 // Mission 20260910-182104, F006 (AS-019, AS-020): a single page
@@ -54,6 +55,7 @@ export function PageColumn({
   detailsData?: ArchitectureNodeDetails | null;
   onDetailsInvalidate: () => void;
 }) {
+  const { readOnly } = useArchitectureActions();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: page.id, data: { type: "page" } });
 
@@ -83,15 +85,17 @@ export function PageColumn({
           detailsLoading={Boolean(showDetails) && !detailsData}
           onDetailsInvalidate={onDetailsInvalidate}
           grip={
-            <button
-              type="button"
-              aria-label={`Reorder ${page.title}`}
-              className="mt-0.5 shrink-0 cursor-grab touch-none rounded-md p-1 text-muted-foreground/40 hover:text-muted-foreground active:cursor-grabbing"
-              {...attributes}
-              {...listeners}
-            >
-              <GripVertical className="size-3.5" aria-hidden="true" />
-            </button>
+            readOnly ? undefined : (
+              <button
+                type="button"
+                aria-label={`Reorder ${page.title}`}
+                className="mt-0.5 shrink-0 cursor-grab touch-none rounded-md p-1 text-muted-foreground/40 hover:text-muted-foreground active:cursor-grabbing"
+                {...attributes}
+                {...listeners}
+              >
+                <GripVertical className="size-3.5" aria-hidden="true" />
+              </button>
+            )
           }
         />
         <AddSectionButton pageTaskId={page.id} />

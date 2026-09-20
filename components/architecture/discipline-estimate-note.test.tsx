@@ -26,16 +26,45 @@ vi.mock("sonner", () => ({
 import { DisciplineEstimatePopover } from "./discipline-estimate-popover";
 import { WORK_CATEGORIES } from "@/lib/architecture/types";
 import { setDisciplineEstimatesBulk } from "@/lib/actions/architecture";
+import { ArchitectureActionsProvider } from "@/lib/architecture/actions-context";
+import type { ArchitectureActions } from "@/lib/architecture/actions-context";
 
 afterEach(() => {
   cleanup();
 });
 
+const testActions: ArchitectureActions = {
+  createSection: vi.fn(),
+  deleteSection: vi.fn(),
+  renameSection: vi.fn(),
+  reorderSections: vi.fn(),
+  moveSectionToPage: vi.fn(),
+  changeSectionKind: vi.fn(),
+  createPage: vi.fn(),
+  changePageKind: vi.fn(),
+  changePageSlug: vi.fn(),
+  renamePage: vi.fn(),
+  deletePage: vi.fn(),
+  reorderPages: vi.fn(),
+  importPages: vi.fn(),
+  readOnly: false,
+  estimates: {
+    setDisciplineEstimatesBulk,
+    getNodeDetailsForToggle: vi.fn(),
+  },
+} as unknown as ArchitectureActions;
+
+function renderPopover(props: React.ComponentProps<typeof DisciplineEstimatePopover>) {
+  return render(
+    <ArchitectureActionsProvider actions={testActions}>
+      <DisciplineEstimatePopover {...props} />
+    </ArchitectureActionsProvider>,
+  );
+}
+
 describe("DisciplineEstimatePopover note field (AS-070, AS-071, AS-072)", () => {
   it("test_AS_070_renders_a_note_input_for_every_visible_discipline_row", () => {
-    render(
-      <DisciplineEstimatePopover taskId="task-1" taskTitle="Task 1" estimates={[]} />,
-    );
+    renderPopover({ taskId: "task-1", taskTitle: "Task 1", estimates: [] });
 
     // WORK_CATEGORIES remains the DB/actions source of truth for all five
     // disciplines, but the popover UI only surfaces design + development.
@@ -45,15 +74,13 @@ describe("DisciplineEstimatePopover note field (AS-070, AS-071, AS-072)", () => 
   });
 
   it("test_AS_071_a_previously_saved_note_reads_back_into_its_discipline_row", () => {
-    render(
-      <DisciplineEstimatePopover
-        taskId="task-1"
-        taskTitle="Task 1"
-        estimates={[
-          { discipline: "design", minutes: 60, note: "Needs a moodboard first" },
-        ]}
-      />,
-    );
+    renderPopover({
+      taskId: "task-1",
+      taskTitle: "Task 1",
+      estimates: [
+        { discipline: "design", minutes: 60, note: "Needs a moodboard first" },
+      ],
+    });
 
     const designNote = screen.getByLabelText("Design note") as HTMLInputElement;
     expect(designNote.value).toBe("Needs a moodboard first");
@@ -69,9 +96,7 @@ describe("DisciplineEstimatePopover note field (AS-070, AS-071, AS-072)", () => 
     mockedBulk.mockReset();
     mockedBulk.mockResolvedValue({ success: true } as never);
 
-    render(
-      <DisciplineEstimatePopover taskId="task-1" taskTitle="Task 1" estimates={[]} />,
-    );
+    renderPopover({ taskId: "task-1", taskTitle: "Task 1", estimates: [] });
 
     // Only fill the estimate value for "design"; leave its note blank.
     const estimateInputs = screen.getAllByPlaceholderText("—");

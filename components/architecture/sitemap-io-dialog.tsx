@@ -22,7 +22,7 @@ import {
   parseSitemap,
 } from "@/lib/architecture/sitemap-io";
 import { toCopyBriefMarkdown, toCopyBriefJson } from "@/lib/architecture/copy-brief";
-import { importPages } from "@/lib/actions/architecture";
+import { useArchitectureActions } from "@/lib/architecture/actions-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -79,6 +79,7 @@ export function SitemapIoDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const { importPages, readOnly } = useArchitectureActions();
   const router = useRouter();
   const [format, setFormat] = useState<Format>("xml");
   const [baseUrl, setBaseUrl] = useState("https://example.com");
@@ -140,6 +141,7 @@ export function SitemapIoDialog({
   }
 
   function handleImport() {
+    if (readOnly) return;
     const parsed = parseSitemap(importText);
     if (!parsed.ok) {
       toast.error(parsed.error);
@@ -179,7 +181,7 @@ export function SitemapIoDialog({
         <Tabs defaultValue="export">
           <TabsList>
             <TabsTrigger value="export">Export</TabsTrigger>
-            <TabsTrigger value="import">Import</TabsTrigger>
+            {!readOnly && <TabsTrigger value="import">Import</TabsTrigger>}
           </TabsList>
 
           <TabsContent value="export" className="flex flex-col gap-3 pt-3">
@@ -246,6 +248,7 @@ export function SitemapIoDialog({
             </div>
           </TabsContent>
 
+          {!readOnly && (
           <TabsContent value="import" className="flex flex-col gap-3 pt-3">
             <p className="text-xs text-muted-foreground">
               Accepts a sitemap.xml, a JSON export from here, or a plain list of paths —
@@ -296,6 +299,7 @@ export function SitemapIoDialog({
               </Button>
             </div>
           </TabsContent>
+          )}
         </Tabs>
       </DialogContent>
     </Dialog>
