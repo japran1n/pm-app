@@ -23,6 +23,7 @@ import {
   Eye,
   HelpCircle,
   Code2,
+  Network,
 } from "lucide-react";
 
 import { useMembership } from "@/components/auth/membership-provider";
@@ -168,6 +169,7 @@ function navGroups(
     // convention as its sibling above (no `exact: true`), same route shape
     // (`/w/<slug>/tools/code-editor`).
     { href: `/w/${workspaceSlug}/tools/code-editor`, label: "Webflow Code Editor", icon: Code2 },
+    { href: `/w/${workspaceSlug}/tools/sitemap`, label: "Sitemap Builder", icon: Network },
   ];
 
   // F241: Calendar is a workspace-wide, RLS-scoped view with no guest gate
