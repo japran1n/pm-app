@@ -42,11 +42,48 @@ export function PlannerHeader({
     weekParam?: string;
   };
 }) {
+  // F037 (AS-070): when the selected set of planner members differs from
+  // just the viewer themself, surface whose planner is being shown -- a
+  // single other person's name ("Alice's schedule") or a summary for
+  // multiple people ("Team planner (3 people)"). When the selection is
+  // exactly [selfId] (or the switcher isn't present), no subtitle renders.
+  let subtitle: string | null = null;
+  if (peopleSwitcher) {
+    const { members, selectedUserIds, selfId } = peopleSwitcher;
+    const isOwnPlannerOnly =
+      selectedUserIds.length === 1 && selectedUserIds[0] === selfId;
+    if (!isOwnPlannerOnly && selectedUserIds.length > 0) {
+      const selectedNames = selectedUserIds
+        .filter((id) => id !== selfId)
+        .map((id) => members.find((m) => m.userId === id)?.name)
+        .filter((name): name is string => Boolean(name));
+      if (selectedUserIds.length === 1) {
+        const other = members.find((m) => m.userId === selectedUserIds[0]);
+        subtitle = other ? `${other.name}'s schedule` : null;
+      } else if (selectedNames.length > 0) {
+        subtitle =
+          selectedNames.length <= 3
+            ? selectedNames.join(", ")
+            : `Team planner (${selectedUserIds.length} people)`;
+      }
+    }
+  }
+
   return (
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <h1 className="font-mono text-2xl font-semibold" data-testid="calendar-week-label">
-        {rangeLabel}
-      </h1>
+      <div>
+        <h1 className="font-mono text-2xl font-semibold" data-testid="calendar-week-label">
+          {rangeLabel}
+        </h1>
+        {subtitle ? (
+          <p
+            className="text-muted-foreground text-sm"
+            data-testid="calendar-planner-subtitle"
+          >
+            {subtitle}
+          </p>
+        ) : null}
+      </div>
       <div className="flex items-center gap-1">
         {peopleSwitcher ? (
           <PeopleSwitcherUrlBound
