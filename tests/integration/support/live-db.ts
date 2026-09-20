@@ -37,7 +37,22 @@ loadDotEnv();
 export const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 export const PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 export const SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
-export const haveAdminCreds = Boolean(SUPABASE_URL && SECRET_KEY && PUBLISHABLE_KEY);
+// F064 (AS-050 follow-up): tests/setup/testing-library.ts (loaded via
+// vitest's global `setupFiles`, so it always runs before this module) fills
+// these same env keys with placeholder values -- and sets
+// TEST_SUPABASE_ENV_DUMMY="1" -- whenever no real Supabase env was already
+// present. Because that backfill runs first, this file's own loadDotEnv()
+// above can never overwrite the placeholders (its `!(key in process.env)`
+// guard sees the keys already set), so checking mere presence/truthiness
+// made haveAdminCreds always true even when only placeholders exist. The
+// TEST_SUPABASE_ENV_DUMMY flag is the deliberate signal (see
+// tests/setup/testing-library.ts and the same pattern already used by
+// tests/unit/fts-tasks.test.ts's hasSupabaseEnv) that the values in
+// process.env are synthetic, not real .env-sourced credentials -- so it
+// must gate haveAdminCreds too.
+export const haveAdminCreds =
+  Boolean(SUPABASE_URL && SECRET_KEY && PUBLISHABLE_KEY) &&
+  process.env.TEST_SUPABASE_ENV_DUMMY !== "1";
 
 // Explicit opt-in required to actually seed the linked project locally.
 // CI is exempt from needing the opt-in (see the hard-throw below) so it

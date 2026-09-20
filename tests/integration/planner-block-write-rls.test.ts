@@ -12,10 +12,33 @@ import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
+// F064 (AS-050): tests/setup/testing-library.ts (vitest's global
+// `setupFiles`, always runs before this file's module body) backfills
+// NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY /
+// SUPABASE_SECRET_KEY with placeholder values (and sets
+// TEST_SUPABASE_ENV_DUMMY="1") whenever nothing real is already exported.
+// A plain `!(key in process.env)` guard here would therefore always see
+// those three keys as "already set" and discard the real `.env` values --
+// this file's own credential detection would then run against the
+// placeholders, either false-negatively skipping forever or (worse)
+// false-positively dialing "http://127.0.0.1:54321". These specific keys
+// are this file's own live-DB credentials, so it is safe -- and necessary
+// -- for its OWN loadDotEnv to override just them whenever the value
+// currently in process.env is a known-dummy placeholder; every other key
+// keeps the standard "don't clobber what's already set" guard.
+const LIVE_DB_CREDENTIAL_KEYS = new Set([
+  "NEXT_PUBLIC_SUPABASE_URL",
+  "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
+  "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+  "SUPABASE_SECRET_KEY",
+]);
+
 function loadDotEnv() {
   const path = join(process.cwd(), ".env");
   if (!existsSync(path)) return;
   const contents = readFileSync(path, "utf8");
+  const isDummyEnv = process.env.TEST_SUPABASE_ENV_DUMMY === "1";
+  let overrodeCredential = false;
   for (const line of contents.split("\n")) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith("#")) continue;
@@ -23,10 +46,18 @@ function loadDotEnv() {
     if (eq === -1) continue;
     const key = trimmed.slice(0, eq).trim();
     const value = trimmed.slice(eq + 1).trim();
-    if (key && !(key in process.env)) {
+    if (!key) continue;
+    const isMissing = !(key in process.env);
+    const isOverridableDummy = isDummyEnv && LIVE_DB_CREDENTIAL_KEYS.has(key);
+    if (isMissing || isOverridableDummy) {
       process.env[key] = value;
+      if (isOverridableDummy) overrodeCredential = true;
     }
   }
+  // The placeholder values are gone from this file's view now that real
+  // ones were loaded -- clear the flag so this file's own haveAdminCreds
+  // check (below) doesn't keep treating them as dummy.
+  if (overrodeCredential) delete process.env.TEST_SUPABASE_ENV_DUMMY;
 }
 
 loadDotEnv();
@@ -36,7 +67,22 @@ const SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
 const PUBLISHABLE_KEY =
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-const haveAdminCreds = Boolean(SUPABASE_URL && SECRET_KEY && PUBLISHABLE_KEY);
+// F064 (AS-050 follow-up): tests/setup/testing-library.ts (global
+// `setupFiles`, always runs first) backfills these same keys with
+// placeholder values and sets TEST_SUPABASE_ENV_DUMMY="1" whenever no real
+// Supabase env is already present. Because that backfill runs before this
+// file's own loadDotEnv() above, the `!(key in process.env)` guard there
+// can never overwrite the placeholders with real .env values, so checking
+// mere truthiness made haveAdminCreds always true (and the suite always
+// attempted the placeholder URL "http://127.0.0.1:54321" -- a hard FAIL,
+// not a clean SKIP -- whenever nothing was listening there). Gating on
+// TEST_SUPABASE_ENV_DUMMY (the same flag tests/unit/fts-tasks.test.ts's
+// hasSupabaseEnv and tests/integration/support/live-db.ts's haveAdminCreds
+// already check) restores a clean skip when only placeholders exist, while
+// still running for real when genuine .env credentials are present.
+const haveAdminCreds =
+  Boolean(SUPABASE_URL && SECRET_KEY && PUBLISHABLE_KEY) &&
+  process.env.TEST_SUPABASE_ENV_DUMMY !== "1";
 if (process.env.CI && !haveAdminCreds) {
   throw new Error(
     "planner-block-write-rls: missing Supabase credentials required to run this suite in CI. Set NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SECRET_KEY and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY (or NEXT_PUBLIC_SUPABASE_ANON_KEY) as GitHub Actions repository secrets.",
