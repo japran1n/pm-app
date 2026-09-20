@@ -4,11 +4,15 @@ import { execSync } from "child_process"
 import { createHash } from "crypto"
 import { describe, it, expect } from "vitest"
 
-// SHA-256 of normalized resolveClientBucket body.
+// SHA-256 of the normalized concatenation of resolveClientBucket AND every
+// declaration it depends on (ClientBucket-bucket set / isClientBucket guard /
+// CATEGORY_BUCKET_FALLBACK table). Widened from just the function body so a
+// mutation to the fallback table or the bucket guard -- not just to
+// resolveClientBucket's own lines -- is caught here too.
 // CLAUDE.md: "must never be changed."
-// To update this hash: extract the function, normalize it, recompute.
+// To update this hash: extract the spans below, normalize them, recompute.
 const EXPECTED_HASH =
-  "54989a5a8988db59d27e52761eb7e2f913989e5e8ab452181c47192d2ec09167"
+  "0741b8a852531f6d9855a2e808ec4c36935136206bb3162701ba6a04536fb499"
 
 function extractFunctionSpan(source: string, startIndex: number): string {
   const braceStart = source.indexOf("{", startIndex)
@@ -33,20 +37,102 @@ function normalizeFunctionBody(fnBody: string): string {
 }
 
 describe("M9 regression (AS-178, AS-179, AS-180, AS-181)", () => {
-  it("AS-178: resolveClientBucket is byte-identical to the locked implementation", () => {
+  it("AS-178: resolveClientBucket (and its dependencies) is byte-identical to the locked implementation", () => {
     const content = readFileSync(join(process.cwd(), "components/portal/status-label.ts"), "utf8")
 
+    const spans: string[] = []
+
+    // CLIENT_BUCKETS set
+    let idx = content.indexOf("const CLIENT_BUCKETS")
+    expect(idx, "CLIENT_BUCKETS not found").not.toBe(-1)
+    let semiIdx = content.indexOf(";", content.indexOf("]", idx))
+    spans.push(content.slice(idx, semiIdx + 1))
+
+    // isClientBucket function
+    idx = content.indexOf("function isClientBucket")
+    expect(idx, "isClientBucket not found").not.toBe(-1)
+    spans.push(extractFunctionSpan(content, idx))
+
+    // CATEGORY_BUCKET_FALLBACK table
+    idx = content.indexOf("const CATEGORY_BUCKET_FALLBACK")
+    expect(idx, "CATEGORY_BUCKET_FALLBACK not found").not.toBe(-1)
+    semiIdx = content.indexOf(";", content.indexOf("}", idx))
+    spans.push(content.slice(idx, semiIdx + 1))
+
+    // resolveClientBucket function itself
     let startIndex = content.indexOf("export function resolveClientBucket")
     if (startIndex === -1) {
       startIndex = content.indexOf("export const resolveClientBucket")
     }
     expect(startIndex).not.toBe(-1)
+    spans.push(extractFunctionSpan(content, startIndex))
 
-    const fnBody = extractFunctionSpan(content, startIndex)
-    const normalized = normalizeFunctionBody(fnBody)
+    const normalized = spans.map(normalizeFunctionBody).join(" || ")
     const hash = createHash("sha256").update(normalized).digest("hex")
 
     expect(hash).toBe(EXPECTED_HASH)
+  })
+
+  it("AS-178b: resolveClientBucket pinned behaviour table", async () => {
+    const mod = await import("../../components/portal/status-label")
+    const { resolveClientBucket } = mod
+
+    // category x storedBucket x pendingClientApproval truth table.
+    // Encodes the doc-comment invariants in status-label.ts:
+    //  - pendingClientApproval wins over storedBucket/category, EXCEPT when
+    //    category is "done" (delivered work is never "waiting").
+    //  - a valid storedBucket wins over the category fallback.
+    //  - an invalid/null/undefined storedBucket falls back to
+    //    CATEGORY_BUCKET_FALLBACK[category].
+    //  - not_started and in_progress both fall back to "progress"; done
+    //    falls back to "done".
+    const cases: Array<{
+      category: "not_started" | "in_progress" | "done"
+      storedBucket: string | null | undefined
+      pendingClientApproval?: boolean
+      expected: "waiting" | "progress" | "blocked" | "done"
+      label: string
+    }> = [
+      // No stored bucket, no pending approval: category fallback.
+      { category: "not_started", storedBucket: null, expected: "progress", label: "not_started/null/false -> progress" },
+      { category: "in_progress", storedBucket: null, expected: "progress", label: "in_progress/null/false -> progress" },
+      { category: "done", storedBucket: null, expected: "done", label: "done/null/false -> done" },
+      { category: "not_started", storedBucket: undefined, expected: "progress", label: "not_started/undefined/false -> progress" },
+
+      // Invalid stored bucket string: falls through to category fallback.
+      { category: "not_started", storedBucket: "not-a-real-bucket", expected: "progress", label: "not_started/invalid/false -> progress" },
+      { category: "done", storedBucket: "bogus", expected: "done", label: "done/invalid/false -> done" },
+
+      // Valid stored bucket overrides category fallback.
+      { category: "not_started", storedBucket: "blocked", expected: "blocked", label: "not_started/blocked/false -> blocked" },
+      { category: "in_progress", storedBucket: "waiting", expected: "waiting", label: "in_progress/waiting/false -> waiting" },
+      { category: "done", storedBucket: "waiting", expected: "waiting", label: "done/waiting/false (no pending) -> waiting" },
+      { category: "not_started", storedBucket: "done", expected: "done", label: "not_started/done/false -> done" },
+
+      // pendingClientApproval true wins over everything except category === done.
+      { category: "not_started", storedBucket: null, pendingClientApproval: true, expected: "waiting", label: "not_started/null/true -> waiting" },
+      { category: "in_progress", storedBucket: "blocked", pendingClientApproval: true, expected: "waiting", label: "in_progress/blocked/true -> waiting (pending wins)" },
+      { category: "not_started", storedBucket: "done", pendingClientApproval: true, expected: "waiting", label: "not_started/done-bucket/true -> waiting (pending wins over stored bucket)" },
+
+      // pendingClientApproval true but category === done: pending is ignored.
+      { category: "done", storedBucket: null, pendingClientApproval: true, expected: "done", label: "done/null/true -> done (pending ignored for done category)" },
+      { category: "done", storedBucket: "blocked", pendingClientApproval: true, expected: "blocked", label: "done/blocked/true -> blocked (pending ignored, stored bucket used)" },
+
+      // pendingClientApproval explicitly false behaves like default (unset).
+      { category: "in_progress", storedBucket: null, pendingClientApproval: false, expected: "progress", label: "in_progress/null/explicit-false -> progress" },
+    ]
+
+    for (const c of cases) {
+      const result = resolveClientBucket(
+        c.category,
+        c.storedBucket,
+        c.pendingClientApproval,
+      )
+      expect(result, c.label).toBe(c.expected)
+    }
+
+    // Default parameter: omitting pendingClientApproval behaves as false.
+    expect(resolveClientBucket("not_started", null)).toBe("progress")
   })
 
   it("AS-180: architecture query selects the live task columns and excludes dropped page_components.description", () => {
