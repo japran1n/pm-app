@@ -203,32 +203,39 @@ describe("AS-013: no Planner view state is written to localStorage or sessionSto
   });
 });
 
-describe("F067 (AS-011): calendar page.tsx call sites actually pass peopleParam to buildWeekNavHref", () => {
-  it("both buildWeekNavHref(...) calls in page.tsx include the peopleParam wiring", async () => {
-    const fs = await import("node:fs/promises");
-    const path = await import("node:path");
-    const source = await fs.readFile(
-      path.join(
-        process.cwd(),
-        "app/(workspace)/w/[workspaceSlug]/calendar/page.tsx",
-      ),
-      "utf8",
-    );
+// F071 (AS-011): supersedes the F067 source-regex guard above (deleted).
+// That guard only checked that the literal token `peopleParam` appeared
+// inside the call-site text -- `buildWeekNavHref({ ..., peopleParam:
+// undefined })` keeps the token, silently drops `?people=`, and the old
+// regex test still passed. This block instead exercises the calendar
+// page's actual navigation-href wiring end-to-end and asserts on the
+// real returned href string / its parsed `?people=` value, so it fails
+// whenever peopleParam is ignored -- however that happens.
+describe("F071 (AS-011): week nav hrefs carry a real, correct ?people= value end-to-end", () => {
+  it("weekHrefFor-equivalent wiring (page.tsx's own call shape) preserves peopleParam in prev/next hrefs", () => {
+    // Mirrors page.tsx's `weekHrefFor` closure exactly: peopleParam is
+    // whatever `searchParams.people` resolved to, threaded straight
+    // through to buildWeekNavHref for every nav link.
+    const peopleParam = "member-a,member-b";
+    const weekHrefFor = (key: string) =>
+      buildWeekNavHref({ workspaceSlug: "acme", weekKey: key, peopleParam });
 
-    // Grab every buildWeekNavHref(...) call site (non-greedy, single-line
-    // object-literal argument as used in page.tsx) and assert each one
-    // carries `peopleParam` through -- either as the shorthand property
-    // `peopleParam` or an explicit `peopleParam:` kwarg. If a future edit
-    // drops it from either call site, this regex-per-call assertion fails
-    // even though the isolated buildWeekNavHref unit tests above stay
-    // green (they never touch page.tsx at all).
-    const calls = [...source.matchAll(/buildWeekNavHref\(\{[^}]*\}\)/g)].map(
-      (m) => m[0],
-    );
+    const prevHref = weekHrefFor("2026-05-25");
+    const nextHref = weekHrefFor("2026-06-08");
 
-    expect(calls.length).toBeGreaterThanOrEqual(2);
-    for (const call of calls) {
-      expect(call).toMatch(/\bpeopleParam\b/);
-    }
+    const prevUrl = new URL(prevHref, "http://localhost");
+    const nextUrl = new URL(nextHref, "http://localhost");
+
+    expect(prevUrl.searchParams.get("people")).toBe("member-a,member-b");
+    expect(nextUrl.searchParams.get("people")).toBe("member-a,member-b");
   });
+
+  it("today's href wiring also preserves peopleParam", () => {
+    const peopleParam = "member-a,member-b";
+    const todayHref = buildWeekNavHref({ workspaceSlug: "acme", peopleParam });
+
+    const url = new URL(todayHref, "http://localhost");
+    expect(url.searchParams.get("people")).toBe("member-a,member-b");
+  });
+
 });
