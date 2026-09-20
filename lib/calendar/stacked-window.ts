@@ -1,6 +1,7 @@
 // Timezone contract: all timestamps must be UTC (Z-suffix). This helper
 // clips to UTC 08:00-16:00 Mon-Fri; callers are responsible for converting
-// wall-clock hours to UTC before calling.
+// wall-clock hours to UTC before calling. Offset-less ISO strings are
+// treated as UTC.
 
 export const STACKED_START_HOUR = 8;
 export const STACKED_END_HOUR = 16;
@@ -20,6 +21,12 @@ export interface StackedBlockClipped {
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
+function toUtcMs(s: string): number {
+  // Normalise: treat offset-less strings as UTC, accept space separator
+  const normalised = /[Z+\-]\d*$/.test(s) ? s : s.replace(" ", "T") + "Z";
+  return new Date(normalised).getTime();
+}
+
 /**
  * Clips a calendar block to the stacked layout's visible window: Monday-Friday,
  * 08:00-16:00 UTC. Returns one segment per Mon-Fri UTC day the block overlaps,
@@ -29,8 +36,8 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
 export function clipBlockToStackedWindow(
   block: StackedBlockInput
 ): StackedBlockClipped[] {
-  const start = new Date(block.starts_at);
-  const end = new Date(block.ends_at);
+  const start = new Date(toUtcMs(block.starts_at));
+  const end = new Date(toUtcMs(block.ends_at));
 
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
     return [];

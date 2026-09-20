@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   STACKED_DAYS,
   STACKED_END_HOUR,
@@ -159,5 +159,66 @@ describe("clipBlockToStackedWindow", () => {
         ends_at: "2026-09-28T16:00:00.000Z",
       },
     ]);
+  });
+});
+
+describe("TZ invariance (AS-021/AS-022)", () => {
+  it("AS-021/022: offset-less string treated as UTC", () => {
+    const zResult = clipBlockToStackedWindow({
+      starts_at: "2026-09-21T09:00:00Z",
+      ends_at: "2026-09-21T10:00:00Z",
+    });
+    const offsetlessResult = clipBlockToStackedWindow({
+      starts_at: "2026-09-21T09:00:00",
+      ends_at: "2026-09-21T10:00:00",
+    });
+    expect(offsetlessResult).toEqual(zResult);
+    expect(offsetlessResult).toEqual([
+      {
+        starts_at: "2026-09-21T09:00:00.000Z",
+        ends_at: "2026-09-21T10:00:00.000Z",
+      },
+    ]);
+  });
+
+  it("AS-021/022: space-separated timestamp treated as UTC", () => {
+    const zResult = clipBlockToStackedWindow({
+      starts_at: "2026-09-21T09:00:00Z",
+      ends_at: "2026-09-21T10:00:00Z",
+    });
+    const spaceResult = clipBlockToStackedWindow({
+      starts_at: "2026-09-21 09:00:00",
+      ends_at: "2026-09-21 10:00:00",
+    });
+    expect(spaceResult).toEqual(zResult);
+  });
+
+  describe("under TZ=America/Los_Angeles", () => {
+    const originalTz = process.env.TZ;
+
+    beforeAll(() => {
+      process.env.TZ = "America/Los_Angeles";
+    });
+
+    afterAll(() => {
+      process.env.TZ = originalTz;
+    });
+
+    it("AS-021/022: offset-less and space-separated strings still treated as UTC", () => {
+      const zResult = clipBlockToStackedWindow({
+        starts_at: "2026-09-21T09:00:00Z",
+        ends_at: "2026-09-21T10:00:00Z",
+      });
+      const offsetlessResult = clipBlockToStackedWindow({
+        starts_at: "2026-09-21T09:00:00",
+        ends_at: "2026-09-21T10:00:00",
+      });
+      const spaceResult = clipBlockToStackedWindow({
+        starts_at: "2026-09-21 09:00:00",
+        ends_at: "2026-09-21 10:00:00",
+      });
+      expect(offsetlessResult).toEqual(zResult);
+      expect(spaceResult).toEqual(zResult);
+    });
   });
 });
