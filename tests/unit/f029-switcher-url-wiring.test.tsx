@@ -337,3 +337,41 @@ describe("F075: page.tsx's source guard -- must call buildPlannerNavHrefs", () =
     // which renders WeekView and asserts on actual <a href> attributes.
   });
 });
+
+// F085 (AS-052): only ACTIVE members may appear in the people switcher --
+// pending/inactive members must never be selectable. This is a source
+// scan (not a render test) so it catches the call site itself: a mutation
+// swapping `workspaceMembers.active` for `workspaceMembers.pending` (or a
+// combined `[...active, ...pending]` spread) at the `peopleSwitcherMembers`
+// call site in page.tsx MUST fail this test.
+describe("F085 (AS-052): page.tsx passes only workspaceMembers.active to the people switcher", () => {
+  it("the peopleSwitcherMembers prop is derived from workspaceMembers.active, and that line never references .pending", async () => {
+    const fs = await import("node:fs/promises");
+    const path = await import("node:path");
+    const source = await fs.readFile(
+      path.join(
+        process.cwd(),
+        "app/(workspace)/w/[workspaceSlug]/calendar/page.tsx",
+      ),
+      "utf8",
+    );
+
+    const lines = source.split("\n");
+    const assignmentLineIndex = lines.findIndex((line) =>
+      /peopleSwitcherMembers[:=]\s*\{?\s*workspaceMembers\.\w+\.map/.test(line),
+    );
+
+    expect(
+      assignmentLineIndex,
+      "expected a `peopleSwitcherMembers: workspaceMembers.<field>.map(...)` line in page.tsx",
+    ).toBeGreaterThanOrEqual(0);
+
+    const assignmentLine = lines[assignmentLineIndex]!;
+
+    // Positive: must reference the active-only field.
+    expect(assignmentLine).toMatch(/peopleSwitcherMembers[:=]\s*\{?\s*workspaceMembers\.active\.map/);
+
+    // Negative: must NOT reference pending members on that same line.
+    expect(assignmentLine).not.toContain(".pending");
+  });
+});
