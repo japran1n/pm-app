@@ -66,12 +66,31 @@ describe("deduplicateBlocks", () => {
   });
 
   it("works end-to-end with extractStyleBlocks() output", () => {
+    // All three tags are in the same location (footer, no head/body context) so
+    // they are merged into a single grouped block by extractStyleBlocks. After
+    // grouping there is nothing left for deduplicateBlocks to collapse.
     const html =
       "<style>.a{color:red;}</style><style>.a{color:red;}</style><style>.b{color:blue;}</style>";
     const blocks = extractStyleBlocks(html);
-    expect(blocks).toHaveLength(3);
+    expect(blocks).toHaveLength(1); // merged into one footer group
     const deduped = deduplicateBlocks(blocks);
-    expect(deduped).toHaveLength(2);
-    expect(deduped.map((b) => b.index)).toEqual([0, 2]);
+    expect(deduped).toHaveLength(1);
+    expect(deduped.map((b) => b.index)).toEqual([0]);
+  });
+
+  it("deduplicates across separate location groups", () => {
+    // Two identical head blocks (unlikely but valid) should deduplicate.
+    const html =
+      "<html><head>" +
+      "<style>.a{color:red;}</style>" +
+      "</head><body>" +
+      "<div class='w-embed'><style>.a{color:red;}</style></div>" +
+      "</body></html>";
+    const blocks = extractStyleBlocks(html);
+    // head group + embed group = 2 blocks
+    expect(blocks).toHaveLength(2);
+    const deduped = deduplicateBlocks(blocks);
+    // Same content → collapsed to 1
+    expect(deduped).toHaveLength(1);
   });
 });

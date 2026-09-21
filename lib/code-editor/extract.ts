@@ -25,10 +25,14 @@ interface BlockProvenance {
 export interface StyleBlock extends BlockProvenance {
   index: number; // 0-based position in document
   type: 'style';
-  originalContent: string; // content as found in HTML
+  originalContent: string; // content as found in HTML (concatenated for grouped blocks)
   content: string; // same as originalContent initially (edited by user later)
   name?: string; // filled by name heuristic (F033)
   hasCdata?: boolean; // true when originalContent was wrapped in <![CDATA[ ... ]]> (F036 round-trip)
+  /** For grouped blocks: the original per-tag contents in document order.
+   * compose.ts uses these to locate and replace/delete the individual tags.
+   * Absent on single-tag blocks and on old persisted data (treated as single-tag). */
+  segments?: string[];
 }
 
 const STYLE_TAG_RE = /<style([^>]*)>([\s\S]*?)<\/style>/gi;
@@ -58,7 +62,7 @@ export function stripCdata(content: string): string {
 export interface ScriptBlock extends BlockProvenance {
   index: number; // 0-based position in document (among script blocks)
   type: 'script';
-  originalContent: string; // content as found in HTML
+  originalContent: string; // content as found in HTML (concatenated for grouped blocks)
   content: string; // same as originalContent initially (edited by user later)
   name?: string; // filled by name heuristic (F033)
   hasCdata?: boolean; // true when originalContent was wrapped in <![CDATA[ ... ]]> (F036 round-trip)
@@ -69,6 +73,10 @@ export interface ScriptBlock extends BlockProvenance {
    * StyleBlock omits this field. Lets compose.ts restore the exact original
    * form instead of always emitting the bare form (F036 follow-up fix). */
   cdataStyle?: 'bare' | 'comment';
+  /** For grouped blocks: the original per-tag contents in document order.
+   * compose.ts uses these to locate and replace/delete the individual tags.
+   * Absent on single-tag blocks and on old persisted data (treated as single-tag). */
+  segments?: string[];
 }
 
 const SCRIPT_TAG_RE = /<script([^>]*)>([\s\S]*?)<\/script>/gi;
@@ -297,6 +305,43 @@ export function detectOrigin(html: string, pos: number): BlockOrigin {
 }
 
 /**
+ * Like `detectOrigin` but returns a unique key per location group:
+ * - `'head'` for head custom code
+ * - `'embed:N'` for the Nth embed element (0-based, in document order)
+ * - `'footer'` for body-level custom code outside any embed
+ *
+ * Used by `extractStyleBlocks`/`extractScriptBlocks` to group tags that
+ * should be merged into a single editable block.
+ */
+export function detectLocationKey(html: string, pos: number): string {
+  const origin = detectOrigin(html, pos);
+  if (origin !== 'embed') return origin;
+
+  // Walk embed openings in document order to find which one (by index) contains pos.
+  EMBED_OPEN_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  let embedIdx = 0;
+  let lastContainingIdx = -1;
+
+  while ((match = EMBED_OPEN_RE.exec(html)) !== null) {
+    if (match.index >= pos) break;
+    const tag = match[1].toLowerCase();
+    const tagEnd = match.index + match[0].length;
+    const between = html
+      .slice(tagEnd, pos)
+      .replace(/<(style|script)\b[^>]*>[\s\S]*?<\/\1>/gi, '');
+    const opens = (between.match(new RegExp(`<${tag}\\b`, 'gi')) ?? []).length;
+    const closes = (between.match(new RegExp(`</${tag}\\s*>`, 'gi')) ?? []).length;
+    if (closes <= opens) {
+      lastContainingIdx = embedIdx;
+    }
+    embedIdx += 1;
+  }
+
+  return lastContainingIdx >= 0 ? `embed:${lastContainingIdx}` : 'footer';
+}
+
+/**
  * Extracts all inline <style>...</style> blocks from an HTML document string
  * in document order. Pure string/regex implementation (no DOM, no jsdom/cheerio)
  * so it is safe to run in the Next.js edge runtime.
@@ -304,16 +349,28 @@ export function detectOrigin(html: string, pos: number): BlockOrigin {
  * Never throws: malformed/unclosed tags simply are not matched (the regex
  * requires a closing tag), and any unexpected error while scanning results in
  * returning whatever blocks were found up to that point.
+ *
+ * **Grouping:** instead of one block per `<style>` tag, the function produces
+ * one block per *location group* — head, each embed element, and footer.
+ * Multiple `<style>` tags in the same group are concatenated (joined with
+ * `\n`) into a single editable block. The individual tag contents are
+ * preserved in the `segments` field so compose.ts can split them back.
+ * Empty groups are omitted.
  */
 export function extractStyleBlocks(html: string): StyleBlock[] {
-  const blocks: StyleBlock[] = [];
+  if (!html || typeof html !== 'string') return [];
 
-  if (!html || typeof html !== 'string') {
-    return blocks;
+  // --- First pass: collect raw tags with their location keys ---
+  interface RawStyleTag {
+    locationKey: string;
+    origin: BlockOrigin;
+    rawContent: string; // original inner text (may have CDATA)
+    hasCdata: boolean;
   }
 
+  const rawTags: RawStyleTag[] = [];
+
   try {
-    let index = 0;
     STYLE_TAG_RE.lastIndex = 0;
     let match: RegExpExecArray | null;
 
@@ -321,27 +378,59 @@ export function extractStyleBlocks(html: string): StyleBlock[] {
       const attrs = match[1] ?? '';
       const content = match[2] ?? '';
 
-      // Defensive: skip <style src="..."> tags (not valid HTML but be safe)
-      if (SRC_ATTR_RE.test(attrs)) {
-        continue;
-      }
+      if (SRC_ATTR_RE.test(attrs)) continue;
 
-      const unwrapped = stripCdata(content);
-
-      blocks.push({
-        index,
-        type: 'style',
-        originalContent: content,
-        content: unwrapped,
-        name: deriveCssName(unwrapped, index),
+      rawTags.push({
+        locationKey: detectLocationKey(html, match.index),
         origin: detectOrigin(html, match.index),
-        hasCdata: CDATA_WRAPPER_RE.test(content ?? ''),
+        rawContent: content,
+        hasCdata: CDATA_WRAPPER_RE.test(content),
       });
-      index += 1;
     }
   } catch {
-    // Malformed HTML must never throw; return whatever was found so far.
-    return blocks;
+    return [];
+  }
+
+  // --- Second pass: group by locationKey, preserving first-seen order ---
+  const groupOrder: string[] = [];
+  const groupOrigin = new Map<string, BlockOrigin>();
+  const groupTags = new Map<string, RawStyleTag[]>();
+
+  for (const tag of rawTags) {
+    if (!groupTags.has(tag.locationKey)) {
+      groupOrder.push(tag.locationKey);
+      groupOrigin.set(tag.locationKey, tag.origin);
+      groupTags.set(tag.locationKey, []);
+    }
+    groupTags.get(tag.locationKey)!.push(tag);
+  }
+
+  // --- Third pass: build one StyleBlock per group ---
+  const blocks: StyleBlock[] = [];
+
+  for (let i = 0; i < groupOrder.length; i++) {
+    const key = groupOrder[i];
+    const tags = groupTags.get(key)!;
+    const segments = tags.map((t) => t.rawContent);
+    const stripped = segments.map((s) => stripCdata(s));
+    const combinedContent = stripped.join('\n');
+
+    if (!combinedContent.trim()) continue; // skip empty groups
+
+    blocks.push({
+      index: i,
+      type: 'style',
+      originalContent: combinedContent,
+      content: combinedContent,
+      name: deriveCssName(combinedContent, i),
+      origin: groupOrigin.get(key),
+      // hasCdata only makes sense for single-tag groups; multi-tag groups
+      // are stored without wrapping so the user sees clean CSS.
+      hasCdata: segments.length === 1 ? tags[0].hasCdata : false,
+      // segments is omitted for single-tag groups (backwards-compatible with
+      // old persisted data that doesn't have this field).
+      ...(segments.length > 1 ? { segments } : {}),
+    });
   }
 
   return blocks;
@@ -353,16 +442,25 @@ export function extractStyleBlocks(html: string): StyleBlock[] {
  * and nonce-bearing scripts injected by the proxy (<script nonce="...">).
  * Pure string/regex implementation (no DOM, no jsdom/cheerio) so it is safe
  * to run in the Next.js edge runtime. Never throws.
+ *
+ * **Grouping:** same as `extractStyleBlocks` — one block per location group
+ * (head, each embed element, footer). Multiple `<script>` tags in the same
+ * group are concatenated into one block; originals are in `segments`.
  */
 export function extractScriptBlocks(html: string): ScriptBlock[] {
-  const blocks: ScriptBlock[] = [];
+  if (!html || typeof html !== 'string') return [];
 
-  if (!html || typeof html !== 'string') {
-    return blocks;
+  interface RawScriptTag {
+    locationKey: string;
+    origin: BlockOrigin;
+    rawContent: string;
+    hasCdata: boolean;
+    cdataStyle: 'bare' | 'comment';
   }
 
+  const rawTags: RawScriptTag[] = [];
+
   try {
-    let index = 0;
     SCRIPT_TAG_RE.lastIndex = 0;
     let match: RegExpExecArray | null;
 
@@ -370,33 +468,58 @@ export function extractScriptBlocks(html: string): ScriptBlock[] {
       const attrs = match[1] ?? '';
       const content = match[2] ?? '';
 
-      // Exclude external scripts.
-      if (SRC_ATTR_RE.test(attrs)) {
-        continue;
-      }
+      if (SRC_ATTR_RE.test(attrs)) continue;
+      if (NONCE_ATTR_RE.test(attrs)) continue;
 
-      // Exclude nonce-bearing scripts injected by our proxy.
-      if (NONCE_ATTR_RE.test(attrs)) {
-        continue;
-      }
-
-      const unwrapped = stripCdata(content);
-
-      blocks.push({
-        index,
-        type: 'script',
-        originalContent: content,
-        content: unwrapped,
-        name: deriveJsName(unwrapped, index),
+      rawTags.push({
+        locationKey: detectLocationKey(html, match.index),
         origin: detectOrigin(html, match.index),
-        hasCdata: CDATA_WRAPPER_RE.test(content ?? ''),
-        cdataStyle: CDATA_COMMENT_WRAPPER_RE.test(content ?? '') ? 'comment' : 'bare',
+        rawContent: content,
+        hasCdata: CDATA_WRAPPER_RE.test(content),
+        cdataStyle: CDATA_COMMENT_WRAPPER_RE.test(content) ? 'comment' : 'bare',
       });
-      index += 1;
     }
   } catch {
-    // Malformed HTML must never throw; return whatever was found so far.
-    return blocks;
+    return [];
+  }
+
+  const groupOrder: string[] = [];
+  const groupOrigin = new Map<string, BlockOrigin>();
+  const groupTags = new Map<string, RawScriptTag[]>();
+
+  for (const tag of rawTags) {
+    if (!groupTags.has(tag.locationKey)) {
+      groupOrder.push(tag.locationKey);
+      groupOrigin.set(tag.locationKey, tag.origin);
+      groupTags.set(tag.locationKey, []);
+    }
+    groupTags.get(tag.locationKey)!.push(tag);
+  }
+
+  const blocks: ScriptBlock[] = [];
+
+  for (let i = 0; i < groupOrder.length; i++) {
+    const key = groupOrder[i];
+    const tags = groupTags.get(key)!;
+    const segments = tags.map((t) => t.rawContent);
+    const stripped = segments.map((s) => stripCdata(s));
+    const combinedContent = stripped.join('\n');
+
+    if (!combinedContent.trim()) continue;
+
+    const singleTag = segments.length === 1;
+
+    blocks.push({
+      index: i,
+      type: 'script',
+      originalContent: combinedContent,
+      content: combinedContent,
+      name: deriveJsName(combinedContent, i),
+      origin: groupOrigin.get(key),
+      hasCdata: singleTag ? tags[0].hasCdata : false,
+      cdataStyle: singleTag ? tags[0].cdataStyle : 'bare',
+      ...(segments.length > 1 ? { segments } : {}),
+    });
   }
 
   return blocks;

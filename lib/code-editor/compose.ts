@@ -26,6 +26,10 @@ function isBlank(value: string | undefined | null): boolean {
 interface TagSlot {
   contentStart: number;
   contentEnd: number;
+  /** Start of the full opening tag (`<style` / `<script`) in the source. */
+  tagStart: number;
+  /** End of the full closing tag (`</style>` / `</script>`) in the source. */
+  tagEnd: number;
   content: string;
   used: boolean;
 }
@@ -42,7 +46,14 @@ function scanTags(html: string, type: Block['type']): TagSlot[] {
     const attrs = match[1] ?? '';
     const content = match[2] ?? '';
     const contentStart = match.index + openTagName(type).length + attrs.length + 1; // +1 for '>'
-    slots.push({ contentStart, contentEnd: contentStart + content.length, content, used: false });
+    slots.push({
+      contentStart,
+      contentEnd: contentStart + content.length,
+      tagStart: match.index,
+      tagEnd: match.index + match[0].length,
+      content,
+      used: false,
+    });
     if (match.index === re.lastIndex) re.lastIndex += 1;
   }
   return slots;
@@ -107,6 +118,51 @@ export function composeDocument(
   for (const block of blocks) {
     const newContent = wrapContent(block);
     const list = slots[block.type];
+
+    if (block.segments && block.segments.length > 1) {
+      // Grouped block: replace first segment's tag content; delete the rest.
+      const primaryOriginal = block.segments[0];
+      let primaryFound = -1;
+      if (!isBlank(primaryOriginal)) {
+        for (let i = cursor[block.type]; i < list.length; i += 1) {
+          if (!list[i].used && list[i].content === primaryOriginal) {
+            primaryFound = i;
+            break;
+          }
+        }
+      }
+
+      if (primaryFound >= 0) {
+        const slot = list[primaryFound];
+        slot.used = true;
+        cursor[block.type] = primaryFound + 1;
+        replacements.push({ start: slot.contentStart, end: slot.contentEnd, text: newContent });
+
+        // Delete the remaining segment tags (replace entire <tag>...</tag> with '').
+        for (let s = 1; s < block.segments.length; s += 1) {
+          const segContent = block.segments[s];
+          if (isBlank(segContent)) continue;
+          for (let i = cursor[block.type]; i < list.length; i += 1) {
+            if (!list[i].used && list[i].content === segContent) {
+              list[i].used = true;
+              replacements.push({ start: list[i].tagStart, end: list[i].tagEnd, text: '' });
+              break;
+            }
+          }
+        }
+      } else {
+        appended.push(
+          block.type === 'style' ? `<style>${newContent}</style>` : `<script>${newContent}</script>`
+        );
+      }
+
+      if (block.duplicates && block.duplicates.length > 0 && isEdited(block)) {
+        duplicateJobs.push({ type: block.type, originals: block.duplicates, text: newContent });
+      }
+      continue;
+    }
+
+    // Single-tag block (no segments, or segments.length === 1): original path.
     let found = -1;
     if (!isBlank(block.originalContent)) {
       for (let i = cursor[block.type]; i < list.length; i += 1) {

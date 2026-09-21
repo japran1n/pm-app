@@ -62,7 +62,10 @@ describe("deriveCssName", () => {
   });
 
   it("extractStyleBlocks() sets block.name using the heuristic", () => {
-    const html = "<style>/* Hero section */\n.hero{color:red;}</style><style>.card{}</style>";
+    // Place each style tag in a different location so they form separate blocks.
+    const html =
+      "<html><head><style>/* Hero section */\n.hero{color:red;}</style></head>" +
+      "<body><div class='w-embed'><style>.card{}</style></div></body></html>";
     const blocks = extractStyleBlocks(html);
     expect(blocks[0].name).toBe("Hero-section.css");
     expect(blocks[1].name).toBe("card.css");

@@ -5,8 +5,8 @@ import { describe, expect, it } from "vitest";
 import { extractStyleBlocks } from "@/lib/code-editor/extract";
 
 describe("extractStyleBlocks", () => {
-  // TH-100 / TH-103: multiple blocks extracted, in document order
-  it("TH-100: TH-103: extracts multiple style blocks in document order", () => {
+  // TH-100 / TH-103: grouping by location — head and footer merge separately
+  it("TH-100: TH-103: groups style blocks by location (head / footer)", () => {
     const html = `
       <html>
         <head><style>.a { color: red; }</style></head>
@@ -17,13 +17,15 @@ describe("extractStyleBlocks", () => {
       </html>
     `;
     const blocks = extractStyleBlocks(html);
-    expect(blocks).toHaveLength(3);
-    expect(blocks.map((b) => b.content)).toEqual([
-      ".a { color: red; }",
-      ".b { color: blue; }",
-      ".c { color: green; }",
-    ]);
-    expect(blocks.map((b) => b.index)).toEqual([0, 1, 2]);
+    // Two groups: head (.a) and footer (.b + .c merged).
+    expect(blocks).toHaveLength(2);
+    expect(blocks[0].content).toBe(".a { color: red; }");
+    // Footer group: two tags concatenated with \n
+    expect(blocks[1].content).toBe(".b { color: blue; }\n.c { color: green; }");
+    expect(blocks[0].index).toBe(0);
+    expect(blocks[1].index).toBe(1);
+    // Footer block exposes the original per-tag segments
+    expect(blocks[1].segments).toEqual([".b { color: blue; }", ".c { color: green; }"]);
     blocks.forEach((b) => expect(b.type).toBe("style"));
   });
 

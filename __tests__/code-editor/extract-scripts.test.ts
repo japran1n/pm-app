@@ -24,11 +24,24 @@ describe('extractScriptBlocks', () => {
     expect(blocks[0].content).toBe('var b=2;');
   });
 
-  test('multiple inline scripts extracted in document order', () => {
+  test('multiple inline scripts in the same location group are merged', () => {
+    // All three scripts have no head/body context → all footer → merged into 1 block.
     const html = `<script>var one=1;</script><div></div><script>var two=2;</script><script>var three=3;</script>`;
     const blocks = extractScriptBlocks(html);
-    expect(blocks.map((b) => b.content)).toEqual(['var one=1;', 'var two=2;', 'var three=3;']);
-    expect(blocks.map((b) => b.index)).toEqual([0, 1, 2]);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].content).toBe('var one=1;\nvar two=2;\nvar three=3;');
+    expect(blocks[0].index).toBe(0);
+    expect(blocks[0].segments).toEqual(['var one=1;', 'var two=2;', 'var three=3;']);
+  });
+
+  test('scripts in different locations produce separate blocks', () => {
+    const html = `<html><head><script>var head=1;</script></head><body><script>var footer=2;</script></body></html>`;
+    const blocks = extractScriptBlocks(html);
+    expect(blocks).toHaveLength(2);
+    expect(blocks[0].content).toBe('var head=1;');
+    expect(blocks[0].origin).toBe('head');
+    expect(blocks[1].content).toBe('var footer=2;');
+    expect(blocks[1].origin).toBe('footer');
   });
 
   test('TH-104: empty document returns []', () => {

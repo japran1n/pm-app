@@ -25,6 +25,10 @@ export interface StoredBlock {
   /** True for files the user created in the editor. Optional for older
    * saved state. */
   isUserCreated?: boolean;
+  /** For grouped blocks: original per-tag contents in document order.
+   * Optional for backwards compatibility — old stored data without this
+   * field is re-extracted on load. */
+  segments?: string[];
 }
 
 export interface StoredVersion {
@@ -82,6 +86,12 @@ function isValidBlock(value: unknown): value is StoredBlock {
   }
   if (value.occurrences !== undefined && typeof value.occurrences !== "number") return false;
   if (value.isUserCreated !== undefined && typeof value.isUserCreated !== "boolean") {
+    return false;
+  }
+  if (
+    value.segments !== undefined &&
+    (!Array.isArray(value.segments) || !value.segments.every((s) => typeof s === "string"))
+  ) {
     return false;
   }
   return true;

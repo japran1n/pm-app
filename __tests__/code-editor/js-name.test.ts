@@ -49,7 +49,13 @@ describe("deriveJsName", () => {
   });
 
   it("populates name on blocks returned by extractScriptBlocks", () => {
-    const html = `<script>// header nav toggle\nconst x = 1;</script><script>function initMap(){}</script><script>1+1;</script>`;
+    // Place each script in a different location so they form separate named blocks.
+    const html =
+      "<html><head><script>// header nav toggle\nconst x = 1;</script></head>" +
+      "<body>" +
+      "<div class='w-embed'><script>function initMap(){}</script></div>" +
+      "<script>1+1;</script>" +
+      "</body></html>";
     const blocks = extractScriptBlocks(html);
     expect(blocks[0].name).toBe("header-nav-toggle.js");
     expect(blocks[1].name).toBe("initMap.js");
