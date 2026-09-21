@@ -46,6 +46,9 @@ export function isAnswered(
   });
 }
 
+const SAVE_FAILED_MESSAGE =
+  "Some answers couldn't be saved. Fix the connection and try again before submitting.";
+
 type Draft = { text: string | null; options: string[] | null };
 
 // F009 (missions/20260921-brief-redesign, BR-040..BR-047): the wizard now shows
@@ -64,6 +67,8 @@ function QuestionField({
   showError,
   onSaveState,
   trackSave,
+  onSaveResult,
+  registerFlush,
 }: {
   question: BriefQuestion;
   existingAnswer: BriefAnswer | null;
@@ -74,21 +79,43 @@ function QuestionField({
   showError: boolean;
   onSaveState: (id: string, saving: boolean, saved: boolean) => void;
   trackSave: (p: Promise<unknown>) => void;
+  onSaveResult: (id: string, ok: boolean) => void;
+  registerFlush: (id: string, flush: (() => Promise<boolean>) | null) => void;
 }) {
-  const { saving, lastSaved } = useAutosave(draft, async (value) => {
-    if (!briefId || isLocked) return;
-    const text =
-      value.text != null && value.text.trim() === "" ? null : value.text;
-    const optionsList =
-      value.options && value.options.length > 0 ? value.options : null;
-    const p = saveBriefAnswer(briefId, question.id, text, optionsList);
-    trackSave(p);
-    await p;
-  });
+  const { saving, lastSaved, error, flush } = useAutosave(
+    draft,
+    async (value) => {
+      if (!briefId || isLocked) return;
+      const text =
+        value.text != null && value.text.trim() === "" ? null : value.text;
+      const optionsList =
+        value.options && value.options.length > 0 ? value.options : null;
+      const p = saveBriefAnswer(briefId, question.id, text, optionsList);
+      trackSave(p);
+      try {
+        const result = await p;
+        // saveBriefAnswer resolves { success:false } rather than throwing.
+        onSaveResult(question.id, result?.success !== false);
+        return result;
+      } catch (e) {
+        onSaveResult(question.id, false);
+        throw e;
+      }
+    },
+  );
   const saved = lastSaved !== null;
   useEffect(() => {
     onSaveState(question.id, saving, saved);
   }, [question.id, saving, saved, onSaveState]);
+  const flushRef = useRef(flush);
+  useEffect(() => {
+    flushRef.current = flush;
+  });
+  useEffect(() => {
+    registerFlush(question.id, () => flushRef.current());
+    return () => registerFlush(question.id, null);
+  }, [question.id, registerFlush]);
+  const failed = error !== null;
 
   return (
     <div className="flex flex-col gap-3" data-testid="questionnaire-question">
@@ -130,6 +157,16 @@ function QuestionField({
         }
         disabled={isLocked}
       />
+
+      {failed && (
+        <p
+          className="text-sm text-destructive"
+          role="alert"
+          data-testid="questionnaire-save-error"
+        >
+          Couldn&apos;t save this answer
+        </p>
+      )}
 
       {showError && (
         <p
@@ -212,6 +249,40 @@ export function PortalQuestionnaire({
     set.add(tracked);
   }, []);
 
+  // Questions whose most recent write failed (including ones that failed after
+  // their field unmounted). Submit is blocked while any remain.
+  const [failedIds, setFailedIds] = useState<Set<string>>(() => new Set());
+  const failedIdsRef = useRef<Set<string>>(new Set());
+  const handleSaveResult = useCallback((id: string, ok: boolean) => {
+    const cur = failedIdsRef.current;
+    if (ok) cur.delete(id);
+    else cur.add(id);
+    setFailedIds((prev) => {
+      if (prev.has(id) === !ok) return prev;
+      const next = new Set(prev);
+      if (ok) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  // Mounted fields register a flush so section change / Submit can write any
+  // pending edit explicitly instead of relying on unmount.
+  const flushersRef = useRef<Map<string, () => Promise<boolean>>>(new Map());
+  const registerFlush = useCallback(
+    (id: string, flush: (() => Promise<boolean>) | null) => {
+      if (flush) flushersRef.current.set(id, flush);
+      else flushersRef.current.delete(id);
+    },
+    [],
+  );
+  const flushAll = useCallback(async () => {
+    await Promise.all(
+      Array.from(flushersRef.current.values()).map((f) => f()),
+    );
+    await Promise.all(Array.from(pendingSavesRef.current));
+  }, []);
+
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -248,6 +319,7 @@ export function PortalQuestionnaire({
   const sectionStates = (section?.questions ?? []).map((q) => saveStates[q.id]);
   const anySaving = sectionStates.some((s) => s?.saving);
   const anySaved = sectionStates.some((s) => s?.saved);
+  const anyFailed = failedIds.size > 0;
 
   // BR-041: Next never hard-blocks. Unanswered REQUIRED questions produce an
   // inline non-blocking warning, the review step lists them, and Submit is
@@ -256,12 +328,14 @@ export function PortalQuestionnaire({
     ? section.questions.filter(isUnansweredRequired).length
     : 0;
   const handleNext = () => {
+    void flushAll();
     setShowErrors(false);
     setSkippedRequired(sectionMissingCount);
     setCurrentSectionIndex((i) => Math.min(total, i + 1));
   };
 
   const handleBack = () => {
+    void flushAll();
     setShowErrors(false);
     setSkippedRequired(0);
     setCurrentSectionIndex((i) => Math.max(0, i - 1));
@@ -278,8 +352,13 @@ export function PortalQuestionnaire({
     }
     setSubmitError(null);
     setSubmitting(true);
-    // Wait for any flushed/in-flight autosaves before submitting.
-    await Promise.all(Array.from(pendingSavesRef.current));
+    // Explicitly flush pending edits and wait for in-flight autosaves.
+    await flushAll();
+    if (failedIdsRef.current.size > 0) {
+      setSubmitting(false);
+      setSubmitError(SAVE_FAILED_MESSAGE);
+      return;
+    }
     const result = await submitBrief(briefId);
     setSubmitting(false);
     if (!result.success) {
@@ -338,6 +417,7 @@ export function PortalQuestionnaire({
           }))}
           missingCount={questions.filter(isUnansweredRequired).length}
           onEditSection={(i) => {
+            void flushAll();
             setShowErrors(false);
             setSkippedRequired(0);
             setCurrentSectionIndex(i);
@@ -367,6 +447,8 @@ export function PortalQuestionnaire({
               showError={showErrors && isUnansweredRequired(q)}
               onSaveState={handleSaveState}
               trackSave={trackSave}
+              onSaveResult={handleSaveResult}
+              registerFlush={registerFlush}
             />
           ))}
 
@@ -375,7 +457,13 @@ export function PortalQuestionnaire({
             data-testid="questionnaire-autosave-status"
             aria-live="polite"
           >
-            {anySaving ? "Saving…" : anySaved ? "Saved" : ""}
+            {anySaving
+              ? "Saving…"
+              : anyFailed
+                ? "Couldn't save"
+                : anySaved
+                  ? "Saved"
+                  : ""}
           </p>
         </section>
       )}
@@ -413,11 +501,22 @@ export function PortalQuestionnaire({
               <Button
                 type="button"
                 onClick={handleSubmit}
-                disabled={!briefId || submitting || !allRequiredAnswered}
+                disabled={
+                  !briefId || submitting || !allRequiredAnswered || anyFailed
+                }
                 data-testid="questionnaire-submit-button"
               >
                 {submitting ? "Submitting…" : "Submit"}
               </Button>
+              {anyFailed && !submitError && (
+                <p
+                  className="text-sm text-destructive"
+                  role="alert"
+                  data-testid="questionnaire-unsaved-warning"
+                >
+                  {SAVE_FAILED_MESSAGE}
+                </p>
+              )}
               {submitError && (
                 <p
                   className="text-sm text-destructive"
