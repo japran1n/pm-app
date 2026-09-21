@@ -29,18 +29,6 @@ export type TeamAnswersViewQuestion = {
   revisions?: BriefAnswerRevision[];
 };
 
-function AnswerTypeBadge({ answerType }: { answerType: BriefQuestion["answerType"] }) {
-  const label =
-    answerType === "short_text"
-      ? "Short text"
-      : answerType === "long_text"
-        ? "Long text"
-        : answerType === "single_choice"
-          ? "Single choice"
-          : "Multi choice";
-  return <Badge variant="secondary">{label}</Badge>;
-}
-
 function AnswerValue({ question, answer }: { question: BriefQuestion; answer: BriefAnswer }) {
   if (question.answerType === "single_choice" || question.answerType === "multi_choice") {
     const selected = answer.answerOptions ?? [];
@@ -50,7 +38,7 @@ function AnswerValue({ question, answer }: { question: BriefQuestion; answer: Br
     return (
       <div className="flex flex-wrap gap-1.5">
         {selected.map((option) => (
-          <Badge key={option} variant="outline">
+          <Badge key={option} variant="outline" className="rounded-md normal-case">
             {option}
           </Badge>
         ))}
@@ -92,14 +80,13 @@ export function TeamAnswersView({ items }: { items: TeamAnswersViewQuestion[] })
                   ) : null}
                 </p>
               </div>
-              <div className="flex shrink-0 items-center gap-1.5">
-                <AnswerTypeBadge answerType={question.answerType} />
-                {isAnswered && hasRevisions ? (
+              {isAnswered && hasRevisions ? (
+                <div className="flex shrink-0 items-center gap-1.5">
                   <Badge variant="warning" aria-label="This answer has been edited">
                     Edited
                   </Badge>
-                ) : null}
-              </div>
+                </div>
+              ) : null}
             </div>
             {isAnswered && answer ? (
               <AnswerValue question={question} answer={answer} />
