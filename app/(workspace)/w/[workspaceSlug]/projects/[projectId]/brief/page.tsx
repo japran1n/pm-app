@@ -11,6 +11,7 @@ import { ApproveBriefButton } from "@/components/brief/approve-brief-button";
 import { WithdrawApprovalButton } from "@/components/brief/withdraw-approval-button";
 import { DocClientVisibilityToggle } from "@/components/docs/doc-client-visibility-toggle";
 import { NotificationRecipientsPointer } from "@/components/brief/notification-recipients-pointer";
+import { BriefHeader } from "@/components/brief/brief-header";
 import { BriefApprovalStatus } from "@/components/brief/brief-approval-status";
 import { getDecisionOwners, getLatestApprovalForSubject } from "@/lib/queries/approvals";
 import { createClient } from "@/lib/supabase/server";
@@ -87,6 +88,18 @@ export default async function ProjectBriefPage({
     }),
   );
 
+  const isAnswered = (questionId: string) => {
+    const a = answersByQuestionId.get(questionId);
+    if (!a) return false;
+    return (a.answerOptions?.length ?? 0) > 0 || !!a.answerText;
+  };
+  const answeredCount = questions.filter((q) => isAnswered(q.id)).length;
+  const requiredMissingCount = questions.filter((q) => q.required && !isAnswered(q.id)).length;
+  const latestAnswer = answers.reduce<(typeof answers)[number] | null>(
+    (latest, a) => (!latest || a.updatedAt > latest.updatedAt ? a : latest),
+    null,
+  );
+
   // AS-139: generating a document is only offered once there is
   // something to quote (F071 -- "the team can generate a brief document
   // from the answers") and only while no brief doc exists yet for this
@@ -125,6 +138,13 @@ export default async function ProjectBriefPage({
 
   return (
     <div className="p-6 pt-4 lg:p-8 lg:pt-8">
+      <BriefHeader
+        answeredCount={answeredCount}
+        totalCount={questions.length}
+        requiredMissingCount={requiredMissingCount}
+        lastModifiedBy={latestAnswer?.answeredByName ?? null}
+        lastModifiedAt={latestAnswer?.updatedAt ?? null}
+      />
       {hasAnswers ? (
         <div className="mb-4 flex items-center justify-end gap-2">
           {existingDocument ? (
