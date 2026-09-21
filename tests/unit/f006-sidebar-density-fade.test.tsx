@@ -31,12 +31,8 @@ function setDims(el: HTMLElement, sh: number, ch: number, top: number) {
 }
 
 describe("F006", () => {
-  it("test_SB_023_desktop_nav_items_are_32px_and_mobile_keeps_touch_target", () => {
-    render(createElement(AppSidebar, props));
-    const link = screen.getAllByRole("link", { name: /dashboard/i })[0];
-    expect(link.className).toContain("md:h-8");
-    expect(link.className).toContain("max-md:min-h-11");
-  });
+  // SB-023 is verified by computed height in a real browser: see
+  // tests/unit/f022-sb023-computed-height.test.ts
 
   it("test_SB_024_bottom_fade_visible_only_when_overflowing_and_not_at_bottom", () => {
     render(createElement(AppSidebar, props));

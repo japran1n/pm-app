@@ -41,20 +41,7 @@ describe("F001: Merge Team + Members", () => {
     expect(html).not.toContain(">Members<");
   });
 
-  it("SB-011: /w/<slug>/settings/members still renders for owner/admin and is linked from the Settings page", () => {
-    const settingsPageSource = readFileSync(
-      join(
-        process.cwd(),
-        "app/(workspace)/w/[workspaceSlug]/settings/page.tsx",
-      ),
-      "utf8",
-    );
-
-    expect(settingsPageSource).toContain(
-      "`/w/${workspaceSlug}/settings/members`",
-    );
-    expect(settingsPageSource).toContain("Members");
-  });
+  // SB-011 is verified behaviourally in tests/unit/f022-sb011-settings-members.test.tsx
 
   it("SB-006: with role guest, the sidebar renders none of Team, Client requests, Approvals, Archive, Templates, Trash, Preview as client, Settings", () => {
     const html = renderToStaticMarkup(

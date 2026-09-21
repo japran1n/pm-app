@@ -137,15 +137,24 @@ describe("test_SB_015_sign_out_failure_path", () => {
       : null;
   }
 
+  // F022: the menu closes on select, so "re-enabled" cannot be asserted on
+  // the (unmounted) item. Reopen the menu and require the Sign out item to be
+  // present, visible and not disabled -- a stuck-disabled item fails here.
+  async function expectSignOutVisiblyEnabled() {
+    await waitFor(() => expect(signOutItemNow()).toBeNull()); // closed after select
+    fireEvent.click(screen.getByRole("button", { name: /account menu/i }));
+    const menu = await screen.findByRole("menu");
+    const item = within(menu).getByText("Sign out").closest('[role="menuitem"]') as HTMLElement;
+    expect(item).toBeVisible();
+    expect(item.getAttribute("data-disabled")).toBeNull();
+    expect(item.getAttribute("aria-disabled")).not.toBe("true");
+  }
+
   it("a rejected signOut shows an error and re-enables the menu item", async () => {
     signOutMock.mockRejectedValue(new Error("boom"));
     await openAndClickSignOut();
     await waitFor(() => expect(toastErrorMock).toHaveBeenCalledTimes(1));
-    await waitFor(() => {
-      const item = signOutItemNow();
-      // Either the menu closed (nothing stuck disabled) or the item is enabled.
-      if (item) expect(item.getAttribute("data-disabled")).toBeNull();
-    });
+    await expectSignOutVisiblyEnabled();
   });
 
   it("an {ok:false} result shows the error and re-enables the menu item", async () => {
@@ -154,11 +163,7 @@ describe("test_SB_015_sign_out_failure_path", () => {
     await waitFor(() =>
       expect(toastErrorMock).toHaveBeenCalledWith("Couldn't sign out. Please try again."),
     );
-    await waitFor(() => {
-      const item = signOutItemNow();
-      // Either the menu closed (nothing stuck disabled) or the item is enabled.
-      if (item) expect(item.getAttribute("data-disabled")).toBeNull();
-    });
+    await expectSignOutVisiblyEnabled();
   });
 });
 
