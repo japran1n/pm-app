@@ -366,31 +366,27 @@ export async function getBriefWithRevisions(
   }
 
   const rows = revisionRows ?? [];
-  const answererNames = await loadProfileNames(supabase, [answerRow.answered_by]);
-  const answer = mapBriefAnswerRow(
-    answerRow,
-    rows.length > 0,
-    answerRow.answered_by ? (answererNames.get(answerRow.answered_by) ?? null) : null,
-  );
-
-  // AS-128/AS-155: name the user (team member or client contact) behind
-  // each revision. `changed_by` is a bare auth.users FK with no direct
-  // FK declared to `profiles` for PostgREST to embed automatically, so
-  // names are looked up in a second query keyed by the distinct ids
-  // present in this answer's revision history, then joined in memory.
-  const changedByIds = Array.from(
-    new Set(rows.map((row) => row.changed_by).filter((id): id is string => id !== null)),
+  // AS-128/AS-155: name the user (team member or client contact) behind the
+  // answer and each revision. `changed_by`/`answered_by` are bare auth.users
+  // FKs with no FK to `profiles` for PostgREST to embed, so names come from a
+  // SINGLE profiles query keyed by the distinct ids, joined in memory.
+  const profileIds = Array.from(
+    new Set(
+      [answerRow.answered_by, ...rows.map((row) => row.changed_by)].filter(
+        (id): id is string => id !== null && id !== undefined,
+      ),
+    ),
   );
 
   let namesById = new Map<string, string | null>();
-  if (changedByIds.length > 0) {
+  if (profileIds.length > 0) {
     const { data: profileRows, error: profilesError } = await supabase
       .from("profiles")
       .select("id, display_name")
-      .in("id", changedByIds);
+      .in("id", profileIds);
 
     if (profilesError) {
-      logger.error("getBriefWithRevisions: failed to load reviser profiles", {
+      logger.error("getBriefWithRevisions: failed to load profiles", {
         error: profilesError,
       });
       return { ok: false, error: profilesError.message };
@@ -398,6 +394,12 @@ export async function getBriefWithRevisions(
 
     namesById = new Map((profileRows ?? []).map((p) => [p.id as string, p.display_name as string | null]));
   }
+
+  const answer = mapBriefAnswerRow(
+    answerRow,
+    rows.length > 0,
+    answerRow.answered_by ? (namesById.get(answerRow.answered_by) ?? null) : null,
+  );
 
   return {
     ok: true,
