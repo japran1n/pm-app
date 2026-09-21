@@ -152,10 +152,10 @@ const items = (m: ReturnType<Page["getByRole"]>) => m.getByRole("menuitem").allI
 for (const width of [1280, 375]) {
   const where = width === 1280 ? "desktop" : "375px_sheet";
   describe(`F009 SB-033 + New menu (${where})`, () => {
-    it(`test_SB_033_${where}_menu_lists_task_project_request`, async () => {
+    it(`test_SB_033_${where}_menu_lists_task_and_project_only`, async () => {
       await withPage(width, async (p) => {
         const m = await openMenu(p, width);
-        expect((await items(m)).map((t) => t.trim())).toEqual(["Task", "Project", "Request"]);
+        expect((await items(m)).map((t) => t.trim())).toEqual(["Task", "Project"]);
       });
     }, 60_000);
 
@@ -174,14 +174,6 @@ for (const width of [1280, 375]) {
         // Cancel closes it again.
         await dialog.getByRole("button", { name: "Cancel" }).click();
         await dialog.waitFor({ state: "detached" });
-      });
-    }, 60_000);
-
-    it(`test_SB_033_${where}_request_opens_its_existing_page`, async () => {
-      await withPage(width, async (p) => {
-        const m = await openMenu(p, width);
-        await m.getByRole("menuitem", { name: "Request" }).click();
-        expect(await pushes(p)).toEqual(["/w/acme/requests"]);
       });
     }, 60_000);
 
@@ -258,7 +250,7 @@ for (const width of [1280, 375]) {
       );
     }, 60_000);
 
-    it(`test_SB_034_${where}_member_sees_task_and_project_but_not_request`, async () => {
+    it(`test_SB_034_${where}_member_sees_task_and_project_and_no_request_SB_060`, async () => {
       await withPage(
         width,
         async (p) => {
@@ -281,7 +273,7 @@ for (const width of [1280, 375]) {
       );
     }, 60_000);
 
-    it(`test_SB_034_${where}_admin_without_client_workspace_gets_no_request_entry`, async () => {
+    it(`test_SB_034_${where}_admin_without_client_workspace_gets_no_request_entry_SB_060`, async () => {
       await withPage(
         width,
         async (p) => {
@@ -291,5 +283,25 @@ for (const width of [1280, 375]) {
         { hasClient: false },
       );
     }, 60_000);
+  });
+
+  describe(`F030 SB-060 no Request item (${where})`, () => {
+    for (const [label, o] of Object.entries({
+      owner_admin_with_client: { role: "admin", manage: true, hasClient: true },
+      owner_admin_no_client: { role: "admin", manage: true, hasClient: false },
+      member: { role: "member", manage: false, hasClient: true },
+    })) {
+      it(`test_SB_060_${where}_no_request_item_for_${label}`, async () => {
+        await withPage(
+          width,
+          async (p) => {
+            const m = await openMenu(p, width);
+            expect(await m.getByRole("menuitem", { name: /request/i }).count()).toBe(0);
+            expect((await items(m)).map((t) => t.trim())).toEqual(["Task", "Project"]);
+          },
+          o,
+        );
+      }, 60_000);
+    }
   });
 }

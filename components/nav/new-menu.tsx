@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { CheckSquare, FolderPlus, Inbox, Plus } from "lucide-react";
+import { CheckSquare, FolderPlus, Plus } from "lucide-react";
 
 import { useMembership } from "@/components/auth/membership-provider";
 import {
@@ -28,9 +28,8 @@ import { cn } from "@/lib/utils";
 //  - Project: opens the real NewProjectDialog in place (F028), mounted as a
 //    controlled sibling of the menu. The mobile Sheet is deliberately NOT
 //    closed, since closing it would unmount this component and the dialog.
-//  - Request: requests are raised by clients in the portal; the team-side
-//    surface is the Client requests inbox, so this navigates there. Same
-//    gate as that nav item (workspace has a client, owner/admin).
+//  - No Request item (SB-060): requests are client-raised in the portal and
+//    there is no staff-side create flow.
 // Gating mirrors the flows: guests and viewers cannot create tasks or
 // projects (createProject/canWrite server checks); if nothing remains the
 // button is not rendered at all.
@@ -38,15 +37,11 @@ export function NewMenu({
   workspaceSlug,
   workspaceId,
   isGuest,
-  canManageWorkspace,
-  hasClient,
   onNavigate,
 }: {
   workspaceSlug: string;
   workspaceId: string;
   isGuest: boolean;
-  canManageWorkspace: boolean;
-  hasClient: boolean;
   onNavigate?: () => void;
 }) {
   const router = useRouter();
@@ -56,9 +51,8 @@ export function NewMenu({
 
   const canCreate =
     !isGuest && (membership ? canWrite({ role: membership.role }) : true);
-  const canRequest = !isGuest && canManageWorkspace && hasClient;
 
-  if (!canCreate && !canRequest) return null;
+  if (!canCreate) return null;
 
   const go = (href: string) => {
     onNavigate?.();
@@ -116,14 +110,6 @@ export function NewMenu({
             <DropdownMenuItem onClick={() => setProjectDialogOpen(true)}>
               <FolderPlus className="size-4" aria-hidden="true" />
               Project
-            </DropdownMenuItem>
-          )}
-          {canRequest && (
-            <DropdownMenuItem
-              onClick={() => go(`/w/${workspaceSlug}/requests`)}
-            >
-              <Inbox className="size-4" aria-hidden="true" />
-              Request
             </DropdownMenuItem>
           )}
         </DropdownMenuContent>

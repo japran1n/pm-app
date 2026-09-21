@@ -434,8 +434,6 @@ function SidebarContent({
           workspaceSlug={workspaceSlug}
           workspaceId={currentWorkspaceId}
           isGuest={isGuest}
-          canManageWorkspace={canManageWorkspace}
-          hasClient={hasClient}
           onNavigate={onNavigate}
         />
         <button
