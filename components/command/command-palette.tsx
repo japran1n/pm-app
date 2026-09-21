@@ -110,6 +110,13 @@ export function applyRealtimePatches(
   return changed ? { ...results, tasks } : results;
 }
 
+// F008 (SB-031): the sidebar "Search" button opens this palette by
+// dispatching this window event -- no second keydown listener, no shared
+// store. The dispatcher passes `{ handled: false }` as `detail`; a mounted
+// palette flips it to `true` synchronously so the caller can fall back to
+// the /search page when no palette is mounted in its context.
+export const COMMAND_PALETTE_OPEN_EVENT = "command-palette:open";
+
 export function CommandPalette({
   workspaceId,
   workspaceSlug,
@@ -209,6 +216,18 @@ export function CommandPalette({
     window.addEventListener(SHORTCUT_EVENTS.openSearch, onOpenSearch);
     return () =>
       window.removeEventListener(SHORTCUT_EVENTS.openSearch, onOpenSearch);
+  }, []);
+
+  React.useEffect(() => {
+    function onOpenRequest(event: Event) {
+      const detail = (event as CustomEvent<{ handled?: boolean } | null>).detail;
+      if (detail && typeof detail === "object") detail.handled = true;
+      setOpen(true);
+    }
+
+    window.addEventListener(COMMAND_PALETTE_OPEN_EVENT, onOpenRequest);
+    return () =>
+      window.removeEventListener(COMMAND_PALETTE_OPEN_EVENT, onOpenRequest);
   }, []);
 
   // Reset state whenever the dialog closes (driven from the `onOpenChange`

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useRef, useState, useTransition } from "react";
 import {
   LayoutDashboard,
@@ -21,6 +21,7 @@ import {
   Network,
   FileCode2,
   ChevronRight,
+  Search,
 } from "lucide-react";
 
 import { useMembership } from "@/components/auth/membership-provider";
@@ -326,6 +327,23 @@ function SidebarContent({
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
+  // F008 (SB-031): platform-aware shortcut hint. Resolved after mount so
+  // server and first client render agree (Ctrl K), then upgraded to the
+  // Mac glyph.
+  const [isMac, setIsMac] = useState(false);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- post-hydration platform read
+    setIsMac(/mac|iphone|ipad/i.test(navigator.platform || navigator.userAgent || ""));
+  }, []);
+  const openSearch = () => {
+    onNavigate?.();
+    // Ask the mounted CommandPalette to open (it owns the only Cmd+K
+    // listener). If none answers, fall back to the search page.
+    const detail = { handled: false };
+    window.dispatchEvent(new CustomEvent("command-palette:open", { detail }));
+    if (!detail.handled) router.push(`/w/${workspaceSlug}/search`);
+  };
   // C5: the client-request nav item is workspace-dependent, so it reads
   // the same server-fetched `hasClient` flag the task sheet's share toggle
   // uses rather than a prop threaded through two more component layers.
@@ -408,6 +426,20 @@ function SidebarContent({
             initialUnreadCount={initialUnreadCount}
           />
         )}
+      </div>
+
+      <div className="px-3 pt-3">
+        <button
+          type="button"
+          onClick={openSearch}
+          className="flex h-8 w-full items-center gap-2 rounded-md border bg-transparent px-2 text-sm font-medium text-muted-foreground transition-colors duration-200 hover:border-[var(--border-control-hover)] hover:bg-muted/50 hover:text-foreground"
+        >
+          <Search className="size-4 shrink-0" aria-hidden="true" />
+          <span className="flex-1 text-left">Search</span>
+          <kbd className="font-mono text-xs text-muted-foreground">
+            {isMac ? "⌘K" : "Ctrl K"}
+          </kbd>
+        </button>
       </div>
 
       {/* F253 (AS-491): anchor target for the onboarding tour's "sidebar"
