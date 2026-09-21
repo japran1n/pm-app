@@ -22,6 +22,8 @@ import {
   STATUS_LABELS,
 } from "@/lib/task-colors";
 import type { TaskCardTask } from "@/components/task/task-card";
+import { logger } from "@/lib/observability/logger";
+import { createClient } from "@/lib/supabase/server";
 
 export type PriorityCountDatum = {
   priority: NonNullable<TaskCardTask["priority"]> | "none";
@@ -213,4 +215,153 @@ export async function getStatusCounts(
   });
 
   return { data: result, error: null };
+}
+
+// F002 (missions/20260921-184313, AS-073/074/075): the new Home dashboard's
+// "Needs you"/"Team health" KPI tiles need two plain counts that no
+// existing RPC provides. tech-decisions.md ("No database migrations —
+// AS-005") is explicit that these are answered with a query-builder call
+// against `tasks`/`projects`/`project_statuses` from this file, not a new
+// RPC — unlike every other function above, which wraps an RPC. Both
+// create their own request-scoped, RLS-respecting client internally
+// (`createClient()` from lib/supabase/server) rather than taking one as a
+// parameter, matching this mission's declared signatures
+// (`getUnassignedCount(workspaceId)` / `getKpiDelta(workspaceId, kind,
+// daysBack)` — no `supabase` argument) and the same "fails open to 0 on a
+// query error" convention as lib/queries/chat.ts's
+// getWorkspaceChatUnreadTotal.
+//
+// Both resolve "which project's tasks count" as a first step — active
+// (non-archived) projects in this workspace — then fetch tasks scoped to
+// those project ids and filter on `project_statuses.category` client-side
+// (a plain `.select("id, project_statuses(category)")` join), the same
+// "join project_statuses for category" shape getOverdueCount/
+// getStatusCounts use, kept as two round trips rather than one
+// PostgREST embedded-resource filter so the mocked-client unit tests below
+// only need the same `.eq/.is/.in/.lt/.gte` chain shape already
+// established by tests/unit/calendar-blocks-active-members.test.ts, not a
+// harder-to-mock cross-table filter expression.
+//
+// `project_statuses.category` is one of `not_started` | `in_progress` |
+// `done` (supabase/migrations/20260824010000_project_statuses.sql's check
+// constraint) — there is no `cancelled` category in this schema today.
+// The spec's "AND status category ≠ 'cancelled'" guard is kept anyway
+// (harmless no-op against the current constraint, forward-compatible if a
+// `cancelled` category is ever added) rather than silently dropped.
+type TaskStatusCategoryRow = {
+  id: string;
+  project_statuses: { category: string | null } | { category: string | null }[] | null;
+};
+
+function taskStatusCategory(row: TaskStatusCategoryRow): string | null {
+  const joined = row.project_statuses;
+  if (joined === null) return null;
+  return Array.isArray(joined) ? (joined[0]?.category ?? null) : joined.category;
+}
+
+function isDoneOrCancelledCategory(category: string | null): boolean {
+  return category === "done" || category === "cancelled";
+}
+
+async function getActiveProjectIds(
+  supabase: SupabaseClient,
+  workspaceId: string,
+): Promise<string[] | null> {
+  const { data, error } = await supabase
+    .from("projects")
+    .select("id")
+    .eq("workspace_id", workspaceId)
+    .is("deleted_at", null);
+
+  if (error) {
+    logger.error("getActiveProjectIds: query failed", { error, workspaceId });
+    return null;
+  }
+
+  return (data ?? []).map((row: { id: string }) => row.id);
+}
+
+// AS-073/074: "the dashboard shows a count of incomplete, unassigned
+// tasks across the workspace's active projects."
+export async function getUnassignedCount(workspaceId: string): Promise<number> {
+  const supabase = await createClient();
+
+  const projectIds = await getActiveProjectIds(supabase, workspaceId);
+  if (projectIds === null) return 0;
+  if (projectIds.length === 0) return 0;
+
+  const { data, error } = await supabase
+    .from("tasks")
+    .select("id, project_statuses(category)")
+    .in("project_id", projectIds)
+    .is("assignee_id", null)
+    .is("deleted_at", null);
+
+  if (error) {
+    logger.error("getUnassignedCount: query failed", { error, workspaceId });
+    return 0;
+  }
+
+  const rows = (data ?? []) as TaskStatusCategoryRow[];
+  return rows.filter((row) => !isDoneOrCancelledCategory(taskStatusCategory(row))).length;
+}
+
+// AS-075: "the dashboard KPI tiles show a delta count (overdue or
+// completed) for a configurable lookback window."
+export async function getKpiDelta(
+  workspaceId: string,
+  kind: "overdue" | "completed",
+  daysBack: number,
+): Promise<number> {
+  const supabase = await createClient();
+
+  const projectIds = await getActiveProjectIds(supabase, workspaceId);
+  if (projectIds === null) return 0;
+  if (projectIds.length === 0) return 0;
+
+  const cutoff = new Date();
+  cutoff.setUTCDate(cutoff.getUTCDate() - daysBack);
+
+  if (kind === "overdue") {
+    const cutoffDate = cutoff.toISOString().slice(0, 10);
+
+    const { data, error } = await supabase
+      .from("tasks")
+      .select("id, project_statuses(category)")
+      .in("project_id", projectIds)
+      .is("deleted_at", null)
+      .lt("due_date", cutoffDate);
+
+    if (error) {
+      logger.error("getKpiDelta: overdue query failed", { error, workspaceId });
+      return 0;
+    }
+
+    const rows = (data ?? []) as TaskStatusCategoryRow[];
+    return rows.filter((row) => !isDoneOrCancelledCategory(taskStatusCategory(row))).length;
+  }
+
+  // 'completed': there is no `completed_at` column on `tasks` (same gap
+  // 20260902050000_dashboard_kpi_rpcs.sql's get_completed_count documents
+  // for its own RPC), so "entered a done-category status within
+  // daysBack days" is approximated via `updated_at` on rows currently in
+  // a done-category column — a task reopened and redone within the
+  // window double-counts once, not per transition, the same accepted
+  // approximation that RPC's own comment calls out.
+  const cutoffIso = cutoff.toISOString();
+
+  const { data, error } = await supabase
+    .from("tasks")
+    .select("id, updated_at, project_statuses(category)")
+    .in("project_id", projectIds)
+    .is("deleted_at", null)
+    .gte("updated_at", cutoffIso);
+
+  if (error) {
+    logger.error("getKpiDelta: completed query failed", { error, workspaceId });
+    return 0;
+  }
+
+  const rows = (data ?? []) as (TaskStatusCategoryRow & { updated_at: string })[];
+  return rows.filter((row) => taskStatusCategory(row) === "done").length;
 }
