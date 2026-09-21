@@ -16,6 +16,7 @@ import {
   getLatestApprovalForSubject,
 } from "@/lib/queries/approvals";
 import { isBriefAnswerAnswered } from "@/lib/brief/is-answered";
+import { pickLatestAnsweredRow } from "@/lib/brief/latest-answer";
 import { createClient } from "@/lib/supabase/server";
 
 // F054 (AS-130): team-side brief route. Server Component per the same
@@ -105,9 +106,9 @@ export default async function ProjectBriefPage({
   const requiredMissingCount = questions.filter(
     (q) => q.required && !isAnswered(q),
   ).length;
-  const latestAnswer = answers.reduce<(typeof answers)[number] | null>(
-    (latest, a) => (!latest || a.updatedAt > latest.updatedAt ? a : latest),
-    null,
+  const latestAnswer = pickLatestAnsweredRow(
+    answers,
+    new Map(questions.map((q) => [q.id, q])),
   );
 
   // AS-139: generating a document is only offered once there is
@@ -200,8 +201,10 @@ export default async function ProjectBriefPage({
                   )}
                 </>
               ) : documentLookupFailed ? (
-                <p className="text-sm text-muted-foreground" role="status">
-                  Couldn&apos;t check for an existing brief document. Reload to try again.
+                <p className="text-sm text-warning" role="alert">
+                  Couldn&apos;t check for an existing brief document, so the
+                  Generate Document, Request Approval and Approve actions are
+                  unavailable until you reload the page.
                 </p>
               ) : (
                 <GenerateDocumentButton

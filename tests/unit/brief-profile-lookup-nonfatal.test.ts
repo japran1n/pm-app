@@ -24,6 +24,7 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 
 import { getBriefWithRevisions } from "@/lib/queries/brief";
+import { logger } from "@/lib/observability/logger";
 
 beforeEach(() => {
   tables.brief_answers = {
@@ -56,9 +57,15 @@ beforeEach(() => {
 });
 
 describe("BR-017: profile-name lookup is non-fatal in getBriefWithRevisions", () => {
-  it("test_BR_017_profile_error_still_returns_ok_with_null_names", async () => {
+  it("test_BR_017_profile_error_is_logged_and_names_degrade_to_null", async () => {
     tables.profiles = { data: null, error: { message: "boom" } };
+    vi.mocked(logger.error).mockClear();
     const result = await getBriefWithRevisions("b1", "q1");
+    // The failure must be surfaced in logs (not swallowed) while names degrade.
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining("profiles"),
+      expect.objectContaining({ error: { message: "boom" } }),
+    );
     expect(result.ok).toBe(true);
     if (result.ok && result.data) {
       expect(result.data.answeredByName).toBeNull();

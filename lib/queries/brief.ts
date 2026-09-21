@@ -206,7 +206,12 @@ async function loadProfileNames(
   if (distinct.length === 0) return new Map();
   const { data, error } = await supabase.from("profiles").select("id, display_name").in("id", distinct);
   if (error) {
-    logger.error("loadProfileNames: failed to load profiles", { error });
+    // Real errors (e.g. an RLS denial) must stay visible in logs; names
+    // degrade to null ("Someone" in the UI) rather than failing the read.
+    logger.error("loadProfileNames: failed to load profiles; names degrade to null", {
+      error,
+      profileIdCount: distinct.length,
+    });
     return new Map();
   }
   return new Map((data ?? []).map((p) => [p.id as string, p.display_name as string | null]));
