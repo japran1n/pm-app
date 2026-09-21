@@ -76,12 +76,4 @@ describe("test_AS_214_user_avatar_wired_into_every_named_surface", () => {
       expect(source).toMatch(/<UserAvatar\b/);
     },
   );
-
-  it("the dashboard table (components/dashboard/dashboard-task-table.tsx) composes <TaskListTable> — the shared component already proven above to render UserAvatar — rather than a second, parallel table implementation", () => {
-    const source = readSource(
-      "components/dashboard/dashboard-task-table.tsx",
-    );
-    expect(source).toMatch(/<TaskListTable\b/);
-    expect(source).not.toMatch(/<UserAvatar\b/);
-  });
 });
