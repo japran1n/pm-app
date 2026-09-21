@@ -36,3 +36,5 @@ Done's "no new failing test files vs baseline" check for F001. F001 only
 touches `components/nav/app-sidebar.tsx` and verifies
 `app/(workspace)/w/[workspaceSlug]/settings/page.tsx` already links to
 Members (no edit needed there — link already present).
+2026-09-21T19:50:08Z F001 COMPLETE — Members removed from sidebar, Team kept.
+2026-09-21T22:05:00Z F002 COMPLETE — Account menu (Profile/Settings/Theme/Sign out) replaces standalone footer link + ThemeToggle + SignOutButton in app-sidebar.tsx; tsc 0 errors (baseline 0), eslint 216 problems/66 errors (matches baseline exactly), `npx vitest run tests/unit` 100 failed/951 passed/2 skipped files (pre-existing network/integration-style flakiness, same order of magnitude as baseline's 654/1820 across full suite; none of the newly-failing files touch app-sidebar/account-menu/F002).

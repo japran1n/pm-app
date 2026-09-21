@@ -37,13 +37,13 @@ import {
 import { WorkspaceSwitcher, type SwitcherWorkspace } from "@/components/workspace-switcher";
 import { Badge } from "@/components/ui/badge";
 import { signOut } from "@/lib/actions/auth";
-import { UserAvatar, personLabel, type UserAvatarPerson } from "@/components/user-avatar";
+import type { UserAvatarPerson } from "@/components/user-avatar";
 // F208 (AS-379): the notification bell — mounted here since this app has
 // no real top bar yet (per this feature's own Notes; a future F267 header
 // may relocate it), so the sidebar's workspace-switcher row is the only
 // reachable, always-visible chrome to put it in today.
 import { NotificationBell } from "@/components/notifications/notification-bell";
-import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { AccountMenu } from "@/components/nav/account-menu";
 import type { NotificationListItem } from "@/lib/queries/notifications";
 // F262 (AS-509, AS-511, AS-512, AS-513): the sidebar's own "Projects"
 // section, server-fetched by the layout same as everything else here.
@@ -385,7 +385,6 @@ function SidebarContent({
             />
           )}
         </div>
-        <ThemeToggle />
         {notificationBellSlot ?? (
           <NotificationBell
             workspaceSlug={workspaceSlug}
@@ -522,43 +521,18 @@ function SidebarContent({
           so identity + sign-out reads as a permanent block of the shell,
           not content that happened to land at the bottom. */}
       <div className="flex shrink-0 flex-col gap-2 border-t bg-sidebar-accent/40 p-3">
-        {/* F273 (AS-202): the only in-app entry point to the profile
-            settings page (F123) — without this a user has no way to set a
-            display name except by typing the URL by hand. Reuses
-            UserAvatar/personLabel (F122) rather than a new name/initials
-            implementation, per this feature's inherited clarification. */}
-        <Link
-          href={`/w/${workspaceSlug}/settings/profile`}
-          onClick={onNavigate}
-          aria-current={
-            pathname === `/w/${workspaceSlug}/settings/profile`
-              ? "page"
-              : undefined
-          }
-          className={cn(
-            // F265 (AS-518): same `max-md:min-h-11` reasoning as the
-            // primary nav items above -- this Link is shared between the
-            // desktop `<aside>` and the mobile hamburger Sheet.
-            "flex min-h-9 items-center gap-2.5 rounded-[4px] px-2 py-1.5 text-sm transition-colors max-md:min-h-11",
-            pathname === `/w/${workspaceSlug}/settings/profile`
-              ? "bg-accent text-foreground font-medium"
-              : "text-muted-foreground hover:bg-accent",
-          )}
-        >
-          <UserAvatar person={currentUser} size="sm" />
-          <span className="min-w-0 flex-1 truncate">
-            {personLabel(currentUser)}
-          </span>
-        </Link>
-        {/* F256 (AS-499): plain `<form action={signOut}>` had no pending
-            state, so a fast double-click fired signOut() twice — harmless
-            given signOut()'s own idempotent redirect, but not the
-            "control shows pending + can't be double-submitted" contract
-            every other mutating control in this app follows. Same
-            useTransition + disabled-while-pending shape as
-            RemoveMemberButton/RevokeInviteButton rather than a bare
-            form action. */}
-        <SignOutButton />
+        {/* F002 (SB-012, SB-013, SB-014, SB-015): the footer avatar row is
+            now a single AccountMenu trigger (Profile / Settings /
+            Theme / Sign out) replacing the plain profile Link + standalone
+            <ThemeToggle/> (moved out of the header row above) + standalone
+            <SignOutButton/> (removed) it used to be — see that
+            component's own doc comment. */}
+        <AccountMenu
+          workspaceSlug={workspaceSlug}
+          currentUser={currentUser}
+          canManageWorkspace={canManageWorkspace}
+          onNavigate={onNavigate}
+        />
       </div>
     </div>
   );
@@ -710,8 +684,12 @@ export function AppSidebar({
           </SheetContent>
         </Sheet>
         {/* F208: the bell also needs to be reachable on mobile, where the
-            desktop sidebar (and its own bell) is hidden entirely. */}
-        <ThemeToggle />
+            desktop sidebar (and its own bell) is hidden entirely. F002
+            (SB-013): the standalone <ThemeToggle/> that used to sit here
+            is removed -- theme is now reachable on mobile via the
+            AccountMenu inside the Sheet's own SidebarContent footer
+            (SB-009: same nav tree, including the account menu trigger,
+            renders in the mobile Sheet as on desktop). */}
         {notificationBellSlot ?? (
           <NotificationBell
             workspaceSlug={workspaceSlug}
