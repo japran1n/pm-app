@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/sheet";
 import { WorkspaceSwitcher, type SwitcherWorkspace } from "@/components/workspace-switcher";
 import { Badge } from "@/components/ui/badge";
+import { NewMenu } from "@/components/nav/new-menu";
 import { toast } from "sonner";
 
 import { signOut } from "@/lib/actions/auth";
@@ -428,7 +429,14 @@ function SidebarContent({
         )}
       </div>
 
-      <div className="px-3 pt-3">
+      <div className="flex flex-col gap-2 px-3 pt-3">
+        <NewMenu
+          workspaceSlug={workspaceSlug}
+          isGuest={isGuest}
+          canManageWorkspace={canManageWorkspace}
+          hasClient={hasClient}
+          onNavigate={onNavigate}
+        />
         <button
           type="button"
           onClick={openSearch}
