@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useId, useState, useTransition } from "react";
 import {
   LayoutDashboard,
   KanbanSquare,
@@ -19,6 +19,8 @@ import {
   Eye,
   Code2,
   Network,
+  FileCode2,
+  ChevronRight,
 } from "lucide-react";
 
 import { useMembership } from "@/components/auth/membership-provider";
@@ -174,7 +176,7 @@ function navGroups(
     // implementation -- same no-gate, prefix-matched active-state
     // convention as its sibling above (no `exact: true`), same route shape
     // (`/w/<slug>/tools/code-editor`).
-    { href: `/w/${workspaceSlug}/tools/code-editor`, label: "Webflow Code Editor", icon: Code2 },
+    { href: `/w/${workspaceSlug}/tools/code-editor`, label: "Webflow Code Editor", icon: FileCode2 },
     { href: `/w/${workspaceSlug}/tools/sitemap`, label: "Sitemap Builder", icon: Network },
   ];
 
@@ -326,6 +328,30 @@ function SidebarContent({
   // the same server-fetched `hasClient` flag the task sheet's share toggle
   // uses rather than a prop threaded through two more component layers.
   const hasClient = useMembership()?.hasClient ?? false;
+  // F005 (SB-020, SB-021): Tools group collapse state, persisted in
+  // localStorage. Default expanded; storage access is try/catch-guarded so a
+  // throwing localStorage never breaks render.
+  const [toolsOpen, setToolsOpen] = useState(true);
+  const toolsPanelId = useId();
+  useEffect(() => {
+    try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- post-hydration read of persisted UI state
+      if (window.localStorage.getItem("sidebar:tools-open") === "false") setToolsOpen(false);
+    } catch {
+      // ignore: stay expanded
+    }
+  }, []);
+  const toggleTools = () => {
+    setToolsOpen((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem("sidebar:tools-open", String(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  };
   const groups = navGroups(
     workspaceSlug,
     isGuest,
@@ -403,12 +429,30 @@ function SidebarContent({
         >
           {groups.map((group, groupIndex) => (
             <div key={group.label ?? `group-${groupIndex}`} className="flex flex-col gap-0.5">
-              {group.label && (
-                <p className="px-2 mb-1 mt-3 text-xs text-muted-foreground uppercase tracking-wide">
-                  {group.label}
+              {group.label === "Tools" ? (
+                <p className="mb-1 mt-3 px-2 text-xs text-muted-foreground uppercase tracking-wide">
+                  <button
+                    type="button"
+                    onClick={toggleTools}
+                    aria-expanded={toolsOpen}
+                    aria-controls={group.items.map((_, i) => `${toolsPanelId}-${i}`).join(" ")}
+                    className="flex w-full items-center gap-1 text-left uppercase tracking-wide hover:text-foreground"
+                  >
+                    <ChevronRight
+                      className={cn("size-3 shrink-0 transition-transform", toolsOpen && "rotate-90")}
+                      aria-hidden="true"
+                    />
+                    {group.label}
+                  </button>
                 </p>
+              ) : (
+                group.label && (
+                  <p className="px-2 mb-1 mt-3 text-xs text-muted-foreground uppercase tracking-wide">
+                    {group.label}
+                  </p>
+                )
               )}
-              {group.items.map(({ href, label, icon: Icon, exact, badge }) => {
+              {group.items.map(({ href, label, icon: Icon, exact, badge }, itemIndex) => {
                 const isActive = exact
                   ? pathname === href
                   : pathname === href || pathname.startsWith(`${href}/`);
@@ -417,6 +461,8 @@ function SidebarContent({
                   <Link
                     key={href}
                     href={href}
+                    id={group.label === "Tools" ? `${toolsPanelId}-${itemIndex}` : undefined}
+                    hidden={group.label === "Tools" && !toolsOpen}
                     aria-current={isActive ? "page" : undefined}
                     onClick={onNavigate}
                     className={cn(
