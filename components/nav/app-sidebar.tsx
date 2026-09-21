@@ -55,11 +55,13 @@ import { ProjectNavList, type SidebarProjectItem } from "@/components/nav/projec
 // is still server-fetched by the layout and passed down as props, keeping
 // this component's own state to just "which link is active" (desktop) /
 // "is the mobile sheet open" (mobile).
-// F134 (AS-222): a guest never sees the "Members" nav item — this is the
-// hide-the-control half of AS-222 (the members page itself independently
-// denies direct navigation, see app/(workspace)/w/[workspaceSlug]/settings/
-// members/page.tsx's own canViewMembersList guard; this hides the link so
-// a guest isn't shown a control that would only bounce them back).
+// F134 (AS-222) / F001 (SB-010, SB-011): a guest never sees the "Team" nav
+// item (which is now the sole sidebar entry point toward member-related
+// pages) — this is the hide-the-control half of AS-222 (the members
+// settings page itself independently denies direct navigation, see
+// app/(workspace)/w/[workspaceSlug]/settings/members/page.tsx's own
+// canViewMembersList guard; this hides the link so a guest isn't shown a
+// control that would only bounce them back).
 // F136 (AS-239): a "Settings" nav item, only shown to owner/admin
 // (`canManageWorkspace`, threaded down from the layout's own
 // `canManageProject` check) — a member/viewer sees no entry point to
@@ -183,13 +185,12 @@ function navGroups(
 
   const team: NavItem[] = [
     // Team directory: a member profile page per person (avatar/name/role,
-    // their projects, assigned tasks, and a link to their time report) —
-    // distinct from "Members" below, which is the admin-facing
-    // invite/role-management table. Same non-guest gating as Members
-    // (the destination page's own `canViewMembersList` redirect mirrors
-    // it), placed just above it in this same "Team" nav group.
+    // their projects, assigned tasks, and a link to their time report).
+    // F001 (SB-010): the separate "Members" nav item (admin-facing
+    // invite/role-management table) was merged into this single "Team"
+    // entry point — the members table itself is still reachable from the
+    // Settings page's own "Members" tab (SB-011), not duplicated here.
     { href: `/w/${workspaceSlug}/team`, label: "Team", icon: Users },
-    { href: `/w/${workspaceSlug}/settings/members`, label: "Members", icon: Users },
     // C5: the client-request inbox. Only present when the workspace has a
     // client at all — a permanent empty inbox for the majority of teams
     // who never use the portal is clutter, and it advertises a feature
@@ -269,7 +270,6 @@ function navGroups(
 
   const guestExcluded = new Set([
     "Team",
-    "Members",
     "Client requests",
     "Approvals",
     "Archive",
