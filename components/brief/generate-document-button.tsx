@@ -38,6 +38,9 @@ export function GenerateDocumentButton({
   const [error, setError] = useState<string | null>(null);
 
   function handleClick() {
+    // BR-024: the button is aria-disabled (not natively disabled) so pointer
+    // events reach the tooltip trigger; the action must still be impossible.
+    if (disabled || isPending) return;
     setError(null);
     startTransition(async () => {
       const result = await generateBriefDocument(projectId, briefId);
@@ -54,7 +57,7 @@ export function GenerateDocumentButton({
   const button = (
     <Button
       onClick={handleClick}
-      disabled={isPending || disabled}
+      disabled={isPending}
       size="sm"
       variant="primary"
     >
@@ -67,20 +70,21 @@ export function GenerateDocumentButton({
       {disabled ? (
         <TooltipProvider>
           <Tooltip>
-            {/* A disabled button swallows pointer events, so the span is the trigger. */}
+            {/* aria-disabled keeps the button hoverable so the tooltip opens on mouse hover as well as focus. */}
             <TooltipTrigger
               render={
-                <span
-                  // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- focus for tooltip over a disabled button
-                  tabIndex={0}
-                  role="group"
+                <Button
+                  onClick={handleClick}
+                  size="sm"
+                  variant="primary"
                   aria-disabled="true"
                   aria-label={`Generate Document (unavailable): ${disabledReason}`}
                   data-testid="generate-document-disabled-trigger"
+                  className="cursor-not-allowed opacity-50 hover:bg-primary"
                 />
               }
             >
-              {button}
+              Generate Document
             </TooltipTrigger>
             <TooltipContent>{disabledReason}</TooltipContent>
           </Tooltip>

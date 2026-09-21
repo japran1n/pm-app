@@ -16,12 +16,14 @@ vi.mock("@/lib/actions/brief", () => ({
   withdrawBriefApproval: vi.fn(),
 }));
 
+import userEvent from "@testing-library/user-event";
 import { BriefHeader } from "@/components/brief/brief-header";
 import { GenerateDocumentButton } from "@/components/brief/generate-document-button";
 import { ApproveBriefButton } from "@/components/brief/approve-brief-button";
 import { RequestApprovalButton } from "@/components/brief/request-approval-button";
 import { WithdrawApprovalButton } from "@/components/brief/withdraw-approval-button";
 import {
+  generateBriefDocument,
   approveBrief,
   requestBriefApproval,
   withdrawBriefApproval,
@@ -80,7 +82,8 @@ describe("brief actions in header", () => {
       }),
     );
     expect(out).toContain("generate-document-disabled-trigger");
-    expect(out).toMatch(/<button[^>]*\sdisabled(=|\s|>)/);
+    expect(out).toMatch(/<button[^>]*aria-disabled="true"/);
+    expect(out).not.toMatch(/<button[^>]*\sdisabled(=|\s|>)/);
     expect(out).toContain("Generate Document");
   });
 
@@ -94,9 +97,34 @@ describe("brief actions in header", () => {
         disabledReason: "Answer all required questions first",
       }),
     );
-    const trigger = out.match(/<span[^>]*generate-document-disabled-trigger[^>]*>/)?.[0] ?? "";
+    const trigger = out.match(/<button[^>]*generate-document-disabled-trigger[^>]*>/)?.[0] ?? "";
     expect(trigger).toContain('aria-disabled="true"');
     expect(trigger).toMatch(/aria-label="[^"]*Answer all required questions first[^"]*"/);
+  });
+
+  it("test_BR_024_real_hover_opens_tooltip_and_click_does_not_generate", async () => {
+    const user = userEvent.setup();
+    render(
+      createElement(GenerateDocumentButton, {
+        workspaceSlug: "w",
+        projectId: "p",
+        briefId: "b",
+        disabled: true,
+        disabledReason: "Answer all required questions first",
+      }),
+    );
+    const btn = screen.getByRole("button", {
+      name: /Generate Document \(unavailable\): Answer all required questions first/,
+    });
+    expect(btn.hasAttribute("disabled")).toBe(false);
+    expect(btn.getAttribute("aria-disabled")).toBe("true");
+    await user.hover(btn);
+    expect(
+      (await screen.findAllByText("Answer all required questions first")).length,
+    ).toBeGreaterThan(0);
+    await user.click(btn);
+    expect(generateBriefDocument).not.toHaveBeenCalled();
+    cleanup();
   });
 
   it("test_BR_006_page_does_not_offer_generate_when_docs_lookup_errors", () => {
