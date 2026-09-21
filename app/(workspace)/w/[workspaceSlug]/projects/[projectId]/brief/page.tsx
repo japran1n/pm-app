@@ -13,7 +13,10 @@ import { DocClientVisibilityToggle } from "@/components/docs/doc-client-visibili
 import { NotificationRecipientsPointer } from "@/components/brief/notification-recipients-pointer";
 import { BriefHeader } from "@/components/brief/brief-header";
 import { BriefApprovalStatus } from "@/components/brief/brief-approval-status";
-import { getDecisionOwners, getLatestApprovalForSubject } from "@/lib/queries/approvals";
+import {
+  getDecisionOwners,
+  getLatestApprovalForSubject,
+} from "@/lib/queries/approvals";
 import { createClient } from "@/lib/supabase/server";
 
 // F054 (AS-130): team-side brief route. Server Component per the same
@@ -49,7 +52,9 @@ export default async function ProjectBriefPage({
   // configurable list, not a second UI for editing it.
   const decisionOwnersResult = await getDecisionOwners(projectId);
   const decisionOwnerNames = decisionOwnersResult.ok
-    ? decisionOwnersResult.data.map((owner) => owner.name).filter((name): name is string => !!name)
+    ? decisionOwnersResult.data
+        .map((owner) => owner.name)
+        .filter((name): name is string => !!name)
     : [];
 
   if (!brief || questions.length === 0) {
@@ -63,7 +68,9 @@ export default async function ProjectBriefPage({
   }
 
   const answersByQuestionId = new Map(
-    answers.filter((answer) => answer.questionId).map((answer) => [answer.questionId, answer]),
+    answers
+      .filter((answer) => answer.questionId)
+      .map((answer) => [answer.questionId, answer]),
   );
 
   // F066 (AS-130): `hasRevisions` now comes straight off each answer row
@@ -81,9 +88,14 @@ export default async function ProjectBriefPage({
       if (!hasRevisions) {
         return { question, answer, hasRevisions };
       }
-      const revisionsResult = await getBriefWithRevisions(brief.id, question.id);
+      const revisionsResult = await getBriefWithRevisions(
+        brief.id,
+        question.id,
+      );
       const revisions =
-        revisionsResult.ok && revisionsResult.data ? revisionsResult.data.revisions : [];
+        revisionsResult.ok && revisionsResult.data
+          ? revisionsResult.data.revisions
+          : [];
       return { question, answer, hasRevisions, revisions };
     }),
   );
@@ -94,7 +106,9 @@ export default async function ProjectBriefPage({
     return (a.answerOptions?.length ?? 0) > 0 || !!a.answerText;
   };
   const answeredCount = questions.filter((q) => isAnswered(q.id)).length;
-  const requiredMissingCount = questions.filter((q) => q.required && !isAnswered(q.id)).length;
+  const requiredMissingCount = questions.filter(
+    (q) => q.required && !isAnswered(q.id),
+  ).length;
   const latestAnswer = answers.reduce<(typeof answers)[number] | null>(
     (latest, a) => (!latest || a.updatedAt > latest.updatedAt ? a : latest),
     null,
@@ -144,54 +158,62 @@ export default async function ProjectBriefPage({
         requiredMissingCount={requiredMissingCount}
         lastModifiedBy={latestAnswer?.answeredByName ?? null}
         lastModifiedAt={latestAnswer?.updatedAt ?? null}
-      />
-      {hasAnswers ? (
-        <div className="mb-4 flex items-center justify-end gap-2">
-          {existingDocument ? (
+        meta={
+          <NotificationRecipientsPointer
+            workspaceSlug={workspaceSlug}
+            projectId={projectId}
+            recipientNames={decisionOwnerNames}
+          />
+        }
+        actions={
+          hasAnswers ? (
             <>
-              <Link
-                href={`/w/${workspaceSlug}/projects/${projectId}/docs/${existingDocument.id}`}
-                className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-              >
-                View document
-              </Link>
-              <DocClientVisibilityToggle
-                docId={existingDocument.id}
-                clientVisible={existingDocument.clientVisible}
-              />
-              {brief.state !== "approved" ? (
+              {existingDocument ? (
                 <>
-                  {/* F074 (AS-145/AS-146): request approval of the
-                      generated brief document. */}
-                  <RequestApprovalButton
-                    projectId={projectId}
-                    documentId={existingDocument.id}
+                  <Link
+                    href={`/w/${workspaceSlug}/projects/${projectId}/docs/${existingDocument.id}`}
+                    className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                  >
+                    View document
+                  </Link>
+                  <DocClientVisibilityToggle
+                    docId={existingDocument.id}
+                    clientVisible={existingDocument.clientVisible}
                   />
-                  {/* F075 (AS-147): team-side approval, sets
+                  {brief.state !== "approved" ? (
+                    <>
+                      {/* F074 (AS-145/AS-146): request approval of the
+                      generated brief document. */}
+                      <RequestApprovalButton
+                        projectId={projectId}
+                        documentId={existingDocument.id}
+                      />
+                      {/* F075 (AS-147): team-side approval, sets
                       brief.state to 'approved'. */}
-                  <ApproveBriefButton briefId={brief.id} />
+                      <ApproveBriefButton briefId={brief.id} />
+                    </>
+                  ) : (
+                    // F077 (AS-151): only offered once approved -- withdrawal
+                    // reverts brief.state to 'submitted', which unlocks
+                    // answers again (F076's brief.state !== 'approved' checks).
+                    <WithdrawApprovalButton briefId={brief.id} />
+                  )}
                 </>
               ) : (
-                // F077 (AS-151): only offered once approved -- withdrawal
-                // reverts brief.state to 'submitted', which unlocks
-                // answers again (F076's brief.state !== 'approved' checks).
-                <WithdrawApprovalButton briefId={brief.id} />
+                <GenerateDocumentButton
+                  workspaceSlug={workspaceSlug}
+                  projectId={projectId}
+                  briefId={brief.id}
+                  disabled={requiredMissingCount > 0}
+                />
               )}
             </>
-          ) : (
-            <GenerateDocumentButton
-              workspaceSlug={workspaceSlug}
-              projectId={projectId}
-              briefId={brief.id}
-            />
-          )}
-        </div>
-      ) : null}
-      <BriefApprovalStatus workspaceSlug={workspaceSlug} state={briefApproval?.state ?? null} />
-      <NotificationRecipientsPointer
+          ) : null
+        }
+      />
+      <BriefApprovalStatus
         workspaceSlug={workspaceSlug}
-        projectId={projectId}
-        recipientNames={decisionOwnerNames}
+        state={briefApproval?.state ?? null}
       />
       <TeamAnswersView items={items} />
     </div>

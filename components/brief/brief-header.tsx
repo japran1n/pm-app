@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import { Badge } from "@/components/ui/badge";
 
 export interface BriefHeaderProps {
@@ -6,6 +8,10 @@ export interface BriefHeaderProps {
   requiredMissingCount: number;
   lastModifiedBy: string | null;
   lastModifiedAt: string | null;
+  /** BR-025: inline content appended to the meta line (e.g. notification recipients). */
+  meta?: ReactNode;
+  /** BR-023: action buttons rendered directly under the header. */
+  actions?: ReactNode;
 }
 
 const dateFormatter = new Intl.DateTimeFormat("en-GB", {
@@ -20,8 +26,11 @@ export function BriefHeader({
   requiredMissingCount,
   lastModifiedBy,
   lastModifiedAt,
+  meta,
+  actions,
 }: BriefHeaderProps) {
-  const percent = totalCount > 0 ? Math.round((answeredCount / totalCount) * 100) : 0;
+  const percent =
+    totalCount > 0 ? Math.round((answeredCount / totalCount) * 100) : 0;
 
   return (
     <header className="mb-6 space-y-2">
@@ -40,16 +49,38 @@ export function BriefHeader({
           <div className="h-full bg-primary" style={{ width: `${percent}%` }} />
         </div>
         {requiredMissingCount > 0 ? (
-          <Badge variant="warning">{requiredMissingCount} required missing</Badge>
+          <Badge variant="warning">
+            {requiredMissingCount} required missing
+          </Badge>
         ) : (
           <Badge variant="default">Complete</Badge>
         )}
       </div>
-      {lastModifiedAt ? (
-        <p className="text-sm text-muted-foreground">
-          Last updated by <span className="font-mono">{lastModifiedBy ?? "Someone"}</span> ·{" "}
-          <span className="font-mono">{dateFormatter.format(new Date(lastModifiedAt))}</span>
+      {lastModifiedAt || meta ? (
+        <p className="flex flex-wrap items-center gap-x-1 text-sm text-muted-foreground">
+          {lastModifiedAt ? (
+            <>
+              <span>
+                Last updated by{" "}
+                <span className="font-mono">{lastModifiedBy ?? "Someone"}</span>{" "}
+                ·{" "}
+                <span className="font-mono">
+                  {dateFormatter.format(new Date(lastModifiedAt))}
+                </span>
+              </span>
+            </>
+          ) : null}
+          {lastModifiedAt && meta ? <span aria-hidden="true">·</span> : null}
+          {meta}
         </p>
+      ) : null}
+      {actions ? (
+        <div
+          data-testid="brief-header-actions"
+          className="flex flex-wrap items-center gap-2 pt-1"
+        >
+          {actions}
+        </div>
       ) : null}
     </header>
   );
