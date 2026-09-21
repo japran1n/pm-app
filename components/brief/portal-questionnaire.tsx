@@ -397,18 +397,24 @@ export function PortalQuestionnaire({
     }
     setSubmitError(null);
     setSubmitting(true);
-    // Explicitly flush pending edits and wait for in-flight autosaves.
-    await flushAll();
-    if (failedIdsRef.current.size > 0) {
+    try {
+      // Explicitly flush pending edits and wait for in-flight autosaves.
+      await flushAll();
+      if (failedIdsRef.current.size > 0) {
+        setSubmitError(SAVE_FAILED_MESSAGE);
+        return;
+      }
+      const result = await submitBrief(briefId);
+      if (!result.success) {
+        setSubmitError(result.error ?? "Couldn't submit this brief.");
+        return;
+      }
+    } catch {
+      // A rejected action must not leave the button stuck on "Submitting…".
+      setSubmitError("Couldn't submit this brief. Please try again.");
+      return;
+    } finally {
       setSubmitting(false);
-      setSubmitError(SAVE_FAILED_MESSAGE);
-      return;
-    }
-    const result = await submitBrief(briefId);
-    setSubmitting(false);
-    if (!result.success) {
-      setSubmitError(result.error ?? "Couldn't submit this brief.");
-      return;
     }
     setSubmitted(true);
   };
