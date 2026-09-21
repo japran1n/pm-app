@@ -66,7 +66,11 @@ describe("AppSidebar on a short viewport (F119, AS-069)", () => {
     expect(text).toContain("My Tasks");
     expect(text).toContain("Projects");
     expect(text).toContain("Chat");
-    expect(text).toContain("Trash");
+    // F003 (SB-016): "Trash" moved into AccountMenu (formerly the
+    // sidebar's own "Other" group) and no longer renders in static
+    // markup until that menu is opened -- "Watching" replaces it here as
+    // the still-in-sidebar item this assertion checks for (SB-018).
+    expect(text).toContain("Watching");
 
     // Every one of the 20 seeded projects is reachable in the DOM -- not
     // silently dropped/cut off past the first couple of rows.

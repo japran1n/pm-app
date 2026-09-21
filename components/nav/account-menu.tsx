@@ -3,7 +3,19 @@
 import Link from "next/link";
 import { useTransition } from "react";
 import { useTheme } from "next-themes";
-import { LogOut, Loader2, MoreHorizontal, Settings, Sun, Moon, UserRound } from "lucide-react";
+import {
+  LogOut,
+  Loader2,
+  MoreHorizontal,
+  Settings,
+  Sun,
+  Moon,
+  UserRound,
+  Archive,
+  LayoutTemplate,
+  Trash2,
+  HelpCircle,
+} from "lucide-react";
 
 import { UserAvatar, personLabel, type UserAvatarPerson } from "@/components/user-avatar";
 import { signOut } from "@/lib/actions/auth";
@@ -35,11 +47,22 @@ export function AccountMenu({
   workspaceSlug,
   currentUser,
   canManageWorkspace,
+  isGuest = false,
   onNavigate,
 }: {
   workspaceSlug: string;
   currentUser: UserAvatarPerson;
   canManageWorkspace: boolean;
+  /** F003 (SB-016, SB-017, SB-006): gates Templates/Archive/Trash the same
+   * way app-sidebar.tsx's own `guestExcluded` set used to when these items
+   * still lived there -- a guest never sees an entry point to any of the
+   * three. "How this works" is intentionally NOT gated here, same
+   * reasoning as its old sidebar doc comment: a guest benefits from the
+   * orientation page at least as much as a full member, and it has no
+   * workspace data of its own to leak. Default `false` keeps every
+   * existing caller/test that predates this prop rendering the full menu
+   * instead of crashing. */
+  isGuest?: boolean;
   onNavigate?: () => void;
 }) {
   const { theme, setTheme } = useTheme();
@@ -102,6 +125,42 @@ export function AccountMenu({
             <Moon className="size-4" aria-hidden="true" />
           )}
           Theme
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        {/* F003 (SB-016, SB-017, SB-006): Templates/Archive/Trash/Help,
+            formerly the sidebar's own "Other" group (see app-sidebar.tsx's
+            own doc comment) -- moved here verbatim with the same role
+            gates they had there. */}
+        {!isGuest && (
+          <DropdownMenuItem
+            render={<Link href={`/w/${workspaceSlug}/templates`} onClick={onNavigate} />}
+          >
+            <LayoutTemplate className="size-4" aria-hidden="true" />
+            Templates
+          </DropdownMenuItem>
+        )}
+        {!isGuest && (
+          <DropdownMenuItem
+            render={<Link href={`/w/${workspaceSlug}/archive`} onClick={onNavigate} />}
+          >
+            <Archive className="size-4" aria-hidden="true" />
+            Archive
+          </DropdownMenuItem>
+        )}
+        {!isGuest && (
+          <DropdownMenuItem
+            render={<Link href={`/w/${workspaceSlug}/trash`} onClick={onNavigate} />}
+          >
+            <Trash2 className="size-4" aria-hidden="true" />
+            Trash
+          </DropdownMenuItem>
+        )}
+        {/* Not guest-gated -- see the `isGuest` prop's own doc comment. */}
+        <DropdownMenuItem
+          render={<Link href={`/w/${workspaceSlug}/help`} onClick={onNavigate} />}
+        >
+          <HelpCircle className="size-4" aria-hidden="true" />
+          How this works
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem

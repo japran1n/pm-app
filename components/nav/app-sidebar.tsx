@@ -11,17 +11,12 @@ import {
   LogOut,
   Loader2,
   Menu,
-  Settings,
-  Archive,
-  LayoutTemplate,
-  Trash2,
   ListChecks,
   CalendarDays,
   Inbox,
   MessageCircle,
   CheckSquare,
   Eye,
-  HelpCircle,
   Code2,
   Network,
 } from "lucide-react";
@@ -153,6 +148,15 @@ function navGroups(
     // unreadCount, which chat-nav-list.tsx already treats as the
     // source of truth for "unread" there).
     { href: `/w/${workspaceSlug}/chat`, label: "Chat", icon: MessageCircle, badge: chatUnreadBadge ?? countBadge(chatUnreadCount) },
+    // F003 (SB-016, SB-018): the "Other" group is dissolved (Templates,
+    // Archive, Trash and Help moved into AccountMenu -- see that
+    // component). Watching has nowhere else to live yet (F013 will give it
+    // a proper home), so it moves here into the primary "Work" band as a
+    // temporary measure per this feature's own clarified implementation.
+    // Not guest-gated, same as before: watching is a personal notification
+    // preference any active member (including a guest) can use, per
+    // lib/actions/watchers.ts's own "any active member" access rule.
+    { href: `/w/${workspaceSlug}/watching`, label: "Watching", icon: Eye },
   ];
 
   // F010 (TH-001, TH-002, TH-003, TH-005, TH-007, TH-012): dedicated "Tools"
@@ -239,42 +243,18 @@ function navGroups(
       : []),
   ];
 
-  const other: NavItem[] = [
-    // Feature request "Watching feed": every task the caller is watching,
-    // sorted by most recent activity. Placed in the same secondary
-    // "Other" band as Archive/Templates/Trash — an occasionally-visited
-    // reference view, not a daily-driver screen. Not guest-gated (same
-    // reasoning as "How this works" below): watching is a personal
-    // notification preference any active member (including a guest) can
-    // use, per lib/actions/watchers.ts's own "any active member" access
-    // rule.
-    { href: `/w/${workspaceSlug}/watching`, label: "Watching", icon: Eye },
-    { href: `/w/${workspaceSlug}/archive`, label: "Archive", icon: Archive },
-    // F183: gated to non-guests the same way Members/Archive already are.
-    { href: `/w/${workspaceSlug}/templates`, label: "Templates", icon: LayoutTemplate },
-    // F188 (AS-343..352): same gating pattern (mirrors F142's archive
-    // page).
-    { href: `/w/${workspaceSlug}/trash`, label: "Trash", icon: Trash2 },
-    // Internal "how this dashboard works" docs page — placed in the same
-    // secondary "Other" band as Archive/Templates/Trash (an
-    // occasionally-visited reference page, not a daily-driver screen),
-    // same pattern as the portal's own "How we work" secondary-nav entry.
-    // Not guest-gated (unlike the items above): a guest benefits from this
-    // orientation page at least as much as a full member does, and it has
-    // no workspace data of its own to leak.
-    { href: `/w/${workspaceSlug}/help`, label: "How this works", icon: HelpCircle },
-    ...(canManageWorkspace
-      ? [{ href: `/w/${workspaceSlug}/settings`, label: "Settings", icon: Settings, exact: true }]
-      : []),
-  ];
+  // F003 (SB-016, SB-017): the "Other" group (Archive, Templates, Trash,
+  // "How this works", and a duplicate "Settings") is dissolved entirely --
+  // Archive/Templates/Trash/Help now live in AccountMenu (see that
+  // component's own doc comment for gating); Settings was already reachable
+  // from AccountMenu since F002, so the sidebar's own copy is just removed,
+  // not relocated. Watching moved up into the primary "Work" band above
+  // (temporary until F013).
 
   const guestExcluded = new Set([
     "Team",
     "Client requests",
     "Approvals",
-    "Archive",
-    "Templates",
-    "Trash",
   ]);
   const filterGuest = (items: NavItem[]) =>
     isGuest ? items.filter((item) => !guestExcluded.has(item.label)) : items;
@@ -283,11 +263,12 @@ function navGroups(
     { label: null, items: work },
     { label: "Plan", items: filterGuest(plan) },
     { label: "Team", items: filterGuest(team) },
-    // F010 (TH-002, TH-012): "Tools" sits between "Team" and "Other" per
-    // this feature's own Draft scope, and is NOT run through `filterGuest`
-    // -- it always renders for every role/workspace (TH-012).
+    // F010 (TH-002, TH-012): "Tools" sits between "Team" and (formerly)
+    // "Other" per this feature's own Draft scope, and is NOT run through
+    // `filterGuest` -- it always renders for every role/workspace
+    // (TH-012). F003 (SB-016): "Other" itself is gone -- see the doc
+    // comment above `guestExcluded`.
     { label: "Tools", items: tools },
-    { label: "Other", items: filterGuest(other) },
   ].filter((group) => group.items.length > 0);
 }
 
@@ -531,6 +512,7 @@ function SidebarContent({
           workspaceSlug={workspaceSlug}
           currentUser={currentUser}
           canManageWorkspace={canManageWorkspace}
+          isGuest={isGuest}
           onNavigate={onNavigate}
         />
       </div>
