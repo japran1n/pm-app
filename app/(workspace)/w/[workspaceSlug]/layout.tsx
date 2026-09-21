@@ -414,7 +414,7 @@ export default async function WorkspaceLayout({
         // overflow-y-auto (WorkspaceMain, above). overflow-hidden backs
         // this up so nothing here ever paints past the svh cap.
       }
-      <div className="flex h-svh min-h-0 overflow-hidden">
+      <div className="relative flex h-svh min-h-0 overflow-hidden">
         <AppSidebar
           workspaceSlug={workspaceSlug}
           // F016: `workspaces` stays as the back-compat fallback prop (see
@@ -488,7 +488,7 @@ export default async function WorkspaceLayout({
             </Suspense>
           }
         />
-        <div className="bg-background border border-border rounded-lg m-2 flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden">
+        <div className="relative bg-background border border-border rounded-lg m-2 flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden">
           <WorkspaceMain>
             <Suspense fallback={null}>
               <ClientPresentationBannerFigure

@@ -155,7 +155,7 @@ export default async function PortalLayout({
     // no-scroll guard is unchanged: this div is still `overflow-hidden`
     // and still bounded to `h-svh`, so nothing here can grow wider than
     // the viewport.
-    <div className="flex h-svh flex-col overflow-hidden bg-background">
+    <div className="relative flex h-svh flex-col overflow-hidden bg-background">
       {isPreview && previewLabel && (
         <ClientPreviewBanner
           workspaceSlug={workspace.slug}

@@ -133,7 +133,7 @@ export default async function PortalProjectLayout({
           content area below still gets `overflow-y-auto` so vertical page
           content is reachable; only unwanted horizontal growth is
           clipped here (AS-517). */}
-      <div className="flex h-full min-h-0 flex-1 overflow-hidden flex-col md:flex-row">
+      <div className="relative flex h-full min-h-0 flex-1 overflow-hidden flex-col md:flex-row">
         <PortalSidebar
           workspaceSlug={workspace.slug}
           workspaceId={workspace.id}
@@ -162,7 +162,7 @@ export default async function PortalProjectLayout({
             launchConfidence={project.launchConfidence}
             keyLinks={keyLinks}
           />
-          <main className="flex-1 overflow-y-auto px-6 py-8">{children}</main>
+          <main className="relative flex-1 overflow-y-auto px-6 py-8">{children}</main>
         </div>
       </div>
     </PortalTitleProvider>

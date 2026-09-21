@@ -338,7 +338,7 @@ describe("channel scroll-container layout (AS-073)", () => {
     // div past h-svh instead of respecting it. Still a fixed height
     // (h-svh), never a minimum (min-h-svh) -- that's what this
     // assertion actually guards.
-    expect(layout).toMatch(/className="flex h-svh min-h-0 overflow-hidden"/);
+    expect(layout).toMatch(/className="relative flex h-svh min-h-0 overflow-hidden"/);
     expect(layout).not.toMatch(/className="flex min-h-svh"/);
   });
 
