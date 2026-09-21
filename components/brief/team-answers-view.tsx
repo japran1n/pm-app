@@ -63,15 +63,15 @@ function AnswerValue({ question, answer }: { question: BriefQuestion; answer: Br
   }
 
   if (question.answerType === "long_text") {
-    return <p className="whitespace-pre-wrap text-sm text-foreground">{answer.answerText}</p>;
+    return <p className="whitespace-pre-wrap text-base text-foreground">{answer.answerText}</p>;
   }
 
-  return <p className="text-sm text-foreground">{answer.answerText}</p>;
+  return <p className="text-base text-foreground">{answer.answerText}</p>;
 }
 
 export function TeamAnswersView({ items }: { items: TeamAnswersViewQuestion[] }) {
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex max-w-[720px] w-full flex-col gap-6">
       {items.map(({ question, answer, hasRevisions, revisions }) => {
         const isAnswered =
           !!answer &&
@@ -83,7 +83,7 @@ export function TeamAnswersView({ items }: { items: TeamAnswersViewQuestion[] })
           <div key={question.id} className="flex flex-col gap-2 border-b border-border pb-6">
             <div className="flex items-start justify-between gap-3">
               <div className="flex flex-col gap-1">
-                <p className="text-sm font-medium text-foreground">
+                <p className="text-sm text-muted-foreground">
                   {question.prompt}
                   {question.required ? (
                     <span className="ml-1 text-destructive" aria-label="required">
@@ -91,9 +91,6 @@ export function TeamAnswersView({ items }: { items: TeamAnswersViewQuestion[] })
                     </span>
                   ) : null}
                 </p>
-                {question.helpText ? (
-                  <p className="text-sm text-muted-foreground">{question.helpText}</p>
-                ) : null}
               </div>
               <div className="flex shrink-0 items-center gap-1.5">
                 <AnswerTypeBadge answerType={question.answerType} />
