@@ -16,6 +16,7 @@ import {
 import { getCalendarBlockDisplayColor } from "@/lib/calendar/block-colors";
 import { formatBlockTimeRange } from "@/lib/calendar/block-datetime";
 import { TimeOffDayStrip } from "@/components/calendar/time-off-day-strip";
+import { CurrentTimeLine } from "@/components/calendar/current-time-line";
 
 // Matches week-time-grid.tsx's own row height convention (2.5rem == 40px at
 // the default root font size) -- used both to size the ruler's hour axis and
@@ -205,6 +206,9 @@ export function StackedPersonRow({
         >
           {STACKED_DAYS.map((isoWeekday) => {
             const dayDate = dateForIsoWeekday(weekKey, isoWeekday);
+            const dayDateKey = dayDate.toISOString().slice(0, 10);
+            const todayKey = new Date().toISOString().slice(0, 10);
+            const isToday = dayDateKey === todayKey;
             const daySegments = segments.filter(
               (s) => s.isoWeekday === isoWeekday,
             );
@@ -214,7 +218,7 @@ export function StackedPersonRow({
                 key={isoWeekday}
                 data-testid={`stacked-day-${isoWeekday}`}
                 data-day-label={DAY_LABELS[isoWeekday]}
-                data-date={dayDate.toISOString().slice(0, 10)}
+                data-date={dayDateKey}
                 className="relative border-r last:border-r-0"
               >
                 <div className="border-b py-1 text-center text-xs text-muted-foreground">
@@ -233,6 +237,7 @@ export function StackedPersonRow({
                       }}
                     />
                   ))}
+                  {isToday && <CurrentTimeLine />}
                   {daySegments.map((segment, idx) => {
                     const top = percentOffset(segment.startsAt);
                     const bottom = percentOffset(segment.endsAt);

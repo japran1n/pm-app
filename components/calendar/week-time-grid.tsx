@@ -27,7 +27,7 @@
 
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Plus } from "lucide-react";
 import { toast as sonnerToast } from "sonner";
 
@@ -65,6 +65,19 @@ import { isOwnBlock, isOwnColumn } from "@/lib/calendar/ownership";
 import { cn } from "@/lib/utils";
 
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
+
+function useNowTop(): number {
+  const compute = () => {
+    const now = new Date();
+    return (now.getHours() * 60 + now.getMinutes()) * PX_PER_MINUTE;
+  };
+  const [top, setTop] = useState(compute);
+  useEffect(() => {
+    const id = setInterval(() => setTop(compute()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+  return top;
+}
 
 // UX (hover "+" to create): the hovered slot's own "HH:MM" label -- reuses
 // the same pure `pixelOffsetToTime` snap the eventual drag-create commit
@@ -149,6 +162,7 @@ export function WeekTimeGrid({
   // create-drag at all, only the "+" button's `onPointerDown` does (and a
   // real drag from there still works exactly as before, since pointer
   // capture keeps the gesture alive through the same column handlers).
+  const nowTop = useNowTop();
   const [hoveredSlot, setHoveredSlot] = useState<{ date: string; top: number } | null>(null);
   const [resize, setResize] = useState<ResizeState | null>(null);
   const [resizePreviewPx, setResizePreviewPx] = useState<number | null>(null);
@@ -466,6 +480,14 @@ export function WeekTimeGrid({
               {String(hour).padStart(2, "0")}:00
             </div>
           ))}
+          {/* Current time dot on the left time-label column */}
+          <div
+            aria-hidden="true"
+            className="absolute right-0 z-20 flex items-center justify-end pr-0.5"
+            style={{ top: nowTop - 4 }}
+          >
+            <span className="size-2 rounded-full bg-destructive" />
+          </div>
         </div>
 
         {days.map((day) => {
@@ -508,6 +530,15 @@ export function WeekTimeGrid({
                 style={{ top: hour * PX_PER_HOUR }}
               />
             ))}
+
+            {/* Current time line — only on today's column */}
+            {day.isToday && (
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute left-0 right-0 z-20 border-t-2 border-destructive"
+                style={{ top: nowTop }}
+              />
+            )}
 
             {/* UX (hover "+" to create): only the hovered half-hour slot
                 renders this trigger -- a plain click anywhere else on the
