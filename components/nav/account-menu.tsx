@@ -74,7 +74,7 @@ export function AccountMenu({
   hasClient?: boolean;
   onNavigate?: () => void;
 }) {
-  const { theme, setTheme } = useTheme();
+  const { resolvedTheme, setTheme } = useTheme();
   const [isPending, startTransition] = useTransition();
 
   function handleSignOut() {
@@ -84,10 +84,10 @@ export function AccountMenu({
   }
 
   function handleThemeToggle() {
-    setTheme(theme === "dark" ? "light" : "dark");
+    setTheme(resolvedTheme === "dark" ? "light" : "dark");
   }
 
-  const isDark = theme === "dark";
+  const isDark = resolvedTheme === "dark";
 
   return (
     <DropdownMenu>

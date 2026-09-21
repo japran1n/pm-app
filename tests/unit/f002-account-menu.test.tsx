@@ -88,19 +88,7 @@ describe("test_SB_013_standalone_theme_and_signout_removed", () => {
   });
 });
 
-describe("test_SB_014_theme_toggle_works_from_menu", () => {
-  it("selecting the Theme item flips the theme via the shared setTheme mechanism", async () => {
-    render(createElement(AccountMenu, { ...baseProps, canManageWorkspace: true }));
-
-    fireEvent.click(screen.getByRole("button", { name: /account menu/i }));
-    const menu = await screen.findByRole("menu");
-    const themeItem = within(menu).getByText("Theme");
-
-    expect(currentTheme).toBe("light");
-    fireEvent.click(themeItem);
-    expect(currentTheme).toBe("dark");
-  });
-});
+// SB-014 is covered unmocked in tests/unit/f019-theme-toggle.test.tsx.
 
 describe("test_SB_015_sign_out_works_from_menu", () => {
   it("selecting Sign out calls the signOut action and disables the item while pending", async () => {
