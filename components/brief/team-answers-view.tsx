@@ -29,6 +29,18 @@ export type TeamAnswersViewQuestion = {
   revisions?: BriefAnswerRevision[];
 };
 
+function formatRelative(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+}
+
 function AnswerValue({ question, answer }: { question: BriefQuestion; answer: BriefAnswer }) {
   if (question.answerType === "single_choice" || question.answerType === "multi_choice") {
     const selected = answer.answerOptions ?? [];
@@ -73,7 +85,7 @@ export function TeamAnswersView({ items }: { items: TeamAnswersViewQuestion[] })
               <div className="flex flex-col gap-1">
                 <p className="text-sm text-muted-foreground">
                   {question.prompt}
-                  {question.required ? (
+                  {question.required && !isAnswered ? (
                     <span className="ml-1 text-destructive" aria-label="required">
                       *
                     </span>
@@ -89,7 +101,14 @@ export function TeamAnswersView({ items }: { items: TeamAnswersViewQuestion[] })
               ) : null}
             </div>
             {isAnswered && answer ? (
-              <AnswerValue question={question} answer={answer} />
+              <>
+                <AnswerValue question={question} answer={answer} />
+                <p className="font-mono text-xs text-muted-foreground">
+                  {answer.answeredByName ?? "Someone"} · {formatRelative(answer.updatedAt)}
+                </p>
+              </>
+            ) : question.required ? (
+              <p className="text-sm text-warning">Not answered</p>
             ) : (
               <p className="text-sm text-muted-foreground">Not answered yet</p>
             )}

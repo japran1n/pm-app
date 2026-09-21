@@ -65,6 +65,7 @@ export type BriefAnswer = {
   answerText: string | null;
   answerOptions: string[] | null;
   answeredBy: string | null;
+  answeredByName?: string | null;
   answeredAt: string | null;
   updatedAt: string;
   // F066 (AS-130/AS-131): true once at least one row exists in
@@ -154,6 +155,7 @@ function mapBriefAnswerRow(
     updated_at: string;
   },
   hasRevisions = false,
+  answeredByName: string | null = null,
 ): BriefAnswer {
   return {
     id: row.id,
@@ -163,6 +165,7 @@ function mapBriefAnswerRow(
     answerText: row.answer_text,
     answerOptions: row.answer_options,
     answeredBy: row.answered_by,
+    answeredByName,
     answeredAt: row.answered_at,
     updatedAt: row.updated_at,
     hasRevisions,
@@ -189,6 +192,24 @@ function mapBriefAnswerRevisionRow(
     changedByName,
     changedAt: row.changed_at,
   };
+}
+
+// Resolves display names for the given profile ids. No FK is declared for
+// PostgREST to embed, so this is a second select keyed by distinct ids
+// (same approach as getBriefWithRevisions's reviser lookup). Failures degrade
+// to "no names" rather than failing the whole brief read.
+async function loadProfileNames(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  ids: (string | null)[],
+): Promise<Map<string, string | null>> {
+  const distinct = Array.from(new Set(ids.filter((id): id is string => id !== null)));
+  if (distinct.length === 0) return new Map();
+  const { data, error } = await supabase.from("profiles").select("id, display_name").in("id", distinct);
+  if (error) {
+    logger.error("loadProfileNames: failed to load profiles", { error });
+    return new Map();
+  }
+  return new Map((data ?? []).map((p) => [p.id as string, p.display_name as string | null]));
 }
 
 async function loadBriefWithQuestionsAndAnswers(
@@ -263,12 +284,23 @@ async function loadBriefWithQuestionsAndAnswers(
     editedAnswerIds = new Set((revisionRows ?? []).map((row) => row.answer_id as string));
   }
 
+  const answerNames = await loadProfileNames(
+    supabase,
+    answers.map((row) => row.answered_by),
+  );
+
   return {
     ok: true,
     data: {
       brief,
       questions,
-      answers: answers.map((row) => mapBriefAnswerRow(row, editedAnswerIds.has(row.id))),
+      answers: answers.map((row) =>
+        mapBriefAnswerRow(
+          row,
+          editedAnswerIds.has(row.id),
+          row.answered_by ? (answerNames.get(row.answered_by) ?? null) : null,
+        ),
+      ),
     },
   };
 }
@@ -334,7 +366,12 @@ export async function getBriefWithRevisions(
   }
 
   const rows = revisionRows ?? [];
-  const answer = mapBriefAnswerRow(answerRow, rows.length > 0);
+  const answererNames = await loadProfileNames(supabase, [answerRow.answered_by]);
+  const answer = mapBriefAnswerRow(
+    answerRow,
+    rows.length > 0,
+    answerRow.answered_by ? (answererNames.get(answerRow.answered_by) ?? null) : null,
+  );
 
   // AS-128/AS-155: name the user (team member or client contact) behind
   // each revision. `changed_by` is a bare auth.users FK with no direct
