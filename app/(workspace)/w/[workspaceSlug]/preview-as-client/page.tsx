@@ -65,16 +65,26 @@ export default async function PreviewAsClientPage({
   ]);
 
   return (
-    <div className="mx-auto flex max-w-2xl flex-col gap-6 px-6 py-10">
+    <div className="mx-auto flex max-w-3xl flex-col gap-8 px-6 py-10">
       <div className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold tracking-tight">
-          View the portal as a client
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Pick a client to see exactly what they see, produced through
-          their own account and permissions. Every preview is logged to
-          the workspace audit log.
+        <p className="text-xs font-semibold uppercase tracking-[0.07em] text-muted-foreground">
+          Client Preview
         </p>
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex flex-col gap-1">
+            <h1 className="text-2xl font-semibold tracking-tight">
+              View the portal as a client
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Pick a client to see exactly what they see, produced through
+              their own account and permissions.
+            </p>
+          </div>
+          <span className="mt-1 flex shrink-0 items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-600 dark:text-amber-400">
+            <span className="size-1.5 animate-pulse rounded-full bg-amber-500" />
+            Logged to audit
+          </span>
+        </div>
       </div>
 
       {clients.length === 0 ? (

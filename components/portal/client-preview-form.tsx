@@ -9,7 +9,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { Eye, FolderOpen, Loader2, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 
 import { startClientPreview } from "@/lib/actions/portal-preview";
@@ -37,9 +37,6 @@ export function ClientPreviewForm({
   workspaceSlug: string;
   clients: PreviewableClient[];
   projects: { id: string; name: string }[];
-  /** Pre-filled when opened via the "View as client" shortcut from a
-   * task detail sheet or doc header -- see those components' own doc
-   * comments. Undefined for the standalone/fallback route. */
   initialProjectId?: string;
   initialTaskId?: string;
 }) {
@@ -47,13 +44,11 @@ export function ClientPreviewForm({
   const [clientUserId, setClientUserId] = useState<string | undefined>(
     clients[0]?.userId,
   );
-  const selectedClient = clients.find(
-    (client) => client.userId === clientUserId,
-  );
+  const selectedClient = clients.find((c) => c.userId === clientUserId);
   const [projectId, setProjectId] = useState<string | undefined>(
     initialProjectId,
   );
-  const selectedProject = projects.find((project) => project.id === projectId);
+  const selectedProject = projects.find((p) => p.id === projectId);
   const [isPending, startTransition] = useTransition();
 
   function handleSubmit(event: React.FormEvent) {
@@ -66,9 +61,6 @@ export function ClientPreviewForm({
         workspaceSlug,
         clientUserId,
         projectId,
-        // A task deep-link only makes sense alongside the project it
-        // belongs to -- dropped silently if the operator changed the
-        // project selection away from the shortcut's original one.
         taskId: projectId === initialProjectId ? initialTaskId : undefined,
       });
 
@@ -81,81 +73,183 @@ export function ClientPreviewForm({
     });
   }
 
+  const clientLabel =
+    selectedClient?.name ?? selectedClient?.email ?? "this client";
+
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-6">
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="preview-client">Client</Label>
-        <Select
-          value={clientUserId ?? null}
-          onValueChange={(value) => setClientUserId(value ?? undefined)}
-        >
-          <SelectTrigger id="preview-client" aria-label="Client">
-            <SelectValue placeholder="Choose a client">
-              {selectedClient ? (
-                <span className="flex items-center gap-2">
-                  <UserAvatar
-                    person={{
-                      id: selectedClient.userId,
-                      name: selectedClient.name,
-                      email: selectedClient.email,
-                      avatarUrl: selectedClient.avatarUrl,
-                    }}
-                    size="sm"
-                  />
-                  {selectedClient.name ?? selectedClient.email ?? selectedClient.userId}
-                </span>
-              ) : undefined}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {clients.map((client) => (
-              <SelectItem key={client.userId} value={client.userId}>
-                <span className="flex items-center gap-2">
-                  <UserAvatar
-                    person={{
-                      id: client.userId,
-                      name: client.name,
-                      email: client.email,
-                      avatarUrl: client.avatarUrl,
-                    }}
-                    size="sm"
-                  />
-                  {client.name ?? client.email ?? client.userId}
-                </span>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+    <div className="grid gap-6 md:grid-cols-[1fr_260px]">
+      <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+        {/* Client selector */}
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="preview-client">Client</Label>
+          <Select
+            value={clientUserId ?? undefined}
+            onValueChange={(v) => setClientUserId(v || undefined)}
+          >
+            <SelectTrigger id="preview-client" aria-label="Client" className="h-auto py-2">
+              <SelectValue placeholder="Choose a client">
+                {selectedClient && (
+                  <span className="flex items-center gap-2.5">
+                    <UserAvatar
+                      person={{
+                        id: selectedClient.userId,
+                        name: selectedClient.name,
+                        email: selectedClient.email,
+                        avatarUrl: selectedClient.avatarUrl,
+                      }}
+                      size="sm"
+                    />
+                    <span className="flex flex-col items-start leading-tight">
+                      <span className="text-sm font-medium">
+                        {selectedClient.name ?? selectedClient.email ?? selectedClient.userId}
+                      </span>
+                      {selectedClient.name && selectedClient.email && (
+                        <span className="font-mono text-xs text-muted-foreground">
+                          {selectedClient.email}
+                        </span>
+                      )}
+                    </span>
+                  </span>
+                )}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {clients.map((client) => (
+                <SelectItem key={client.userId} value={client.userId}>
+                  <span className="flex items-center gap-2.5">
+                    <UserAvatar
+                      person={{
+                        id: client.userId,
+                        name: client.name,
+                        email: client.email,
+                        avatarUrl: client.avatarUrl,
+                      }}
+                      size="sm"
+                    />
+                    <span className="flex flex-col items-start leading-tight">
+                      <span className="text-sm font-medium">
+                        {client.name ?? client.email ?? client.userId}
+                      </span>
+                      {client.name && client.email && (
+                        <span className="font-mono text-xs text-muted-foreground">
+                          {client.email}
+                        </span>
+                      )}
+                    </span>
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
 
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="preview-project">Project (optional)</Label>
-        <Select
-          value={projectId ?? "__none"}
-          onValueChange={(value) =>
-            setProjectId(!value || value === "__none" ? undefined : value)
-          }
-        >
-          <SelectTrigger id="preview-project" aria-label="Project">
-            <SelectValue placeholder="Land on the project chooser">
-              {selectedProject ? selectedProject.name : "Land on the project chooser"}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__none">Land on the project chooser</SelectItem>
-            {projects.map((project) => (
-              <SelectItem key={project.id} value={project.id}>
-                {project.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+        {/* Project selector */}
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="preview-project">Project (optional)</Label>
+          <Select
+            value={projectId ?? "__none"}
+            onValueChange={(v) =>
+              setProjectId(!v || v === "__none" ? undefined : v)
+            }
+          >
+            <SelectTrigger id="preview-project" aria-label="Project" className="h-auto py-2">
+              <SelectValue>
+                <span className="flex flex-col items-start leading-tight">
+                  <span className="text-sm">
+                    {selectedProject ? selectedProject.name : "Land on the project chooser"}
+                  </span>
+                  {selectedProject && (
+                    <span className="text-xs text-muted-foreground">
+                      Opens on project overview
+                    </span>
+                  )}
+                </span>
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none">Land on the project chooser</SelectItem>
+              {projects.map((project) => (
+                <SelectItem key={project.id} value={project.id}>
+                  {project.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
 
-      <Button type="submit" disabled={!clientUserId || isPending}>
-        {isPending && <Loader2 className="size-4 animate-spin" />}
-        View as this client
-      </Button>
-    </form>
+        <Button type="submit" disabled={!clientUserId || isPending}>
+          {isPending ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <Eye className="size-4" />
+          )}
+          View as {clientLabel}
+        </Button>
+      </form>
+
+      {/* Sidebar */}
+      <aside className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4 shadow-xs">
+        {selectedClient ? (
+          <>
+            <div className="flex flex-col items-center gap-2 py-2">
+              <UserAvatar
+                person={{
+                  id: selectedClient.userId,
+                  name: selectedClient.name,
+                  email: selectedClient.email,
+                  avatarUrl: selectedClient.avatarUrl,
+                }}
+                size="lg"
+              />
+              <div className="text-center">
+                <p className="text-sm font-medium">
+                  {selectedClient.name ?? selectedClient.email}
+                </p>
+                {selectedClient.name && selectedClient.email && (
+                  <p className="font-mono text-xs text-muted-foreground">
+                    {selectedClient.email}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="border-t border-border pt-3">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.07em] text-muted-foreground">
+                Permissions
+              </p>
+              <ul className="flex flex-col gap-1.5">
+                {[
+                  "View assigned projects",
+                  "View tasks & updates",
+                  "Comment on tasks",
+                  "No billing or settings access",
+                ].map((perm) => (
+                  <li key={perm} className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <ShieldCheck className="size-3 shrink-0 text-foreground/40" />
+                    {perm}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {selectedProject && (
+              <div className="border-t border-border pt-3">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.07em] text-muted-foreground">
+                  Landing on
+                </p>
+                <div className="flex items-center gap-2 rounded-md border border-border bg-background px-2.5 py-1.5">
+                  <FolderOpen className="size-3.5 shrink-0 text-muted-foreground" />
+                  <span className="truncate text-xs">{selectedProject.name}</span>
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          <p className="text-center text-xs text-muted-foreground py-4">
+            Select a client to see their identity and permissions.
+          </p>
+        )}
+      </aside>
+    </div>
   );
 }
