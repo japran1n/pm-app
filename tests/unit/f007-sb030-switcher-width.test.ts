@@ -46,7 +46,7 @@ beforeAll(async () => {
 import { createRoot } from "react-dom/client";
 import { AppSidebar } from "@/components/nav/app-sidebar";
 createRoot(document.getElementById("root")!).render(
-  <AppSidebar workspaceSlug="acme" workspaces={[{id:"w1",name:"ABCDEFGHIJ KLMNOPQRST UVWXYZ0123 456789ABCD",slug:"acme"}]} currentWorkspaceId="w1"
+  <AppSidebar workspaceSlug="acme" workspaces={[{id:"w1",name:(window as any).__NAME || "ABCDEFGHIJ KLMNOPQRST UVWXYZ0123 456789ABCD",slug:"acme"}]} currentWorkspaceId="w1"
     currentUser={{id:"u1",name:"T",email:"t@example.com",avatarUrl:null}} isGuest={false} canManageWorkspace={true}
     projects={[{id:"p1",name:"Apollo Launch",slug:"apollo"}] as never} />
 );
@@ -94,7 +94,7 @@ createRoot(document.getElementById("root")!).render(
   css = (await postcss([tailwind()]).process(readFileSync(file, "utf8"), { from: file })).css;
 }, 180_000);
 
-async function withPage<T>(width: number, fn: (p: Page) => Promise<T>): Promise<T> {
+async function withPage<T>(width: number, name: string, fn: (p: Page) => Promise<T>): Promise<T> {
   let browser: Browser | undefined;
   try {
     browser = await chromium.launch();
@@ -104,6 +104,7 @@ async function withPage<T>(width: number, fn: (p: Page) => Promise<T>): Promise<
     await page.setContent(
       `<!doctype html><html><head><style>${css}</style></head><body><div id="root"></div></body></html>`,
     );
+    await page.evaluate((n) => { (window as unknown as { __NAME: string }).__NAME = n; }, name);
     await page.addScriptTag({ content: js });
     await page.waitForFunction(() => (window as unknown as { __mounted?: boolean }).__mounted === true);
     await page.waitForSelector("aside", { state: "attached" });
@@ -116,10 +117,11 @@ async function withPage<T>(width: number, fn: (p: Page) => Promise<T>): Promise<
 }
 
 const NAME = "ABCDEFGHIJ KLMNOPQRST UVWXYZ0123 456789ABCD";
+const NAME_NOSPACE = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCD";
 
 // Measures the trigger inside `scope`: is the full name laid out with no
 // clipping, and how wide is the trigger relative to its column?
-function measure(scope: Locator) {
+function measure(scope: Locator, NAME: string) {
   return scope.evaluate((root, name) => {
     const btn = Array.from(root.querySelectorAll<HTMLElement>("button")).find((b) =>
       (b.textContent ?? "").replace(/\s+/g, " ").includes(name),
@@ -143,7 +145,11 @@ function measure(scope: Locator) {
       parseFloat(acs.borderLeftWidth) - parseFloat(acs.borderRightWidth);
     const rowEl = btn.parentElement!.parentElement!;
     const rcs = getComputedStyle(rowEl);
-    const bell = btn.parentElement!.nextElementSibling!.getBoundingClientRect();
+    const bellEl = aside.querySelector<HTMLElement>('button[aria-label="Notifications"]')!;
+    const bell = bellEl.getBoundingClientRect();
+    const bellInHeaderRow = rowEl.contains(bellEl);
+    const bellVisible = bell.width > 0 && bell.left >= aside.getBoundingClientRect().left && bell.right <= aside.getBoundingClientRect().right + 0.5;
+    const asideW = aside.getBoundingClientRect().width;
     const rowPadX = parseFloat(rcs.paddingLeft) + parseFloat(rcs.paddingRight);
     const rowGap = parseFloat(rcs.columnGap);
     const rowBorderX = parseFloat(rcs.borderLeftWidth) + parseFloat(rcs.borderRightWidth);
@@ -161,6 +167,9 @@ function measure(scope: Locator) {
       // make scrollHeight exceed clientHeight.
       labelHidden: span.scrollHeight > span.clientHeight + 1,
       bellWidth: bell.width,
+      bellInHeaderRow,
+      bellVisible,
+      asideW,
       rowPadX,
       rowGap,
       rowBorderX,
@@ -184,44 +193,67 @@ function expectContained(m: Awaited<ReturnType<typeof measure>>) {
   expect(m.labelInViewport).toBe(true);
   expect(m.overlapsNext).toBe(false);
   expect(m.labelHidden, "40-char name must be fully visible (SB-030)").toBe(false);
-  // Row padding (px-3 = 24) + gap-2 (8) + bell (>=38) leaves the trigger
-  // strictly narrower than the aside; it must still fill nearly all of it.
-  // The bell is a real 38px (44px on mobile) box, measured -- not an
-  // allowance -- so a max-w cap anywhere below the full column fails here.
+  // F038: the bell no longer shares the header row, so the trigger spans the
+  // FULL sidebar inner width: aside - border - row padding. It must not be
+  // reduced by a bell or gap. The bell stays reachable elsewhere in the aside.
+  expect(m.bellInHeaderRow, "bell must not steal width from the switcher row").toBe(false);
+  expect(m.bellVisible, "bell must remain reachable inside the sidebar").toBe(true);
   expect(m.bellWidth).toBeGreaterThanOrEqual(38);
-  const expected = m.asideInner - m.rowBorderX - m.rowPadX - m.rowGap - m.bellWidth;
+  const expected = m.asideInner - m.rowBorderX - m.rowPadX;
   expect(Math.abs(m.btnWidth - expected), `btn ${m.btnWidth} vs expected ${expected}`).toBeLessThanOrEqual(1);
+  // ...and that is the sidebar's inner width less only the 12px row padding each side.
+  expect(Math.abs(m.btnWidth - (m.asideW - 24)), `btn ${m.btnWidth} vs aside ${m.asideW}`).toBeLessThanOrEqual(2);
   // Vertical ceiling (documented in workspace-switcher.tsx): the label is
-  // capped at 4 lines, so the trigger can never exceed WORKSPACE_TRIGGER_MAX_H.
+  // capped at 6 lines, so the trigger can never exceed WORKSPACE_TRIGGER_MAX_H.
   expect(m.btnH).toBeLessThanOrEqual(TRIGGER_MAX_H);
 }
 
-// 4 lines x 20px (text-sm line-height) + py-1 (8) + 1px borders (2) = 90.
-const TRIGGER_MAX_H = 90;
+// 6 lines x 20px (text-sm line-height) + py-1 (8) + 1px borders (2) = 130.
+const TRIGGER_MAX_H = 130;
 
-describe("F007 SB-030 workspace switcher full width, 40-char name", () => {
-  it("test_SB_030_desktop_1280_name_fully_visible_and_trigger_fills_column", async () => {
-    await withPage(1280, async (p) => {
-      const m = await measure(p.locator("aside"));
-      expect(m.textOverflow).not.toBe("ellipsis");
-      expect(m.textInsideSpan).toBe(true);
-      expect(m.btnH).toBeGreaterThanOrEqual(m.btnScrollH - 1);
-      expect(m.title).toBe(NAME);
-      expectContained(m);
-    });
-  }, 60_000);
+const CASES: Array<[string, string]> = [["spaced", NAME], ["nospace", NAME_NOSPACE], ["short-words", "AAAAAAAA BBBBBBBB CCCCCCCC DDDDDDDD EEEEEEEE"]];
 
-  it("test_SB_030_375px_sheet_name_fully_visible_and_trigger_fills_column", async () => {
-    await withPage(375, async (p) => {
-      await p.getByRole("button", { name: "Open navigation" }).click();
-      const dialog = p.getByRole("dialog");
-      await dialog.waitFor({ state: "visible" });
-      const m = await measure(dialog);
-      expect(m.textOverflow).not.toBe("ellipsis");
-      expect(m.textInsideSpan).toBe(true);
-      expect(m.btnH).toBeGreaterThanOrEqual(m.btnScrollH - 1);
-      expect(m.title).toBe(NAME);
-      expectContained(m);
+describe("F007/F038 SB-030 workspace switcher full width, 40-char name", () => {
+  for (const width of [1440, 1280]) {
+    for (const [label, nm] of CASES) {
+      it(`test_SB_030_desktop_${width}_${label}_name_fully_visible_and_trigger_full_width`, async () => {
+        await withPage(width, nm, async (p) => {
+          const m = await measure(p.locator("aside"), nm);
+          expect(m.textOverflow).not.toBe("ellipsis");
+          expect(m.textInsideSpan).toBe(true);
+          expect(m.btnH).toBeGreaterThanOrEqual(m.btnScrollH - 1);
+          expect(m.title).toBe(nm);
+          expectContained(m);
+        });
+      }, 60_000);
+    }
+  }
+
+  for (const [label, nm] of CASES) {
+    it(`test_SB_030_375px_sheet_${label}_name_fully_visible_and_trigger_full_width`, async () => {
+      await withPage(375, nm, async (p) => {
+        await p.getByRole("button", { name: "Open navigation" }).click();
+        const dialog = p.getByRole("dialog");
+        await dialog.waitFor({ state: "visible" });
+        const m = await measure(dialog, nm);
+        expect(m.textOverflow).not.toBe("ellipsis");
+        expect(m.textInsideSpan).toBe(true);
+        expect(m.btnH).toBeGreaterThanOrEqual(m.btnScrollH - 1);
+        expect(m.title).toBe(nm);
+        expectContained(m);
+      });
+    }, 60_000);
+  }
+
+  it("test_SB_030_search_and_new_controls_still_fit_at_240px", async () => {
+    await withPage(1280, NAME, async (p) => {
+      const r = await p.locator("aside").evaluate((a) => {
+        const aw = a.getBoundingClientRect();
+        const btns = Array.from(a.querySelectorAll<HTMLElement>("button")).filter((b) => /Search|Notifications/.test((b.textContent ?? "") + (b.getAttribute("aria-label") ?? "")));
+        return btns.map((b) => { const x = b.getBoundingClientRect(); return { w: x.width, l: x.left - aw.left, r: aw.right - x.right, sh: b.scrollWidth - b.clientWidth }; });
+      });
+      expect(r.length).toBe(2);
+      for (const c of r) { expect(c.w).toBeGreaterThan(30); expect(c.l).toBeGreaterThanOrEqual(0); expect(c.r).toBeGreaterThanOrEqual(0); expect(c.sh).toBeLessThanOrEqual(1); }
     });
   }, 60_000);
 });

@@ -19,7 +19,7 @@ let js = "";
 const LONG = "ABCDEFGHIJ KLMNOPQRST UVWXYZ0123 456789ABCD";
 const SHORT = "Acme";
 // Documented ceiling from components/workspace-switcher.tsx.
-const CEILING_ROW_H = 90 + 12; // trigger max 90 + header row py-1.5
+const CEILING_ROW_H = 130 + 12; // trigger max 130 (6-line ceiling, F038) + header row py-1.5
 
 beforeAll(async () => {
   const dir = mkdtempSync(join(tmpdir(), "f036-"));
@@ -31,9 +31,8 @@ import { createRoot } from "react-dom/client";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
 import { WorkspaceSwitcherSkeleton } from "@/components/nav/figures/skeletons";
 const Row = ({ id, children }: any) => (
-  <aside style={{ width: 256 }}><div id={id} className="flex min-h-12 items-center gap-2 border-b px-3 py-1.5">
+  <aside style={{ width: 256 }}><div id={id} className="flex min-h-12 items-center border-b px-3 py-1.5">
     <div className="min-w-0 flex-1">{children}</div>
-    <span className="inline-flex h-[38px] w-[38px] shrink-0" />
   </div></aside>
 );
 const ws = (name: string) => [{ id: "w1", name, slug: "a" }];

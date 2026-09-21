@@ -420,7 +420,10 @@ function SidebarContent({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex min-h-12 items-center gap-2 border-b px-3 py-1.5">
+      {/* F038 (SB-030): the switcher owns the whole header row (full sidebar
+          inner width). The bell used to share this row and stole ~46px, which
+          forced a 40-char name to clip; it now sits beside Search below. */}
+      <div className="flex min-h-12 items-center border-b px-3 py-1.5">
         <div className="min-w-0 flex-1">
           {workspaceSwitcherSlot ?? (
             <WorkspaceSwitcher
@@ -429,15 +432,6 @@ function SidebarContent({
             />
           )}
         </div>
-        {notificationBellSlot ?? (
-          <NotificationBell
-            workspaceSlug={workspaceSlug}
-            workspaceId={currentWorkspaceId}
-            currentUserId={currentUser.id}
-            initialNotifications={initialNotifications}
-            initialUnreadCount={initialUnreadCount}
-          />
-        )}
       </div>
 
       <div className="flex flex-col gap-2 px-3 pt-3">
@@ -447,17 +441,28 @@ function SidebarContent({
           isGuest={isGuest}
           onNavigate={onNavigate}
         />
-        <button
-          type="button"
-          onClick={openSearch}
-          className="flex h-8 w-full items-center gap-2 rounded-md border bg-transparent px-2 text-sm font-medium text-muted-foreground transition-colors duration-200 hover:border-[var(--border-control-hover)] hover:bg-muted/50 hover:text-foreground"
-        >
-          <Search className="size-4 shrink-0" aria-hidden="true" />
-          <span className="flex-1 text-left">Search</span>
-          <kbd className="font-mono text-xs text-muted-foreground">
-            {isMac ? "⌘K" : "Ctrl K"}
-          </kbd>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={openSearch}
+            className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md border bg-transparent px-2 text-sm font-medium text-muted-foreground transition-colors duration-200 hover:border-[var(--border-control-hover)] hover:bg-muted/50 hover:text-foreground"
+          >
+            <Search className="size-4 shrink-0" aria-hidden="true" />
+            <span className="flex-1 text-left">Search</span>
+            <kbd className="font-mono text-xs text-muted-foreground">
+              {isMac ? "⌘K" : "Ctrl K"}
+            </kbd>
+          </button>
+          {notificationBellSlot ?? (
+            <NotificationBell
+              workspaceSlug={workspaceSlug}
+              workspaceId={currentWorkspaceId}
+              currentUserId={currentUser.id}
+              initialNotifications={initialNotifications}
+              initialUnreadCount={initialUnreadCount}
+            />
+          )}
+        </div>
       </div>
 
       {/* F253 (AS-491): anchor target for the onboarding tour's "sidebar"
