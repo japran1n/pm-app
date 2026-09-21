@@ -210,14 +210,9 @@ export function PortalQuestionnaire({
   // an unanswered question; if all are answered, land on the last section.
   const [currentSectionIndex, setCurrentSectionIndex] = useState(() => {
     const idx = sections.findIndex((sec) =>
-      sec.questions.some((q) => {
-        const a = answersByQuestionId.get(q.id);
-        return !(
-          a &&
-          (Boolean(a.answerText) ||
-            (a.answerOptions && a.answerOptions.length > 0))
-        );
-      }),
+      sec.questions.some(
+        (q) => !isBriefAnswerAnswered(q, answersByQuestionId.get(q.id)),
+      ),
     );
     return idx === -1 ? Math.max(0, sections.length - 1) : idx;
   });
@@ -276,16 +271,66 @@ export function PortalQuestionnaire({
     },
     [],
   );
+  // F023: latest drafts, so a failed write can be retried after its field
+  // unmounted (a remounted field's autosave hook believes the draft is saved).
+  const draftsRef = useRef<Record<string, Draft>>({});
+  const questionsRef = useRef(questions);
+  const briefIdRef = useRef(briefId);
+  const lockedRef = useRef(isLocked);
+  useEffect(() => {
+    questionsRef.current = questions;
+    briefIdRef.current = briefId;
+    lockedRef.current = isLocked;
+  });
+
   const flushAll = useCallback(async () => {
+    const results = new Map<string, boolean>();
     await Promise.all(
-      Array.from(flushersRef.current.values()).map((f) => f()),
+      Array.from(flushersRef.current.entries()).map(async ([id, f]) => {
+        results.set(id, await f());
+      }),
     );
     await Promise.all(Array.from(pendingSavesRef.current));
-  }, []);
+    // Retry any still-failed answer whose field could not (its own flush
+    // already retried and failed, or it is unmounted / freshly remounted).
+    const bid = briefIdRef.current;
+    if (!bid || lockedRef.current) return;
+    const retries = Array.from(failedIdsRef.current).filter(
+      (id) => results.get(id) !== false,
+    );
+    await Promise.all(
+      retries.map(async (id) => {
+        const q = questionsRef.current.find((x) => x.id === id);
+        const d = draftsRef.current[id];
+        if (!q || !d) return;
+        const text = d.text != null && d.text.trim() === "" ? null : d.text;
+        const opts = d.options && d.options.length > 0 ? d.options : null;
+        try {
+          const r = await saveBriefAnswer(bid, id, text, opts);
+          handleSaveResult(id, r?.success !== false);
+        } catch {
+          handleSaveResult(id, false);
+        }
+      }),
+    );
+  }, [handleSaveResult]);
 
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+
+  useEffect(() => {
+    draftsRef.current = drafts;
+  }, [drafts]);
+  const [retrying, setRetrying] = useState(false);
+  const handleRetry = async () => {
+    setRetrying(true);
+    try {
+      await flushAll();
+    } finally {
+      setRetrying(false);
+    }
+  };
 
   const handleDraftChange = useCallback((id: string, draft: Draft) => {
     setDrafts((prev) => ({ ...prev, [id]: draft }));
@@ -465,6 +510,20 @@ export function PortalQuestionnaire({
                   ? "Saved"
                   : ""}
           </p>
+          {anyFailed && (
+            <div>
+              <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleRetry}
+                    disabled={retrying}
+                    data-testid="questionnaire-retry-button"
+                  >
+                    {retrying ? "Retrying…" : "Retry"}
+                  </Button>
+            </div>
+          )}
         </section>
       )}
 
@@ -516,6 +575,18 @@ export function PortalQuestionnaire({
                 >
                   {SAVE_FAILED_MESSAGE}
                 </p>
+              )}
+              {anyFailed && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleRetry}
+                  disabled={retrying}
+                  data-testid="questionnaire-retry-button-review"
+                >
+                  {retrying ? "Retrying…" : "Retry"}
+                </Button>
               )}
               {submitError && (
                 <p

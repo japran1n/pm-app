@@ -42,12 +42,10 @@ function formatRelative(iso: string): string {
   return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 }
 
+// Only rendered for answers isBriefAnswerAnswered() accepted (see TeamAnswersView).
 function AnswerValue({ question, answer }: { question: BriefQuestion; answer: BriefAnswer }) {
   if (question.answerType === "single_choice" || question.answerType === "multi_choice") {
     const selected = answer.answerOptions ?? [];
-    if (selected.length === 0) {
-      return <p className="text-sm text-muted-foreground">Not answered yet</p>;
-    }
     return (
       <div className="flex flex-wrap gap-1.5">
         {selected.map((option) => (
@@ -57,10 +55,6 @@ function AnswerValue({ question, answer }: { question: BriefQuestion; answer: Br
         ))}
       </div>
     );
-  }
-
-  if (!isBriefAnswerAnswered(question, answer)) {
-    return <p className="text-sm text-muted-foreground">Not answered yet</p>;
   }
 
   if (question.answerType === "long_text") {
