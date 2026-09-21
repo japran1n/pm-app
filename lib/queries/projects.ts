@@ -27,6 +27,8 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolvePeople } from "@/lib/queries/people";
 import { getCurrentUser, getRequestClient } from "@/lib/auth/current-user";
+import { buildStatusBucketMaps } from "@/lib/portal/status-bucket";
+import type { StatusRowWithBucket } from "@/lib/queries/portal/shared";
 
 export type ProjectListItem = {
   id: string;
@@ -521,4 +523,142 @@ export async function getProjectHealthInputs(
   }
 
   return result;
+}
+
+// F004 (AS-050, AS-051, AS-052): the workspace home "My projects" card's
+// per-project progress data — scoped to projects the CALLING user is
+// actually a `project_members` row on (AS-052), not every project in the
+// workspace (that's `getWorkspaceProjects` above).
+//
+// `doneCount`/`overdueCount` reuse the same status_id → category
+// resolution (with the same "status_id not yet backfilled" name-match
+// fallback) that `getPortalProjects` already established via
+// `buildStatusBucketMaps` — a project can rename/replace its board
+// columns (F218+), so "done" must mean the column's CATEGORY, never a
+// literal status string. `overdueCount` counts non-done tasks whose
+// `due_date` is strictly before today (UTC calendar date, matching this
+// codebase's other date-only comparisons like `getPortalProjects`'s
+// `today < task.due_date` check — no per-caller timezone was specified in
+// this feature's clarified spec, unlike the RPC-based dashboard tiles in
+// lib/queries/dashboard.ts that do take one).
+//
+// `nextMilestoneName`/`nextMilestoneDate` are always `null`: this
+// feature's own clarified "Logic" section never describes how to derive a
+// milestone (no `project_phases`/milestone table read is specified), only
+// the three counts. AUTONOMOUS_DECISION: kept the two fields in the type
+// (as clarified) but left them unpopulated rather than guessing an
+// unspec'd milestone source — no assertion (AS-050/051/052) exercises
+// them. See handoff "Out-of-scope work needed" for wiring them up.
+export type MyProjectProgress = {
+  projectId: string;
+  projectName: string;
+  projectKey: string;
+  doneCount: number;
+  totalCount: number;
+  overdueCount: number;
+  nextMilestoneName: string | null;
+  nextMilestoneDate: string | null; // ISO date
+};
+
+export async function getMyProjectsProgress(
+  workspaceId: string,
+  userId: string,
+): Promise<MyProjectProgress[]> {
+  const supabase = await createClient();
+
+  // Step 1: project ids where `userId` is a project_member, joined to
+  // `projects` and scoped to this workspace + not soft-deleted (archived
+  // projects are soft-deleted via `deleted_at`, same convention as
+  // `getWorkspaceProjects`).
+  const { data: memberRows, error: memberError } = await supabase
+    .from("project_members")
+    .select("project_id, projects!inner(id, name, key, workspace_id, deleted_at)")
+    .eq("user_id", userId)
+    .eq("projects.workspace_id", workspaceId)
+    .is("projects.deleted_at", null);
+
+  if (memberError) {
+    logger.error("getMyProjectsProgress: failed to load member projects", { error: memberError });
+    return [];
+  }
+
+  type MemberRow = {
+    project_id: string;
+    projects: { id: string; name: string; key: string | null; workspace_id: string; deleted_at: string | null } | null;
+  };
+
+  const projects = ((memberRows ?? []) as unknown as MemberRow[])
+    .map((row) => row.projects)
+    .filter((p): p is NonNullable<MemberRow["projects"]> => p !== null);
+
+  if (projects.length === 0) return [];
+
+  const projectIds = projects.map((p) => p.id);
+
+  // Step 2: tasks + statuses for every member project, one batched query
+  // each (never per-project), same convention as getPortalProjects.
+  const [{ data: taskRows, error: taskError }, { data: statusRows, error: statusError }] =
+    await Promise.all([
+      supabase
+        .from("tasks")
+        .select("id, project_id, status, status_id, due_date")
+        .in("project_id", projectIds)
+        .is("deleted_at", null),
+      supabase
+        .from("project_statuses")
+        .select("id, project_id, name, category, client_bucket")
+        .in("project_id", projectIds),
+    ]);
+
+  if (taskError) {
+    logger.error("getMyProjectsProgress: failed to load tasks", { error: taskError });
+  }
+  if (statusError) {
+    logger.error("getMyProjectsProgress: failed to load statuses", { error: statusError });
+  }
+
+  const { categoryByStatusId, categoryByProjectAndName } = buildStatusBucketMaps(
+    (statusRows ?? []) as StatusRowWithBucket[],
+  );
+
+  const todayIso = new Date().toISOString().slice(0, 10);
+
+  const totalByProject = new Map<string, number>();
+  const doneByProject = new Map<string, number>();
+  const overdueByProject = new Map<string, number>();
+
+  for (const task of taskRows ?? []) {
+    totalByProject.set(task.project_id, (totalByProject.get(task.project_id) ?? 0) + 1);
+
+    const category =
+      (task.status_id ? categoryByStatusId.get(task.status_id) : undefined) ??
+      categoryByProjectAndName.get(`${task.project_id}:${task.status}`) ??
+      "not_started";
+
+    const isDone = category === "done";
+    if (isDone) {
+      doneByProject.set(task.project_id, (doneByProject.get(task.project_id) ?? 0) + 1);
+    }
+
+    if (!isDone && typeof task.due_date === "string" && task.due_date < todayIso) {
+      overdueByProject.set(task.project_id, (overdueByProject.get(task.project_id) ?? 0) + 1);
+    }
+  }
+
+  // Step 4: overdueCount desc, then projectName asc.
+  return projects
+    .map((project) => ({
+      projectId: project.id,
+      projectName: project.name,
+      projectKey: project.key ?? "",
+      doneCount: doneByProject.get(project.id) ?? 0,
+      totalCount: totalByProject.get(project.id) ?? 0,
+      overdueCount: overdueByProject.get(project.id) ?? 0,
+      nextMilestoneName: null,
+      nextMilestoneDate: null,
+    }))
+    .sort((a, b) => {
+      if (b.overdueCount !== a.overdueCount) return b.overdueCount - a.overdueCount;
+      return a.projectName.localeCompare(b.projectName);
+    });
 }
