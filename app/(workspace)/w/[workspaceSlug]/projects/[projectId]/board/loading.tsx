@@ -6,7 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 // swap from skeleton to <Board> doesn't shift the page's height/width.
 export default function BoardLoading() {
   return (
-    <div className="flex flex-col gap-4 p-6 pt-4 lg:p-8 lg:pt-8">
+    <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <Skeleton className="h-9 w-48" />
         <Skeleton className="h-9 w-32" />

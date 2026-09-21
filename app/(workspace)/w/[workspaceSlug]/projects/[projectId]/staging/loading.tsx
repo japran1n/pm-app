@@ -4,7 +4,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 // frame shape, same convention as the sibling hours/loading.tsx.
 export default function ProjectStagingLoading() {
   return (
-    <div className="flex flex-col gap-6 p-6 pt-4 lg:p-8 lg:pt-8">
+    <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-1">
         <Skeleton className="h-6 w-20" />
         <Skeleton className="h-4 w-96" />

@@ -4,7 +4,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 // page's header + column-list shape.
 export default function ColumnsSettingsLoading() {
   return (
-    <div className="flex flex-col gap-8 p-6 pt-4 lg:p-8 lg:pt-8">
+    <div className="flex flex-col gap-8">
       <div className="flex flex-col gap-1">
         <Skeleton className="h-6 w-36" />
       </div>
