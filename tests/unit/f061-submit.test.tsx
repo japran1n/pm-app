@@ -70,7 +70,7 @@ describe("F061 AS-124/AS-125: submitting calls submitBrief and shows success", (
 });
 
 describe("F061 AS-124: submit blocked until required questions are answered", () => {
-  it("does not reach the review/submit step and never calls submitBrief while a required question is unanswered", () => {
+  it("reaches review with a warning, Submit is disabled, and submitBrief is never called while a required question is unanswered", () => {
     const submitSpy = vi.spyOn(briefActions, "submitBrief").mockResolvedValue({ success: true });
 
     const questions: BriefQuestion[] = [
@@ -82,8 +82,16 @@ describe("F061 AS-124: submit blocked until required questions are answered", ()
 
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
 
-    expect(screen.getByTestId("questionnaire-required-error")).toBeInTheDocument();
-    expect(screen.queryByTestId("questionnaire-submit-button")).toBeNull();
+    // BR-041: Next is non-blocking; we land on the review step with a warning.
+    expect(screen.getByTestId("portal-brief-review")).toBeInTheDocument();
+    expect(screen.getByTestId("questionnaire-next-warning")).toBeInTheDocument();
+    // BR-044: the missing required question is highlighted.
+    expect(screen.getByTestId("review-missing-summary")).toBeInTheDocument();
+    expect(screen.getByTestId("review-not-answered")).toBeInTheDocument();
+    // BR-003 / AS-124: Submit is present but disabled and never calls submitBrief.
+    const submit = screen.getByTestId("questionnaire-submit-button");
+    expect(submit).toBeDisabled();
+    fireEvent.click(submit);
     expect(submitSpy).not.toHaveBeenCalled();
   });
 });
