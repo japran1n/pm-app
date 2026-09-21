@@ -15,6 +15,7 @@ import {
   LayoutTemplate,
   Trash2,
   HelpCircle,
+  Eye,
 } from "lucide-react";
 
 import { UserAvatar, personLabel, type UserAvatarPerson } from "@/components/user-avatar";
@@ -48,6 +49,7 @@ export function AccountMenu({
   currentUser,
   canManageWorkspace,
   isGuest = false,
+  hasClient = false,
   onNavigate,
 }: {
   workspaceSlug: string;
@@ -63,6 +65,13 @@ export function AccountMenu({
    * existing caller/test that predates this prop rendering the full menu
    * instead of crashing. */
   isGuest?: boolean;
+  /** F004 (SB-019, SB-006): gates "Preview as client" the same way the
+   * sidebar's own `team` array did — only shown when the workspace has a
+   * client AND the current user can manage the workspace
+   * (owner/admin). Default `false` keeps every existing caller/test that
+   * predates this prop rendering the menu without the item instead of
+   * crashing. */
+  hasClient?: boolean;
   onNavigate?: () => void;
 }) {
   const { theme, setTheme } = useTheme();
@@ -162,6 +171,20 @@ export function AccountMenu({
           <HelpCircle className="size-4" aria-hidden="true" />
           How this works
         </DropdownMenuItem>
+        {/* F004 (SB-019, SB-006): "Preview as client" — mirrors the exact
+            condition used in app-sidebar.tsx's own `team` array before this
+            feature: hasClient AND canManageWorkspace. The destination page
+            (preview-as-client/page.tsx) hard-gates to owner/admin itself, so
+            a member/viewer/guest would only bounce; the hasClient guard
+            prevents a meaningless link for workspaces that have no portal. */}
+        {hasClient && canManageWorkspace && (
+          <DropdownMenuItem
+            render={<Link href={`/w/${workspaceSlug}/preview-as-client`} onClick={onNavigate} />}
+          >
+            <Eye className="size-4" aria-hidden="true" />
+            Preview as client
+          </DropdownMenuItem>
+        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem
           disabled={isPending}
