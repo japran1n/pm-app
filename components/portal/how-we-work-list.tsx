@@ -8,11 +8,12 @@
 // each `doc_links` row renders as a small card with title, description,
 // and thumbnail (when one was given; a manual field, not an OG fetch —
 // see this feature's handoff for that call), never a bare `<a href>`.
-import { BookOpen, ExternalLink, HelpCircle, MessageSquareText, Rocket } from "lucide-react";
+import { BookOpen, HelpCircle, MessageSquareText, Rocket } from "lucide-react";
 
 import type { HowWeWorkEntry } from "@/lib/queries/how-we-work";
 import type { HowWeWorkDocKind } from "@/lib/validation/project-site";
 import { EmptyState } from "@/components/empty-state";
+import { DocLinksGrid } from "@/components/portal/doc-links-grid";
 
 const KIND_LABEL: Record<HowWeWorkDocKind, string> = {
   onboarding: "Getting started",
@@ -61,40 +62,9 @@ export function HowWeWorkList({ entries }: { entries: HowWeWorkEntry[] }) {
               <p className="whitespace-pre-line text-sm text-muted-foreground">{entry.content}</p>
             )}
             {entry.links.length > 0 && (
-              <ul
-                className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2"
-                data-testid="how-we-work-links"
-              >
-                {entry.links.map((link) => (
-                  <li key={link.id}>
-                    <a
-                      href={link.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="hover-surface flex flex-col gap-1 rounded-md border border-border p-3"
-                      data-testid="how-we-work-link-card"
-                    >
-                      {link.thumbnailUrl && (
-                        // eslint-disable-next-line @next/next/no-img-element -- an arbitrary, untrusted external URL a team member typed in manually; not a locally-optimizable asset.
-                        <img
-                          src={link.thumbnailUrl}
-                          alt=""
-                          className="h-28 w-full rounded object-cover"
-                        />
-                      )}
-                      <span className="flex items-center gap-1.5 text-sm font-medium text-foreground">
-                        {link.title}
-                        <ExternalLink className="size-3.5 text-muted-foreground" aria-hidden="true" />
-                      </span>
-                      {link.description && (
-                        <span className="line-clamp-2 text-xs font-medium uppercase tracking-[0.07em] text-muted-foreground">
-                          {link.description}
-                        </span>
-                      )}
-                    </a>
-                  </li>
-                ))}
-              </ul>
+              <div data-testid="how-we-work-links">
+                <DocLinksGrid links={entry.links} />
+              </div>
             )}
           </li>
         );

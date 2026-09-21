@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import "@testing-library/jest-dom/vitest";
 
 import { ProjectGuidesList } from "@/components/portal/project-guides-list";
-import type { Doc } from "@/lib/queries/docs";
+import type { Doc, DocLink } from "@/lib/queries/docs";
 
 afterEach(() => {
   cleanup();
@@ -85,5 +85,53 @@ describe("ProjectGuidesList", () => {
     const dialog = await screen.findByRole("dialog");
     expect(dialog).toHaveTextContent("How to review and approve a page");
     expect(dialog).toHaveTextContent(longContent);
+  });
+
+  // Fix ("Your site" -> Guides was empty for demo project, F114 kind
+  // gap): Guides now also renders `portal_guide` and `handover` docs,
+  // not only `training`.
+  it("renders portal_guide and handover docs alongside training docs", () => {
+    render(
+      <ProjectGuidesList
+        guides={[
+          makeDoc({ id: "doc-1", docKind: "training", title: "Training guide" }),
+          makeDoc({ id: "doc-2", docKind: "portal_guide", title: "Using this dashboard" }),
+          makeDoc({ id: "doc-3", docKind: "handover", title: "Handover walkthrough" }),
+        ]}
+      />,
+    );
+    expect(screen.getAllByTestId("project-guide-card")).toHaveLength(3);
+    expect(screen.getByText("Training guide")).toBeInTheDocument();
+    expect(screen.getByText("Using this dashboard")).toBeInTheDocument();
+    expect(screen.getByText("Handover walkthrough")).toBeInTheDocument();
+  });
+
+  it("shows a link count hint on a guide card that has doc_links, and renders them in the opened dialog", async () => {
+    const links: DocLink[] = [
+      {
+        id: "link-1",
+        docId: "doc-1",
+        url: "https://www.loom.com/share/example",
+        title: "Admin walkthrough",
+        description: "A five-minute walkthrough.",
+        thumbnailUrl: null,
+        position: 0,
+        createdAt: "2026-01-01T00:00:00Z",
+        updatedAt: "2026-01-01T00:00:00Z",
+      },
+    ];
+
+    render(
+      <ProjectGuidesList
+        guides={[{ ...makeDoc({ id: "doc-1", docKind: "handover", title: "Handover" }), links }]}
+      />,
+    );
+
+    expect(screen.getByText("1 link")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("project-guide-card"));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent("Admin walkthrough");
   });
 });

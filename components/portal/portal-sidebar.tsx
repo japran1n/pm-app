@@ -442,11 +442,18 @@ export function PortalSidebar({
 
   return (
     <>
-      {/* Desktop: fixed-width sticky sidebar, own scroll -- same
-          `sticky top-0` + `h-svh` shape as `app-sidebar.tsx`'s `<aside>`,
-          for the same reason (stays a real flex item, no compensating
-          margin needed on the main column). */}
-      <aside className="sticky top-0 hidden h-svh w-64 shrink-0 flex-col overflow-y-auto border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:flex">
+      {/* Desktop: fixed-width sidebar, own scroll. Preview-scroll fix: this
+          was `sticky top-0 h-svh`, sized to the browser viewport
+          regardless of where in the tree it sat -- correct when this row
+          is the outermost flex box, wrong once the client-preview banner
+          pushed it down (the sidebar's `h-svh` plus the banner's height
+          overflowed the real viewport and clipped the footer). The parent
+          row is now sized to exactly the remaining height by the layouts
+          above it, so `h-full` (own scroll via `overflow-y-auto`) fills
+          that box correctly in both the preview and non-preview case; the
+          `sticky` positioning is no longer needed since the row itself
+          doesn't scroll. */}
+      <aside className="hidden h-full w-64 shrink-0 flex-col overflow-y-auto border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:flex">
         <div className="flex flex-col gap-4 border-b border-sidebar-border p-4">
           {brand}
           {projectCard}

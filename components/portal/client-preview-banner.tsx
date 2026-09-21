@@ -37,7 +37,12 @@ export function ClientPreviewBanner({
     <div
       role="status"
       data-testid="client-preview-banner"
-      className="sticky top-0 z-50 flex items-center justify-between gap-4 bg-status-blocked px-4 py-2 text-sm font-medium text-white"
+      // Preview-scroll fix: this banner is now a plain flex item in the
+      // outer portal layout's column flex box (not a floating child of a
+      // scrolling container), so it no longer needs `sticky` to stay
+      // visible -- `shrink-0` keeps it from being compressed and lets the
+      // sibling shell claim the rest of the viewport height.
+      className="z-50 flex shrink-0 items-center justify-between gap-4 bg-status-blocked px-4 py-2 text-sm font-medium text-white"
     >
       <span className="flex items-center gap-2">
         <Eye className="size-4" aria-hidden="true" />

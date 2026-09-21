@@ -37,13 +37,29 @@
 // the guide's full title + full content -- same "no dead-end editor link"
 // reasoning as before, but the full text is now actually reachable instead
 // of permanently truncated.
+//
+// Fix ("Your site" -> Guides was empty for demo project, F114 kind gap):
+// F114 (missions/20260903-portal handoff, client-portal-phase-2-plan.md
+// items E-H) added `portal_guide` and `handover` as further "written for
+// the client to read" doc kinds, surfaced on the separate "How we work"
+// route (`how-we-work/page.tsx`, `HowWeWorkList`) -- but this Guides
+// section was never widened to match, so a project whose only
+// client-facing docs were `portal_guide`/`handover` (no `training` doc)
+// showed nothing here even though "How we work" had content. The caller
+// (`site/page.tsx`) now passes `training` + `portal_guide` + `handover`
+// docs; `docKind` is threaded through per-card (no longer implicitly
+// "always training") and each guide can carry its own `doc_links`
+// (F114's manual title/description/thumbnail entries -- e.g. a handover
+// doc's Loom walkthroughs), rendered via the same `DocLinksGrid`
+// `how-we-work-list.tsx` already uses, not a duplicated grid.
 "use client";
 
 import { useState } from "react";
-import { GraduationCap } from "lucide-react";
+import { BookOpen, GraduationCap, HelpCircle, type LucideIcon } from "lucide-react";
 
-import type { Doc } from "@/lib/queries/docs";
+import type { Doc, DocLink } from "@/lib/queries/docs";
 import { EmptyState } from "@/components/empty-state";
+import { DocLinksGrid } from "@/components/portal/doc-links-grid";
 import {
   Dialog,
   DialogContent,
@@ -52,8 +68,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
-export function ProjectGuidesList({ guides }: { guides: Doc[] }) {
-  const [openGuide, setOpenGuide] = useState<Doc | null>(null);
+export type ProjectGuide = Doc & { links?: DocLink[] };
+
+const GUIDE_ICON: Record<string, LucideIcon> = {
+  training: GraduationCap,
+  portal_guide: HelpCircle,
+  handover: BookOpen,
+};
+
+export function ProjectGuidesList({ guides }: { guides: ProjectGuide[] }) {
+  const [openGuide, setOpenGuide] = useState<ProjectGuide | null>(null);
 
   if (guides.length === 0) {
     return (
@@ -72,27 +96,35 @@ export function ProjectGuidesList({ guides }: { guides: Doc[] }) {
         className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
         data-testid="project-guides-list"
       >
-        {guides.map((doc) => (
-          <li key={doc.id}>
-            <button
-              type="button"
-              onClick={() => setOpenGuide(doc)}
-              className="hover-surface flex h-full w-full flex-col gap-2 rounded-lg border border-border p-4 text-left transition-all duration-150 hover:-translate-y-0.5"
-              data-testid="project-guide-card"
-            >
-              <GraduationCap
-                className="size-6 text-muted-foreground"
-                aria-hidden="true"
-              />
-              <span className="text-sm font-medium text-foreground">
-                {doc.title}
-              </span>
-              <span className="line-clamp-3 text-xs font-medium uppercase tracking-[0.07em] text-muted-foreground">
-                {doc.content ? doc.content : "No description yet."}
-              </span>
-            </button>
-          </li>
-        ))}
+        {guides.map((doc) => {
+          const Icon = GUIDE_ICON[doc.docKind] ?? GraduationCap;
+          return (
+            <li key={doc.id}>
+              <button
+                type="button"
+                onClick={() => setOpenGuide(doc)}
+                className="hover-surface flex h-full w-full flex-col gap-2 rounded-lg border border-border p-4 text-left transition-all duration-150 hover:-translate-y-0.5"
+                data-testid="project-guide-card"
+              >
+                <Icon
+                  className="size-6 text-muted-foreground"
+                  aria-hidden="true"
+                />
+                <span className="text-sm font-medium text-foreground">
+                  {doc.title}
+                </span>
+                <span className="line-clamp-3 text-xs font-medium uppercase tracking-[0.07em] text-muted-foreground">
+                  {doc.content ? doc.content : "No description yet."}
+                </span>
+                {doc.links && doc.links.length > 0 && (
+                  <span className="text-xs font-medium text-muted-foreground">
+                    {doc.links.length} {doc.links.length === 1 ? "link" : "links"}
+                  </span>
+                )}
+              </button>
+            </li>
+          );
+        })}
       </ul>
 
       <Dialog
@@ -108,6 +140,9 @@ export function ProjectGuidesList({ guides }: { guides: Doc[] }) {
               {openGuide?.content || "No description yet."}
             </DialogDescription>
           </DialogHeader>
+          {openGuide?.links && openGuide.links.length > 0 && (
+            <DocLinksGrid links={openGuide.links} />
+          )}
         </DialogContent>
       </Dialog>
     </>

@@ -138,15 +138,24 @@ export default async function PortalLayout({
   }
 
   return (
-    // P2-39: `h-svh overflow-hidden` mirrors the workspace app shell's own
-    // `flex h-svh` outer div (app/(workspace)/w/[workspaceSlug]/layout.tsx).
-    // Without it, `document.documentElement.scrollWidth` can exceed the
-    // viewport on narrow screens if any descendant grows wider than the
-    // available column — which the AS-517 no-scroll guard catches. The inner
-    // project shell (`p/[projectId]/layout.tsx`) adds its own `overflow-y-auto`
-    // scroll container on the main content area, so vertical content is still
-    // reachable; only unwanted horizontal overflow is clipped here.
-    <div className="h-svh overflow-hidden bg-background">
+    // P2-39 / preview-scroll fix: this used to be a bare `h-svh
+    // overflow-hidden` div with the (sticky) banner and `children` as
+    // direct siblings inside it. That made the inner project shell's own
+    // `h-svh` (`p/[projectId]/layout.tsx`) add up to viewport height PLUS
+    // the banner's ~62px, clipping that much off the bottom of the page
+    // (nothing after that point was reachable by scrolling, including the
+    // sidebar footer). Turning this into a column flex box and giving the
+    // banner `shrink-0` means the banner claims its own height up front;
+    // `children` (the inner shell) is sized to `flex-1 min-h-0`, i.e.
+    // exactly "viewport minus banner", so the inner shell's own internal
+    // `h-full` + `overflow-y-auto` main column has the correct box to
+    // scroll within. The banner no longer needs `sticky` for the same
+    // reason -- it's a real flex item at the top of a non-scrolling
+    // column, not a floating child of a scrolling one. The AS-517
+    // no-scroll guard is unchanged: this div is still `overflow-hidden`
+    // and still bounded to `h-svh`, so nothing here can grow wider than
+    // the viewport.
+    <div className="flex h-svh flex-col overflow-hidden bg-background">
       {isPreview && previewLabel && (
         <ClientPreviewBanner
           workspaceSlug={workspace.slug}

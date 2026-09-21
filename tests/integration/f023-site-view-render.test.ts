@@ -79,6 +79,8 @@ describe.skipIf(!haveCreds)("F023 portal site view renders only client-visible d
   let visibleLinkId: string;
   let visibleAccountId: string;
   let visibleTrainingDocId: string;
+  let visiblePortalGuideDocId: string;
+  let visibleHandoverDocId: string;
 
   const createdUserIds: string[] = [];
 
@@ -215,6 +217,46 @@ describe.skipIf(!haveCreds)("F023 portal site view renders only client-visible d
     });
     if (hiddenTrainingErr) throw new Error(`hidden training doc: ${hiddenTrainingErr.message}`);
 
+    const { data: portalGuideDoc, error: portalGuideErr } = await admin
+      .from("docs")
+      .insert({
+        workspace_id: workspaceId,
+        project_id: projectId,
+        title: "Using this dashboard",
+        content: "How to read the portal.",
+        client_visible: true,
+        doc_kind: "portal_guide",
+        created_by: ownerId,
+      })
+      .select("id")
+      .single();
+    if (portalGuideErr || !portalGuideDoc) throw new Error(`portal_guide doc: ${portalGuideErr?.message}`);
+    visiblePortalGuideDocId = portalGuideDoc.id;
+
+    const { data: handoverDoc, error: handoverErr } = await admin
+      .from("docs")
+      .insert({
+        workspace_id: workspaceId,
+        project_id: projectId,
+        title: "Running the site day to day",
+        content: "Handover walkthrough.",
+        client_visible: true,
+        doc_kind: "handover",
+        created_by: ownerId,
+      })
+      .select("id")
+      .single();
+    if (handoverErr || !handoverDoc) throw new Error(`handover doc: ${handoverErr?.message}`);
+    visibleHandoverDocId = handoverDoc.id;
+
+    const { error: handoverLinkErr } = await admin.from("doc_links").insert({
+      doc_id: handoverDoc.id,
+      url: "https://www.loom.com/share/example-walkthrough",
+      title: "Walkthrough video",
+      description: "A five-minute admin walkthrough.",
+    });
+    if (handoverLinkErr) throw new Error(`handover doc link: ${handoverLinkErr.message}`);
+
     const { error: processDocErr } = await admin.from("docs").insert({
       workspace_id: workspaceId,
       project_id: projectId,
@@ -336,27 +378,47 @@ describe.skipIf(!haveCreds)("F023 portal site view renders only client-visible d
     expect(result.data.some((a) => a.service === "Internal billing tool")).toBe(true);
   });
 
-  it("test_AS_051_the_view_renders_only_client_visible_training_docs_as_guides_and_excludes_other_kinds", async () => {
+  it("test_AS_051_the_view_renders_client_visible_training_portal_guide_and_handover_docs_as_guides_and_excludes_other_kinds", async () => {
     activeSession = clientSession;
-    const { getClientVisibleDocs } = await import("@/lib/queries/docs");
+    const { getClientVisibleDocs, getDocLinksForDocs } = await import("@/lib/queries/docs");
     const allVisibleDocs = await getClientVisibleDocs(workspaceId, projectId);
 
     // RLS already excludes both the hidden training doc and anything on a
     // portal-disabled/invisible project; the process doc proves the
     // page's own doc_kind filter (not RLS, not getClientVisibleDocs) is
-    // what keeps a client_visible non-training doc out of Guides.
+    // what keeps a client_visible non-guide doc out of Guides.
     expect(allVisibleDocs.map((d) => d.id)).toContain(visibleTrainingDocId);
+    expect(allVisibleDocs.map((d) => d.id)).toContain(visiblePortalGuideDocId);
+    expect(allVisibleDocs.map((d) => d.id)).toContain(visibleHandoverDocId);
     expect(allVisibleDocs.some((d) => d.title === "Internal training draft")).toBe(false);
     expect(allVisibleDocs.some((d) => d.title === "Internal process notes")).toBe(true);
 
-    const guides = allVisibleDocs.filter((d) => d.docKind === "training");
-    expect(guides.map((d) => d.id)).toEqual([visibleTrainingDocId]);
+    // Fix (Guides section widened past `training`-only, F114 kind gap):
+    // the page itself (site/page.tsx) filters to training + portal_guide
+    // + handover, the same three kinds this test now seeds.
+    const guideDocs = allVisibleDocs.filter(
+      (d) => d.docKind === "training" || d.docKind === "portal_guide" || d.docKind === "handover",
+    );
+    expect(guideDocs.map((d) => d.id).sort()).toEqual(
+      [visibleTrainingDocId, visiblePortalGuideDocId, visibleHandoverDocId].sort(),
+    );
+
+    const linksByDoc = await getDocLinksForDocs(guideDocs.map((d) => d.id));
+    const guides = guideDocs.map((doc) => ({ ...doc, links: linksByDoc.get(doc.id) ?? [] }));
 
     const html = renderToStaticMarkup(createElement(ProjectGuidesList, { guides }));
 
     expect(html).toContain("How to edit a page");
+    expect(html).toContain("Using this dashboard");
+    expect(html).toContain("Running the site day to day");
     expect(html).not.toContain("Internal process notes");
     expect(html).not.toContain("Internal training draft");
+
+    // The handover doc's own doc_links surface as a "N links" hint on its
+    // card (the full link grid renders once that card's dialog is open).
+    const handoverGuide = guides.find((g) => g.id === visibleHandoverDocId);
+    expect(handoverGuide?.links).toHaveLength(1);
+    expect(html).toContain("1 link");
   });
 
   it("test_AS_051_fails_when_the_client_visible_filter_is_removed_from_getClientVisibleDocs", async () => {

@@ -119,11 +119,21 @@ export default async function PortalProjectLayout({
     // (`app/(workspace)/w/[workspaceSlug]/layout.tsx`), for the same
     // reason. See `components/portal/portal-title-context.tsx`.
     <PortalTitleProvider>
-      {/* P2-39: `h-svh overflow-hidden` is the scroll guard (mirrors the
-          workspace shell's `flex h-svh`). The main content area below gets
-          `overflow-y-auto` so vertical page content is still reachable;
-          only unwanted horizontal growth is clipped. */}
-      <div className="flex h-svh overflow-hidden flex-col md:flex-row">
+      {/* P2-39 / preview-scroll fix: this used to be `h-svh overflow-hidden`
+          on the assumption it always sits directly under the viewport. It
+          doesn't when the outer `[workspaceSlug]/layout.tsx` also rendered
+          the (previously sticky) preview banner above it as an overlay --
+          `h-svh` here plus the banner's own height overflowed the real
+          viewport and clipped the bottom of the page. The outer layout is
+          now a column flex box that gives this shell exactly the
+          remaining height via `flex-1 min-h-0`, so this fills that box
+          (`h-full`) instead of re-measuring the viewport itself; the
+          non-preview case is unchanged because the outer layout still
+          reserves the full `h-svh` when there is no banner. The main
+          content area below still gets `overflow-y-auto` so vertical page
+          content is reachable; only unwanted horizontal growth is
+          clipped here (AS-517). */}
+      <div className="flex h-full min-h-0 flex-1 overflow-hidden flex-col md:flex-row">
         <PortalSidebar
           workspaceSlug={workspace.slug}
           workspaceId={workspace.id}

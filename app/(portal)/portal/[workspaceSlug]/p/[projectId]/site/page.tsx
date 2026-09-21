@@ -4,7 +4,7 @@ import { AlertTriangle, Paperclip, Inbox } from "lucide-react";
 
 import { getPortalProjects } from "@/lib/queries/portal";
 import { getClientVisiblePortalLinks, getClientVisiblePortalAccounts } from "@/lib/queries/project-site";
-import { getClientVisibleDocs } from "@/lib/queries/docs";
+import { getClientVisibleDocs, getDocLinksForDocs } from "@/lib/queries/docs";
 import { createClient } from "@/lib/supabase/server";
 import { EmptyState } from "@/components/empty-state";
 import { LaunchDayCard } from "@/components/portal/launch-day-card";
@@ -89,7 +89,24 @@ export default async function PortalSitePage({
 
   const links = linksResult.data;
   const accounts = accountsResult.data;
-  const guides = guidesRaw.filter((doc) => doc.docKind === "training");
+  // Fix ("Your site" -> Guides was empty for demo project, F114 kind
+  // gap): Guides used to be `doc_kind === 'training'` only. F114 added
+  // `portal_guide` and `handover` as further client-facing writing kinds
+  // (see project-guides-list.tsx's own header comment) -- a project
+  // whose client-facing docs were entirely `portal_guide`/`handover`
+  // (no `training` doc) showed nothing here even though that content
+  // existed and rendered fine on the "How we work" route. Widened to
+  // match, and each guide's `doc_links` (F114's manual link entries) are
+  // fetched the same way `getHowWeWorkEntries` already does
+  // (lib/queries/how-we-work.ts) rather than duplicating that query.
+  const guideDocs = guidesRaw.filter(
+    (doc) => doc.docKind === "training" || doc.docKind === "portal_guide" || doc.docKind === "handover",
+  );
+  const guideLinksByDoc = await getDocLinksForDocs(guideDocs.map((doc) => doc.id));
+  const guides = guideDocs.map((doc) => ({
+    ...doc,
+    links: guideLinksByDoc.get(doc.id) ?? [],
+  }));
 
   const basePath = `/portal/${workspaceSlug}/p/${projectId}`;
 
