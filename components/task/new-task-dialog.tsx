@@ -220,6 +220,7 @@ export function NewTaskDialog({
       const detail = (event as CustomEvent<NewTaskShortcutDetail>).detail;
       if (!detail || detail.projectId !== projectId) return;
       if (!canCreate) return;
+      detail.handled = true;
       setOpen(true);
     }
 

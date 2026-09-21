@@ -68,12 +68,20 @@ export function NewMenu({
   const newTask = () => {
     const projectId = pathname?.match(/\/projects\/([^/]+)/)?.[1];
     if (projectId) {
-      onNavigate?.();
+      // Handshake: NewTaskDialog is only mounted on the board and list
+      // subroutes. If no listener acknowledges, fall through to the
+      // project's board, which hosts the dialog, rather than no-opping.
+      const detail: NewTaskShortcutDetail = { projectId, handled: false };
       window.dispatchEvent(
         new CustomEvent<NewTaskShortcutDetail>(SHORTCUT_EVENTS.newTask, {
-          detail: { projectId },
+          detail,
         }),
       );
+      if (detail.handled) {
+        onNavigate?.();
+        return;
+      }
+      go(`/w/${workspaceSlug}/projects/${projectId}/board`);
       return;
     }
     go(`/w/${workspaceSlug}/projects`);

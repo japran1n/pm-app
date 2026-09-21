@@ -120,7 +120,15 @@ export const SHORTCUT_EVENTS = {
   openHelp: "pm-app:shortcut:open-help",
 } as const;
 
-export type NewTaskShortcutDetail = { projectId: string | null };
+export type NewTaskShortcutDetail = {
+  projectId: string | null;
+  /**
+   * Acknowledgement handshake: a listener that actually opens a dialog sets
+   * this to true synchronously, so a dispatcher can fall back (e.g. navigate)
+   * when nothing on the current route hosts a NewTaskDialog.
+   */
+  handled?: boolean;
+};
 
 // ---------------------------------------------------------------------
 // F245 (AS-469, AS-472): the ONE registry the help dialog renders from

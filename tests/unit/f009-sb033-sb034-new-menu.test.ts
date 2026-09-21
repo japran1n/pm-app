@@ -35,6 +35,9 @@ const STUBS: Record<string, string> = {
   "@/lib/actions/auth": `export async function signOut(){}`,
   "@/lib/actions/projects": `export async function reorderProject(){return {ok:true}} export async function createProject(){return {ok:true,data:{name:"x"}}}`,
   "@/lib/actions/templates": `export async function createProjectFromTemplate(){return {ok:true,data:{name:"x",taskCount:0}}}`,
+  "@/lib/actions/tasks": `export async function createTask(){return {ok:true}} export async function setTaskAssignees(){return {ok:true}}`,
+  "@/lib/actions/phases": `export async function getProjectPhaseOptions(){return {ok:true,data:{phases:[]}}} export async function setTaskPhase(){return {ok:true}}`,
+  "@/lib/actions/task-types": `export async function getProjectTaskTypeOptions(){return {ok:true,data:{taskTypes:[]}}}`,
   "@/components/project-favorite-button": `import React from "react"; export const ProjectFavoriteButton=()=>null;`,
 };
 
@@ -46,10 +49,13 @@ beforeAll(async () => {
     `import React from "react";
 import { createRoot } from "react-dom/client";
 import { AppSidebar } from "@/components/nav/app-sidebar";
+import { NewTaskDialog } from "@/components/task/new-task-dialog";
 createRoot(document.getElementById("root")!).render(
   <><AppSidebar workspaceSlug="acme" workspaces={[{id:"w1",name:"ABCDEFGHIJ KLMNOPQRST UVWXYZ0123 456789ABCD",slug:"acme"}]} currentWorkspaceId="w1"
     currentUser={{id:"u1",name:"T",email:"t@example.com",avatarUrl:null}} isGuest={!!(window as any).__guest} canManageWorkspace={(window as any).__manage!==false}
-    projects={[{id:"p1",name:"Apollo Launch",slug:"apollo"}] as never} /></>
+    projects={[{id:"p1",name:"Apollo Launch",slug:"apollo"}] as never} />
+  {/* F029: mirror the app, where NewTaskDialog is mounted ONLY on the project board and list routes (each page renders the real dialog). */}
+  {["board","list"].includes(String((window as any).__path || "").split("/")[5]) && String((window as any).__path).split("/")[4] === "p-42" && <NewTaskDialog projectId="p-42" assigneeOptions={[]} />}</>
 );
 (window as any).__mounted = true;`,
   );
@@ -179,18 +185,42 @@ for (const width of [1280, 375]) {
       });
     }, 60_000);
 
-    it(`test_SB_033_${where}_task_on_project_route_opens_that_projects_new_task_flow`, async () => {
-      await withPage(
-        width,
-        async (p) => {
-          const m = await openMenu(p, width);
-          await m.getByRole("menuitem", { name: "Task" }).click();
-          expect(await events(p)).toEqual([{ projectId: "p-42" }]);
-          expect(await pushes(p)).toEqual([]);
-        },
-        { path: "/w/acme/projects/p-42/board" },
-      );
-    }, 60_000);
+    // F029: NewTaskDialog is really mounted (as on the board/list pages), so
+    // the click must produce a visible New Task dialog, not just an event.
+    for (const sub of ["board", "list"]) {
+      it(`test_SB_033_${where}_task_on_${sub}_route_opens_real_new_task_dialog`, async () => {
+        await withPage(
+          width,
+          async (p) => {
+            const dialog = p.getByRole("dialog", { name: "New Task" });
+            expect(await dialog.count()).toBe(0);
+            const m = await openMenu(p, width);
+            await m.getByRole("menuitem", { name: "Task" }).click();
+            await dialog.waitFor({ state: "visible" });
+            expect(await pushes(p)).toEqual([]);
+            expect(await events(p)).toEqual([{ projectId: "p-42", handled: true }]);
+          },
+          { path: `/w/acme/projects/p-42/${sub}` },
+        );
+      }, 60_000);
+    }
+
+    // F029: on every other project subroute no NewTaskDialog is mounted. The
+    // click must not silently no-op: it navigates to the board, which hosts it.
+    for (const sub of ["brief", "settings", "docs", "hours", "architecture"]) {
+      it(`test_SB_033_${where}_task_on_${sub}_route_does_not_noop_navigates_to_board`, async () => {
+        await withPage(
+          width,
+          async (p) => {
+            const m = await openMenu(p, width);
+            await m.getByRole("menuitem", { name: "Task" }).click();
+            expect(await p.getByRole("dialog", { name: "New Task" }).count()).toBe(0);
+            expect(await pushes(p)).toEqual(["/w/acme/projects/p-42/board"]);
+          },
+          { path: `/w/acme/projects/p-42/${sub}` },
+        );
+      }, 60_000);
+    }
 
     it(`test_SB_033_${where}_task_outside_project_goes_to_projects_page`, async () => {
       await withPage(width, async (p) => {
