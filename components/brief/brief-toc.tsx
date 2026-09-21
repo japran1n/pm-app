@@ -18,11 +18,32 @@ export { slugifySection };
 
 const BOTTOM_TOLERANCE_PX = 4;
 
-function isAtPageBottom(): boolean {
-  const root = document.documentElement;
+/**
+ * Nearest ancestor that actually scrolls (the app shell scrolls inside a
+ * container, not the window). Null means the document/window scrolls.
+ */
+function findScrollParent(el: HTMLElement | null): HTMLElement | null {
+  let node = el?.parentElement ?? null;
+  while (node && node !== document.body && node !== document.documentElement) {
+    const { overflowY } = window.getComputedStyle(node);
+    if (overflowY === "auto" || overflowY === "scroll") return node;
+    node = node.parentElement;
+  }
+  return null;
+}
+
+function isScrolledToBottom(root: HTMLElement | null): boolean {
+  if (root) {
+    return (
+      root.scrollTop > 0 &&
+      root.scrollTop + root.clientHeight >=
+        root.scrollHeight - BOTTOM_TOLERANCE_PX
+    );
+  }
+  const doc = document.documentElement;
   return (
-    window.innerHeight + window.scrollY >=
-    root.scrollHeight - BOTTOM_TOLERANCE_PX
+    window.scrollY > 0 &&
+    window.innerHeight + window.scrollY >= doc.scrollHeight - BOTTOM_TOLERANCE_PX
   );
 }
 
@@ -39,11 +60,13 @@ export function BriefToc({ sections }: { sections: BriefTocSection[] }) {
     const last = ids[ids.length - 1];
     const visible = new Set<string>();
     let observer: IntersectionObserver | undefined;
+    const scrollRoot = findScrollParent(document.getElementById(ids[0]));
+    const scrollTarget: HTMLElement | Window = scrollRoot ?? window;
 
     const update = () => {
       // Short last sections can never reach the observer's trigger band, so
       // when the page is scrolled to the bottom the last one wins.
-      if (isAtPageBottom() && window.scrollY > 0) {
+      if (isScrolledToBottom(scrollRoot)) {
         setActive(last);
         return;
       }
@@ -60,17 +83,17 @@ export function BriefToc({ sections }: { sections: BriefTocSection[] }) {
           }
           update();
         },
-        { rootMargin: "0px 0px -60% 0px" },
+        { root: scrollRoot, rootMargin: "0px 0px -60% 0px" },
       );
       for (const id of ids) {
         const el = document.getElementById(id);
         if (el) observer.observe(el);
       }
     }
-    window.addEventListener("scroll", update, { passive: true });
+    scrollTarget.addEventListener("scroll", update, { passive: true });
     return () => {
       observer?.disconnect();
-      window.removeEventListener("scroll", update);
+      scrollTarget.removeEventListener("scroll", update);
     };
   }, [idsKey]);
 

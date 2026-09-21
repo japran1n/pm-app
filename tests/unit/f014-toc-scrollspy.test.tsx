@@ -90,6 +90,46 @@ describe("BriefToc scroll-spy", () => {
     expect(current()).toEqual(["品牌1/2"]);
   });
 
+  it("test_BR_032_container_scroll_makes_last_short_section_active", () => {
+    // Fixture: sections live inside an overflow-y:auto container (like
+    // workspace-main); window.scrollY stays 0 and must not drive anything.
+    document.body.innerHTML = "";
+    const container = document.createElement("div");
+    container.style.overflowY = "auto";
+    document.body.appendChild(container);
+    for (const id of uniqueSectionIds(names)) {
+      const el = document.createElement("div");
+      el.id = id;
+      container.appendChild(el);
+    }
+    Object.defineProperty(window, "scrollY", { value: 0, configurable: true });
+    Object.defineProperty(container, "clientHeight", { value: 600, configurable: true });
+    Object.defineProperty(container, "scrollHeight", { value: 2000, configurable: true });
+    let top = 0;
+    Object.defineProperty(container, "scrollTop", { get: () => top, configurable: true });
+    render(createElement(BriefToc, { sections }));
+    expect(current()).toEqual(["Brand & Voice1/2"]);
+
+    top = 700; // mid-scroll: not at bottom, nothing observed -> unchanged
+    act(() => {
+      fireEvent.scroll(container);
+    });
+    expect(current()).toEqual(["Brand & Voice1/2"]);
+
+    top = 1400; // 1400 + 600 >= 2000 - tolerance
+    act(() => {
+      fireEvent.scroll(container);
+    });
+    expect(current()).toEqual(["品牌1/2"]);
+
+    // a window scroll event alone must not be what drives the spy
+    top = 0;
+    act(() => {
+      fireEvent.scroll(window);
+    });
+    expect(current()).toEqual(["品牌1/2"]);
+  });
+
   it("test_BR_032_click_uses_auto_behavior_with_reduced_motion", () => {
     vi.stubGlobal("matchMedia", (q: string) => ({ matches: q.includes("reduce") }));
     render(createElement(BriefToc, { sections }));
