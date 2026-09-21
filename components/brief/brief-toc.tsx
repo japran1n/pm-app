@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { slugifySection } from "@/lib/brief/slugify-section";
 import { cn } from "@/lib/utils";
 
 export type BriefTocSection = {
@@ -10,16 +11,8 @@ export type BriefTocSection = {
   totalCount: number;
 };
 
-/** Stable DOM-id slug for a section name. Ids are `section-<slug>`. */
-export function slugifySection(name: string): string {
-  const slug = name
-    .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return slug || "section";
-}
+// Lives in lib/ so server components can call it (this file is "use client").
+export { slugifySection };
 
 const sectionDomId = (name: string) => `section-${slugifySection(name)}`;
 

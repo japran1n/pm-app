@@ -1,10 +1,8 @@
 import Link from "next/link";
 
 import { getBrief, getBriefWithRevisions } from "@/lib/queries/brief";
-import {
-  TeamAnswersView,
-  type TeamAnswersViewQuestion,
-} from "@/components/brief/team-answers-view";
+import type { TeamAnswersViewQuestion } from "@/components/brief/team-answers-view";
+import { BriefSectionedView } from "@/components/brief/brief-sectioned-view";
 import { GenerateDocumentButton } from "@/components/brief/generate-document-button";
 import { RequestApprovalButton } from "@/components/brief/request-approval-button";
 import { ApproveBriefButton } from "@/components/brief/approve-brief-button";
@@ -215,7 +213,7 @@ export default async function ProjectBriefPage({
         workspaceSlug={workspaceSlug}
         state={briefApproval?.state ?? null}
       />
-      <TeamAnswersView items={items} />
+      <BriefSectionedView items={items} />
     </div>
   );
 }
