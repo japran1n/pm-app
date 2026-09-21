@@ -14,3 +14,18 @@ Orchestrator decisions during /mission-run (no user prompts).
 | 2026-09-21 | QA-return | Derived from task_activity transitions — no new notification type in v1 |
 | 2026-09-21 | client requests | Visible to owner/admin only (AS-026) |
 | 2026-09-21 | F002/F003/F004 | Scheduled in parallel after F001 completes |
+
+## M0 Baseline (F001 — self-recorded by orchestrator)
+
+| Check | Result |
+|---|---|
+| `npx tsc --noEmit` | exit 0 ✓ |
+| `npx eslint . --max-warnings=0` | exit 0 ✓ |
+| `npx vitest run tests/unit` | 45 failed / 479 passed / 1 skipped (525 files) — pre-existing failures |
+| `npm run migrations:check` | exit 0 ✓ |
+| Migration count | 283 |
+| HEAD sha | 36bf368414a4aebc5aaed8a5b4904f58044f15c6 |
+
+Baseline is clean. Pre-existing 45 test file failures are the baseline — any increase would be a regression.
+
+## F001 — COMPLETE (orchestrator self-recorded baseline above, no code changes)

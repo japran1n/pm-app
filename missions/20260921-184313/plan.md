@@ -12,7 +12,7 @@ _Mission: 20260921-184313_ _Written: 2026-09-21_
 
 | # | Feature | Assertions |
 |---|---|---|
-| F001 [CLARIFIED-AUTO] | Record HEAD state: tsc, eslint, vitest, migrations:check → run-log | — |
+| F001 [CLARIFIED-AUTO] [COMPLETE] | Record HEAD state: tsc, eslint, vitest, migrations:check → run-log | — |
 
 ## M1 — New data layer
 
