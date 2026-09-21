@@ -331,7 +331,14 @@ describe("channel scroll-container layout (AS-073)", () => {
 
   it("test_AS_073_workspace_shell_uses_a_fixed_not_minimum_viewport_height", () => {
     const layout = read("app/(workspace)/w/[workspaceSlug]/layout.tsx");
-    expect(layout).toMatch(/className="flex h-svh"/);
+    // Bugfix (document-scroll-past-shell): the shell also carries
+    // min-h-0 + overflow-hidden now -- it's itself a flex item inside
+    // <body>'s `flex flex-col` (app/layout.tsx), so without min-h-0 a
+    // flex item's automatic minimum size lets long pages stretch this
+    // div past h-svh instead of respecting it. Still a fixed height
+    // (h-svh), never a minimum (min-h-svh) -- that's what this
+    // assertion actually guards.
+    expect(layout).toMatch(/className="flex h-svh min-h-0 overflow-hidden"/);
     expect(layout).not.toMatch(/className="flex min-h-svh"/);
   });
 

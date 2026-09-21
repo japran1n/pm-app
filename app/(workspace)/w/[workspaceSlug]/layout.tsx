@@ -403,7 +403,18 @@ export default async function WorkspaceLayout({
         // and scroll naturally instead of `<main>` being forced to exactly
         // `h-svh` and leaving empty space below short content.
       }
-      <div className="flex h-svh">
+      {
+        // min-h-0 here (on top of h-svh): this div is itself a flex item
+        // of <body> (app/layout.tsx: `min-h-full flex flex-col`). Without
+        // an explicit min-h-0, a flex item's automatic minimum size lets
+        // its content (long pages like project settings) stretch it
+        // taller than h-svh instead of respecting it, growing the
+        // document itself and making the whole page scroll past the
+        // sidebar/card shell instead of scrolling inside `<main>`'s own
+        // overflow-y-auto (WorkspaceMain, above). overflow-hidden backs
+        // this up so nothing here ever paints past the svh cap.
+      }
+      <div className="flex h-svh min-h-0 overflow-hidden">
         <AppSidebar
           workspaceSlug={workspaceSlug}
           // F016: `workspaces` stays as the back-compat fallback prop (see
