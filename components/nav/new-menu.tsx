@@ -12,7 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { NewProjectDialog } from "@/components/new-project-dialog";
-import { canCreateProject } from "@/lib/auth/permissions";
+import { canCreateProject, canWrite } from "@/lib/auth/permissions";
 import {
   SHORTCUT_EVENTS,
   type NewTaskShortcutDetail,
@@ -30,9 +30,14 @@ import { cn } from "@/lib/utils";
 //    closed, since closing it would unmount this component and the dialog.
 //  - No Request item (SB-060): requests are client-raised in the portal and
 //    there is no staff-side create flow.
-// Gating mirrors the flows: guests and viewers cannot create tasks or
-// projects (createProject/canWrite server checks); if nothing remains the
-// button is not rendered at all.
+// Each entry is gated by the SAME predicate as its server action, so the UI
+// can never offer something the server rejects (or hide something it allows):
+//  - Task    -> canWrite (createTask). canWrite allows owner/admin/member AND
+//    guest (guests create tasks in the projects they can see); it denies
+//    viewer and client. So a guest sees "Task" but not "Project".
+//  - Project -> canCreateProject (createProject + createProjectFromTemplate):
+//    owner/admin/member only.
+// If no entry remains the button is not rendered at all (SB-034).
 export function NewMenu({
   workspaceSlug,
   workspaceId,
@@ -52,10 +57,12 @@ export function NewMenu({
   // Fail closed: no resolvable membership (provider absent, or the layout's
   // memberships query failed) means no create entries. The `isGuest` prop is
   // an extra deny on top of the shared predicate, never an allow.
-  const canCreate =
+  const canCreateProjectEntry =
     !isGuest && membership !== null && canCreateProject({ role: membership.role });
+  const canCreateTaskEntry =
+    membership !== null && canWrite({ role: membership.role });
 
-  if (!canCreate) return null;
+  if (!canCreateProjectEntry && !canCreateTaskEntry) return null;
 
   const go = (href: string) => {
     onNavigate?.();
@@ -103,13 +110,13 @@ export function NewMenu({
           <span className="flex-1 text-left">New</span>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-56">
-          {canCreate && (
+          {canCreateTaskEntry && (
             <DropdownMenuItem onClick={newTask}>
               <CheckSquare className="size-4" aria-hidden="true" />
               Task
             </DropdownMenuItem>
           )}
-          {canCreate && (
+          {canCreateProjectEntry && (
             <DropdownMenuItem onClick={() => setProjectDialogOpen(true)}>
               <FolderPlus className="size-4" aria-hidden="true" />
               Project
@@ -117,7 +124,7 @@ export function NewMenu({
           )}
         </DropdownMenuContent>
       </DropdownMenu>
-      {canCreate && (
+      {canCreateProjectEntry && (
         <NewProjectDialog
           workspaceId={workspaceId}
           open={projectDialogOpen}

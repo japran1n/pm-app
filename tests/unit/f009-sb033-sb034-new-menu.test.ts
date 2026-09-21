@@ -225,26 +225,25 @@ for (const width of [1280, 375]) {
   });
 
   describe(`F009 SB-034 + New role gating (${where})`, () => {
-    it(`test_SB_034_${where}_guest_with_manage_flag_sees_no_new_button`, async () => {
+    it(`test_SB_034_${where}_guest_with_manage_flag_sees_task_only_no_project`, async () => {
       await withPage(
         width,
         async (p) => {
-          const s = await scope(p, width);
-          // Positive control: the neighbouring Search button IS there.
-          await s.getByRole("button", { name: /Search/ }).waitFor({ state: "visible" });
-          expect(await s.getByRole("button", { name: /^New$/ }).count()).toBe(0);
+          const m = await openMenu(p, width);
+          // F033: guests can create tasks (server gate canWrite) but not projects.
+          expect((await items(m)).map((t) => t.trim())).toEqual(["Task"]);
         },
         { guest: true, manage: true, role: "guest" },
       );
     }, 60_000);
 
-    it(`test_SB_034_${where}_guest_flag_alone_hides_button_even_if_role_is_member`, async () => {
+    it(`test_SB_034_${where}_guest_flag_alone_hides_project_entry_even_if_role_is_member`, async () => {
       await withPage(
         width,
         async (p) => {
-          const s = await scope(p, width);
-          await s.getByRole("button", { name: /Search/ }).waitFor({ state: "visible" });
-          expect(await s.getByRole("button", { name: /^New$/ }).count()).toBe(0);
+          const m = await openMenu(p, width);
+          // F033: guests can create tasks (server gate canWrite) but not projects.
+          expect((await items(m)).map((t) => t.trim())).toEqual(["Task"]);
         },
         { guest: true, manage: true, role: "member" },
       );
@@ -284,14 +283,16 @@ for (const width of [1280, 375]) {
       );
     }, 60_000);
     // F031: full role matrix, real Chromium, gated by the shared predicate.
-    for (const [role, shows] of Object.entries({ owner: true, admin: true, member: true, viewer: false, client: false, guest: false })) {
-      it(`test_SB_034_${where}_role_${role}_${shows ? "sees" : "hides"}_new_button`, async () => {
+    for (const [role, shows] of Object.entries({ owner: true, admin: true, member: true, viewer: false, client: false, guest: true })) {
+      it(`test_SB_034_${where}_role_${role}_${shows ? (role === "guest" ? "sees_task_only_in" : "sees") : "hides"}_new_button`, async () => {
         await withPage(
           width,
           async (p) => {
             if (shows) {
               const m = await openMenu(p, width);
-              expect((await items(m)).map((t) => t.trim())).toEqual(["Task", "Project"]);
+              expect((await items(m)).map((t) => t.trim())).toEqual(
+                role === "guest" ? ["Task"] : ["Task", "Project"],
+              );
             } else {
               const s = await scope(p, width);
               await s.getByRole("button", { name: /Search/ }).waitFor({ state: "visible" });

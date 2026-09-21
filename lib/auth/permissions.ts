@@ -181,8 +181,11 @@ export function canWrite(ctx: PermissionContext): boolean {
 // "+ New" menu, the create entry points that hang off it). This is the
 // guest-aware predicate `canWrite`'s doc comment above calls for: an
 // explicit ALLOW-list (owner/admin/member), so viewer, guest, client and any
-// role added later are denied by default. Consumed by both `createProject`
-// (server re-check) and the sidebar "+ New" menu so the two cannot drift.
+// role added later are denied by default. Consumed by every project-create
+// path -- `createProject` and `createProjectFromTemplate` (server
+// re-checks) and the sidebar "+ New" Project entry -- so they cannot drift.
+// The only other project insert, lib/seed/full-demo-project.ts, is an
+// operator CLI seed with no request context and is intentionally exempt.
 // Callers with no resolvable membership must fail closed themselves (there
 // is no role to pass) -- see components/nav/new-menu.tsx.
 export function canCreateProject(ctx: PermissionContext): boolean {

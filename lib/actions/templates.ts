@@ -36,7 +36,7 @@ import {
   type ProjectTemplateDeliverable,
 } from "@/lib/validation/templates";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
-import { canWrite } from "@/lib/auth/permissions";
+import { canCreateProject, canWrite } from "@/lib/auth/permissions";
 import { calculatePosition } from "@/lib/board/position";
 import { cloneTaskFields } from "@/lib/recurrence/clone-fields";
 import {
@@ -1362,10 +1362,12 @@ export async function createProjectFromTemplate(
     };
   }
 
-  if (!canWrite({ role: membership.role })) {
+  // FU-17 (SB-034): the shared project-create predicate, NOT canWrite --
+  // canWrite permits guests, who must not be able to create projects.
+  if (!canCreateProject({ role: membership.role })) {
     return {
       ok: false,
-      error: "Viewers don't have permission to create projects.",
+      error: "You don't have permission to create projects in this workspace.",
     };
   }
 
