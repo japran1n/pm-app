@@ -21,7 +21,7 @@ import { LayoutGrid, Network } from "lucide-react";
 
 import type { BoardComponent, BoardPage } from "@/lib/queries/architecture";
 import { ClientArchitectureBoard } from "@/components/architecture/client-board";
-import { ClientSitemapTree } from "@/components/architecture/client-sitemap-tree";
+import { ClientCanvasBoard } from "@/components/architecture/client-canvas-board";
 import { ClientComponentPanel } from "@/components/architecture/client-component-panel";
 
 type ViewMode = "board" | "tree";
@@ -92,7 +92,7 @@ export function ClientArchitectureBoardView({
       {view === "board" ? (
         <ClientArchitectureBoard pages={pages} components={components} />
       ) : (
-        <ClientSitemapTree pages={pages} />
+        <ClientCanvasBoard pages={pages} components={components} />
       )}
 
       {panelOpen ? (
