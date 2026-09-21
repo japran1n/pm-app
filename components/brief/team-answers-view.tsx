@@ -51,7 +51,7 @@ function AnswerValue({ question, answer }: { question: BriefQuestion; answer: Br
     return (
       <div className="flex flex-wrap gap-1.5">
         {selected.map((option) => (
-          <Badge key={option} variant="outline" className="rounded-md normal-case">
+          <Badge key={option} variant="outline" className="rounded-md px-2 py-0.5 text-sm font-normal normal-case tracking-normal">
             {option}
           </Badge>
         ))}

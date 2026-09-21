@@ -84,6 +84,31 @@ describe("brief actions in header", () => {
     expect(out).toContain("Generate Document");
   });
 
+  it("test_BR_024_disabled_trigger_has_accessible_name_with_reason", () => {
+    const out = renderToStaticMarkup(
+      createElement(GenerateDocumentButton, {
+        workspaceSlug: "w",
+        projectId: "p",
+        briefId: "b",
+        disabled: true,
+        disabledReason: "Answer all required questions first",
+      }),
+    );
+    const trigger = out.match(/<span[^>]*generate-document-disabled-trigger[^>]*>/)?.[0] ?? "";
+    expect(trigger).toContain('aria-disabled="true"');
+    expect(trigger).toMatch(/aria-label="[^"]*Answer all required questions first[^"]*"/);
+  });
+
+  it("test_BR_006_page_does_not_offer_generate_when_docs_lookup_errors", () => {
+    const src = readFileSync(
+      "app/(workspace)/w/[workspaceSlug]/projects/[projectId]/brief/page.tsx",
+      "utf8",
+    );
+    expect(src).toMatch(/error: existingDocError/);
+    expect(src).toMatch(/documentLookupFailed\s*\?/);
+    expect(src.indexOf("documentLookupFailed ?")).toBeLessThan(src.indexOf("<GenerateDocumentButton"));
+  });
+
   it("test_BR_024_generate_enabled_when_not_disabled", () => {
     const out = renderToStaticMarkup(
       createElement(GenerateDocumentButton, {

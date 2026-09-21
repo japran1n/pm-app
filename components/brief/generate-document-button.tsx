@@ -73,6 +73,9 @@ export function GenerateDocumentButton({
                 <span
                   // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- focus for tooltip over a disabled button
                   tabIndex={0}
+                  role="group"
+                  aria-disabled="true"
+                  aria-label={`Generate Document (unavailable): ${disabledReason}`}
                   data-testid="generate-document-disabled-trigger"
                 />
               }

@@ -124,15 +124,19 @@ export default async function ProjectBriefPage({
   // team page can both link to the doc (F073, AS-144) and show/control
   // its current sharing state without a second navigation.
   let existingDocument: { id: string; clientVisible: boolean } | null = null;
+  // A failed lookup is not "no document": offering Generate Document then
+  // could create a duplicate on a transient error.
+  let documentLookupFailed = false;
   if (hasAnswers) {
     const supabase = await createClient();
-    const { data: existingDoc } = await supabase
+    const { data: existingDoc, error: existingDocError } = await supabase
       .from("docs")
       .select("id, client_visible")
       .eq("project_id", projectId)
       .eq("doc_kind", "brief")
       .limit(1)
       .maybeSingle();
+    if (existingDocError) documentLookupFailed = true;
     existingDocument = existingDoc
       ? { id: existingDoc.id, clientVisible: existingDoc.client_visible }
       : null;
@@ -195,6 +199,10 @@ export default async function ProjectBriefPage({
                     <WithdrawApprovalButton briefId={brief.id} />
                   )}
                 </>
+              ) : documentLookupFailed ? (
+                <p className="text-sm text-muted-foreground" role="status">
+                  Couldn&apos;t check for an existing brief document. Reload to try again.
+                </p>
               ) : (
                 <GenerateDocumentButton
                   workspaceSlug={workspaceSlug}

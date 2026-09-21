@@ -97,3 +97,22 @@ describe("F054/AS-130: team sees an indication that an answer has been edited", 
     expect(screen.queryByText("Edited")).not.toBeInTheDocument();
   });
 });
+
+describe("BR-014: choice chips are readable, not badge-sized", () => {
+  it("renders selected options as sentence-case text-sm chips", () => {
+    const items: TeamAnswersViewQuestion[] = [
+      {
+        question: makeQuestion({ id: "q-c", answerType: "multi_choice", options: ["Modern look", "Bold"] }),
+        answer: makeAnswer({ id: "a-c", questionId: "q-c", answerText: null, answerOptions: ["Modern look"] }),
+        hasRevisions: false,
+      },
+    ];
+    render(<TeamAnswersView items={items} />);
+    const chip = screen.getByText("Modern look");
+    expect(chip.className).toContain("text-sm");
+    expect(chip.className).toContain("normal-case");
+    expect(chip.className).toContain("rounded-md");
+    expect(chip.className).not.toContain("text-[9px]");
+    expect(chip.className).not.toMatch(/(^|\s)uppercase/);
+  });
+});

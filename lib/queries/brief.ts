@@ -378,22 +378,8 @@ export async function getBriefWithRevisions(
     ),
   );
 
-  let namesById = new Map<string, string | null>();
-  if (profileIds.length > 0) {
-    const { data: profileRows, error: profilesError } = await supabase
-      .from("profiles")
-      .select("id, display_name")
-      .in("id", profileIds);
-
-    if (profilesError) {
-      logger.error("getBriefWithRevisions: failed to load profiles", {
-        error: profilesError,
-      });
-      return { ok: false, error: profilesError.message };
-    }
-
-    namesById = new Map((profileRows ?? []).map((p) => [p.id as string, p.display_name as string | null]));
-  }
+  // Profile-name lookup is non-fatal: on failure names stay null.
+  const namesById = await loadProfileNames(supabase, profileIds);
 
   const answer = mapBriefAnswerRow(
     answerRow,
