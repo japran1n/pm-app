@@ -28,7 +28,7 @@ const STUBS: Record<string, string> = {
   "next/link": `import React from "react"; export default function Link({href,prefetch,scroll,replace,children,...r}){return React.createElement("a",{href:typeof href==="string"?href:String(href),...r},children)}`,
   "next-themes": `export const useTheme=()=>({theme:"light",resolvedTheme:"light",setTheme(){}});`,
   "sonner": `export const toast={error(){},success(){}};`,
-  "@/components/notifications/notification-bell": `import React from "react"; export const NotificationBell=()=>React.createElement("div");`,
+  "@/components/notifications/notification-bell": `import React from "react"; export const NotificationBell=()=>React.createElement("button",{type:"button","aria-label":"Notifications",className:"inline-flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-md border border-border max-md:size-11"});`,
   "@/components/auth/membership-provider": `export const useMembership=()=>({role:"admin",hasClient:true,projectRoles:{}});`,
   "@/lib/actions/auth": `export async function signOut(){}`,
   "@/lib/actions/templates": `export async function listProjectTemplateOptions(){return []} export async function createProjectFromTemplate(){return {ok:true,data:{name:"x",taskCount:0}}}`,
@@ -141,6 +141,12 @@ function measure(scope: Locator) {
       aside.getBoundingClientRect().width -
       parseFloat(acs.paddingLeft) - parseFloat(acs.paddingRight) -
       parseFloat(acs.borderLeftWidth) - parseFloat(acs.borderRightWidth);
+    const rowEl = btn.parentElement!.parentElement!;
+    const rcs = getComputedStyle(rowEl);
+    const bell = btn.parentElement!.nextElementSibling!.getBoundingClientRect();
+    const rowPadX = parseFloat(rcs.paddingLeft) + parseFloat(rcs.paddingRight);
+    const rowGap = parseFloat(rcs.columnGap);
+    const rowBorderX = parseFloat(rcs.borderLeftWidth) + parseFloat(rcs.borderRightWidth);
     const nextSib = btn.parentElement!.parentElement!.nextElementSibling!.getBoundingClientRect();
     return {
       inRow: b.top >= row.top - 0.5 && b.bottom <= row.bottom + 0.5 && b.left >= row.left - 0.5 && b.right <= row.right + 0.5,
@@ -151,7 +157,13 @@ function measure(scope: Locator) {
       asideInner,
       rowInner: row.width,
       textOverflow: cs.textOverflow,
-      clipped: span.scrollWidth > span.clientWidth + 1 || btn.scrollWidth > btn.clientWidth + 1,
+      // Real (non-tautological) clamp check: with a line-clamp, hidden lines
+      // make scrollHeight exceed clientHeight.
+      labelHidden: span.scrollHeight > span.clientHeight + 1,
+      bellWidth: bell.width,
+      rowPadX,
+      rowGap,
+      rowBorderX,
       textInsideSpan: rects.every((x) => x.right <= sp.right + 1 && x.left >= sp.left - 1),
       btnWidth: b.width,
       colWidth: col.width,
@@ -171,18 +183,27 @@ function expectContained(m: Awaited<ReturnType<typeof measure>>) {
   expect(m.inRow, `btn ${m.btnRect} vs row ${m.rowRect}`).toBe(true);
   expect(m.labelInViewport).toBe(true);
   expect(m.overlapsNext).toBe(false);
+  expect(m.labelHidden, "40-char name must be fully visible (SB-030)").toBe(false);
   // Row padding (px-3 = 24) + gap-2 (8) + bell (>=38) leaves the trigger
   // strictly narrower than the aside; it must still fill nearly all of it.
-  expect(m.btnWidth).toBeLessThanOrEqual(m.asideInner);
-  expect(m.btnWidth).toBeGreaterThanOrEqual(m.asideInner - 24 - 8 - 44 - 1);
+  // The bell is a real 38px (44px on mobile) box, measured -- not an
+  // allowance -- so a max-w cap anywhere below the full column fails here.
+  expect(m.bellWidth).toBeGreaterThanOrEqual(38);
+  const expected = m.asideInner - m.rowBorderX - m.rowPadX - m.rowGap - m.bellWidth;
+  expect(Math.abs(m.btnWidth - expected), `btn ${m.btnWidth} vs expected ${expected}`).toBeLessThanOrEqual(1);
+  // Vertical ceiling (documented in workspace-switcher.tsx): the label is
+  // capped at 4 lines, so the trigger can never exceed WORKSPACE_TRIGGER_MAX_H.
+  expect(m.btnH).toBeLessThanOrEqual(TRIGGER_MAX_H);
 }
+
+// 4 lines x 20px (text-sm line-height) + py-1 (8) + 1px borders (2) = 90.
+const TRIGGER_MAX_H = 90;
 
 describe("F007 SB-030 workspace switcher full width, 40-char name", () => {
   it("test_SB_030_desktop_1280_name_fully_visible_and_trigger_fills_column", async () => {
     await withPage(1280, async (p) => {
       const m = await measure(p.locator("aside"));
       expect(m.textOverflow).not.toBe("ellipsis");
-      expect(m.clipped).toBe(false);
       expect(m.textInsideSpan).toBe(true);
       expect(m.btnH).toBeGreaterThanOrEqual(m.btnScrollH - 1);
       expect(m.title).toBe(NAME);
@@ -197,9 +218,9 @@ describe("F007 SB-030 workspace switcher full width, 40-char name", () => {
       await dialog.waitFor({ state: "visible" });
       const m = await measure(dialog);
       expect(m.textOverflow).not.toBe("ellipsis");
-      expect(m.clipped).toBe(false);
       expect(m.textInsideSpan).toBe(true);
       expect(m.btnH).toBeGreaterThanOrEqual(m.btnScrollH - 1);
+      expect(m.title).toBe(NAME);
       expectContained(m);
     });
   }, 60_000);

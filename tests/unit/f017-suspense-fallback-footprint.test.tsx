@@ -5,7 +5,6 @@ import { createElement } from "react";
 import {
   NavBadgeSkeleton,
   NotificationBellSkeleton,
-  WorkspaceSwitcherSkeleton,
 } from "@/components/nav/figures/skeletons";
 
 // F017 (AS-017, AS-020): the F016 figures' `<Suspense fallback={null}>`
@@ -32,13 +31,8 @@ describe("AS-017/AS-020: Suspense fallbacks hold each figure's exact footprint",
     expect(html).toMatch(/max-md:size-11/);
   });
 
-  it("WorkspaceSwitcherSkeleton reserves the sm-Button trigger's own box (h-[34px], w-full with no max-w cap, rounded-lg)", () => {
-    const html = renderToStaticMarkup(createElement(WorkspaceSwitcherSkeleton));
-    expect(html).toMatch(/h-\[34px\]/);
-    expect(html).toMatch(/w-full/);
-    expect(html).not.toMatch(/max-w-/);
-    expect(html).toMatch(/rounded-lg/);
-  });
+  // WorkspaceSwitcherSkeleton footprint is asserted by real-Chromium
+  // measurement in f036-switcher-skeleton-footprint.test.ts (F036).
 
   it("the workspace layout no longer uses fallback={null} for badge/bell/switcher figures, only for the flow-less tour figure", async () => {
     const fs = await import("node:fs");

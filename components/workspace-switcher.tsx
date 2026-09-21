@@ -22,6 +22,13 @@ export type SwitcherWorkspace = {
   logoUrl?: string | null;
 };
 
+// SB-030 vertical ceiling (F036): SB-030 forbids truncating a 40-char name, so
+// the trigger keeps wrapping (no line-clamp-2). Growth is bounded instead: the
+// label is clamped at 4 lines (a 40-char name needs 3 at the 256px sidebar), so
+// the trigger is at most 4 x 20px + py-1 (8) + borders (2) = 90px; the full
+// name is always available in the `title`. The Suspense skeleton reserves the
+// single-line 34px box; only names that wrap grow the row (documented trade-off).
+//
 // Client Component (smallest possible client boundary per tech-decisions.md
 // — the parent layout server-fetches the data, this component is just the
 // interactive dropdown). AS-012: lists every workspace the user is an
@@ -63,7 +70,7 @@ export function WorkspaceSwitcher({
                 size="sm"
               />
             ) : null}
-            <span className="min-w-0 flex-1 break-words font-mono uppercase">
+            <span className="line-clamp-4 min-w-0 flex-1 break-words font-mono uppercase">
               {current?.name ?? "Select workspace"}
             </span>
             <ChevronsUpDown className="ml-auto h-3.5 w-3.5 shrink-0 text-muted-foreground" />
