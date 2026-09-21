@@ -19,6 +19,8 @@ import {
 } from "lucide-react";
 
 import { UserAvatar, personLabel, type UserAvatarPerson } from "@/components/user-avatar";
+import { toast } from "sonner";
+
 import { signOut } from "@/lib/actions/auth";
 import {
   DropdownMenu,
@@ -79,7 +81,12 @@ export function AccountMenu({
 
   function handleSignOut() {
     startTransition(async () => {
-      await signOut();
+      try {
+        const result = await signOut();
+        if (result && result.ok === false) toast.error(result.error);
+      } catch {
+        toast.error("Couldn't sign out. Please try again.");
+      }
     });
   }
 

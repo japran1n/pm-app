@@ -43,14 +43,15 @@ describe("signOut (AS-022: session is fully cleared on sign-out)", () => {
     expect(redirectMock).toHaveBeenCalledWith("/sign-in");
   });
 
-  it("AS-022 (failure case): still redirects to /sign-in even if Supabase returns an error, so the user is never stranded on a workspace-scoped page believing they signed out", async () => {
+  it("SB-015 (failure case): when Supabase returns an error, signOut does NOT redirect and returns an error result", async () => {
     signOutSpy.mockResolvedValueOnce({ error: { message: "network blip" } });
 
     const { signOut } = await import("@/lib/actions/auth");
 
-    await expect(signOut()).rejects.toThrow("NEXT_REDIRECT:/sign-in");
+    const result = await signOut();
 
-    expect(signOutSpy).toHaveBeenCalledTimes(1);
-    expect(redirectMock).toHaveBeenCalledWith("/sign-in");
+    expect(result).toEqual({ ok: false, error: expect.any(String) });
+    expect(redirectMock).not.toHaveBeenCalled();
+    expect(JSON.stringify(result)).not.toContain("network blip");
   });
 });

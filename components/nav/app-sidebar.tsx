@@ -33,6 +33,8 @@ import {
 } from "@/components/ui/sheet";
 import { WorkspaceSwitcher, type SwitcherWorkspace } from "@/components/workspace-switcher";
 import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
+
 import { signOut } from "@/lib/actions/auth";
 import type { UserAvatarPerson } from "@/components/user-avatar";
 // F208 (AS-379): the notification bell — mounted here since this app has
@@ -767,7 +769,12 @@ export function SignOutButton() {
 
   function handleClick() {
     startTransition(async () => {
-      await signOut();
+      try {
+        const result = await signOut();
+        if (result && result.ok === false) toast.error(result.error);
+      } catch {
+        toast.error("Couldn't sign out. Please try again.");
+      }
     });
   }
 

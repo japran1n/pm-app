@@ -15,6 +15,8 @@
 import { useTransition } from "react";
 import { LogOut, Loader2 } from "lucide-react";
 
+import { toast } from "sonner";
+
 import { signOut } from "@/lib/actions/auth";
 import { Button } from "@/components/ui/button";
 
@@ -28,7 +30,12 @@ export function SignOutButton({ workspaceSlug }: { workspaceSlug: string }) {
 
   function handleClick() {
     startTransition(async () => {
-      await signOut(workspaceSlug);
+      try {
+        const result = await signOut(workspaceSlug);
+        if (result && result.ok === false) toast.error(result.error);
+      } catch {
+        toast.error("Couldn't sign out. Please try again.");
+      }
     });
   }
 

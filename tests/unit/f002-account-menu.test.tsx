@@ -17,6 +17,9 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: () => {}, refresh: () => {} }),
 }));
 
+const toastErrorMock = vi.fn();
+vi.mock("sonner", () => ({ toast: { error: (...a: unknown[]) => toastErrorMock(...a) } }));
+
 const signOutMock = vi.fn();
 vi.mock("@/lib/actions/auth", () => ({
   signOut: (...args: unknown[]) => signOutMock(...args),
@@ -113,6 +116,49 @@ describe("test_SB_015_sign_out_works_from_menu", () => {
     );
 
     resolveSignOut();
+  });
+});
+
+describe("test_SB_015_sign_out_failure_path", () => {
+  async function openAndClickSignOut() {
+    render(createElement(AccountMenu, { ...baseProps, canManageWorkspace: true }));
+    fireEvent.click(screen.getByRole("button", { name: /account menu/i }));
+    const menu = await screen.findByRole("menu");
+    const item = within(menu).getByText("Sign out").closest('[role="menuitem"]')!;
+    fireEvent.click(item);
+  }
+
+  // Re-query each time: the menu may close/remount after the click, so a
+  // held element reference can be stale.
+  function signOutItemNow() {
+    const menuNow = screen.queryByRole("menu");
+    return menuNow
+      ? within(menuNow).queryByText("Sign out")?.closest('[role="menuitem"]') ?? null
+      : null;
+  }
+
+  it("a rejected signOut shows an error and re-enables the menu item", async () => {
+    signOutMock.mockRejectedValue(new Error("boom"));
+    await openAndClickSignOut();
+    await waitFor(() => expect(toastErrorMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => {
+      const item = signOutItemNow();
+      // Either the menu closed (nothing stuck disabled) or the item is enabled.
+      if (item) expect(item.getAttribute("data-disabled")).toBeNull();
+    });
+  });
+
+  it("an {ok:false} result shows the error and re-enables the menu item", async () => {
+    signOutMock.mockResolvedValue({ ok: false, error: "Couldn't sign out. Please try again." });
+    await openAndClickSignOut();
+    await waitFor(() =>
+      expect(toastErrorMock).toHaveBeenCalledWith("Couldn't sign out. Please try again."),
+    );
+    await waitFor(() => {
+      const item = signOutItemNow();
+      // Either the menu closed (nothing stuck disabled) or the item is enabled.
+      if (item) expect(item.getAttribute("data-disabled")).toBeNull();
+    });
   });
 });
 
