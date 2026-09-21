@@ -15,10 +15,14 @@
 // JS needed — this is plain markup with inline `backgroundColor` opacity.
 import type { HeatmapGrid } from "@/lib/time/team-heatmap-data";
 import { formatHoursFixed } from "@/lib/format";
+import { UserAvatar } from "@/components/user-avatar";
 
 export type TeamHeatmapPerson = {
   userId: string;
   label: string;
+  name?: string | null;
+  email?: string | null;
+  avatarUrl?: string | null;
 };
 
 export function TeamHeatmap({
@@ -29,6 +33,7 @@ export function TeamHeatmap({
   people: TeamHeatmapPerson[];
 }) {
   const labelByUserId = new Map(people.map((p) => [p.userId, p.label]));
+  const personByUserId = new Map(people.map((p) => [p.userId, p]));
 
   if (grid.rows.length === 0 || grid.columns.length === 0) {
     return <p className="text-sm text-muted-foreground">No data for this range.</p>;
@@ -57,13 +62,25 @@ export function TeamHeatmap({
         <tbody>
           {grid.rows.map((row) => {
             const personLabel = labelByUserId.get(row.userId) ?? "Unknown member";
+            const person = personByUserId.get(row.userId);
             return (
               <tr key={row.userId}>
                 <th
                   scope="row"
                   className="sticky left-0 whitespace-nowrap bg-background pr-2 text-left font-medium"
                 >
-                  {personLabel}
+                  <span className="flex items-center gap-2">
+                    <UserAvatar
+                      className="size-5"
+                      person={{
+                        id: row.userId,
+                        name: person?.name ?? personLabel,
+                        email: person?.email,
+                        avatarUrl: person?.avatarUrl,
+                      }}
+                    />
+                    <span>{personLabel}</span>
+                  </span>
                 </th>
                 {row.cells.map((cell) => {
                   const intensity =

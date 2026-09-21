@@ -33,6 +33,7 @@ import { getWorkspaceTimeByPerson, getWorkspaceTimeByPersonAndDay } from "@/lib/
 import { getPeriodShortcuts } from "@/lib/time/period-shortcuts";
 import { buildTeamHeatmapGrid, type PersonDayMinutes } from "@/lib/time/team-heatmap-data";
 import { TeamHeatmap } from "@/components/time/team-heatmap";
+import { UserAvatar } from "@/components/user-avatar";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -239,8 +240,17 @@ export default async function TimeReportPage({
                       <Link
                         href={drilldownHref}
                         data-testid="person-row-link"
-                        className="flex flex-col px-4 py-2"
+                        className="flex items-center gap-2 py-2 pr-3"
                       >
+                        <UserAvatar
+                          size="sm"
+                          person={{
+                            id: member.userId,
+                            name: member.name,
+                            email: member.email,
+                            avatarUrl: member.avatarUrl,
+                          }}
+                        />
                         <span className="font-medium underline-offset-2 hover:underline">
                           {label}
                         </span>
@@ -271,6 +281,9 @@ export default async function TimeReportPage({
             people={members.active.map((m) => ({
               userId: m.userId,
               label: m.name ?? m.email ?? "Unknown member",
+              name: m.name,
+              email: m.email,
+              avatarUrl: m.avatarUrl,
             }))}
           />
         </div>
