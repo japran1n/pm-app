@@ -26,6 +26,7 @@ import {
   createTaskFromTemplateSchema,
   renameTemplateSchema,
   deleteTemplateSchema,
+  setDefaultTemplateSchema,
   taskTemplatePayloadSchema,
   saveProjectAsTemplateSchema,
   createProjectFromTemplateSchema,
@@ -749,6 +750,204 @@ export async function deleteTemplate(
   return { ok: true, data: { id: parsed.data.templateId } };
 }
 
+// --- setDefaultTemplate -------------------------------------------------------
+
+export type SetDefaultTemplateResult = ActionResult<{
+  workspaceId: string;
+  templateId: string | null;
+}>;
+
+// F001: sets (or clears, when `templateId` is null) the workspace's
+// default `kind='project'` template — preselected by new-project-dialog's
+// "Start from template" tab. Same permission rule renameTemplate/
+// deleteTemplate already use (creator or workspace admin/owner), since
+// "is the default template" is template metadata, same category as its
+// name. `is_default` is scoped to `kind='project'` templates only (the
+// migration's partial unique index is `(workspace_id, kind) where
+// is_default`), so clearing/setting one template's default can never
+// touch a `kind='task'` row's own (nonexistent) default state.
+export async function setDefaultTemplate(
+  workspaceId: string,
+  templateId: string | null,
+): Promise<SetDefaultTemplateResult> {
+  const parsed = setDefaultTemplateSchema.safeParse({
+    workspaceId,
+    templateId,
+  });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid template.",
+    };
+  }
+
+  const { user } = await getCurrentUser();
+
+  if (!user) {
+    return {
+      ok: false,
+      error: "You must be signed in to set a default template.",
+    };
+  }
+
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
+  const admin = createAdminClient();
+
+  const membership = await requireActiveMembership(
+    admin,
+    parsed.data.workspaceId,
+    user.id,
+  );
+
+  if (!membership.ok) {
+    return {
+      ok: false,
+      error: "You don't have permission to change templates in this workspace.",
+    };
+  }
+
+  // Clearing the default: unset whichever `kind='project'` template in
+  // this workspace currently holds it (at most one, per the partial
+  // unique index), no target template row to authorize against — any
+  // active non-guest member with write access may clear it, mirroring
+  // canWrite's own bar for the other template-management controls, since
+  // there's no single "creator" to defer to once nothing is selected.
+  if (parsed.data.templateId === null) {
+    if (!canWrite({ role: membership.role })) {
+      return {
+        ok: false,
+        error: "Viewers don't have permission to change templates.",
+      };
+    }
+
+    const { error: clearError } = await admin
+      .from("task_templates")
+      .update({ is_default: false })
+      .eq("workspace_id", parsed.data.workspaceId)
+      .eq("kind", "project")
+      .eq("is_default", true);
+
+    if (clearError) {
+      logger.error("setDefaultTemplate: clear failed", { error: clearError });
+      return {
+        ok: false,
+        error: "Something went wrong. Please try again in a moment.",
+      };
+    }
+
+    const { data: workspaceRow } = await admin
+      .from("workspaces")
+      .select("slug")
+      .eq("id", parsed.data.workspaceId)
+      .maybeSingle();
+
+    if (workspaceRow?.slug) {
+      try {
+        revalidatePath(`/w/${workspaceRow.slug}`, "layout");
+      } catch (revalidateError) {
+        logger.error("setDefaultTemplate: revalidatePath failed (non-fatal)", { error: revalidateError });
+      }
+    }
+
+    return {
+      ok: true,
+      data: { workspaceId: parsed.data.workspaceId, templateId: null },
+    };
+  }
+
+  const { data: templateRow, error: templateError } = await admin
+    .from("task_templates")
+    .select("id, workspace_id, kind, created_by")
+    .eq("id", parsed.data.templateId)
+    .maybeSingle();
+
+  if (templateError || !templateRow) {
+    return { ok: false, error: "Template not found." };
+  }
+
+  if (templateRow.workspace_id !== parsed.data.workspaceId) {
+    return { ok: false, error: "Template not found." };
+  }
+
+  if (templateRow.kind !== "project") {
+    return {
+      ok: false,
+      error: "Only project templates can be set as the default.",
+    };
+  }
+
+  const isCreator = templateRow.created_by === user.id;
+  const isAdminOrOwner =
+    membership.role === "owner" || membership.role === "admin";
+
+  if (!isCreator && !isAdminOrOwner) {
+    return {
+      ok: false,
+      error: "Only the template's creator or a workspace admin can set it as default.",
+    };
+  }
+
+  // Unset any existing default first, then set the new one — two
+  // statements rather than relying on the partial unique index to
+  // reject a would-be second default, since an UPSERT-style "set this
+  // one, unset every other" can't be expressed as a single UPDATE
+  // without an unsupported self-referencing WHERE. The unique index
+  // still backstops this against a concurrent race (the second
+  // statement below would fail its own constraint if another request
+  // won first), same defense-in-depth posture every other write path in
+  // this file already has on top of its app-level checks.
+  const { error: clearError } = await admin
+    .from("task_templates")
+    .update({ is_default: false })
+    .eq("workspace_id", parsed.data.workspaceId)
+    .eq("kind", "project")
+    .eq("is_default", true);
+
+  if (clearError) {
+    logger.error("setDefaultTemplate: clear-existing-default failed", { error: clearError });
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  const { error: setError } = await admin
+    .from("task_templates")
+    .update({ is_default: true })
+    .eq("id", parsed.data.templateId);
+
+  if (setError) {
+    logger.error("setDefaultTemplate: set failed", { error: setError });
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  const { data: workspaceRow } = await admin
+    .from("workspaces")
+    .select("slug")
+    .eq("id", parsed.data.workspaceId)
+    .maybeSingle();
+
+  if (workspaceRow?.slug) {
+    try {
+      revalidatePath(`/w/${workspaceRow.slug}`, "layout");
+    } catch (revalidateError) {
+      logger.error("setDefaultTemplate: revalidatePath failed (non-fatal)", { error: revalidateError });
+    }
+  }
+
+  return {
+    ok: true,
+    data: {
+      workspaceId: parsed.data.workspaceId,
+      templateId: parsed.data.templateId,
+    },
+  };
+}
+
 // --- saveProjectAsTemplate ---------------------------------------------------
 // F184 (AS-333 setup): the "how does a project-kind template originate"
 // question the spec's draft scope left open. Mirrors saveTaskAsTemplate
@@ -832,10 +1031,14 @@ export async function saveProjectAsTemplate(
     };
   }
 
+  // F001: `parent_task_id`/`phase_id` are read alongside the existing
+  // clonable fields so the payload can capture the project's subtask
+  // hierarchy (AS: children) and per-task phase (AS: phase name) — see
+  // the tree-building and phase-name-resolution below.
   const { data: taskRows, error: taskError } = await admin
     .from("tasks")
     .select(
-      "id, title, description, description_json, priority, tags, estimate_minutes, status, position",
+      "id, title, description, description_json, priority, tags, estimate_minutes, status, position, parent_task_id, phase_id",
     )
     .eq("project_id", parsed.data.projectId)
     .is("deleted_at", null)
@@ -892,7 +1095,7 @@ export async function saveProjectAsTemplate(
   // already handles.
   const { data: phaseRows, error: phaseError } = await admin
     .from("project_phases")
-    .select("name, client_description, client_visible")
+    .select("id, name, client_description, client_visible")
     .eq("project_id", parsed.data.projectId)
     .order("position", { ascending: true });
 
@@ -950,8 +1153,31 @@ export async function saveProjectAsTemplate(
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
 
-  const payload: ProjectTemplatePayload = {
-    tasks: sortedTasks.map((row) => ({
+  // F001: phase_id -> phase name, so each task's `phase` field in the
+  // payload can be a name (the join key `create_project_from_template`
+  // matches against `p_phases[].name`, since a template's phases don't
+  // have real ids until the RPC creates them for a NEW project).
+  const phaseNameById = new Map<string, string>();
+  for (const row of phaseRows ?? []) {
+    phaseNameById.set(row.id as string, row.name as string);
+  }
+
+  type SourceTaskRow = (typeof sortedTasks)[number];
+
+  function toPayloadTask(
+    row: SourceTaskRow,
+  ): ProjectTemplatePayload["tasks"][number] {
+    // Every task's own `phase_id` is resolved independently, whether a
+    // top-level task or a child — the RPC's own inheritance fallback
+    // (a child with no `phase` key at all inherits its parent's
+    // resolved phase) only matters for tasks that DON'T already carry
+    // their own value, so a child that happens to share its parent's
+    // phase round-trips correctly either way.
+    const phaseName = row.phase_id
+      ? phaseNameById.get(row.phase_id as string)
+      : undefined;
+
+    return {
       title: row.title as string,
       description: row.description as string | null,
       description_json: row.description_json,
@@ -959,7 +1185,29 @@ export async function saveProjectAsTemplate(
       checklistItems: checklistByTask.get(row.id as string) ?? [],
       estimate_minutes: row.estimate_minutes as number | null,
       tags: (row as unknown as { tags?: string[] }).tags ?? [],
-    })),
+      phase: phaseName,
+      children: childrenByParent
+        .get(row.id as string)
+        ?.map((child) => toPayloadTask(child)) ?? [],
+    };
+  }
+
+  // F001: group the flat, already board-ordered `sortedTasks` list by
+  // `parent_task_id` so the payload can nest subtasks under their parent
+  // (mirrors `tasks.parent_task_id`, AS: children). Order within each
+  // group is preserved from `sortedTasks`'s own status/position sort —
+  // `Map` iteration/insertion order keeps that intact.
+  const childrenByParent = new Map<string, SourceTaskRow[]>();
+  for (const row of sortedTasks) {
+    if (!row.parent_task_id) continue;
+    const list = childrenByParent.get(row.parent_task_id as string) ?? [];
+    list.push(row);
+    childrenByParent.set(row.parent_task_id as string, list);
+  }
+  const topLevelTasks = sortedTasks.filter((row) => !row.parent_task_id);
+
+  const payload: ProjectTemplatePayload = {
+    tasks: topLevelTasks.map((row) => toPayloadTask(row)),
     phases: (phaseRows ?? []).map((row) => ({
       name: row.name as string,
       client_description: row.client_description as string | null,
@@ -1036,7 +1284,12 @@ export async function saveProjectAsTemplate(
       id: inserted.id,
       name: inserted.name,
       workspaceId: inserted.workspace_id,
-      taskCount: payload.tasks.length,
+      // F001: `payload.tasks.length` is only the TOP-LEVEL task count
+      // now that subtasks nest under `children` instead of appearing as
+      // their own flat array entries — `sortedTasks.length` (every
+      // non-deleted task read from the project, parents and children
+      // alike) is what a "N tasks saved" toast should actually report.
+      taskCount: sortedTasks.length,
     },
   };
 }
@@ -1412,7 +1665,24 @@ export async function createProjectFromTemplate(
       key: created.project_key as string,
       name: created.project_name as string,
       workspaceId: parsed.data.workspaceId,
-      taskCount: payload.tasks.length,
+      // F001: count the WHOLE tree (top-level tasks + every nested
+      // `children` entry), not just `payload.tasks.length` — subtasks
+      // are real created tasks too (AS: children), so a "created with N
+      // tasks" toast undercounting them would be actively misleading.
+      taskCount: countPayloadTasks(payload.tasks),
     },
   };
+}
+
+// F001: recursively counts every task in a project template payload's
+// tree, top-level entries plus every nested `children` entry at every
+// depth — shared by createProjectFromTemplate's result count above.
+function countPayloadTasks(
+  tasks: ProjectTemplatePayload["tasks"],
+): number {
+  let count = 0;
+  for (const task of tasks) {
+    count += 1 + countPayloadTasks(task.children ?? []);
+  }
+  return count;
 }

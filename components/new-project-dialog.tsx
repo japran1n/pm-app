@@ -23,6 +23,7 @@ import { toast } from "sonner";
 
 import { createProject } from "@/lib/actions/projects";
 import { createProjectFromTemplate } from "@/lib/actions/templates";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -54,7 +55,14 @@ export function NewProjectDialog({
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  const [templateId, setTemplateId] = useState<string | null>(null);
+  // F001: the workspace's default project template (at most one, per
+  // this feature's `is_default` migration) is preselected here — the
+  // blank tab stays fully reachable and functional (per this feature's
+  // "still allowing blank project" clarified answer), this only changes
+  // which tab/template starts selected.
+  const defaultTemplate = templateOptions.find((template) => template.isDefault) ?? null;
+
+  const [templateId, setTemplateId] = useState<string | null>(defaultTemplate?.id ?? null);
   const [templateName, setTemplateName] = useState("");
   const [templateError, setTemplateError] = useState<string | null>(null);
 
@@ -62,7 +70,7 @@ export function NewProjectDialog({
     setName("");
     setDescription("");
     setError(null);
-    setTemplateId(null);
+    setTemplateId(defaultTemplate?.id ?? null);
     setTemplateName("");
     setTemplateError(null);
     setOpen(false);
@@ -183,7 +191,7 @@ export function NewProjectDialog({
             </DialogFooter>
           </form>
         ) : (
-          <Tabs defaultValue="blank">
+          <Tabs defaultValue={defaultTemplate ? "template" : "blank"}>
             <TabsList>
               <TabsTrigger value="blank">Blank</TabsTrigger>
               <TabsTrigger value="template">Start from template</TabsTrigger>
@@ -252,7 +260,10 @@ export function NewProjectDialog({
                           templateId === template.id ? "bg-accent" : ""
                         }`}
                       >
-                        <span className="truncate">{template.name}</span>
+                        <span className="flex items-center gap-2 truncate">
+                          <span className="truncate">{template.name}</span>
+                          {template.isDefault && <Badge variant="secondary">Default</Badge>}
+                        </span>
                       </button>
                     ))}
                   </div>

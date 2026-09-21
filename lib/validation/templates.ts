@@ -48,6 +48,18 @@ export const deleteTemplateSchema = z.object({
 });
 export type DeleteTemplateInput = z.infer<typeof deleteTemplateSchema>;
 
+// F001: `setDefaultTemplate(templateId | null)` — `templateId: null`
+// clears the workspace's current default (same "remove default" action
+// the templates UI offers), so this is deliberately NOT
+// `deleteTemplateSchema`-shaped (a bare required uuid); `templateId` is
+// nullable, and `workspaceId` is required since clearing has no template
+// row to resolve a workspace from.
+export const setDefaultTemplateSchema = z.object({
+  workspaceId: z.string().uuid("Invalid workspace."),
+  templateId: z.string().uuid("Invalid template.").nullable(),
+});
+export type SetDefaultTemplateInput = z.infer<typeof setDefaultTemplateSchema>;
+
 // The shape of a `kind: 'task'` template's `payload` jsonb column. Mirrors
 // F176's cloneTaskFields()/CLONEABLE_TASK_FIELDS allow-list exactly, plus
 // `tags` (per F180's duplicateTask convention: tags are a plain column
@@ -98,7 +110,13 @@ export type CreateProjectFromTemplateInput = z.infer<
 // this feature does not invent its own assignee-resolution story on top
 // of what F182 already built for tasks; a project template only ever
 // seeds task content, never assignments.
-export const projectTemplateTaskSchema = z.object({
+// F001 (missions/20260921-clickup-website-template): a task's own base
+// shape, factored out so both the flat schema below and the recursive
+// `children`-aware schema can share the exact same field list without
+// duplicating it — `z.lazy` (used below for recursion) needs a function
+// that returns a schema, and building that function's body from this
+// shared base keeps the two in lockstep.
+const projectTemplateTaskBaseShape = {
   title: z.string().trim().min(1, "Task title is required."),
   description: z.string().nullable(),
   description_json: z.unknown().nullable(),
@@ -113,33 +131,112 @@ export const projectTemplateTaskSchema = z.object({
   ),
   estimate_minutes: z.number().nullable(),
   tags: z.array(z.string()).default([]),
-});
-export type ProjectTemplateTask = z.infer<typeof projectTemplateTaskSchema>;
+  // F001: optional phase name, matched against this template's own
+  // `phases[].name` by `create_project_from_template`. Not a
+  // `phase_id` -- templates are content snapshots reused across
+  // arbitrary future projects, where a phase created from THIS
+  // template's own `phases[]` array won't have an id until the RPC
+  // creates it, so the join key has to be the name, resolved inside the
+  // same RPC call (see that migration's own comment). A name that
+  // doesn't match any phase in this template (or is simply absent)
+  // resolves to no phase -- never an error, per this feature's
+  // "templates are best-effort content" posture every other optional
+  // field here already has.
+  phase: z.string().trim().min(1).optional(),
+};
+
+// F001: recursive `children` field, one seeded task's own subtasks
+// (`tasks.parent_task_id`), same shape all the way down. Bounded to
+// depth 5 (this feature's clarified depth limit) via `.superRefine` on
+// the top-level array below, rather than in the recursive type itself
+// (z.lazy has no clean way to thread a decrementing depth counter
+// through its own schema), so the bound is enforced once, centrally,
+// against the whole tree instead of duplicated per level.
+//
+// An explicit interface + `z.ZodType<...>` annotation on the `z.lazy`
+// schema is required here (rather than letting `z.infer` derive the type
+// from the schema itself, as every other schema in this file does) —
+// TypeScript cannot infer a recursive type from a function that returns
+// its own inferred type without an explicit annotation breaking the
+// circularity.
+interface ProjectTemplateTaskShape {
+  title: string;
+  description: string | null;
+  description_json: unknown;
+  priority: "urgent" | "high" | "medium" | "low" | "backlog" | null;
+  checklistItems: { content: string; position: number }[];
+  estimate_minutes: number | null;
+  tags: string[];
+  phase?: string;
+  children: ProjectTemplateTaskShape[];
+}
+
+const projectTemplateTaskSchemaLazy: z.ZodType<ProjectTemplateTaskShape> = z.lazy(() =>
+  z.object({
+    ...projectTemplateTaskBaseShape,
+    children: z.array(projectTemplateTaskSchemaLazy).default([]),
+  }),
+);
+
+const MAX_TASK_TREE_DEPTH = 5;
+
+// Returns the depth of the deepest subtree rooted at any task in `tasks`,
+// counting each task itself as depth 1 (a leaf with no children is depth
+// 1, not 0) — called with `[task]` from the superRefine below so the
+// task being validated is itself included in its own depth count.
+function taskTreeDepth(tasks: readonly { children?: readonly unknown[] }[]): number {
+  let maxDepth = 0;
+  for (const task of tasks) {
+    const children = task.children as
+      | { children?: readonly unknown[] }[]
+      | undefined;
+    const childDepth = children && children.length > 0 ? taskTreeDepth(children) : 0;
+    maxDepth = Math.max(maxDepth, 1 + childDepth);
+  }
+  return maxDepth;
+}
+
+export const projectTemplateTaskSchema = projectTemplateTaskSchemaLazy.superRefine(
+  (task: ProjectTemplateTaskShape, ctx) => {
+    const depth = taskTreeDepth([task]);
+    if (depth > MAX_TASK_TREE_DEPTH) {
+      ctx.addIssue({
+        code: "custom",
+        message: `Subtask nesting is limited to ${MAX_TASK_TREE_DEPTH} levels.`,
+        path: ["children"],
+      });
+    }
+  },
+);
+export type ProjectTemplateTask = ProjectTemplateTaskShape;
 
 // The shape of a `kind: 'project'` template's `payload` jsonb column: an
 // ORDERED list of tasks to seed into the new project (array order is
 // preserved end-to-end, from save through to the created project's task
 // order).
 //
-// F218 (custom project statuses/columns) gap — deliberately NOT modeled
-// here yet: the feature spec's draft scope mentions "the project's
-// columns (once F218 lands)", but F218 has not been built (M16, not yet
-// started) and every project today only ever uses the fixed
-// todo/in_progress/in_review/done statuses (no `project_statuses` table
-// exists). Inventing fake column data now would be a second source of
-// truth that F218 would immediately have to reconcile or discard. Per
-// this mission's "additive first, don't invent dependencies that don't
-// exist yet" convention, this schema has NO `columns` field at all —
-// every seeded task is created with the fixed default status `todo`
-// (createProjectFromTemplate never accepts a per-task status override).
-// When F218 lands, it should add an OPTIONAL `columns` field to this
-// schema (optional so existing saved templates without it keep parsing)
-// and extend both `saveProjectAsTemplate` (to snapshot the source
-// project's real columns) and the `create_project_from_template` SQL
-// function (supabase/migrations/
-// 20260822190000_rpc_create_project_from_template.sql) to create those
-// columns before seeding tasks into them by name/id instead of always
-// `'todo'`.
+// F218 (custom project statuses/columns) landed
+// (supabase/migrations/20260824010000_project_statuses.sql:
+// `project_statuses` table + `tasks.status_id`), but this schema still
+// has NO `columns`/per-task-status field, and that remains a deliberate
+// gap, not an oversight: `create_project_from_template` seeds every task
+// with the fixed literal status `'todo'` (a plain `tasks.status` text
+// value) and never touches `tasks.status_id`/`project_statuses` at all,
+// same as every other project-creation path that predates F218 —
+// updating every project-creation entry point to seed custom
+// status/column rows is F218's own follow-up scope, not this feature's.
+// Per this mission's "additive first, don't invent dependencies that
+// don't exist yet" convention, this schema still has NO `columns` field:
+// when a future feature threads `project_statuses` through project
+// creation generally, it should add an OPTIONAL `columns` field here
+// (optional so existing saved templates without it keep parsing) and
+// extend both `saveProjectAsTemplate` (to snapshot the source project's
+// real columns) and `create_project_from_template` (supabase/migrations/
+// 20260822190000_rpc_create_project_from_template.sql, most recently
+// amended by this feature's own
+// 20261128020000_f001_template_subtasks_phase_default.sql) to create
+// those columns before seeding tasks into them by name/id instead of
+// always `'todo'`.
 // F006c (missions/20260903-portal, AS-009): a single seeded phase inside
 // a project template's payload. Field names are snake_case, matching
 // `project_phases`' own columns exactly — same "the payload shape maps

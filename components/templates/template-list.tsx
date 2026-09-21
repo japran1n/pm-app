@@ -18,10 +18,15 @@ import { useRouter } from "next/navigation";
 import { Loader2, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { renameTemplate, deleteTemplate } from "@/lib/actions/templates";
+import {
+  renameTemplate,
+  deleteTemplate,
+  setDefaultTemplate,
+} from "@/lib/actions/templates";
 import { canManageTemplate, type WorkspaceRole } from "@/lib/auth/permissions";
 import type { TaskTemplateListItem } from "@/lib/queries/templates";
 import { UserAvatar } from "@/components/user-avatar";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -47,16 +52,24 @@ function TemplateRow({
   template,
   currentUserId,
   currentUserRole,
+  workspaceId,
+  showDefaultToggle,
 }: {
   template: TaskTemplateListItem;
   currentUserId?: string;
   currentUserRole?: WorkspaceRole;
+  // F001: only `kind='project'` templates support a default — the
+  // caller (TemplateList) decides which list this row belongs to and
+  // passes this down rather than this row guessing from its own data.
+  workspaceId?: string;
+  showDefaultToggle?: boolean;
 }) {
   const router = useRouter();
   const [isRenaming, setIsRenaming] = useState(false);
   const [name, setName] = useState(template.name);
   const [isSavingRename, startRenameTransition] = useTransition();
   const [isDeleting, startDeleteTransition] = useTransition();
+  const [isTogglingDefault, startDefaultTransition] = useTransition();
 
   const canManage = currentUserRole
     ? canManageTemplate({
@@ -104,6 +117,24 @@ function TemplateRow({
     });
   }
 
+  function handleToggleDefault() {
+    if (!workspaceId) return;
+    startDefaultTransition(async () => {
+      const result = await setDefaultTemplate(
+        workspaceId,
+        template.isDefault ? null : template.id,
+      );
+      if (result.ok) {
+        toast.success(
+          template.isDefault ? "Default template removed." : "Set as default template.",
+        );
+        router.refresh();
+      } else {
+        toast.error(result.error);
+      }
+    });
+  }
+
   return (
     <Card className="hover-lift">
       <CardHeader>
@@ -142,7 +173,10 @@ function TemplateRow({
             </Button>
           </div>
         ) : (
-          <CardTitle className="line-clamp-1">{template.name}</CardTitle>
+          <div className="flex items-center gap-2">
+            <CardTitle className="line-clamp-1">{template.name}</CardTitle>
+            {template.isDefault && <Badge variant="secondary">Default</Badge>}
+          </div>
         )}
         <CardDescription className="line-clamp-2">
           {template.previewTitle}
@@ -170,6 +204,24 @@ function TemplateRow({
 
         {!isRenaming && (
           <div className="flex items-center gap-2">
+            {showDefaultToggle && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={!canManage || isTogglingDefault}
+                title={disabledTitle}
+                onClick={handleToggleDefault}
+              >
+                {isTogglingDefault ? (
+                  <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+                ) : template.isDefault ? (
+                  "Remove default"
+                ) : (
+                  "Set as default"
+                )}
+              </Button>
+            )}
             <Button
               type="button"
               size="sm"
@@ -228,10 +280,23 @@ export function TemplateList({
   templates,
   currentUserId,
   currentUserRole,
+  workspaceId,
+  showDefaultToggle = false,
 }: {
   templates: TaskTemplateListItem[];
   currentUserId?: string;
   currentUserRole?: WorkspaceRole;
+  // F001: needed by "Set as default"/"Remove default" (setDefaultTemplate
+  // takes a workspaceId, not just a templateId, per its own clarified
+  // "at most one default per workspace" scoping).
+  workspaceId?: string;
+  // F001: default toggle only makes sense for `kind='project'` templates
+  // (task templates never carry `is_default = true` in practice, per the
+  // migration's partial unique index) -- the caller decides per list
+  // rather than this component inferring it from `template.isDefault`
+  // alone (an all-false list of project templates should still show the
+  // toggle to SET one).
+  showDefaultToggle?: boolean;
 }) {
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -241,6 +306,8 @@ export function TemplateList({
           template={template}
           currentUserId={currentUserId}
           currentUserRole={currentUserRole}
+          workspaceId={workspaceId}
+          showDefaultToggle={showDefaultToggle}
         />
       ))}
     </div>

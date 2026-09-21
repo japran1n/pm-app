@@ -16,7 +16,10 @@ import { logger } from "@/lib/observability/logger";
 
 import { createClient } from "@/lib/supabase/server";
 import { resolvePeople } from "@/lib/queries/people";
-import type { TaskTemplatePayload } from "@/lib/validation/templates";
+import type {
+  TaskTemplatePayload,
+  ProjectTemplatePayload,
+} from "@/lib/validation/templates";
 
 export type TaskTemplateListItem = {
   id: string;
@@ -32,11 +35,20 @@ export type TaskTemplateListItem = {
    * its full checklist/assignee contents in a list row. */
   previewTitle: string;
   previewDescription: string | null;
+  /** F001: whether this is the workspace's default project template —
+   * always `false` for `kind='task'` rows (the "Default" badge/toggle
+   * only renders for the project-templates section of the management
+   * UI, per this feature's `is_default` migration scoping it to
+   * `kind='project'`). */
+  isDefault: boolean;
 };
 
 export type TaskTemplatePickerOption = {
   id: string;
   name: string;
+  /** F001: whether this is the workspace's current default project
+   * template — used by new-project-dialog.tsx to preselect it. */
+  isDefault: boolean;
 };
 
 const DESCRIPTION_PREVIEW_LENGTH = 140;
@@ -57,7 +69,7 @@ export async function getWorkspaceTaskTemplates(
 
   const { data: rows, error } = await supabase
     .from("task_templates")
-    .select("id, name, payload, created_by, created_at")
+    .select("id, name, payload, created_by, created_at, is_default")
     .eq("workspace_id", workspaceId)
     .eq("kind", "task")
     .order("created_at", { ascending: false });
@@ -87,6 +99,57 @@ export async function getWorkspaceTaskTemplates(
       previewDescription: description
         ? truncate(description, DESCRIPTION_PREVIEW_LENGTH)
         : null,
+      isDefault: (row.is_default as boolean | null) ?? false,
+    };
+  });
+}
+
+// F001: full detail listing for `kind='project'` templates — same shape
+// and rationale as getWorkspaceTaskTemplates above (one batched
+// `resolvePeople` call, newest first), used by the templates management
+// page's project-templates section so "Set as default"/"Remove default"
+// has somewhere to render its badge/toggle (previously this page only
+// ever listed `kind='task'` rows; project templates had no management UI
+// at all).
+export async function getWorkspaceProjectTemplates(
+  workspaceId: string,
+): Promise<TaskTemplateListItem[]> {
+  const supabase = await createClient();
+
+  const { data: rows, error } = await supabase
+    .from("task_templates")
+    .select("id, name, payload, created_by, created_at, is_default")
+    .eq("workspace_id", workspaceId)
+    .eq("kind", "project")
+    .order("created_at", { ascending: false });
+
+  if (error || !rows) {
+    logger.error("getWorkspaceProjectTemplates: query failed", { error: error });
+    return [];
+  }
+
+  const creatorIds = Array.from(new Set(rows.map((row) => row.created_by as string)));
+  const creators = await resolvePeople(creatorIds);
+
+  return rows.map((row) => {
+    const payload = row.payload as unknown as Partial<ProjectTemplatePayload> | null;
+    const creator = creators.get(row.created_by as string);
+    const taskCount = payload?.tasks?.length ?? 0;
+
+    return {
+      id: row.id as string,
+      name: row.name as string,
+      createdAt: row.created_at as string,
+      createdBy: row.created_by as string,
+      creatorName: creator?.name ?? null,
+      creatorEmail: creator?.email ?? null,
+      creatorAvatarUrl: creator?.avatarUrl ?? null,
+      previewTitle: payload?.tasks?.[0]?.title ?? row.name,
+      previewDescription:
+        taskCount > 0
+          ? `${taskCount} top-level task${taskCount === 1 ? "" : "s"}`
+          : null,
+      isDefault: (row.is_default as boolean | null) ?? false,
     };
   });
 }
@@ -102,7 +165,7 @@ export async function getWorkspaceTaskTemplateOptions(
 
   const { data: rows, error } = await supabase
     .from("task_templates")
-    .select("id, name")
+    .select("id, name, is_default")
     .eq("workspace_id", workspaceId)
     .eq("kind", "task")
     .order("name", { ascending: true });
@@ -112,7 +175,11 @@ export async function getWorkspaceTaskTemplateOptions(
     return [];
   }
 
-  return rows.map((row) => ({ id: row.id as string, name: row.name as string }));
+  return rows.map((row) => ({
+    id: row.id as string,
+    name: row.name as string,
+    isDefault: (row.is_default as boolean | null) ?? false,
+  }));
 }
 
 // F184: minimal id/name listing for the "Start from template" option in
@@ -125,7 +192,7 @@ export async function getWorkspaceProjectTemplateOptions(
 
   const { data: rows, error } = await supabase
     .from("task_templates")
-    .select("id, name")
+    .select("id, name, is_default")
     .eq("workspace_id", workspaceId)
     .eq("kind", "project")
     .order("name", { ascending: true });
@@ -135,5 +202,9 @@ export async function getWorkspaceProjectTemplateOptions(
     return [];
   }
 
-  return rows.map((row) => ({ id: row.id as string, name: row.name as string }));
+  return rows.map((row) => ({
+    id: row.id as string,
+    name: row.name as string,
+    isDefault: (row.is_default as boolean | null) ?? false,
+  }));
 }

@@ -2,7 +2,10 @@ import { redirect } from "next/navigation";
 import { LayoutTemplate } from "lucide-react";
 
 import { getWorkspaceContext } from "@/lib/queries/workspaces";
-import { getWorkspaceTaskTemplates } from "@/lib/queries/templates";
+import {
+  getWorkspaceTaskTemplates,
+  getWorkspaceProjectTemplates,
+} from "@/lib/queries/templates";
 import { TemplateList } from "@/components/templates/template-list";
 
 // F183 (AS-328/AS-330 UI half): `/w/[workspaceSlug]/templates` — every
@@ -43,7 +46,13 @@ export default async function TemplatesPage({
   const { user, workspace, role } = ctx;
 
   // The guest redirect below still runs before anything renders.
-  const templates = await getWorkspaceTaskTemplates(workspace.id);
+  // F001: project templates are fetched alongside task templates so this
+  // page can also offer "Set as default"/"Remove default" — previously
+  // `kind='project'` templates had no management UI at all.
+  const [templates, projectTemplates] = await Promise.all([
+    getWorkspaceTaskTemplates(workspace.id),
+    getWorkspaceProjectTemplates(workspace.id),
+  ]);
 
   if (role === "guest") {
     redirect(`/w/${workspaceSlug}`);
@@ -90,6 +99,35 @@ export default async function TemplatesPage({
           currentUserId={user.id}
           currentUserRole={role}
         />
+      )}
+
+      {/* F001: project templates section — same management pattern as
+          task templates above, plus the "Set as default"/"Remove
+          default" toggle (showDefaultToggle) since only `kind='project'`
+          templates support a default. Only rendered once at least one
+          project template exists — an empty list here just means no
+          section, mirroring the task-templates empty state's own "no
+          primary action" convention (a project template can only be
+          created from an existing project's "Save as template" control,
+          not from this page). */}
+      {projectTemplates.length > 0 && (
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1">
+            <h2 className="text-lg font-semibold">Project templates</h2>
+            <p className="text-sm text-muted-foreground">
+              Reusable project templates saved from {workspace.name}. The
+              default template is preselected in the &quot;Start from
+              template&quot; option when creating a new project.
+            </p>
+          </div>
+          <TemplateList
+            templates={projectTemplates}
+            currentUserId={user.id}
+            currentUserRole={role}
+            workspaceId={workspace.id}
+            showDefaultToggle
+          />
+        </div>
       )}
     </div>
   );

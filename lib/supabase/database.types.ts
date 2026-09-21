@@ -3337,6 +3337,7 @@ export type Database = {
           created_at: string
           created_by: string
           id: string
+          is_default: boolean
           kind: string
           name: string
           payload: Json
@@ -3346,6 +3347,7 @@ export type Database = {
           created_at?: string
           created_by: string
           id?: string
+          is_default?: boolean
           kind?: string
           name: string
           payload: Json
@@ -3355,6 +3357,7 @@ export type Database = {
           created_at?: string
           created_by?: string
           id?: string
+          is_default?: boolean
           kind?: string
           name?: string
           payload?: Json
