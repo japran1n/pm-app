@@ -35,6 +35,8 @@ import {
   type ProjectTemplatePayload,
   type ProjectTemplateDeliverable,
 } from "@/lib/validation/templates";
+import { getWorkspaceProjectTemplateOptions } from "@/lib/queries/templates";
+import type { TaskTemplatePickerOption } from "@/lib/queries/templates";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { canCreateProject, canWrite } from "@/lib/auth/permissions";
 import { calculatePosition } from "@/lib/board/position";
@@ -1687,4 +1689,24 @@ function countPayloadTasks(
     count += 1 + countPayloadTasks(task.children ?? []);
   }
   return count;
+}
+
+// FU-18 (SB-033): lazy fetch of the workspace's project-template options for
+// the sidebar's "+ New -> Project" dialog. The sidebar lives in the layout,
+// whose critical path must not gain a round trip, so the client calls this on
+// first menu open instead. Gated by the SAME predicate as
+// createProjectFromTemplate (canCreateProject): anyone who cannot create a
+// project gets an empty list, never template names.
+export async function listProjectTemplateOptions(
+  workspaceId: string,
+): Promise<TaskTemplatePickerOption[]> {
+  if (typeof workspaceId !== "string" || workspaceId.length === 0) return [];
+  const { user } = await getCurrentUser();
+  if (!user) return [];
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: membership/permission check via requireActiveMembership(); caller identity already verified via getCurrentUser()/!user check immediately above
+  const admin = createAdminClient();
+  const membership = await requireActiveMembership(admin, workspaceId, user.id);
+  if (!membership.ok) return [];
+  if (!canCreateProject({ role: membership.role })) return [];
+  return getWorkspaceProjectTemplateOptions(workspaceId);
 }

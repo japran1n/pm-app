@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { CheckSquare, FolderPlus, Plus } from "lucide-react";
 
@@ -12,6 +12,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { NewProjectDialog } from "@/components/new-project-dialog";
+import { listProjectTemplateOptions } from "@/lib/actions/templates";
+import type { TaskTemplatePickerOption } from "@/lib/queries/templates";
 import { canCreateProject, canWrite } from "@/lib/auth/permissions";
 import {
   SHORTCUT_EVENTS,
@@ -53,6 +55,30 @@ export function NewMenu({
   const pathname = usePathname();
   const membership = useMembership();
   const [projectDialogOpen, setProjectDialogOpen] = useState(false);
+  // FU-18: template options are lazy-fetched (server action) the first time
+  // the menu opens, so the layout's streaming critical path is untouched. The
+  // dialog is only opened once they have resolved, so its default-template
+  // preselection is correct.
+  const [templateOptions, setTemplateOptions] = useState<TaskTemplatePickerOption[]>([]);
+  const templatesPromise = useRef<Promise<TaskTemplatePickerOption[]> | null>(null);
+  const loadTemplates = useCallback(() => {
+    if (!templatesPromise.current) {
+      templatesPromise.current = listProjectTemplateOptions(workspaceId)
+        .then((opts) => {
+          setTemplateOptions(opts);
+          return opts;
+        })
+        .catch(() => {
+          templatesPromise.current = null;
+          return [] as TaskTemplatePickerOption[];
+        });
+    }
+    return templatesPromise.current;
+  }, [workspaceId]);
+  const openProjectDialog = async () => {
+    await loadTemplates();
+    setProjectDialogOpen(true);
+  };
 
   // Fail closed: no resolvable membership (provider absent, or the layout's
   // memberships query failed) means no create entries. The `isGuest` prop is
@@ -93,7 +119,11 @@ export function NewMenu({
 
   return (
     <>
-      <DropdownMenu>
+      <DropdownMenu
+        onOpenChange={(next) => {
+          if (next && canCreateProjectEntry) void loadTemplates();
+        }}
+      >
         <DropdownMenuTrigger
           render={
             <button
@@ -117,7 +147,7 @@ export function NewMenu({
             </DropdownMenuItem>
           )}
           {canCreateProjectEntry && (
-            <DropdownMenuItem onClick={() => setProjectDialogOpen(true)}>
+            <DropdownMenuItem onClick={() => void openProjectDialog()}>
               <FolderPlus className="size-4" aria-hidden="true" />
               Project
             </DropdownMenuItem>
@@ -126,7 +156,9 @@ export function NewMenu({
       </DropdownMenu>
       {canCreateProjectEntry && (
         <NewProjectDialog
+          key={templateOptions.map((t) => t.id).join(",")}
           workspaceId={workspaceId}
+          templateOptions={templateOptions}
           open={projectDialogOpen}
           onOpenChange={setProjectDialogOpen}
         />

@@ -31,6 +31,7 @@ const STUBS: Record<string, string> = {
   "@/components/notifications/notification-bell": `import React from "react"; export const NotificationBell=()=>React.createElement("div");`,
   "@/components/auth/membership-provider": `export const useMembership=()=>({role:"admin",hasClient:true,projectRoles:{}});`,
   "@/lib/actions/auth": `export async function signOut(){}`,
+  "@/lib/actions/templates": `export async function listProjectTemplateOptions(){return []} export async function createProjectFromTemplate(){return {ok:true,data:{name:"x",taskCount:0}}}`,
   "@/lib/actions/projects": `export async function reorderProject(){return {ok:true}}`,
   "@/components/new-project-dialog": `import React from "react"; export const NewProjectDialog=()=>null;`,
   "@/components/project-favorite-button": `import React from "react"; export const ProjectFavoriteButton=()=>null;`,

@@ -34,7 +34,7 @@ const STUBS: Record<string, string> = {
   "@/components/auth/membership-provider": `export const useMembership=()=>window.__nullMembership?null:({role:window.__role||"admin",hasClient:window.__hasClient!==false,projectRoles:{}});`,
   "@/lib/actions/auth": `export async function signOut(){}`,
   "@/lib/actions/projects": `export async function reorderProject(){return {ok:true}} export async function createProject(){return {ok:true,data:{name:"x"}}}`,
-  "@/lib/actions/templates": `export async function createProjectFromTemplate(){return {ok:true,data:{name:"x",taskCount:0}}}`,
+  "@/lib/actions/templates": `export async function listProjectTemplateOptions(){return window.__noTemplates?[]:[{id:"t1",name:"Website Launch",isDefault:false},{id:"t2",name:"Retainer Onboarding",isDefault:false}]} export async function createProjectFromTemplate(){return {ok:true,data:{name:"x",taskCount:0}}}`,
   "@/lib/actions/tasks": `export async function createTask(){return {ok:true}} export async function setTaskAssignees(){return {ok:true}}`,
   "@/lib/actions/phases": `export async function getProjectPhaseOptions(){return {ok:true,data:{phases:[]}}} export async function setTaskPhase(){return {ok:true}}`,
   "@/lib/actions/task-types": `export async function getProjectTaskTypeOptions(){return {ok:true,data:{taskTypes:[]}}}`,
@@ -101,7 +101,7 @@ createRoot(document.getElementById("root")!).render(
   css = (await postcss([tailwind()]).process(readFileSync(file, "utf8"), { from: file })).css;
 }, 180_000);
 
-type Opts = { nullMembership?: boolean; role?: string; guest?: boolean; manage?: boolean; hasClient?: boolean; path?: string };
+type Opts = { nullMembership?: boolean; role?: string; guest?: boolean; manage?: boolean; hasClient?: boolean; path?: string; noTemplates?: boolean };
 async function withPage<T>(width: number, fn: (p: Page) => Promise<T>, opts: Opts = {}): Promise<T> {
   let browser: Browser | undefined;
   try {
@@ -114,7 +114,7 @@ async function withPage<T>(width: number, fn: (p: Page) => Promise<T>, opts: Opt
     );
     await page.evaluate((o) => {
       const w = window as unknown as Record<string, unknown>;
-      w.__role = o.role; w.__guest = o.guest; w.__manage = o.manage; w.__hasClient = o.hasClient; w.__nullMembership = o.nullMembership; w.__path = o.path;
+      w.__role = o.role; w.__guest = o.guest; w.__manage = o.manage; w.__hasClient = o.hasClient; w.__nullMembership = o.nullMembership; w.__path = o.path; w.__noTemplates = o.noTemplates;
       w.__events = [];
       window.addEventListener("pm-app:shortcut:new-task", (e) => (w.__events as unknown[]).push((e as CustomEvent).detail));
     }, opts);
@@ -174,6 +174,22 @@ for (const width of [1280, 375]) {
         // Cancel closes it again.
         await dialog.getByRole("button", { name: "Cancel" }).click();
         await dialog.waitFor({ state: "detached" });
+      });
+    }, 60_000);
+
+    // FU-18: the sidebar dialog must offer the same "Start from template"
+    // tab as the projects page, with a NON-EMPTY realistic template stub.
+    it(`test_SB_033_${where}_sidebar_project_dialog_has_selectable_start_from_template_tab`, async () => {
+      await withPage(width, async (p) => {
+        const m = await openMenu(p, width);
+        await m.getByRole("menuitem", { name: "Project" }).click();
+        const dialog = p.getByRole("dialog", { name: "New Project" });
+        await dialog.waitFor({ state: "visible" });
+        const tab = dialog.getByRole("tab", { name: /start from template/i });
+        await tab.waitFor({ state: "visible" });
+        await tab.click();
+        expect(await tab.getAttribute("aria-selected")).toBe("true");
+        expect(await dialog.getByText("Website Launch").count()).toBeGreaterThan(0);
       });
     }, 60_000);
 
