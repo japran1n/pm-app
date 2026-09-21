@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { useMyTasksRealtime } from "@/components/my-tasks/use-my-tasks-realtime";
+import { QuickNoteShortcutHint } from "@/components/my-tasks/quick-note-shortcut-hint";
 
 export function PersonalTodoList({
   workspaceId,
@@ -300,7 +301,10 @@ export function PersonalTodoList({
 
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-border p-4">
-      <h2 className="text-sm font-medium">Personal to-dos</h2>
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-sm font-medium">Personal to-dos</h2>
+        <QuickNoteShortcutHint />
+      </div>
       <p className="text-xs text-muted-foreground">
         Visible only to you — not a task, not assigned, not shared.
       </p>

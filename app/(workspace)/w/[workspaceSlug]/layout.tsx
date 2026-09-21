@@ -55,6 +55,8 @@ import { ShortcutProvider } from "@/components/command/shortcut-provider";
 // F245 (AS-469, AS-472): `?` opens this reference dialog, rendered from
 // the SAME registry ShortcutProvider dispatches from.
 import { ShortcutHelpDialog } from "@/components/command/shortcut-help";
+// Quick note (Ctrl+Shift+N / Alt+Shift+N): global Personal to-dos capture.
+import { QuickNoteModal } from "@/components/my-tasks/quick-note-modal";
 // F253 (AS-491, AS-492, AS-493): the first-run guided tour, mounted once
 // alongside the other persistent workspace chrome. `initialDismissed` is
 // server-fetched here (same "server-fetched... passed down as typed
@@ -377,6 +379,7 @@ export default async function WorkspaceLayout({
       />
       <ShortcutProvider />
       <ShortcutHelpDialog />
+      <QuickNoteModal workspaceId={activeWorkspace.id} />
       {/* F016 (AS-017): tour status is now its own async server component,
           streamed in independently rather than awaited by this layout
           body. */}
