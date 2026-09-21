@@ -26,6 +26,7 @@ import {
 
 import { useMembership } from "@/components/auth/membership-provider";
 import { cn } from "@/lib/utils";
+import { COMMAND_PALETTE_OPEN_EVENT } from "@/lib/hooks/use-shortcut";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -342,7 +343,7 @@ function SidebarContent({
     // Ask the mounted CommandPalette to open (it owns the only Cmd+K
     // listener). If none answers, fall back to the search page.
     const detail = { handled: false };
-    window.dispatchEvent(new CustomEvent("command-palette:open", { detail }));
+    window.dispatchEvent(new CustomEvent(COMMAND_PALETTE_OPEN_EVENT, { detail }));
     if (!detail.handled) router.push(`/w/${workspaceSlug}/search`);
   };
   // C5: the client-request nav item is workspace-dependent, so it reads

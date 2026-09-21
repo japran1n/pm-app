@@ -26,7 +26,7 @@ import { PALETTE_ACTIONS } from "@/components/command/actions";
 import { useRecentItems } from "@/lib/hooks/use-recent-items";
 import { usePaletteSearchRealtime } from "@/lib/hooks/use-palette-search-realtime";
 import { useMembership } from "@/components/auth/membership-provider";
-import { SHORTCUT_EVENTS } from "@/lib/hooks/use-shortcut";
+import { COMMAND_PALETTE_OPEN_EVENT, SHORTCUT_EVENTS } from "@/lib/hooks/use-shortcut";
 
 // F241 (AS-459, AS-463, AS-464): the global command palette shell —
 // mounted ONCE in the workspace layout so a single Cmd+K/Ctrl+K listener
@@ -110,12 +110,8 @@ export function applyRealtimePatches(
   return changed ? { ...results, tasks } : results;
 }
 
-// F008 (SB-031): the sidebar "Search" button opens this palette by
-// dispatching this window event -- no second keydown listener, no shared
-// store. The dispatcher passes `{ handled: false }` as `detail`; a mounted
-// palette flips it to `true` synchronously so the caller can fall back to
-// the /search page when no palette is mounted in its context.
-export const COMMAND_PALETTE_OPEN_EVENT = "command-palette:open";
+// F008 (SB-031): COMMAND_PALETTE_OPEN_EVENT (lib/hooks/use-shortcut.ts) is how
+// the sidebar "Search" button asks this palette to open.
 
 export function CommandPalette({
   workspaceId,

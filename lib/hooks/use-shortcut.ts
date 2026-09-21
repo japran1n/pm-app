@@ -120,6 +120,15 @@ export const SHORTCUT_EVENTS = {
   openHelp: "pm-app:shortcut:open-help",
 } as const;
 
+/**
+ * F008 (SB-031) / F032 (FU-18): the sidebar "Search" button opens the command
+ * palette by dispatching this window event. Lives here (client-safe, no server
+ * actions) so the dispatcher (app-sidebar) and the listener (command-palette)
+ * import ONE constant and cannot drift. The dispatcher passes
+ * `{ handled: false }` as `detail`; a mounted palette flips it to true.
+ */
+export const COMMAND_PALETTE_OPEN_EVENT = "command-palette:open";
+
 export type NewTaskShortcutDetail = {
   projectId: string | null;
   /**

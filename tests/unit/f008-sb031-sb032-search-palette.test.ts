@@ -18,6 +18,7 @@ import postcss from "postcss";
 import tailwind from "@tailwindcss/postcss";
 import { build } from "esbuild";
 import { chromium, type Browser, type Page } from "@playwright/test";
+import { COMMAND_PALETTE_OPEN_EVENT } from "@/lib/hooks/use-shortcut";
 
 const root = process.cwd();
 let css = "";
@@ -177,6 +178,44 @@ describe("F008 SB-031 sidebar Search button", () => {
           "/w/acme/search",
         ]);
         expect(await dialogs(p).count()).toBe(0);
+      },
+      { palette: false },
+    );
+  }, 60_000);
+});
+
+// F032 (FU-18): the sidebar dispatches the SHARED constant's event name (the
+// listener is registered from the constant's value, in real Chromium, with no
+// palette mounted so nothing else answers).
+describe("F032 SB-031 sidebar dispatches the shared event name", () => {
+  it("test_SB_031_desktop_click_dispatches_shared_constant_event", async () => {
+    await withPage(
+      1280,
+      async (p) => {
+        await p.evaluate((name) => {
+          (window as unknown as { __seen: number }).__seen = 0;
+          window.addEventListener(name, () => ((window as unknown as { __seen: number }).__seen += 1));
+        }, COMMAND_PALETTE_OPEN_EVENT);
+        await p.locator("aside").getByRole("button", { name: /Search/ }).click();
+        expect(await p.evaluate(() => (window as unknown as { __seen: number }).__seen)).toBe(1);
+      },
+      { palette: false },
+    );
+  }, 60_000);
+
+  it("test_SB_031_375px_sheet_click_dispatches_shared_constant_event", async () => {
+    await withPage(
+      375,
+      async (p) => {
+        await p.evaluate((name) => {
+          (window as unknown as { __seen: number }).__seen = 0;
+          window.addEventListener(name, () => ((window as unknown as { __seen: number }).__seen += 1));
+        }, COMMAND_PALETTE_OPEN_EVENT);
+        await p.getByRole("button", { name: "Open navigation" }).click();
+        const sheet = p.getByRole("dialog");
+        await sheet.waitFor({ state: "visible" });
+        await sheet.getByRole("button", { name: /Search/ }).click();
+        expect(await p.evaluate(() => (window as unknown as { __seen: number }).__seen)).toBe(1);
       },
       { palette: false },
     );
