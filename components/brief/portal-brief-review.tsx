@@ -1,6 +1,7 @@
 "use client";
 
 import type { BriefQuestion } from "@/lib/queries/brief";
+import { isBriefAnswerAnswered } from "@/lib/brief/is-answered";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -66,7 +67,10 @@ export function PortalBriefReview({
           </div>
 
           {section.questions.map((q) => {
-            const value = answerDisplay(section.answers.get(q.id));
+            const answer = section.answers.get(q.id);
+            const value = isBriefAnswerAnswered(q, answer)
+              ? answerDisplay(answer)
+              : null;
             const missing = q.required && value === null;
             return (
               <div

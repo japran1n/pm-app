@@ -15,6 +15,7 @@
 // component re-querying -- keeps this file a pure presentational read of
 // already-resolved data, same split as the rest of the brief queries.
 import { Badge } from "@/components/ui/badge";
+import { isBriefAnswerAnswered } from "@/lib/brief/is-answered";
 import { RevisionHistory } from "@/components/brief/revision-history";
 import type { BriefAnswer, BriefAnswerRevision, BriefQuestion } from "@/lib/queries/brief";
 
@@ -58,7 +59,7 @@ function AnswerValue({ question, answer }: { question: BriefQuestion; answer: Br
     );
   }
 
-  if (!answer.answerText) {
+  if (!isBriefAnswerAnswered(question, answer)) {
     return <p className="text-sm text-muted-foreground">Not answered yet</p>;
   }
 
@@ -73,11 +74,7 @@ export function TeamAnswersView({ items }: { items: TeamAnswersViewQuestion[] })
   return (
     <div className="flex max-w-[720px] w-full flex-col gap-6">
       {items.map(({ question, answer, hasRevisions, revisions }) => {
-        const isAnswered =
-          !!answer &&
-          (question.answerType === "single_choice" || question.answerType === "multi_choice"
-            ? (answer.answerOptions ?? []).length > 0
-            : !!answer.answerText);
+        const isAnswered = isBriefAnswerAnswered(question, answer);
 
         return (
           <div key={question.id} className="flex flex-col gap-2 border-b border-border pb-6">

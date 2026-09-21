@@ -5,13 +5,12 @@ import {
   TeamAnswersView,
   type TeamAnswersViewQuestion,
 } from "@/components/brief/team-answers-view";
+import { isBriefAnswerAnswered } from "@/lib/brief/is-answered";
 import { groupBySection } from "@/lib/brief/group-by-section";
 import { slugifySection } from "@/lib/brief/slugify-section";
 
-function isAnswered({ answer }: TeamAnswersViewQuestion): boolean {
-  return (
-    !!answer && ((answer.answerOptions?.length ?? 0) > 0 || !!answer.answerText)
-  );
+function isAnswered({ question, answer }: TeamAnswersViewQuestion): boolean {
+  return isBriefAnswerAnswered(question, answer);
 }
 
 export function BriefSectionedView({

@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { QuestionnaireProgress } from "@/components/brief/questionnaire-progress";
 import { PortalBriefReview } from "@/components/brief/portal-brief-review";
 import { AnswerInput } from "@/components/brief/answer-input";
+import { isBriefAnswerAnswered } from "@/lib/brief/is-answered";
 import { groupBySection } from "@/lib/brief/group-by-section";
 
 // F055 (missions/20260910-182104, AS-113, AS-114): the client-facing
@@ -39,16 +40,10 @@ export function isAnswered(
   question: BriefQuestion,
   draft: { text: string | null; options: string[] | null },
 ): boolean {
-  switch (question.answerType) {
-    case "single_choice":
-      return (draft.options?.length ?? 0) === 1;
-    case "multi_choice":
-      return (draft.options?.length ?? 0) >= 1;
-    case "short_text":
-    case "long_text":
-    default:
-      return Boolean(draft.text && draft.text.trim() !== "");
-  }
+  return isBriefAnswerAnswered(question, {
+    answerText: draft.text,
+    answerOptions: draft.options,
+  });
 }
 
 type Draft = { text: string | null; options: string[] | null };

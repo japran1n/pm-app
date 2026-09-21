@@ -15,6 +15,7 @@ import {
   getDecisionOwners,
   getLatestApprovalForSubject,
 } from "@/lib/queries/approvals";
+import { isBriefAnswerAnswered } from "@/lib/brief/is-answered";
 import { createClient } from "@/lib/supabase/server";
 
 // F054 (AS-130): team-side brief route. Server Component per the same
@@ -98,14 +99,11 @@ export default async function ProjectBriefPage({
     }),
   );
 
-  const isAnswered = (questionId: string) => {
-    const a = answersByQuestionId.get(questionId);
-    if (!a) return false;
-    return (a.answerOptions?.length ?? 0) > 0 || !!a.answerText;
-  };
-  const answeredCount = questions.filter((q) => isAnswered(q.id)).length;
+  const isAnswered = (q: (typeof questions)[number]) =>
+    isBriefAnswerAnswered(q, answersByQuestionId.get(q.id));
+  const answeredCount = questions.filter(isAnswered).length;
   const requiredMissingCount = questions.filter(
-    (q) => q.required && !isAnswered(q.id),
+    (q) => q.required && !isAnswered(q),
   ).length;
   const latestAnswer = answers.reduce<(typeof answers)[number] | null>(
     (latest, a) => (!latest || a.updatedAt > latest.updatedAt ? a : latest),
