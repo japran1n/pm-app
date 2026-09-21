@@ -39,6 +39,8 @@ describe("F061: Submit button is rendered", () => {
   it("shows a Submit button on the questionnaire", () => {
     const questions: BriefQuestion[] = [makeQuestion({ id: "q1", required: false })];
     render(<PortalQuestionnaire questions={questions} initialAnswers={[]} briefId="b1" />);
+    // F010: Submit lives on the review step, reached via Next from the last section.
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
 
     expect(screen.getByTestId("questionnaire-submit-button")).toBeInTheDocument();
   });
@@ -53,6 +55,7 @@ describe("F061 AS-124/AS-125: submitting calls submitBrief and shows success", (
 
     const questions: BriefQuestion[] = [makeQuestion({ id: "q1", required: false })];
     render(<PortalQuestionnaire questions={questions} initialAnswers={[]} briefId="b1" />);
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
 
     fireEvent.click(screen.getByTestId("questionnaire-submit-button"));
 
@@ -67,7 +70,7 @@ describe("F061 AS-124/AS-125: submitting calls submitBrief and shows success", (
 });
 
 describe("F061 AS-124: submit blocked until required questions are answered", () => {
-  it("shows a validation error and does not call submitBrief when a required question is unanswered", async () => {
+  it("reaches review with a warning, Submit is disabled, and submitBrief is never called while a required question is unanswered", () => {
     const submitSpy = vi.spyOn(briefActions, "submitBrief").mockResolvedValue({ success: true });
 
     const questions: BriefQuestion[] = [
@@ -77,11 +80,18 @@ describe("F061 AS-124: submit blocked until required questions are answered", ()
 
     render(<PortalQuestionnaire questions={questions} initialAnswers={[]} briefId="b1" />);
 
-    fireEvent.click(screen.getByTestId("questionnaire-submit-button"));
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
 
-    expect(
-      await screen.findByTestId("questionnaire-submit-error"),
-    ).toHaveTextContent("Please answer all required questions before submitting.");
+    // BR-041: Next is non-blocking; we land on the review step with a warning.
+    expect(screen.getByTestId("portal-brief-review")).toBeInTheDocument();
+    expect(screen.getByTestId("questionnaire-next-warning")).toBeInTheDocument();
+    // BR-044: the missing required question is highlighted.
+    expect(screen.getByTestId("review-missing-summary")).toBeInTheDocument();
+    expect(screen.getByTestId("review-not-answered")).toBeInTheDocument();
+    // BR-003 / AS-124: Submit is present but disabled and never calls submitBrief.
+    const submit = screen.getByTestId("questionnaire-submit-button");
+    expect(submit).toBeDisabled();
+    fireEvent.click(submit);
     expect(submitSpy).not.toHaveBeenCalled();
   });
 });
@@ -93,10 +103,13 @@ describe("F061 AS-126: the form stays editable after a successful submit", () =>
 
     const questions: BriefQuestion[] = [makeQuestion({ id: "q1", required: false })];
     render(<PortalQuestionnaire questions={questions} initialAnswers={[]} briefId="b1" />);
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
 
     fireEvent.click(screen.getByTestId("questionnaire-submit-button"));
 
     await screen.findByTestId("questionnaire-submitted-message");
+    // F010: answers are edited via the review step's Edit button.
+    fireEvent.click(screen.getByTestId("review-edit-button"));
 
     const input = screen.getByTestId("questionnaire-answer-stub");
     expect(input).not.toBeDisabled();
@@ -104,7 +117,9 @@ describe("F061 AS-126: the form stays editable after a successful submit", () =>
     fireEvent.change(input, { target: { value: "Edited after submit" } });
     expect((input as HTMLInputElement | HTMLTextAreaElement).value).toBe("Edited after submit");
 
-    // The submitted message stays; the form did not lock or revert.
+    // Returning to the review, the submitted message stays and the edit shows.
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(screen.getByText("Edited after submit")).toBeInTheDocument();
     expect(screen.getByTestId("questionnaire-submitted-message")).toBeInTheDocument();
   });
 });

@@ -59,42 +59,48 @@ describe("F055: AS-113 a client can open the questionnaire", () => {
   });
 });
 
-describe("F055: AS-114 the questionnaire presents one question at a time", () => {
+describe("F055: AS-114 / BR-040 the questionnaire presents one section per step", () => {
   const questions: BriefQuestion[] = [
-    makeQuestion({ id: "q1", prompt: "First question?", position: 0 }),
-    makeQuestion({ id: "q2", prompt: "Second question?", position: 1, required: true }),
-    makeQuestion({ id: "q3", prompt: "Third question?", position: 2 }),
+    makeQuestion({ id: "q1", prompt: "First question?", category: "Alpha", position: 0 }),
+    makeQuestion({ id: "q1b", prompt: "First-b question?", category: "Alpha", position: 1 }),
+    makeQuestion({
+      id: "q2",
+      prompt: "Second question?",
+      category: "Beta",
+      position: 2,
+      required: true,
+    }),
+    makeQuestion({ id: "q3", prompt: "Third question?", category: "Gamma", position: 3 }),
   ];
 
-  it("shows only the first question's prompt on initial render", () => {
+  it("BR-040: shows all questions of the first section and no others, with Step 1 of 3", () => {
     render(<PortalQuestionnaire questions={questions} initialAnswers={[]} />);
 
     expect(screen.getByText("First question?")).toBeTruthy();
+    expect(screen.getByText("First-b question?")).toBeTruthy();
     expect(screen.queryByText("Second question?")).toBeNull();
     expect(screen.queryByText("Third question?")).toBeNull();
-    expect(screen.getByText("Question 1 of 3")).toBeTruthy();
+    expect(screen.getByText("Step 1 of 3")).toBeTruthy();
+    expect(screen.getByTestId("questionnaire-section-title")).toHaveTextContent("Alpha");
   });
 
-  it("Previous is disabled on the first question", () => {
+  it("BR-041: Previous is disabled on the first section", () => {
     render(<PortalQuestionnaire questions={questions} initialAnswers={[]} />);
     expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();
   });
 
-  it("Next advances to the next question, replacing the previous prompt in the DOM", () => {
+  it("BR-041: Next advances to the next section without blocking on optional questions", () => {
     render(<PortalQuestionnaire questions={questions} initialAnswers={[]} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
 
     expect(screen.getByText("Second question?")).toBeTruthy();
     expect(screen.queryByText("First question?")).toBeNull();
-    expect(screen.getByText("Question 2 of 3")).toBeTruthy();
+    expect(screen.getByText("Step 2 of 3")).toBeTruthy();
     expect(screen.getByTestId("questionnaire-required-badge")).toBeTruthy();
   });
 
-  it("Next is disabled on the last question and Previous returns to prior questions", () => {
-    // q2 is `required: true` (F060, AS-060): Next refuses to advance past
-    // it until it's answered, so this test answers it before continuing --
-    // otherwise it can never reach q3 to exercise the last-question state.
+  it("BR-041/BR-043: Next on the last section opens the review step and Previous returns to prior sections", () => {
     render(<PortalQuestionnaire questions={questions} initialAnswers={[]} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
@@ -104,10 +110,12 @@ describe("F055: AS-114 the questionnaire presents one question at a time", () =>
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
 
     expect(screen.getByText("Third question?")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(screen.getByText("Review your answers")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Next" })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Previous" }));
-    expect(screen.getByText("Second question?")).toBeTruthy();
+    expect(screen.getByText("Third question?")).toBeTruthy();
   });
 
   it("pre-fills the answer stub from initialAnswers when one exists for the current question", () => {

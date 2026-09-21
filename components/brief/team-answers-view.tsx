@@ -15,6 +15,7 @@
 // component re-querying -- keeps this file a pure presentational read of
 // already-resolved data, same split as the rest of the brief queries.
 import { Badge } from "@/components/ui/badge";
+import { isBriefAnswerAnswered } from "@/lib/brief/is-answered";
 import { RevisionHistory } from "@/components/brief/revision-history";
 import type { BriefAnswer, BriefAnswerRevision, BriefQuestion } from "@/lib/queries/brief";
 
@@ -29,28 +30,26 @@ export type TeamAnswersViewQuestion = {
   revisions?: BriefAnswerRevision[];
 };
 
-function AnswerTypeBadge({ answerType }: { answerType: BriefQuestion["answerType"] }) {
-  const label =
-    answerType === "short_text"
-      ? "Short text"
-      : answerType === "long_text"
-        ? "Long text"
-        : answerType === "single_choice"
-          ? "Single choice"
-          : "Multi choice";
-  return <Badge variant="secondary">{label}</Badge>;
+function formatRelative(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 }
 
+// Only rendered for answers isBriefAnswerAnswered() accepted (see TeamAnswersView).
 function AnswerValue({ question, answer }: { question: BriefQuestion; answer: BriefAnswer }) {
   if (question.answerType === "single_choice" || question.answerType === "multi_choice") {
     const selected = answer.answerOptions ?? [];
-    if (selected.length === 0) {
-      return <p className="text-sm text-muted-foreground">Not answered yet</p>;
-    }
     return (
       <div className="flex flex-wrap gap-1.5">
         {selected.map((option) => (
-          <Badge key={option} variant="outline">
+          <Badge key={option} variant="outline" className="rounded-md px-2 py-0.5 text-sm font-normal normal-case tracking-normal">
             {option}
           </Badge>
         ))}
@@ -58,54 +57,51 @@ function AnswerValue({ question, answer }: { question: BriefQuestion; answer: Br
     );
   }
 
-  if (!answer.answerText) {
-    return <p className="text-sm text-muted-foreground">Not answered yet</p>;
-  }
-
   if (question.answerType === "long_text") {
-    return <p className="whitespace-pre-wrap text-sm text-foreground">{answer.answerText}</p>;
+    return <p className="whitespace-pre-wrap text-base text-foreground">{answer.answerText}</p>;
   }
 
-  return <p className="text-sm text-foreground">{answer.answerText}</p>;
+  return <p className="text-base text-foreground">{answer.answerText}</p>;
 }
 
 export function TeamAnswersView({ items }: { items: TeamAnswersViewQuestion[] }) {
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex max-w-[720px] w-full flex-col gap-6">
       {items.map(({ question, answer, hasRevisions, revisions }) => {
-        const isAnswered =
-          !!answer &&
-          (question.answerType === "single_choice" || question.answerType === "multi_choice"
-            ? (answer.answerOptions ?? []).length > 0
-            : !!answer.answerText);
+        const isAnswered = isBriefAnswerAnswered(question, answer);
 
         return (
           <div key={question.id} className="flex flex-col gap-2 border-b border-border pb-6">
             <div className="flex items-start justify-between gap-3">
               <div className="flex flex-col gap-1">
-                <p className="text-sm font-medium text-foreground">
+                <p className="text-sm text-muted-foreground">
                   {question.prompt}
-                  {question.required ? (
+                  {question.required && !isAnswered ? (
                     <span className="ml-1 text-destructive" aria-label="required">
                       *
                     </span>
                   ) : null}
                 </p>
-                {question.helpText ? (
-                  <p className="text-sm text-muted-foreground">{question.helpText}</p>
-                ) : null}
               </div>
-              <div className="flex shrink-0 items-center gap-1.5">
-                <AnswerTypeBadge answerType={question.answerType} />
-                {isAnswered && hasRevisions ? (
+              {isAnswered && hasRevisions ? (
+                <div className="flex shrink-0 items-center gap-1.5">
                   <Badge variant="warning" aria-label="This answer has been edited">
                     Edited
                   </Badge>
-                ) : null}
-              </div>
+                </div>
+              ) : null}
             </div>
             {isAnswered && answer ? (
-              <AnswerValue question={question} answer={answer} />
+              <>
+                <AnswerValue question={question} answer={answer} />
+                <p className="text-xs text-muted-foreground">
+                  <span>{answer.answeredByName ?? "Someone"}</span>
+                  {" · "}
+                  <span className="font-mono">{formatRelative(answer.updatedAt)}</span>
+                </p>
+              </>
+            ) : question.required ? (
+              <p className="text-sm text-warning">Not answered</p>
             ) : (
               <p className="text-sm text-muted-foreground">Not answered yet</p>
             )}

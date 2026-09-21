@@ -30,7 +30,8 @@ import { logger } from "@/lib/observability/logger";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { calculatePosition } from "@/lib/board/position";
-import { getBrief } from "@/lib/queries/brief";
+import { getBrief, type BriefQuestion } from "@/lib/queries/brief";
+import { isBriefAnswerAnswered } from "@/lib/brief/is-answered";
 import { buildBriefDocumentContent } from "@/lib/brief/document";
 import { createNotification } from "@/lib/notifications/create-notification";
 import {
@@ -603,6 +604,43 @@ export async function submitBrief(briefId: string): Promise<{ success: boolean; 
 
   if (brief.state !== "draft") {
     return { success: false, error: "This brief can no longer be submitted." };
+  }
+
+  // BR-015/BR-016/BR-044/BR-047: the client-side gate is not enough; enforce
+  // server-side that every required question has an answer per the shared rule.
+  const { data: requiredQuestions, error: requiredError } = await supabase
+    .from("brief_questions")
+    .select("id, answer_type")
+    .eq("project_id", brief.project_id)
+    .eq("required", true);
+  const { data: answerRows, error: answersError } = await supabase
+    .from("brief_answers")
+    .select("question_id, answer_text, answer_options")
+    .eq("brief_id", briefId);
+
+  if (requiredError || answersError) {
+    logger.error("submitBrief: failed to load required check data", {
+      error: requiredError ?? answersError,
+      briefId,
+    });
+    return { success: false, error: "Couldn't submit this brief." };
+  }
+
+  const answersByQuestion = new Map(
+    (answerRows ?? []).map((a) => [a.question_id, a]),
+  );
+  const missing = (requiredQuestions ?? []).filter((rq) => {
+    const a = answersByQuestion.get(rq.id);
+    return !isBriefAnswerAnswered(
+      { answerType: rq.answer_type as BriefQuestion["answerType"] },
+      a ? { answerText: a.answer_text, answerOptions: a.answer_options } : null,
+    );
+  });
+  if (missing.length > 0) {
+    return {
+      success: false,
+      error: "Answer all required questions before submitting this brief.",
+    };
   }
 
   const { error: updateError } = await supabase

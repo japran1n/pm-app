@@ -65,6 +65,7 @@ export type BriefAnswer = {
   answerText: string | null;
   answerOptions: string[] | null;
   answeredBy: string | null;
+  answeredByName?: string | null;
   answeredAt: string | null;
   updatedAt: string;
   // F066 (AS-130/AS-131): true once at least one row exists in
@@ -154,6 +155,7 @@ function mapBriefAnswerRow(
     updated_at: string;
   },
   hasRevisions = false,
+  answeredByName: string | null = null,
 ): BriefAnswer {
   return {
     id: row.id,
@@ -163,6 +165,7 @@ function mapBriefAnswerRow(
     answerText: row.answer_text,
     answerOptions: row.answer_options,
     answeredBy: row.answered_by,
+    answeredByName,
     answeredAt: row.answered_at,
     updatedAt: row.updated_at,
     hasRevisions,
@@ -189,6 +192,29 @@ function mapBriefAnswerRevisionRow(
     changedByName,
     changedAt: row.changed_at,
   };
+}
+
+// Resolves display names for the given profile ids. No FK is declared for
+// PostgREST to embed, so this is a second select keyed by distinct ids
+// (same approach as getBriefWithRevisions's reviser lookup). Failures degrade
+// to "no names" rather than failing the whole brief read.
+async function loadProfileNames(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  ids: (string | null)[],
+): Promise<Map<string, string | null>> {
+  const distinct = Array.from(new Set(ids.filter((id): id is string => id !== null)));
+  if (distinct.length === 0) return new Map();
+  const { data, error } = await supabase.from("profiles").select("id, display_name").in("id", distinct);
+  if (error) {
+    // Real errors (e.g. an RLS denial) must stay visible in logs; names
+    // degrade to null ("Someone" in the UI) rather than failing the read.
+    logger.error("loadProfileNames: failed to load profiles; names degrade to null", {
+      error,
+      profileIdCount: distinct.length,
+    });
+    return new Map();
+  }
+  return new Map((data ?? []).map((p) => [p.id as string, p.display_name as string | null]));
 }
 
 async function loadBriefWithQuestionsAndAnswers(
@@ -263,12 +289,23 @@ async function loadBriefWithQuestionsAndAnswers(
     editedAnswerIds = new Set((revisionRows ?? []).map((row) => row.answer_id as string));
   }
 
+  const answerNames = await loadProfileNames(
+    supabase,
+    answers.map((row) => row.answered_by),
+  );
+
   return {
     ok: true,
     data: {
       brief,
       questions,
-      answers: answers.map((row) => mapBriefAnswerRow(row, editedAnswerIds.has(row.id))),
+      answers: answers.map((row) =>
+        mapBriefAnswerRow(
+          row,
+          editedAnswerIds.has(row.id),
+          row.answered_by ? (answerNames.get(row.answered_by) ?? null) : null,
+        ),
+      ),
     },
   };
 }
@@ -334,33 +371,26 @@ export async function getBriefWithRevisions(
   }
 
   const rows = revisionRows ?? [];
-  const answer = mapBriefAnswerRow(answerRow, rows.length > 0);
-
-  // AS-128/AS-155: name the user (team member or client contact) behind
-  // each revision. `changed_by` is a bare auth.users FK with no direct
-  // FK declared to `profiles` for PostgREST to embed automatically, so
-  // names are looked up in a second query keyed by the distinct ids
-  // present in this answer's revision history, then joined in memory.
-  const changedByIds = Array.from(
-    new Set(rows.map((row) => row.changed_by).filter((id): id is string => id !== null)),
+  // AS-128/AS-155: name the user (team member or client contact) behind the
+  // answer and each revision. `changed_by`/`answered_by` are bare auth.users
+  // FKs with no FK to `profiles` for PostgREST to embed, so names come from a
+  // SINGLE profiles query keyed by the distinct ids, joined in memory.
+  const profileIds = Array.from(
+    new Set(
+      [answerRow.answered_by, ...rows.map((row) => row.changed_by)].filter(
+        (id): id is string => id !== null && id !== undefined,
+      ),
+    ),
   );
 
-  let namesById = new Map<string, string | null>();
-  if (changedByIds.length > 0) {
-    const { data: profileRows, error: profilesError } = await supabase
-      .from("profiles")
-      .select("id, display_name")
-      .in("id", changedByIds);
+  // Profile-name lookup is non-fatal: on failure names stay null.
+  const namesById = await loadProfileNames(supabase, profileIds);
 
-    if (profilesError) {
-      logger.error("getBriefWithRevisions: failed to load reviser profiles", {
-        error: profilesError,
-      });
-      return { ok: false, error: profilesError.message };
-    }
-
-    namesById = new Map((profileRows ?? []).map((p) => [p.id as string, p.display_name as string | null]));
-  }
+  const answer = mapBriefAnswerRow(
+    answerRow,
+    rows.length > 0,
+    answerRow.answered_by ? (namesById.get(answerRow.answered_by) ?? null) : null,
+  );
 
   return {
     ok: true,

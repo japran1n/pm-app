@@ -1,18 +1,22 @@
 import Link from "next/link";
 
 import { getBrief, getBriefWithRevisions } from "@/lib/queries/brief";
-import {
-  TeamAnswersView,
-  type TeamAnswersViewQuestion,
-} from "@/components/brief/team-answers-view";
+import type { TeamAnswersViewQuestion } from "@/components/brief/team-answers-view";
+import { BriefSectionedView } from "@/components/brief/brief-sectioned-view";
 import { GenerateDocumentButton } from "@/components/brief/generate-document-button";
 import { RequestApprovalButton } from "@/components/brief/request-approval-button";
 import { ApproveBriefButton } from "@/components/brief/approve-brief-button";
 import { WithdrawApprovalButton } from "@/components/brief/withdraw-approval-button";
 import { DocClientVisibilityToggle } from "@/components/docs/doc-client-visibility-toggle";
 import { NotificationRecipientsPointer } from "@/components/brief/notification-recipients-pointer";
+import { BriefHeader } from "@/components/brief/brief-header";
 import { BriefApprovalStatus } from "@/components/brief/brief-approval-status";
-import { getDecisionOwners, getLatestApprovalForSubject } from "@/lib/queries/approvals";
+import {
+  getDecisionOwners,
+  getLatestApprovalForSubject,
+} from "@/lib/queries/approvals";
+import { isBriefAnswerAnswered } from "@/lib/brief/is-answered";
+import { pickLatestAnsweredRow } from "@/lib/brief/latest-answer";
 import { createClient } from "@/lib/supabase/server";
 
 // F054 (AS-130): team-side brief route. Server Component per the same
@@ -48,7 +52,9 @@ export default async function ProjectBriefPage({
   // configurable list, not a second UI for editing it.
   const decisionOwnersResult = await getDecisionOwners(projectId);
   const decisionOwnerNames = decisionOwnersResult.ok
-    ? decisionOwnersResult.data.map((owner) => owner.name).filter((name): name is string => !!name)
+    ? decisionOwnersResult.data
+        .map((owner) => owner.name)
+        .filter((name): name is string => !!name)
     : [];
 
   if (!brief || questions.length === 0) {
@@ -62,7 +68,9 @@ export default async function ProjectBriefPage({
   }
 
   const answersByQuestionId = new Map(
-    answers.filter((answer) => answer.questionId).map((answer) => [answer.questionId, answer]),
+    answers
+      .filter((answer) => answer.questionId)
+      .map((answer) => [answer.questionId, answer]),
   );
 
   // F066 (AS-130): `hasRevisions` now comes straight off each answer row
@@ -80,11 +88,27 @@ export default async function ProjectBriefPage({
       if (!hasRevisions) {
         return { question, answer, hasRevisions };
       }
-      const revisionsResult = await getBriefWithRevisions(brief.id, question.id);
+      const revisionsResult = await getBriefWithRevisions(
+        brief.id,
+        question.id,
+      );
       const revisions =
-        revisionsResult.ok && revisionsResult.data ? revisionsResult.data.revisions : [];
+        revisionsResult.ok && revisionsResult.data
+          ? revisionsResult.data.revisions
+          : [];
       return { question, answer, hasRevisions, revisions };
     }),
+  );
+
+  const isAnswered = (q: (typeof questions)[number]) =>
+    isBriefAnswerAnswered(q, answersByQuestionId.get(q.id));
+  const answeredCount = questions.filter(isAnswered).length;
+  const requiredMissingCount = questions.filter(
+    (q) => q.required && !isAnswered(q),
+  ).length;
+  const latestAnswer = pickLatestAnsweredRow(
+    answers,
+    new Map(questions.map((q) => [q.id, q])),
   );
 
   // AS-139: generating a document is only offered once there is
@@ -101,15 +125,19 @@ export default async function ProjectBriefPage({
   // team page can both link to the doc (F073, AS-144) and show/control
   // its current sharing state without a second navigation.
   let existingDocument: { id: string; clientVisible: boolean } | null = null;
+  // A failed lookup is not "no document": offering Generate Document then
+  // could create a duplicate on a transient error.
+  let documentLookupFailed = false;
   if (hasAnswers) {
     const supabase = await createClient();
-    const { data: existingDoc } = await supabase
+    const { data: existingDoc, error: existingDocError } = await supabase
       .from("docs")
       .select("id, client_visible")
       .eq("project_id", projectId)
       .eq("doc_kind", "brief")
       .limit(1)
       .maybeSingle();
+    if (existingDocError) documentLookupFailed = true;
     existingDocument = existingDoc
       ? { id: existingDoc.id, clientVisible: existingDoc.client_visible }
       : null;
@@ -125,55 +153,76 @@ export default async function ProjectBriefPage({
 
   return (
     <div className="p-6 pt-4 lg:p-8 lg:pt-8">
-      {hasAnswers ? (
-        <div className="mb-4 flex items-center justify-end gap-2">
-          {existingDocument ? (
+      <BriefHeader
+        answeredCount={answeredCount}
+        totalCount={questions.length}
+        requiredMissingCount={requiredMissingCount}
+        lastModifiedBy={latestAnswer?.answeredByName ?? null}
+        lastModifiedAt={latestAnswer?.updatedAt ?? null}
+        meta={
+          <NotificationRecipientsPointer
+            workspaceSlug={workspaceSlug}
+            projectId={projectId}
+            recipientNames={decisionOwnerNames}
+          />
+        }
+        actions={
+          hasAnswers ? (
             <>
-              <Link
-                href={`/w/${workspaceSlug}/projects/${projectId}/docs/${existingDocument.id}`}
-                className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-              >
-                View document
-              </Link>
-              <DocClientVisibilityToggle
-                docId={existingDocument.id}
-                clientVisible={existingDocument.clientVisible}
-              />
-              {brief.state !== "approved" ? (
+              {existingDocument ? (
                 <>
-                  {/* F074 (AS-145/AS-146): request approval of the
-                      generated brief document. */}
-                  <RequestApprovalButton
-                    projectId={projectId}
-                    documentId={existingDocument.id}
+                  <Link
+                    href={`/w/${workspaceSlug}/projects/${projectId}/docs/${existingDocument.id}`}
+                    className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                  >
+                    View document
+                  </Link>
+                  <DocClientVisibilityToggle
+                    docId={existingDocument.id}
+                    clientVisible={existingDocument.clientVisible}
                   />
-                  {/* F075 (AS-147): team-side approval, sets
+                  {brief.state !== "approved" ? (
+                    <>
+                      {/* F074 (AS-145/AS-146): request approval of the
+                      generated brief document. */}
+                      <RequestApprovalButton
+                        projectId={projectId}
+                        documentId={existingDocument.id}
+                      />
+                      {/* F075 (AS-147): team-side approval, sets
                       brief.state to 'approved'. */}
-                  <ApproveBriefButton briefId={brief.id} />
+                      <ApproveBriefButton briefId={brief.id} />
+                    </>
+                  ) : (
+                    // F077 (AS-151): only offered once approved -- withdrawal
+                    // reverts brief.state to 'submitted', which unlocks
+                    // answers again (F076's brief.state !== 'approved' checks).
+                    <WithdrawApprovalButton briefId={brief.id} />
+                  )}
                 </>
+              ) : documentLookupFailed ? (
+                <p className="text-sm text-muted-foreground" role="alert">
+                  Couldn&apos;t check for an existing brief document, so the
+                  Generate Document, Request Approval, Approve and Withdraw
+                  approval actions are unavailable until you reload the page.
+                </p>
               ) : (
-                // F077 (AS-151): only offered once approved -- withdrawal
-                // reverts brief.state to 'submitted', which unlocks
-                // answers again (F076's brief.state !== 'approved' checks).
-                <WithdrawApprovalButton briefId={brief.id} />
+                <GenerateDocumentButton
+                  workspaceSlug={workspaceSlug}
+                  projectId={projectId}
+                  briefId={brief.id}
+                  disabled={requiredMissingCount > 0}
+                />
               )}
             </>
-          ) : (
-            <GenerateDocumentButton
-              workspaceSlug={workspaceSlug}
-              projectId={projectId}
-              briefId={brief.id}
-            />
-          )}
-        </div>
-      ) : null}
-      <BriefApprovalStatus workspaceSlug={workspaceSlug} state={briefApproval?.state ?? null} />
-      <NotificationRecipientsPointer
-        workspaceSlug={workspaceSlug}
-        projectId={projectId}
-        recipientNames={decisionOwnerNames}
+          ) : null
+        }
       />
-      <TeamAnswersView items={items} />
+      <BriefApprovalStatus
+        workspaceSlug={workspaceSlug}
+        state={briefApproval?.state ?? null}
+      />
+      <BriefSectionedView items={items} />
     </div>
   );
 }

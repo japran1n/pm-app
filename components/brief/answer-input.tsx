@@ -94,7 +94,9 @@ export function AnswerInput({
               data-testid={`questionnaire-answer-option-${option}`}
               disabled={disabled}
             />
-            <Label htmlFor={`${question.id}-${option}`}>{option}</Label>
+            <Label htmlFor={`${question.id}-${option}`} className="normal-case">
+              {option}
+            </Label>
           </div>
         ))}
       </RadioGroup>
@@ -126,7 +128,9 @@ export function AnswerInput({
                 onChange(null, nextOptions);
               }}
             />
-            <Label htmlFor={`${question.id}-${option}`}>{option}</Label>
+            <Label htmlFor={`${question.id}-${option}`} className="normal-case">
+              {option}
+            </Label>
           </div>
         );
       })}
