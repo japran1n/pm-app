@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useCallback, useEffect, useId, useRef, useState, useTransition } from "react";
 import {
   LayoutDashboard,
   KanbanSquare,
@@ -11,19 +11,16 @@ import {
   LogOut,
   Loader2,
   Menu,
-  Settings,
-  Archive,
-  LayoutTemplate,
-  Trash2,
   ListChecks,
   CalendarDays,
   Inbox,
   MessageCircle,
   CheckSquare,
   Eye,
-  HelpCircle,
   Code2,
   Network,
+  FileCode2,
+  ChevronRight,
 } from "lucide-react";
 
 import { useMembership } from "@/components/auth/membership-provider";
@@ -36,6 +33,8 @@ import {
 } from "@/components/ui/sheet";
 import { WorkspaceSwitcher, type SwitcherWorkspace } from "@/components/workspace-switcher";
 import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
+
 import { signOut } from "@/lib/actions/auth";
 import type { UserAvatarPerson } from "@/components/user-avatar";
 // F208 (AS-379): the notification bell — mounted here since this app has
@@ -153,6 +152,15 @@ function navGroups(
     // unreadCount, which chat-nav-list.tsx already treats as the
     // source of truth for "unread" there).
     { href: `/w/${workspaceSlug}/chat`, label: "Chat", icon: MessageCircle, badge: chatUnreadBadge ?? countBadge(chatUnreadCount) },
+    // F003 (SB-016, SB-018): the "Other" group is dissolved (Templates,
+    // Archive, Trash and Help moved into AccountMenu -- see that
+    // component). Watching has nowhere else to live yet (F013 will give it
+    // a proper home), so it moves here into the primary "Work" band as a
+    // temporary measure per this feature's own clarified implementation.
+    // Not guest-gated, same as before: watching is a personal notification
+    // preference any active member (including a guest) can use, per
+    // lib/actions/watchers.ts's own "any active member" access rule.
+    { href: `/w/${workspaceSlug}/watching`, label: "Watching", icon: Eye },
   ];
 
   // F010 (TH-001, TH-002, TH-003, TH-005, TH-007, TH-012): dedicated "Tools"
@@ -170,7 +178,7 @@ function navGroups(
     // implementation -- same no-gate, prefix-matched active-state
     // convention as its sibling above (no `exact: true`), same route shape
     // (`/w/<slug>/tools/code-editor`).
-    { href: `/w/${workspaceSlug}/tools/code-editor`, label: "Webflow Code Editor", icon: Code2 },
+    { href: `/w/${workspaceSlug}/tools/code-editor`, label: "Webflow Code Editor", icon: FileCode2 },
     { href: `/w/${workspaceSlug}/tools/sitemap`, label: "Sitemap Builder", icon: Network },
   ];
 
@@ -218,63 +226,23 @@ function navGroups(
           },
         ]
       : []),
-    // F080 (missions/20260903-portal, hardening): "see exactly what the
-    // client sees" was reachable only from a task detail sheet or the
-    // docs editor before this — the one control that would let a PM
-    // catch a portal that's off, blank, or leaking an internal task
-    // title. Gated on BOTH `hasClient` (same "no client, no reason to
-    // preview" convention as Client requests/Approvals above) AND
-    // `canManageWorkspace` (the destination page is hard-gated to
-    // owner/admin -- preview-as-client/page.tsx's own
-    // requireWorkspaceAdmin redirect -- so a member/viewer/guest is
-    // never shown a link that would only bounce them back).
-    ...(hasClient && canManageWorkspace
-      ? [
-          {
-            href: `/w/${workspaceSlug}/preview-as-client`,
-            label: "Preview as client",
-            icon: Eye,
-          },
-        ]
-      : []),
+    // F004 (SB-019): "Preview as client" moved into AccountMenu (same
+    // hasClient && canManageWorkspace condition as before; see
+    // components/nav/account-menu.tsx).
   ];
 
-  const other: NavItem[] = [
-    // Feature request "Watching feed": every task the caller is watching,
-    // sorted by most recent activity. Placed in the same secondary
-    // "Other" band as Archive/Templates/Trash — an occasionally-visited
-    // reference view, not a daily-driver screen. Not guest-gated (same
-    // reasoning as "How this works" below): watching is a personal
-    // notification preference any active member (including a guest) can
-    // use, per lib/actions/watchers.ts's own "any active member" access
-    // rule.
-    { href: `/w/${workspaceSlug}/watching`, label: "Watching", icon: Eye },
-    { href: `/w/${workspaceSlug}/archive`, label: "Archive", icon: Archive },
-    // F183: gated to non-guests the same way Members/Archive already are.
-    { href: `/w/${workspaceSlug}/templates`, label: "Templates", icon: LayoutTemplate },
-    // F188 (AS-343..352): same gating pattern (mirrors F142's archive
-    // page).
-    { href: `/w/${workspaceSlug}/trash`, label: "Trash", icon: Trash2 },
-    // Internal "how this dashboard works" docs page — placed in the same
-    // secondary "Other" band as Archive/Templates/Trash (an
-    // occasionally-visited reference page, not a daily-driver screen),
-    // same pattern as the portal's own "How we work" secondary-nav entry.
-    // Not guest-gated (unlike the items above): a guest benefits from this
-    // orientation page at least as much as a full member does, and it has
-    // no workspace data of its own to leak.
-    { href: `/w/${workspaceSlug}/help`, label: "How this works", icon: HelpCircle },
-    ...(canManageWorkspace
-      ? [{ href: `/w/${workspaceSlug}/settings`, label: "Settings", icon: Settings, exact: true }]
-      : []),
-  ];
+  // F003 (SB-016, SB-017): the "Other" group (Archive, Templates, Trash,
+  // "How this works", and a duplicate "Settings") is dissolved entirely --
+  // Archive/Templates/Trash/Help now live in AccountMenu (see that
+  // component's own doc comment for gating); Settings was already reachable
+  // from AccountMenu since F002, so the sidebar's own copy is just removed,
+  // not relocated. Watching moved up into the primary "Work" band above
+  // (temporary until F013).
 
   const guestExcluded = new Set([
     "Team",
     "Client requests",
     "Approvals",
-    "Archive",
-    "Templates",
-    "Trash",
   ]);
   const filterGuest = (items: NavItem[]) =>
     isGuest ? items.filter((item) => !guestExcluded.has(item.label)) : items;
@@ -283,11 +251,12 @@ function navGroups(
     { label: null, items: work },
     { label: "Plan", items: filterGuest(plan) },
     { label: "Team", items: filterGuest(team) },
-    // F010 (TH-002, TH-012): "Tools" sits between "Team" and "Other" per
-    // this feature's own Draft scope, and is NOT run through `filterGuest`
-    // -- it always renders for every role/workspace (TH-012).
+    // F010 (TH-002, TH-012): "Tools" sits between "Team" and (formerly)
+    // "Other" per this feature's own Draft scope, and is NOT run through
+    // `filterGuest` -- it always renders for every role/workspace
+    // (TH-012). F003 (SB-016): "Other" itself is gone -- see the doc
+    // comment above `guestExcluded`.
     { label: "Tools", items: tools },
-    { label: "Other", items: filterGuest(other) },
   ].filter((group) => group.items.length > 0);
 }
 
@@ -361,6 +330,30 @@ function SidebarContent({
   // the same server-fetched `hasClient` flag the task sheet's share toggle
   // uses rather than a prop threaded through two more component layers.
   const hasClient = useMembership()?.hasClient ?? false;
+  // F005 (SB-020, SB-021): Tools group collapse state, persisted in
+  // localStorage. Default expanded; storage access is try/catch-guarded so a
+  // throwing localStorage never breaks render.
+  const [toolsOpen, setToolsOpen] = useState(true);
+  const toolsPanelId = useId();
+  useEffect(() => {
+    try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- post-hydration read of persisted UI state
+      if (window.localStorage.getItem("sidebar:tools-open") === "false") setToolsOpen(false);
+    } catch {
+      // ignore: stay expanded
+    }
+  }, []);
+  const toggleTools = () => {
+    setToolsOpen((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem("sidebar:tools-open", String(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  };
   const groups = navGroups(
     workspaceSlug,
     isGuest,
@@ -373,6 +366,27 @@ function SidebarContent({
     requestsBadge,
     chatUnreadBadge,
   );
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [showFade, setShowFade] = useState(false);
+  const updateFade = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setShowFade(el.scrollHeight > el.clientHeight && el.scrollTop + el.clientHeight < el.scrollHeight - 1);
+  }, []);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    updateFade();
+    el.addEventListener("scroll", updateFade, { passive: true });
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(updateFade) : null;
+    ro?.observe(el);
+    Array.from(el.children).forEach((c) => ro?.observe(c));
+    return () => {
+      el.removeEventListener("scroll", updateFade);
+      ro?.disconnect();
+    };
+  }, [updateFade]);
 
   return (
     <div className="flex h-full flex-col">
@@ -431,19 +445,42 @@ function SidebarContent({
           `overflow-y-auto` only ever shows a scrollbar when its content
           genuinely exceeds its allotted (bounded via `min-h-0` +
           `flex-1` up the chain to the sidebar's own `h-svh`) height. */}
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+      <div className="relative flex min-h-0 flex-1 flex-col">
+      <div
+        ref={scrollRef}
+        data-testid="sidebar-scroll"
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto"
+      >
         <nav
           data-tour="sidebar-nav"
-          className="flex shrink-0 flex-col gap-3 p-2"
+          className="flex shrink-0 flex-col gap-2 p-2"
         >
           {groups.map((group, groupIndex) => (
             <div key={group.label ?? `group-${groupIndex}`} className="flex flex-col gap-0.5">
-              {group.label && (
-                <p className="px-2 mb-1 mt-3 text-xs text-muted-foreground uppercase tracking-wide">
-                  {group.label}
+              {group.label === "Tools" ? (
+                <p className="mb-1 mt-2 px-2 text-xs text-muted-foreground uppercase tracking-wide">
+                  <button
+                    type="button"
+                    onClick={toggleTools}
+                    aria-expanded={toolsOpen}
+                    aria-controls={group.items.map((_, i) => `${toolsPanelId}-${i}`).join(" ")}
+                    className="flex w-full items-center gap-1 text-left uppercase tracking-wide hover:text-foreground"
+                  >
+                    <ChevronRight
+                      className={cn("size-3 shrink-0 transition-transform", toolsOpen && "rotate-90")}
+                      aria-hidden="true"
+                    />
+                    {group.label}
+                  </button>
                 </p>
+              ) : (
+                group.label && (
+                  <p className="px-2 mb-1 mt-2 text-xs text-muted-foreground uppercase tracking-wide">
+                    {group.label}
+                  </p>
+                )
               )}
-              {group.items.map(({ href, label, icon: Icon, exact, badge }) => {
+              {group.items.map(({ href, label, icon: Icon, exact, badge }, itemIndex) => {
                 const isActive = exact
                   ? pathname === href
                   : pathname === href || pathname.startsWith(`${href}/`);
@@ -452,6 +489,8 @@ function SidebarContent({
                   <Link
                     key={href}
                     href={href}
+                    id={group.label === "Tools" ? `${toolsPanelId}-${itemIndex}` : undefined}
+                    hidden={group.label === "Tools" && !toolsOpen}
                     aria-current={isActive ? "page" : undefined}
                     onClick={onNavigate}
                     className={cn(
@@ -466,7 +505,7 @@ function SidebarContent({
                       // md:hidden`), so a `sm:` check would leave 640-767px
                       // tablet widths (where the mobile Sheet is still what's
                       // shown) under-sized.
-                      "flex min-h-9 items-center gap-2.5 rounded-[4px] px-2 py-1.5 text-sm max-md:min-h-11",
+                      "flex items-center gap-2.5 rounded-[4px] px-2 py-1.5 text-sm md:h-8 md:py-0 max-md:min-h-11",
                       isActive
                         ? "bg-accent text-foreground font-medium"
                         : "text-muted-foreground hover:bg-accent",
@@ -509,6 +548,14 @@ function SidebarContent({
           />
         </div>
       </div>
+      {showFade ? (
+        <div
+          aria-hidden="true"
+          data-testid="sidebar-bottom-fade"
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-sidebar to-transparent"
+        />
+      ) : null}
+      </div>
 
       {/* UX: `shrink-0` makes explicit what was already true structurally
           (this footer is a sibling of the `flex-1 min-h-0` middle wrapper
@@ -531,6 +578,8 @@ function SidebarContent({
           workspaceSlug={workspaceSlug}
           currentUser={currentUser}
           canManageWorkspace={canManageWorkspace}
+          isGuest={isGuest}
+          hasClient={hasClient}
           onNavigate={onNavigate}
         />
       </div>
@@ -720,7 +769,12 @@ export function SignOutButton() {
 
   function handleClick() {
     startTransition(async () => {
-      await signOut();
+      try {
+        const result = await signOut();
+        if (result && result.ok === false) toast.error(result.error);
+      } catch {
+        toast.error("Couldn't sign out. Please try again.");
+      }
     });
   }
 

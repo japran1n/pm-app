@@ -12,10 +12,19 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 
+// FU-8 / SB-004: the bell is an unrelated async client that calls a server
+// action (cookies()) on mount; stub it so E251 rejections do not flood the run.
+vi.mock("@/components/notifications/notification-bell", () => ({
+  NotificationBell: () => null,
+}));
+
 vi.mock("next/navigation", () => ({
   usePathname: () => "/w/acme",
   useRouter: () => ({ push: () => {}, refresh: () => {} }),
 }));
+
+const toastErrorMock = vi.fn();
+vi.mock("sonner", () => ({ toast: { error: (...a: unknown[]) => toastErrorMock(...a) } }));
 
 const signOutMock = vi.fn();
 vi.mock("@/lib/actions/auth", () => ({
@@ -88,19 +97,7 @@ describe("test_SB_013_standalone_theme_and_signout_removed", () => {
   });
 });
 
-describe("test_SB_014_theme_toggle_works_from_menu", () => {
-  it("selecting the Theme item flips the theme via the shared setTheme mechanism", async () => {
-    render(createElement(AccountMenu, { ...baseProps, canManageWorkspace: true }));
-
-    fireEvent.click(screen.getByRole("button", { name: /account menu/i }));
-    const menu = await screen.findByRole("menu");
-    const themeItem = within(menu).getByText("Theme");
-
-    expect(currentTheme).toBe("light");
-    fireEvent.click(themeItem);
-    expect(currentTheme).toBe("dark");
-  });
-});
+// SB-014 is covered unmocked in tests/unit/f019-theme-toggle.test.tsx.
 
 describe("test_SB_015_sign_out_works_from_menu", () => {
   it("selecting Sign out calls the signOut action and disables the item while pending", async () => {
@@ -125,6 +122,54 @@ describe("test_SB_015_sign_out_works_from_menu", () => {
     );
 
     resolveSignOut();
+  });
+});
+
+describe("test_SB_015_sign_out_failure_path", () => {
+  async function openAndClickSignOut() {
+    render(createElement(AccountMenu, { ...baseProps, canManageWorkspace: true }));
+    fireEvent.click(screen.getByRole("button", { name: /account menu/i }));
+    const menu = await screen.findByRole("menu");
+    const item = within(menu).getByText("Sign out").closest('[role="menuitem"]')!;
+    fireEvent.click(item);
+  }
+
+  // Re-query each time: the menu may close/remount after the click, so a
+  // held element reference can be stale.
+  function signOutItemNow() {
+    const menuNow = screen.queryByRole("menu");
+    return menuNow
+      ? within(menuNow).queryByText("Sign out")?.closest('[role="menuitem"]') ?? null
+      : null;
+  }
+
+  // F022: the menu closes on select, so "re-enabled" cannot be asserted on
+  // the (unmounted) item. Reopen the menu and require the Sign out item to be
+  // present, visible and not disabled -- a stuck-disabled item fails here.
+  async function expectSignOutVisiblyEnabled() {
+    await waitFor(() => expect(signOutItemNow()).toBeNull()); // closed after select
+    fireEvent.click(screen.getByRole("button", { name: /account menu/i }));
+    const menu = await screen.findByRole("menu");
+    const item = within(menu).getByText("Sign out").closest('[role="menuitem"]') as HTMLElement;
+    expect(item).toBeVisible();
+    expect(item.getAttribute("data-disabled")).toBeNull();
+    expect(item.getAttribute("aria-disabled")).not.toBe("true");
+  }
+
+  it("a rejected signOut shows an error and re-enables the menu item", async () => {
+    signOutMock.mockRejectedValue(new Error("boom"));
+    await openAndClickSignOut();
+    await waitFor(() => expect(toastErrorMock).toHaveBeenCalledTimes(1));
+    await expectSignOutVisiblyEnabled();
+  });
+
+  it("an {ok:false} result shows the error and re-enables the menu item", async () => {
+    signOutMock.mockResolvedValue({ ok: false, error: "Couldn't sign out. Please try again." });
+    await openAndClickSignOut();
+    await waitFor(() =>
+      expect(toastErrorMock).toHaveBeenCalledWith("Couldn't sign out. Please try again."),
+    );
+    await expectSignOutVisiblyEnabled();
   });
 });
 

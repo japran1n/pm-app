@@ -62,7 +62,7 @@ describe("TH-008: guest role sees the Tools group and both its items", () => {
     const nav = screen.getByRole("navigation");
     const heading = within(nav)
       .getAllByText(/^Tools$/)
-      .find((el) => el.tagName === "P");
+      .find((el) => el.tagName === "P" || el.parentElement?.tagName === "P");
     expect(heading).not.toBeUndefined();
   });
 

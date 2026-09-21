@@ -104,7 +104,13 @@ export async function signInWithMagicLink(
 // preview branch below. Every existing team-app caller
 // (components/nav/app-sidebar.tsx's own SignOutButton) keeps calling
 // `signOut()` with no arguments, unaffected.
-export async function signOut(workspaceSlug?: string): Promise<never> {
+// FU-7 (F021): on a Supabase error this now RETURNS `{ ok: false, error }`
+// instead of redirecting, so the user is never told they signed out when the
+// session may still be live. On success (and in preview exit) it redirects
+// and never returns.
+export async function signOut(
+  workspaceSlug?: string,
+): Promise<{ ok: false; error: string }> {
   // Under a client preview session, `createClient()` (lib/supabase/server.ts)
   // returns the IMPERSONATED client -- calling `supabase.auth.signOut()`
   // in that state would revoke the real client's own Supabase session
@@ -132,10 +138,9 @@ export async function signOut(workspaceSlug?: string): Promise<never> {
   const { error } = await supabase.auth.signOut();
 
   if (error) {
-    // Log detail server-side only; the session cookies are cleared by
-    // Supabase's signOut call regardless of this error in practice, but log
-    // for visibility rather than silently swallowing it.
+    // Log detail server-side only; never surface raw Supabase error text.
     logger.error("signOut failed", { error: error });
+    return { ok: false, error: "Couldn't sign out. Please try again." };
   }
 
   redirect("/sign-in");

@@ -370,10 +370,14 @@ describe("Mobile navigation tap targets are at least 44px (F265, AS-518)", () =>
       expect(link.className).toMatch(/max-md:min-h-11/);
     }
 
-    const profileLinks = screen.getAllByRole("link", { name: /Test User/i });
-    expect(profileLinks.length).toBeGreaterThan(0);
-    for (const link of profileLinks) {
-      expect(link.className).toMatch(/max-md:min-h-11/);
+    // The footer profile row is the AccountMenu trigger (a button, not a
+    // link, since the sidebar-cleanup mission).
+    const accountTriggers = screen.getAllByRole("button", {
+      name: /Account menu/i,
+    });
+    expect(accountTriggers.length).toBeGreaterThan(0);
+    for (const trigger of accountTriggers) {
+      expect(trigger.className).toMatch(/max-md:min-h-11/);
     }
   });
 

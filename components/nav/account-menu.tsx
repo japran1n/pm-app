@@ -3,9 +3,24 @@
 import Link from "next/link";
 import { useTransition } from "react";
 import { useTheme } from "next-themes";
-import { LogOut, Loader2, MoreHorizontal, Settings, Sun, Moon, UserRound } from "lucide-react";
+import {
+  LogOut,
+  Loader2,
+  MoreHorizontal,
+  Settings,
+  Sun,
+  Moon,
+  UserRound,
+  Archive,
+  LayoutTemplate,
+  Trash2,
+  HelpCircle,
+  Eye,
+} from "lucide-react";
 
 import { UserAvatar, personLabel, type UserAvatarPerson } from "@/components/user-avatar";
+import { toast } from "sonner";
+
 import { signOut } from "@/lib/actions/auth";
 import {
   DropdownMenu,
@@ -35,27 +50,51 @@ export function AccountMenu({
   workspaceSlug,
   currentUser,
   canManageWorkspace,
+  isGuest = false,
+  hasClient = false,
   onNavigate,
 }: {
   workspaceSlug: string;
   currentUser: UserAvatarPerson;
   canManageWorkspace: boolean;
+  /** F003 (SB-016, SB-017, SB-006): gates Templates/Archive/Trash the same
+   * way app-sidebar.tsx's own `guestExcluded` set used to when these items
+   * still lived there -- a guest never sees an entry point to any of the
+   * three. "How this works" is intentionally NOT gated here, same
+   * reasoning as its old sidebar doc comment: a guest benefits from the
+   * orientation page at least as much as a full member, and it has no
+   * workspace data of its own to leak. Default `false` keeps every
+   * existing caller/test that predates this prop rendering the full menu
+   * instead of crashing. */
+  isGuest?: boolean;
+  /** F004 (SB-019, SB-006): gates "Preview as client" the same way the
+   * sidebar's own `team` array did — only shown when the workspace has a
+   * client AND the current user can manage the workspace
+   * (owner/admin). Default `false` keeps every existing caller/test that
+   * predates this prop rendering the menu without the item instead of
+   * crashing. */
+  hasClient?: boolean;
   onNavigate?: () => void;
 }) {
-  const { theme, setTheme } = useTheme();
+  const { resolvedTheme, setTheme } = useTheme();
   const [isPending, startTransition] = useTransition();
 
   function handleSignOut() {
     startTransition(async () => {
-      await signOut();
+      try {
+        const result = await signOut();
+        if (result && result.ok === false) toast.error(result.error);
+      } catch {
+        toast.error("Couldn't sign out. Please try again.");
+      }
     });
   }
 
   function handleThemeToggle() {
-    setTheme(theme === "dark" ? "light" : "dark");
+    setTheme(resolvedTheme === "dark" ? "light" : "dark");
   }
 
-  const isDark = theme === "dark";
+  const isDark = resolvedTheme === "dark";
 
   return (
     <DropdownMenu>
@@ -87,7 +126,7 @@ export function AccountMenu({
           <UserRound className="size-4" aria-hidden="true" />
           Profile
         </DropdownMenuItem>
-        {canManageWorkspace && (
+        {!isGuest && canManageWorkspace && (
           <DropdownMenuItem
             render={<Link href={`/w/${workspaceSlug}/settings`} onClick={onNavigate} />}
           >
@@ -103,6 +142,56 @@ export function AccountMenu({
           )}
           Theme
         </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        {/* F003 (SB-016, SB-017, SB-006): Templates/Archive/Trash/Help,
+            formerly the sidebar's own "Other" group (see app-sidebar.tsx's
+            own doc comment) -- moved here verbatim with the same role
+            gates they had there. */}
+        {!isGuest && (
+          <DropdownMenuItem
+            render={<Link href={`/w/${workspaceSlug}/templates`} onClick={onNavigate} />}
+          >
+            <LayoutTemplate className="size-4" aria-hidden="true" />
+            Templates
+          </DropdownMenuItem>
+        )}
+        {!isGuest && (
+          <DropdownMenuItem
+            render={<Link href={`/w/${workspaceSlug}/archive`} onClick={onNavigate} />}
+          >
+            <Archive className="size-4" aria-hidden="true" />
+            Archive
+          </DropdownMenuItem>
+        )}
+        {!isGuest && (
+          <DropdownMenuItem
+            render={<Link href={`/w/${workspaceSlug}/trash`} onClick={onNavigate} />}
+          >
+            <Trash2 className="size-4" aria-hidden="true" />
+            Trash
+          </DropdownMenuItem>
+        )}
+        {/* Not guest-gated -- see the `isGuest` prop's own doc comment. */}
+        <DropdownMenuItem
+          render={<Link href={`/w/${workspaceSlug}/help`} onClick={onNavigate} />}
+        >
+          <HelpCircle className="size-4" aria-hidden="true" />
+          How this works
+        </DropdownMenuItem>
+        {/* F004 (SB-019, SB-006): "Preview as client" — mirrors the exact
+            condition used in app-sidebar.tsx's own `team` array before this
+            feature: hasClient AND canManageWorkspace. The destination page
+            (preview-as-client/page.tsx) hard-gates to owner/admin itself, so
+            a member/viewer/guest would only bounce; the hasClient guard
+            prevents a meaningless link for workspaces that have no portal. */}
+        {!isGuest && hasClient && canManageWorkspace && (
+          <DropdownMenuItem
+            render={<Link href={`/w/${workspaceSlug}/preview-as-client`} onClick={onNavigate} />}
+          >
+            <Eye className="size-4" aria-hidden="true" />
+            Preview as client
+          </DropdownMenuItem>
+        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem
           disabled={isPending}

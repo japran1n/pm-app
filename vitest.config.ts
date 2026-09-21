@@ -66,6 +66,7 @@ export default defineConfig({
       "tests/e2e/**",
       "extension/**",
       "missions/**",
+      ".claude/**",
       ...REALTIME_LIVE_DELIVERY_TESTS,
     ],
     // F278: default 5s timeout produced non-deterministic failures against

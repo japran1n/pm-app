@@ -1,20 +1,39 @@
-import { describe, expect, it, vi } from "vitest";
-import { renderToStaticMarkup } from "react-dom/server";
-import { createElement } from "react";
-
+// @vitest-environment jsdom
+//
 // F136 (AS-239): "a settings page exists, reachable from the sidebar for
-// owners and admins". Mocks next/navigation the same way
-// list-view-empty-state.test.ts does — AppSidebar's usePathname() call
-// needs an app router context that isn't present under plain
-// react-dom/server.
-// F262: AppSidebar now conditionally mounts NewProjectDialog (a Client
-// Component using useRouter) inside its "Projects" section's empty state
-// when no projects are passed in (the default here) — useRouter must be
-// mocked alongside usePathname now, or that mount throws.
+// owners and admins". F003 (SB-016): the sidebar's own standalone
+// "Settings" nav item (a duplicate of AccountMenu's own Settings item,
+// formerly living in the sidebar's "Other" group) is removed — Settings
+// was already reachable via AccountMenu since F002
+// (tests/unit/f002-account-menu.test.tsx), so this test now asserts
+// reachability there instead of in react-dom/server static markup of the
+// bare sidebar.
+
+import { describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { afterEach } from "vitest";
+import { createElement } from "react";
+import "@testing-library/jest-dom/vitest";
+
+// SB-006: hasClient true so the guest cases exercise the "Preview as client" gate.
+vi.mock("@/components/auth/membership-provider", () => ({
+  useMembership: () => ({ role: "admin", hasClient: true, projectRoles: {} }),
+}));
+
+// FU-8 / SB-004: the bell is an unrelated async client that calls a server
+// action (cookies()) on mount; stub it so E251 rejections do not flood the run.
+vi.mock("@/components/notifications/notification-bell", () => ({
+  NotificationBell: () => null,
+}));
+
 vi.mock("next/navigation", () => ({
   usePathname: () => "/w/acme",
   useRouter: () => ({ push: () => {}, refresh: () => {} }),
 }));
+
+afterEach(() => {
+  cleanup();
+});
 
 import { AppSidebar } from "@/components/nav/app-sidebar";
 
@@ -25,33 +44,42 @@ const baseProps = {
   currentUser: { id: "u1", name: "Test User", email: "test@example.com", avatarUrl: null },
 };
 
-describe("AppSidebar settings nav item (F136, AS-239)", () => {
-  it("AS-239: renders a 'Settings' link to /w/acme/settings when canManageWorkspace is true (owner/admin)", () => {
-    const html = renderToStaticMarkup(
+describe("AppSidebar settings nav item (F136, AS-239; relocated to AccountMenu by F002/F003)", () => {
+  it("AS-239: renders a 'Settings' link to /w/acme/settings in the account menu when canManageWorkspace is true (owner/admin)", async () => {
+    render(
       createElement(AppSidebar, { ...baseProps, canManageWorkspace: true }),
     );
 
-    expect(html).toContain("Settings");
-    expect(html).toContain('href="/w/acme/settings"');
+    fireEvent.click(screen.getAllByRole("button", { name: /account menu/i })[0]);
+    const menu = await screen.findByRole("menu");
+
+    const link = within(menu).getByText("Settings").closest("a");
+    expect(link).toHaveAttribute("href", "/w/acme/settings");
   });
 
-  it("AS-239 (negative): does not render a 'Settings' link when canManageWorkspace is false (member/viewer)", () => {
-    const html = renderToStaticMarkup(
+  it("AS-239 (negative): does not render a 'Settings' link when canManageWorkspace is false (member/viewer)", async () => {
+    render(
       createElement(AppSidebar, { ...baseProps, canManageWorkspace: false }),
     );
 
-    expect(html).not.toContain('href="/w/acme/settings"');
+    fireEvent.click(screen.getAllByRole("button", { name: /account menu/i })[0]);
+    const menu = await screen.findByRole("menu");
+
+    expect(within(menu).queryByText("Settings")).toBeNull();
   });
 
-  it("AS-239 (negative): a guest also gets no 'Settings' link even if canManageWorkspace were somehow true", () => {
-    const html = renderToStaticMarkup(
+  it("AS-239 (negative): a guest also gets no 'Settings' link even when canManageWorkspace is true (SB-006)", async () => {
+    render(
       createElement(AppSidebar, {
         ...baseProps,
         isGuest: true,
-        canManageWorkspace: false,
+        canManageWorkspace: true,
       }),
     );
 
-    expect(html).not.toContain('href="/w/acme/settings"');
+    fireEvent.click(screen.getAllByRole("button", { name: /account menu/i })[0]);
+    const menu = await screen.findByRole("menu");
+
+    expect(within(menu).queryByText("Settings")).toBeNull();
   });
 });

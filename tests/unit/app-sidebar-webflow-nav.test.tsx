@@ -132,9 +132,13 @@ describe.each(SLUGS)("AppSidebar Webflow nav item (F003/F044) [slug=%s]", (slug)
       expect(dashboardLink).toBeNull();
     });
 
-    // TH-003 / TH-007: "Tools" is positioned between "Team" and "Other"
-    // among the labelled group headings, in document order.
-    it("TH-003/TH-007: the 'Tools' section heading appears after 'Team' and before 'Other' in the rendered nav", () => {
+    // TH-003 / TH-007: "Tools" is positioned after "Team" among the
+    // labelled group headings, in document order. F003 (SB-016): "Other"
+    // itself no longer exists as a group -- it was dissolved (Templates,
+    // Archive, Trash, Help moved into AccountMenu; Watching moved into the
+    // primary band) -- so "Tools" is now simply the last labelled group,
+    // with nothing after it.
+    it("TH-003/TH-007: the 'Tools' section heading appears after 'Team' (the last labelled group -- 'Other' no longer exists, F003/SB-016)", () => {
       render(createElement(AppSidebar, { ...baseProps, isGuest: false }));
 
       const nav = screen.getByRole("navigation");
@@ -143,10 +147,10 @@ describe.each(SLUGS)("AppSidebar Webflow nav item (F003/F044) [slug=%s]", (slug)
         .map((el) => el.textContent);
       const teamIndex = headings.indexOf("Team");
       const toolsIndex = headings.indexOf("Tools");
-      const otherIndex = headings.indexOf("Other");
       expect(teamIndex).toBeGreaterThanOrEqual(0);
       expect(toolsIndex).toBeGreaterThan(teamIndex);
-      expect(otherIndex).toBeGreaterThan(toolsIndex);
+      expect(headings.indexOf("Other")).toBe(-1);
+      expect(toolsIndex).toBe(headings.length - 1);
     });
   });
 
