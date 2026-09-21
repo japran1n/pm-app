@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { BriefAnswer, BriefQuestion } from "@/lib/queries/brief";
 import { saveBriefAnswer, submitBrief } from "@/lib/actions/brief";
@@ -63,6 +63,7 @@ function QuestionField({
   isLocked,
   showError,
   onSaveState,
+  trackSave,
 }: {
   question: BriefQuestion;
   existingAnswer: BriefAnswer | null;
@@ -72,6 +73,7 @@ function QuestionField({
   isLocked: boolean;
   showError: boolean;
   onSaveState: (id: string, saving: boolean, saved: boolean) => void;
+  trackSave: (p: Promise<unknown>) => void;
 }) {
   const { saving, lastSaved } = useAutosave(draft, async (value) => {
     if (!briefId || isLocked) return;
@@ -79,7 +81,9 @@ function QuestionField({
       value.text != null && value.text.trim() === "" ? null : value.text;
     const optionsList =
       value.options && value.options.length > 0 ? value.options : null;
-    await saveBriefAnswer(briefId, question.id, text, optionsList);
+    const p = saveBriefAnswer(briefId, question.id, text, optionsList);
+    trackSave(p);
+    await p;
   });
   const saved = lastSaved !== null;
   useEffect(() => {
@@ -193,9 +197,20 @@ export function PortalQuestionnaire({
     ),
   );
   const [showErrors, setShowErrors] = useState(false);
+  // Required questions left blank in the section the user just advanced past.
+  const [skippedRequired, setSkippedRequired] = useState(0);
   const [saveStates, setSaveStates] = useState<
     Record<string, { saving: boolean; saved: boolean }>
   >({});
+
+  // In-flight saves (including ones flushed on unmount / section change) so
+  // Submit can wait for them and never race a lost edit.
+  const pendingSavesRef = useRef<Set<Promise<unknown>>>(new Set());
+  const trackSave = useCallback((p: Promise<unknown>) => {
+    const set = pendingSavesRef.current;
+    const tracked = p.catch(() => undefined).finally(() => set.delete(tracked));
+    set.add(tracked);
+  }, []);
 
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -234,18 +249,21 @@ export function PortalQuestionnaire({
   const anySaving = sectionStates.some((s) => s?.saving);
   const anySaved = sectionStates.some((s) => s?.saved);
 
-  // BR-041: Next is blocked only by unanswered REQUIRED questions.
+  // BR-041: Next never hard-blocks. Unanswered REQUIRED questions produce an
+  // inline non-blocking warning, the review step lists them, and Submit is
+  // the real gate.
+  const sectionMissingCount = section
+    ? section.questions.filter(isUnansweredRequired).length
+    : 0;
   const handleNext = () => {
-    if (section && section.questions.some(isUnansweredRequired)) {
-      setShowErrors(true);
-      return;
-    }
     setShowErrors(false);
+    setSkippedRequired(sectionMissingCount);
     setCurrentSectionIndex((i) => Math.min(total, i + 1));
   };
 
   const handleBack = () => {
     setShowErrors(false);
+    setSkippedRequired(0);
     setCurrentSectionIndex((i) => Math.max(0, i - 1));
   };
 
@@ -260,6 +278,8 @@ export function PortalQuestionnaire({
     }
     setSubmitError(null);
     setSubmitting(true);
+    // Wait for any flushed/in-flight autosaves before submitting.
+    await Promise.all(Array.from(pendingSavesRef.current));
     const result = await submitBrief(briefId);
     setSubmitting(false);
     if (!result.success) {
@@ -286,6 +306,19 @@ export function PortalQuestionnaire({
         isReview={isReview}
       />
 
+      {skippedRequired > 0 && (
+        <p
+          className="text-sm text-destructive"
+          role="status"
+          data-testid="questionnaire-next-warning"
+        >
+          {skippedRequired} required{" "}
+          {skippedRequired === 1 ? "question was" : "questions were"} left
+          unanswered in the previous section. You can continue, but they must
+          be answered before you can submit.
+        </p>
+      )}
+
       {isReview ? (
         <PortalBriefReview
           sections={sections.map((sec, sectionIndex) => ({
@@ -303,8 +336,10 @@ export function PortalQuestionnaire({
               }),
             ),
           }))}
+          missingCount={questions.filter(isUnansweredRequired).length}
           onEditSection={(i) => {
             setShowErrors(false);
+            setSkippedRequired(0);
             setCurrentSectionIndex(i);
           }}
         />
@@ -331,6 +366,7 @@ export function PortalQuestionnaire({
               isLocked={isLocked}
               showError={showErrors && isUnansweredRequired(q)}
               onSaveState={handleSaveState}
+              trackSave={trackSave}
             />
           ))}
 

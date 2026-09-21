@@ -34,7 +34,9 @@ function answerDisplay(a: ReviewAnswer | undefined): string | null {
 export function PortalBriefReview({
   sections,
   onEditSection,
+  missingCount,
 }: {
+  missingCount?: number;
   sections: ReviewSection[];
   onEditSection: (sectionIndex: number) => void;
 }) {
@@ -43,6 +45,17 @@ export function PortalBriefReview({
       <h2 className="text-lg font-semibold text-foreground">
         Review your answers
       </h2>
+
+      {missingCount !== undefined && missingCount > 0 && (
+        <p
+          className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+          role="alert"
+          data-testid="review-missing-summary"
+        >
+          {missingCount} required {missingCount === 1 ? "question needs" : "questions need"} an
+          answer before you can submit. They are highlighted below.
+        </p>
+      )}
 
       {sections.map((section) => (
         <section

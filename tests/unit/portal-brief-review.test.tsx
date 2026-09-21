@@ -168,7 +168,7 @@ describe("BR-044: unanswered required questions are highlighted and block submit
     expect(onEdit).toHaveBeenCalledWith(3);
   });
 
-  it("BR-044 clearing a required answer via Edit blocks reaching submit and submitBrief is never called", () => {
+  it("BR-044 clearing a required answer via Edit still reaches review, which highlights it, disables Submit, and submitBrief is never called", () => {
     const submitSpy = vi
       .spyOn(briefActions, "submitBrief")
       .mockResolvedValue({ success: true });
@@ -187,10 +187,17 @@ describe("BR-044: unanswered required questions are highlighted and block submit
     });
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
 
+    // Next does not block; walk on to the review step.
+    while (!screen.queryByTestId("portal-brief-review")) {
+      fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    }
     expect(
-      screen.getByTestId("questionnaire-required-error"),
-    ).toBeInTheDocument();
-    expect(screen.queryByTestId("questionnaire-submit-button")).toBeNull();
+      screen
+        .getAllByTestId("review-question")
+        .some((el) => el.getAttribute("data-unanswered-required") === "true"),
+    ).toBe(true);
+    expect(screen.getByTestId("questionnaire-submit-button")).toBeDisabled();
+    fireEvent.click(screen.getByTestId("questionnaire-submit-button"));
     expect(submitSpy).not.toHaveBeenCalled();
   });
 });

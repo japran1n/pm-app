@@ -32,26 +32,59 @@ export function useAutosave<T>(
     saveFnRef.current = saveFn;
   }, [saveFn]);
 
+  // Holds the value whose debounce timer is still pending, so it can be
+  // flushed immediately (unmount, section change, before Submit) instead of
+  // being dropped when the timer is cleared.
+  const pendingRef = useRef<{ value: T } | null>(null);
+
+  const runSave = (valueToSave: T) => {
+    pendingRef.current = null;
+    setSaving(true);
+    return Promise.resolve(saveFnRef.current(valueToSave))
+      .then(() => {
+        lastSavedValueRef.current = valueToSave;
+        setLastSaved(new Date());
+      })
+      .finally(() => {
+        setSaving(false);
+      });
+  };
+  const runSaveRef = useRef(runSave);
+  useEffect(() => {
+    runSaveRef.current = runSave;
+  });
+
   useEffect(() => {
     if (value === lastSavedValueRef.current) {
       return;
     }
 
+    pendingRef.current = { value };
     const timer = setTimeout(() => {
-      const valueToSave = value;
-      setSaving(true);
-      Promise.resolve(saveFnRef.current(valueToSave))
-        .then(() => {
-          lastSavedValueRef.current = valueToSave;
-          setLastSaved(new Date());
-        })
-        .finally(() => {
-          setSaving(false);
-        });
+      void runSaveRef.current(value);
     }, delay);
 
     return () => clearTimeout(timer);
   }, [value, delay]);
 
-  return { saving, lastSaved };
+  const flush = () => {
+    const pending = pendingRef.current;
+    if (!pending) return Promise.resolve();
+    return runSaveRef.current(pending.value);
+  };
+  const flushRef = useRef(flush);
+  useEffect(() => {
+    flushRef.current = flush;
+  });
+
+  // Unmount (e.g. the wizard moved to another section): don't lose the edit.
+  useEffect(() => {
+    return () => {
+      // Best-effort on unmount: a failed save must not surface as an
+      // unhandled rejection after the component is gone.
+      flushRef.current().catch(() => undefined);
+    };
+  }, []);
+
+  return { saving, lastSaved, flush };
 }

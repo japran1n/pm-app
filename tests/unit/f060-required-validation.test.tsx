@@ -38,8 +38,8 @@ function makeQuestion(overrides: Partial<BriefQuestion>): BriefQuestion {
   };
 }
 
-describe("F060 AS-123: required question blocks Next when unanswered", () => {
-  it("does not advance and shows an error when the required question has no answer", () => {
+describe("F060 AS-123: unanswered required question does not block Next (BR-041); Submit is the gate", () => {
+  it("advances with a non-blocking warning when the required question has no answer", () => {
     vi.spyOn(briefActions, "saveBriefAnswer").mockResolvedValue({ success: true });
 
     const questions: BriefQuestion[] = [
@@ -52,10 +52,10 @@ describe("F060 AS-123: required question blocks Next when unanswered", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /next/i }));
 
-    expect(screen.getByTestId("questionnaire-required-error")).toHaveTextContent(
-      "This question is required",
+    expect(screen.getByRole("heading", { name: "Second question" })).toBeInTheDocument();
+    expect(screen.getByTestId("questionnaire-next-warning")).toHaveTextContent(
+      "1 required question was left unanswered",
     );
-    expect(screen.getByRole("heading", { name: "What is your goal?" })).toBeInTheDocument();
   });
 });
 

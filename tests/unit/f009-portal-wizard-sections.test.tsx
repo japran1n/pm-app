@@ -42,14 +42,14 @@ const twoSections: BriefQuestion[] = [
 ];
 
 describe("F009 BR-041: Next is blocked only by unanswered required questions in the section", () => {
-  it("BR-041 blocks with a required error while a required question is empty, even if optional is answered", () => {
+  it("BR-041 does not block: advances with a warning while a required question is empty", () => {
     render(<PortalQuestionnaire questions={twoSections} initialAnswers={[]} />);
     fireEvent.change(screen.getAllByTestId("questionnaire-answer-stub")[1], {
       target: { value: "x" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
-    expect(screen.getAllByTestId("questionnaire-required-error")).toHaveLength(1);
-    expect(screen.queryByText("Next section Q")).toBeNull();
+    expect(screen.getByText("Next section Q")).toBeInTheDocument();
+    expect(screen.getByTestId("questionnaire-next-warning")).toBeInTheDocument();
   });
 
   it("BR-041 proceeds once the required question is answered, leaving the optional one empty", () => {
