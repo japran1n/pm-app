@@ -1,13 +1,31 @@
-import { describe, expect, it, vi } from "vitest";
+// @vitest-environment jsdom
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createElement } from "react";
 import { readFileSync } from "node:fs";
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
-vi.mock("@/lib/actions/brief", () => ({ generateBriefDocument: vi.fn() }));
+const refresh = vi.fn();
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), refresh }),
+}));
+vi.mock("@/lib/actions/brief", () => ({
+  generateBriefDocument: vi.fn(),
+  approveBrief: vi.fn(),
+  requestBriefApproval: vi.fn(),
+  withdrawBriefApproval: vi.fn(),
+}));
 
 import { BriefHeader } from "@/components/brief/brief-header";
 import { GenerateDocumentButton } from "@/components/brief/generate-document-button";
+import { ApproveBriefButton } from "@/components/brief/approve-brief-button";
+import { RequestApprovalButton } from "@/components/brief/request-approval-button";
+import { WithdrawApprovalButton } from "@/components/brief/withdraw-approval-button";
+import {
+  approveBrief,
+  requestBriefApproval,
+  withdrawBriefApproval,
+} from "@/lib/actions/brief";
 
 const PAGE =
   "app/(workspace)/w/[workspaceSlug]/projects/[projectId]/brief/page.tsx";
@@ -78,12 +96,85 @@ describe("brief actions in header", () => {
     expect(out).not.toMatch(/<button[^>]*\sdisabled(=|\s|>)/);
   });
 
-  it("test_BR_026_approval_conditions_unchanged_in_page", () => {
+  it("test_BR_026_page_keeps_state_gate_and_required_missing_disable", () => {
+    // Minimal structural check: the page-level conditional cannot be
+    // rendered cheaply (server component with data loading).
     const src = readFileSync(PAGE, "utf8");
     expect(src).toContain('brief.state !== "approved"');
-    expect(src).toMatch(/<RequestApprovalButton/);
-    expect(src).toMatch(/<ApproveBriefButton briefId=\{brief.id\} \/>/);
-    expect(src).toMatch(/<WithdrawApprovalButton briefId=\{brief.id\} \/>/);
     expect(src).toContain("disabled={requiredMissingCount > 0}");
+  });
+});
+
+describe("BR-026 approval buttons behave unchanged", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+  afterEach(() => cleanup());
+
+  it("test_BR_026_approve_click_calls_action_with_brief_id_and_refreshes", async () => {
+    vi.mocked(approveBrief).mockResolvedValue({ success: true } as never);
+    render(createElement(ApproveBriefButton, { briefId: "b1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+    expect(approveBrief).toHaveBeenCalledTimes(1);
+    expect(approveBrief).toHaveBeenCalledWith("b1");
+  });
+
+  it("test_BR_026_approve_failure_shows_error_and_does_not_refresh", async () => {
+    vi.mocked(approveBrief).mockResolvedValue({
+      success: false,
+      error: "Nope",
+    } as never);
+    render(createElement(ApproveBriefButton, { briefId: "b1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    expect(await screen.findByText("Nope")).toBeTruthy();
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it("test_BR_026_request_click_calls_action_with_project_and_document", async () => {
+    vi.mocked(requestBriefApproval).mockResolvedValue({ success: true } as never);
+    render(
+      createElement(RequestApprovalButton, { projectId: "p1", documentId: "d1" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Request approval" }));
+    const done = await screen.findByRole("button", { name: "Approval requested" });
+    expect(done.hasAttribute("disabled")).toBe(true);
+    expect(requestBriefApproval).toHaveBeenCalledWith("p1", "d1");
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("test_BR_026_request_failure_shows_error_and_stays_clickable", async () => {
+    vi.mocked(requestBriefApproval).mockResolvedValue({
+      success: false,
+      error: "Denied",
+    } as never);
+    render(
+      createElement(RequestApprovalButton, { projectId: "p1", documentId: "d1" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Request approval" }));
+    expect(await screen.findByText("Denied")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Request approval" }).hasAttribute("disabled"),
+    ).toBe(false);
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it("test_BR_026_withdraw_click_calls_action_with_brief_id_and_refreshes", async () => {
+    vi.mocked(withdrawBriefApproval).mockResolvedValue({ success: true } as never);
+    render(createElement(WithdrawApprovalButton, { briefId: "b2" }));
+    fireEvent.click(screen.getByRole("button", { name: "Withdraw approval" }));
+    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+    expect(withdrawBriefApproval).toHaveBeenCalledWith("b2");
+  });
+
+  it("test_BR_026_withdraw_failure_shows_error_and_does_not_refresh", async () => {
+    vi.mocked(withdrawBriefApproval).mockResolvedValue({
+      success: false,
+      error: "Locked",
+    } as never);
+    render(createElement(WithdrawApprovalButton, { briefId: "b2" }));
+    fireEvent.click(screen.getByRole("button", { name: "Withdraw approval" }));
+    expect(await screen.findByText("Locked")).toBeTruthy();
+    expect(refresh).not.toHaveBeenCalled();
   });
 });
