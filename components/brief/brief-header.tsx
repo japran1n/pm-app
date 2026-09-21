@@ -53,7 +53,7 @@ export function BriefHeader({
             {requiredMissingCount} required missing
           </Badge>
         ) : (
-          <Badge variant="default">Complete</Badge>
+          <Badge variant="success">Complete</Badge>
         )}
       </div>
       {lastModifiedAt || meta ? (
@@ -62,7 +62,7 @@ export function BriefHeader({
             <>
               <span>
                 Last updated by{" "}
-                <span className="font-mono">{lastModifiedBy ?? "Someone"}</span>{" "}
+                <span>{lastModifiedBy ?? "Someone"}</span>{" "}
                 ·{" "}
                 <span className="font-mono">
                   {dateFormatter.format(new Date(lastModifiedAt))}

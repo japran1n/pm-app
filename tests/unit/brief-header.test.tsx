@@ -45,9 +45,15 @@ describe("BriefHeader", () => {
     expect(out).not.toMatch(/required missing/);
   });
 
-  it("test_BR_022_meta_line_name_and_date_in_mono", () => {
+  it("test_BR_021_complete_pill_uses_success_colour", () => {
     const out = html();
-    expect(out).toMatch(/<span class="font-mono">Ada Lovelace<\/span>/);
+    expect(out).toMatch(/<[^>]*class="[^"]*text-brand[^"]*"[^>]*>Complete</);
+  });
+
+  it("test_BR_006_person_name_sans_date_mono", () => {
+    const out = html();
+    expect(out).toMatch(/<span>Ada Lovelace<\/span>/);
+    expect(out).not.toMatch(/font-mono[^>]*>Ada Lovelace/);
     expect(out).toMatch(/<span class="font-mono">5 Mar 2026<\/span>/);
   });
 
