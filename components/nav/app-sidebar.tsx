@@ -753,17 +753,14 @@ export function AppSidebar({
   );
 }
 
-// F256 (AS-497/AS-498/AS-499): sign-out as its own tiny client control so
-// it gets the same useTransition + disabled-while-pending shape as every
-// other mutating control in this app (RemoveMemberButton,
-// RevokeInviteButton, etc.) instead of a bare `<form action={signOut}>`
-// with no pending affordance. `signOut()` always redirects (never
-// resolves to an `{ok:false}` result — see lib/actions/auth.ts), so there
-// is no rollback/toast branch to add: the only genuine gap here was the
-// missing pending-disabled state that guards against a double-submit.
-// Exported (not just used internally) so tests/unit/optimistic-pending-
-// audit.test.tsx (F256, AS-497/AS-499) can render it directly without
-// pulling in the whole AppSidebar shell.
+// F256 (AS-497/AS-499): a standalone sign-out control with a
+// useTransition + disabled-while-pending shape. NOTE (F026): this is NOT
+// rendered by AppSidebar any more -- sign-out now lives in AccountMenu
+// (components/nav/account-menu.tsx). It is kept exported only so
+// tests/unit/optimistic-pending-audit.test.tsx can keep asserting the
+// pending/double-submit shape; the portal has its own copy in
+// components/portal/portal-sign-out-button.tsx. Do not assume it appears
+// in the sidebar UI.
 export function SignOutButton() {
   const [isPending, startTransition] = useTransition();
 

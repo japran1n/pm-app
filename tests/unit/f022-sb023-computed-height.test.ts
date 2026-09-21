@@ -42,6 +42,7 @@ beforeAll(async () => {
       currentWorkspaceId: "w1",
       currentUser: { id: "u1", name: "T", email: "t@example.com", avatarUrl: null },
       isGuest: false,
+      projects: [{ id: "p1", name: "Apollo Launch", key: null }],
     }),
   );
   const file = join(process.cwd(), "app/globals.css");
@@ -49,7 +50,12 @@ beforeAll(async () => {
   css = out.css;
 }, 120_000);
 
-async function measure(width: number, forceAside: boolean): Promise<number[]> {
+async function measure(
+  width: number,
+  forceAside: boolean,
+  selector = "aside nav a[href^='/w/acme']",
+  textFilter = /dashboard|team|my tasks/i,
+): Promise<number[]> {
   let browser: Browser | undefined;
   try {
     browser = await chromium.launch();
@@ -58,12 +64,13 @@ async function measure(width: number, forceAside: boolean): Promise<number[]> {
     await page.setContent(
       `<!doctype html><html><head><style>${css}${extra}</style></head><body>${html}</body></html>`,
     );
-    return await page.evaluate(() => {
+    return await page.evaluate(([sel, src]) => {
+      const re = new RegExp(src, "i");
       const links = Array.from(
-        document.querySelectorAll<HTMLAnchorElement>("aside nav a[href^='/w/acme']"),
-      ).filter((a) => /dashboard|team|my tasks/i.test(a.textContent ?? ""));
+        document.querySelectorAll<HTMLAnchorElement>(sel),
+      ).filter((a) => re.test(a.textContent ?? ""));
       return links.map((a) => a.getBoundingClientRect().height);
-    });
+    }, [selector, textFilter.source] as [string, string]);
   } finally {
     await browser?.close();
   }
@@ -78,6 +85,20 @@ describe("F022 SB-023 computed nav item height", () => {
 
   it("test_SB_023_mobile_nav_links_compute_to_at_least_44px_at_375px", async () => {
     const heights = await measure(375, true);
+    expect(heights.length).toBeGreaterThan(0);
+    for (const h of heights) expect(h).toBeGreaterThanOrEqual(44);
+  }, 60_000);
+
+  const PROJECT_ROWS = "aside a[href^='/w/acme/projects/']";
+
+  it("test_SB_023_desktop_project_rows_compute_to_32px_at_1280px", async () => {
+    const heights = await measure(1280, false, PROJECT_ROWS, /apollo/i);
+    expect(heights.length).toBeGreaterThan(0);
+    for (const h of heights) expect(h).toBe(32);
+  }, 60_000);
+
+  it("test_SB_023_mobile_project_rows_compute_to_at_least_44px_at_375px", async () => {
+    const heights = await measure(375, true, PROJECT_ROWS, /apollo/i);
     expect(heights.length).toBeGreaterThan(0);
     for (const h of heights) expect(h).toBeGreaterThanOrEqual(44);
   }, 60_000);

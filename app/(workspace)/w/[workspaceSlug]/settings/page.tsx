@@ -5,6 +5,7 @@ import { getWorkspaceContext } from "@/lib/queries/workspaces";
 import {
   canManageProject,
   canDeleteWorkspace,
+  canViewMembersList,
 } from "@/lib/auth/permissions";
 import { WorkspaceGeneralForm } from "@/components/workspace/workspace-general-form";
 import { DeleteWorkspaceDialog } from "@/components/workspace/delete-workspace-dialog";
@@ -65,6 +66,10 @@ export default async function WorkspaceSettingsPage({
 
   const canManage = canManageProject({ role });
   const canDelete = canDeleteWorkspace({ role });
+  // F026 (SB-011): the Members tab is gated on the same predicate the
+  // members page enforces, so a role the page would bounce (client) is
+  // never shown a link to it.
+  const showMembersTab = canViewMembersList({ role });
 
   return (
     <div className="flex flex-col gap-8 p-6 pt-4 lg:p-8 lg:pt-8">
@@ -77,12 +82,14 @@ export default async function WorkspaceSettingsPage({
 
       <nav className="flex gap-4 border-b text-sm font-medium">
         <span className="border-b-2 border-primary px-1 pb-2">General</span>
-        <Link
-          href={`/w/${workspaceSlug}/settings/members`}
-          className="px-1 pb-2 text-muted-foreground hover:text-foreground"
-        >
-          Members
-        </Link>
+        {showMembersTab ? (
+          <Link
+            href={`/w/${workspaceSlug}/settings/members`}
+            className="px-1 pb-2 text-muted-foreground hover:text-foreground"
+          >
+            Members
+          </Link>
+        ) : null}
         <Link
           href={`/w/${workspaceSlug}/settings/status-templates`}
           className="px-1 pb-2 text-muted-foreground hover:text-foreground"

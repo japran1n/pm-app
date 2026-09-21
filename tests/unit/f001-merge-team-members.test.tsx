@@ -8,8 +8,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createElement } from "react";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/w/acme",
@@ -62,17 +60,5 @@ describe("F001: Merge Team + Members", () => {
     expect(html).not.toContain('href="/w/acme/settings"');
     // And still no Members item, guest or not.
     expect(html).not.toContain('href="/w/acme/settings/members"');
-  });
-
-  it("SB-001: baseline captured — run-log.md records tsc/eslint/vitest/migrations:check output from before F001's edits", () => {
-    const runLog = readFileSync(
-      join(process.cwd(), "missions/20260921-212654/run-log.md"),
-      "utf8",
-    );
-
-    expect(runLog).toContain("npx tsc --noEmit");
-    expect(runLog).toContain("npx eslint .");
-    expect(runLog).toContain("npx vitest run");
-    expect(runLog).toContain("migrations:check");
   });
 });

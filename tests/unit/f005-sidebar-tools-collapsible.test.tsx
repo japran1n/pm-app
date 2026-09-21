@@ -78,8 +78,8 @@ describe("SB-021: Tools state persisted", () => {
     expect(toolsBtn()).toHaveAttribute("aria-expanded", "true");
     fireEvent.click(toolsBtn());
     expect(toolsBtn()).toHaveAttribute("aria-expanded", "false");
-    const storageErrs = err.mock.calls.filter((c) => String(c[0]).includes("denied"));
-    expect(storageErrs).toHaveLength(0);
+    // SB-021: NO console.error at all (not merely none mentioning "denied").
+    expect(err.mock.calls).toEqual([]);
   });
 });
 

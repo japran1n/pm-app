@@ -4,7 +4,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 
-let role: "owner" | "admin" | "member" | "guest" = "owner";
+let role: "owner" | "admin" | "member" | "viewer" | "client" | "guest" = "owner";
 
 vi.mock("next/navigation", () => ({
   redirect: (url: string) => {
@@ -61,6 +61,25 @@ describe("SB-011: Members reachable via Settings", () => {
       expect(members).toContain("Active members");
     });
   }
+
+  // Broader role coverage (F026): narrowing canViewMembersList to owner/admin
+  // fails the member/viewer cases; dropping its client check fails the client case.
+  for (const r of ["member", "viewer"] as const) {
+    it(`test_SB_011_${r}_sees_members_link_and_members_page_renders`, async () => {
+      role = r;
+      const settings = renderToStaticMarkup(await SettingsPage(params));
+      expect(settings).toMatch(/<a[^>]*href="\/w\/acme\/settings\/members"[^>]*>\s*Members\s*<\/a>/);
+      const members = renderToStaticMarkup(await MembersPage(params));
+      expect(members).toContain(">Members</h1>");
+    });
+  }
+
+  it("test_SB_011_client_is_denied_members_page_and_sees_no_members_link", async () => {
+    role = "client";
+    await expect(MembersPage(params)).rejects.toThrow("NEXT_REDIRECT:/w/acme");
+    const settings = renderToStaticMarkup(await SettingsPage(params));
+    expect(settings).not.toContain("/settings/members");
+  });
 
   it("test_SB_011_guest_is_denied_members_page", async () => {
     role = "guest";
