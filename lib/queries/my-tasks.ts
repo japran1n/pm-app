@@ -166,6 +166,168 @@ function toRow(
   };
 }
 
+// F003 (AS-023): "QA returns" home-page attention item — tasks assigned to
+// the caller that someone ELSE bounced back out of a QA-ish column into a
+// still-open (non-done/non-cancelled) column within the last 7 days.
+//
+// `task_activity.old_value`/`new_value` for `field: 'status'` carry the
+// task's plain `status` TEXT (the same value `tasks.status` holds), never
+// the `status_id` uuid — confirmed from `moveTaskStatus`/`moveAndReorderTask`
+// (lib/actions/tasks/ordering.ts), which build the diff via
+// `diffTaskFields({ status: taskRow.status }, { status: updated.status })`,
+// and from `deleteTask`'s trash/restore path (lib/actions/tasks/lifecycle.ts)
+// which writes `{ field: "status", oldValue: null, newValue: updated.status }`
+// the same way. Because statuses are per-project text names (F218-F223,
+// not a fixed global enum), resolving a status name's `category` requires
+// joining `project_statuses` on `(project_id, name)` — never on `status_id`,
+// since this function never has a `status_id` for the activity row, only
+// the text name captured at write time.
+export type QaReturnItem = {
+  taskId: string;
+  taskTitle: string;
+  taskNumber: number;
+  projectKey: string;
+  projectName: string;
+  changedAt: string; // ISO timestamp
+};
+
+export async function getQaReturns(
+  workspaceId: string,
+  userId: string,
+): Promise<QaReturnItem[]> {
+  const supabase = await createClient();
+
+  // Step 1: tasks assigned to userId in this workspace, same
+  // task_assignees-driven pattern getMyTasks uses above.
+  const { data: assignedRows, error: assignedError } = await supabase
+    .from("task_assignees")
+    .select(
+      "task_id, tasks!inner(id, title, number, project_id, deleted_at, projects!inner(id, key, name, workspace_id, deleted_at))",
+    )
+    .eq("user_id", userId)
+    .eq("tasks.projects.workspace_id", workspaceId)
+    .is("tasks.projects.deleted_at", null)
+    .is("tasks.deleted_at", null);
+
+  if (assignedError) {
+    throw assignedError;
+  }
+
+  type AssignedTask = {
+    id: string;
+    title: string;
+    number: number;
+    project_id: string;
+    projects:
+      | { id: string; key: string | null; name: string }
+      | { id: string; key: string | null; name: string }[]
+      | null;
+  };
+
+  const tasksById = new Map<
+    string,
+    { title: string; number: number; projectId: string; projectKey: string; projectName: string }
+  >();
+
+  for (const row of assignedRows ?? []) {
+    const task = firstRelated(row.tasks as AssignedTask | AssignedTask[] | null);
+    if (!task) continue;
+    const project = firstRelated(task.projects);
+    tasksById.set(task.id, {
+      title: task.title,
+      number: task.number,
+      projectId: task.project_id,
+      projectKey: project?.key ?? "",
+      projectName: project?.name ?? "",
+    });
+  }
+
+  const taskIds = Array.from(tasksById.keys());
+  if (taskIds.length === 0) return [];
+
+  // Step 2: status-change activity on those tasks, someone else, last 7
+  // days.
+  const sevenDaysAgo = new Date(
+    Date.now() - 7 * 24 * 60 * 60 * 1000,
+  ).toISOString();
+
+  const { data: activityRows, error: activityError } = await supabase
+    .from("task_activity")
+    .select("task_id, old_value, new_value, actor_id, created_at")
+    .in("task_id", taskIds)
+    .eq("field", "status")
+    .neq("actor_id", userId)
+    .gt("created_at", sevenDaysAgo)
+    .order("created_at", { ascending: false });
+
+  if (activityError) {
+    throw activityError;
+  }
+
+  if (!activityRows || activityRows.length === 0) return [];
+
+  // Step 3: resolve status name -> category per project, one batched
+  // query for every project touched by the assigned set (never per-row).
+  const projectIds = Array.from(
+    new Set(Array.from(tasksById.values()).map((t) => t.projectId)),
+  );
+
+  const { data: statusRows, error: statusError } = await supabase
+    .from("project_statuses")
+    .select("project_id, name, category")
+    .in("project_id", projectIds);
+
+  if (statusError) {
+    throw statusError;
+  }
+
+  const categoryByProjectAndName = new Map<string, string>();
+  for (const row of statusRows ?? []) {
+    categoryByProjectAndName.set(`${row.project_id}:${row.name}`, row.category);
+  }
+
+  const isQaStatus = (projectId: string, name: string | null): boolean => {
+    if (!name) return false;
+    const category = categoryByProjectAndName.get(`${projectId}:${name}`);
+    if (category && category.toLowerCase() === "qa") return true;
+    return name.toLowerCase().includes("qa");
+  };
+
+  const isOpenNonQaStatus = (projectId: string, name: string | null): boolean => {
+    if (!name) return false;
+    const category = categoryByProjectAndName.get(`${projectId}:${name}`);
+    if (!category) return true;
+    const normalized = category.toLowerCase();
+    return normalized !== "done" && normalized !== "cancelled";
+  };
+
+  const results: QaReturnItem[] = [];
+
+  for (const row of activityRows) {
+    const task = tasksById.get(row.task_id);
+    if (!task) continue;
+
+    const oldValue = typeof row.old_value === "string" ? row.old_value : null;
+    const newValue = typeof row.new_value === "string" ? row.new_value : null;
+
+    if (!isQaStatus(task.projectId, oldValue)) continue;
+    if (!isOpenNonQaStatus(task.projectId, newValue)) continue;
+
+    results.push({
+      taskId: row.task_id,
+      taskTitle: task.title,
+      taskNumber: task.number,
+      projectKey: task.projectKey,
+      projectName: task.projectName,
+      changedAt: row.created_at,
+    });
+
+    if (results.length >= 10) break;
+  }
+
+  return results;
+}
+
 export async function getMyTasks(
   workspaceId: string,
   userId: string,
