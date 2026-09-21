@@ -56,7 +56,7 @@ describe("BriefSectionedView", () => {
 
   it("test_BR_031_toc_receives_per_section_counts", () => {
     const out = render(multi);
-    expect(out).toMatch(/<aside[^>]*lg:flex/);
+    expect(out).toMatch(/<nav[^>]*lg:flex-col/);
     expect(out).toMatch(/font-mono[^"]*">1(<!-- -->)?\/(<!-- -->)?2</);
     expect(out).toMatch(/font-mono[^"]*">0(<!-- -->)?\/(<!-- -->)?1</);
   });
@@ -73,9 +73,22 @@ describe("BriefSectionedView", () => {
 
   it("test_BR_034_single_section_has_no_toc_or_headings", () => {
     const out = render([item("1", "Goals", 1, true), item("2", "Goals", 2, false)]);
-    expect(out).not.toContain("<aside");
-    expect(out).not.toContain("<nav");
+        expect(out).not.toContain("<nav");
     expect(out).not.toContain("<h2");
     expect(out).toContain("Prompt 1");
+  });
+});
+
+describe("BriefSectionedView unique ids (F014)", () => {
+  it("test_BR_032_colliding_and_non_latin_names_get_unique_ids_shared_with_toc", () => {
+    const names = ["Brand & Voice", "Brand / Voice", "Бренд", "品牌"];
+    const out = render(names.map((n, i) => item(String(i), n, i, true)));
+    const sectionIds = [...out.matchAll(/<section id="([^"]+)"/g)].map((m) => m[1]);
+    expect(sectionIds).toHaveLength(4);
+    expect(new Set(sectionIds).size).toBe(4);
+    expect(sectionIds[0]).toBe("section-brand-voice");
+    expect(sectionIds[2]).toBe("section-бренд");
+    expect(sectionIds[3]).toBe("section-品牌");
+    expect(out.match(/aria-current="true"/g)).toHaveLength(1);
   });
 });
