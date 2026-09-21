@@ -52,7 +52,8 @@ export function WorkspaceSwitcher({
           <Button
             variant="outline"
             size="sm"
-            className="w-full max-w-56 gap-1.5 rounded-lg"
+            title={current?.name}
+            className="h-auto min-h-[34px] w-full justify-start gap-1.5 rounded-lg py-1 text-left whitespace-normal"
           >
             {current ? (
               <WorkspaceLogo
@@ -62,7 +63,7 @@ export function WorkspaceSwitcher({
                 size="sm"
               />
             ) : null}
-            <span className="truncate font-mono uppercase">
+            <span className="min-w-0 flex-1 break-words font-mono uppercase">
               {current?.name ?? "Select workspace"}
             </span>
             <ChevronsUpDown className="ml-auto h-3.5 w-3.5 shrink-0 text-muted-foreground" />

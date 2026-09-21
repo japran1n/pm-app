@@ -1,0 +1,175 @@
+// F007 (SB-030) reuses the F025 real-Chromium pipeline.
+// F025 (SB-009, SB-023): verify the mobile presentation in a REAL headless
+// Chromium at 375px. Unlike F022's static-markup approach, this bundles the
+// real <AppSidebar> client component with esbuild, mounts it with React in the
+// page (so the base-ui Sheet really opens), and compiles the app's real
+// globals.css, so the `md:` breakpoint gating is evaluated by the browser.
+//
+// Stubbed (not under test): next/navigation, next/link, the notification bell,
+// server actions (lib/actions/*), the membership provider, project DnD/dialog
+// leaves. Everything in components/nav/app-sidebar.tsx, account-menu.tsx and
+// components/ui/* is real. Not verified: a live authenticated Next page.
+// @vitest-environment node
+import { readFileSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { beforeAll, describe, expect, it } from "vitest";
+import postcss from "postcss";
+import tailwind from "@tailwindcss/postcss";
+import { build } from "esbuild";
+import { chromium, type Browser, type Locator, type Page } from "@playwright/test";
+
+const root = process.cwd();
+let css = "";
+let js = "";
+
+const STUBS: Record<string, string> = {
+  "next/navigation": `export const usePathname=()=>"/w/acme"; export const useRouter=()=>({push(){},replace(){},refresh(){},prefetch(){},back(){},forward(){}});`,
+  "next/link": `import React from "react"; export default function Link({href,prefetch,scroll,replace,children,...r}){return React.createElement("a",{href:typeof href==="string"?href:String(href),...r},children)}`,
+  "next-themes": `export const useTheme=()=>({theme:"light",resolvedTheme:"light",setTheme(){}});`,
+  "sonner": `export const toast={error(){},success(){}};`,
+  "@/components/notifications/notification-bell": `import React from "react"; export const NotificationBell=()=>React.createElement("div");`,
+  "@/components/auth/membership-provider": `export const useMembership=()=>({role:"admin",hasClient:true,projectRoles:{}});`,
+  "@/lib/actions/auth": `export async function signOut(){}`,
+  "@/lib/actions/projects": `export async function reorderProject(){return {ok:true}}`,
+  "@/components/new-project-dialog": `import React from "react"; export const NewProjectDialog=()=>null;`,
+  "@/components/project-favorite-button": `import React from "react"; export const ProjectFavoriteButton=()=>null;`,
+};
+
+beforeAll(async () => {
+  const dir = mkdtempSync(join(tmpdir(), "f007-"));
+  const entry = join(dir, "entry.tsx");
+  writeFileSync(
+    entry,
+    `import React from "react";
+import { createRoot } from "react-dom/client";
+import { AppSidebar } from "@/components/nav/app-sidebar";
+createRoot(document.getElementById("root")!).render(
+  <AppSidebar workspaceSlug="acme" workspaces={[{id:"w1",name:"ABCDEFGHIJ KLMNOPQRST UVWXYZ0123 456789ABCD",slug:"acme"}]} currentWorkspaceId="w1"
+    currentUser={{id:"u1",name:"T",email:"t@example.com",avatarUrl:null}} isGuest={false} canManageWorkspace={true}
+    projects={[{id:"p1",name:"Apollo Launch",slug:"apollo"}] as never} />
+);
+(window as any).__mounted = true;`,
+  );
+  const res = await build({
+    entryPoints: [entry],
+    bundle: true,
+    write: false,
+    format: "iife",
+    platform: "browser",
+    jsx: "automatic",
+    define: { "process.env.NODE_ENV": '"development"' },
+    nodePaths: [join(root, "node_modules")],
+    absWorkingDir: root,
+    logLevel: "silent",
+    plugins: [
+      {
+        name: "stubs-and-alias",
+        setup(b) {
+          b.onResolve({ filter: /.*/ }, (a) => {
+            if (a.path in STUBS) return { path: a.path, namespace: "stub" };
+            if (a.path.startsWith("@/")) {
+              const base = join(root, a.path.slice(2));
+              for (const ext of [".tsx", ".ts", "/index.tsx", "/index.ts"]) {
+                try {
+                  readFileSync(base + ext);
+                  return { path: base + ext };
+                } catch {}
+              }
+            }
+            return undefined;
+          });
+          b.onLoad({ filter: /.*/, namespace: "stub" }, (a) => ({
+            contents: STUBS[a.path],
+            loader: "tsx",
+            resolveDir: root,
+          }));
+        },
+      },
+    ],
+  });
+  js = res.outputFiles[0].text;
+  const file = join(root, "app/globals.css");
+  css = (await postcss([tailwind()]).process(readFileSync(file, "utf8"), { from: file })).css;
+}, 180_000);
+
+async function withPage<T>(width: number, fn: (p: Page) => Promise<T>): Promise<T> {
+  let browser: Browser | undefined;
+  try {
+    browser = await chromium.launch();
+    const page = await browser.newPage({ viewport: { width, height: 800 } });
+    const errors: string[] = [];
+    page.on("pageerror", (e) => errors.push(String(e)));
+    await page.setContent(
+      `<!doctype html><html><head><style>${css}</style></head><body><div id="root"></div></body></html>`,
+    );
+    await page.addScriptTag({ content: js });
+    await page.waitForFunction(() => (window as unknown as { __mounted?: boolean }).__mounted === true);
+    await page.waitForSelector("aside", { state: "attached" });
+    const out = await fn(page);
+    expect(errors).toEqual([]);
+    return out;
+  } finally {
+    await browser?.close();
+  }
+}
+
+const NAME = "ABCDEFGHIJ KLMNOPQRST UVWXYZ0123 456789ABCD";
+
+// Measures the trigger inside `scope`: is the full name laid out with no
+// clipping, and how wide is the trigger relative to its column?
+function measure(scope: Locator) {
+  return scope.evaluate((root, name) => {
+    const btn = Array.from(root.querySelectorAll<HTMLElement>("button")).find((b) =>
+      (b.textContent ?? "").replace(/\s+/g, " ").includes(name),
+    )!;
+    const span = Array.from(btn.querySelectorAll<HTMLElement>("span")).find((s) =>
+      (s.textContent ?? "").includes(name),
+    )!;
+    const cs = getComputedStyle(span);
+    const col = btn.parentElement!.getBoundingClientRect();
+    const b = btn.getBoundingClientRect();
+    const r = document.createRange();
+    r.selectNodeContents(span);
+    const rects = Array.from(r.getClientRects());
+    const sp = span.getBoundingClientRect();
+    return {
+      textOverflow: cs.textOverflow,
+      clipped: span.scrollWidth > span.clientWidth + 1 || btn.scrollWidth > btn.clientWidth + 1,
+      textInsideSpan: rects.every((x) => x.right <= sp.right + 1 && x.left >= sp.left - 1),
+      btnWidth: b.width,
+      colWidth: col.width,
+      title: btn.getAttribute("title"),
+      btnScrollH: btn.scrollHeight,
+      btnH: b.height,
+    };
+  }, NAME);
+}
+
+describe("F007 SB-030 workspace switcher full width, 40-char name", () => {
+  it("test_SB_030_desktop_1280_name_fully_visible_and_trigger_fills_column", async () => {
+    await withPage(1280, async (p) => {
+      const m = await measure(p.locator("aside"));
+      expect(m.textOverflow).not.toBe("ellipsis");
+      expect(m.clipped).toBe(false);
+      expect(m.textInsideSpan).toBe(true);
+      expect(m.btnH).toBeGreaterThanOrEqual(m.btnScrollH - 1);
+      expect(m.title).toBe(NAME);
+      expect(m.btnWidth).toBeGreaterThanOrEqual(m.colWidth - 1);
+    });
+  }, 60_000);
+
+  it("test_SB_030_375px_sheet_name_fully_visible_and_trigger_fills_column", async () => {
+    await withPage(375, async (p) => {
+      await p.getByRole("button", { name: "Open navigation" }).click();
+      const dialog = p.getByRole("dialog");
+      await dialog.waitFor({ state: "visible" });
+      const m = await measure(dialog);
+      expect(m.textOverflow).not.toBe("ellipsis");
+      expect(m.clipped).toBe(false);
+      expect(m.textInsideSpan).toBe(true);
+      expect(m.btnH).toBeGreaterThanOrEqual(m.btnScrollH - 1);
+      expect(m.btnWidth).toBeGreaterThanOrEqual(m.colWidth - 1);
+    });
+  }, 60_000);
+});
