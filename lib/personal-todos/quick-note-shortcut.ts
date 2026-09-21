@@ -1,6 +1,6 @@
-// Quick-note capture shortcut: Ctrl+Shift+N on Mac (Cmd+Shift+N is the
-// browser's incognito window), Alt+Shift+N on Windows/Linux (Ctrl+Shift+N
-// is Chrome's incognito window there).
+// Quick-note capture shortcut: Alt/Option+Shift+N on every platform.
+// Cmd+Shift+N and Ctrl+Shift+N both open incognito windows in browsers, so
+// neither is usable. Matched on e.code because Option on Mac changes e.key.
 
 export function isMacPlatform(): boolean {
   if (typeof navigator === "undefined") return false;
@@ -9,14 +9,12 @@ export function isMacPlatform(): boolean {
   return /mac|iphone|ipad|ipod/i.test(platform);
 }
 
-export function isQuickNoteShortcut(e: KeyboardEvent, isMac: boolean): boolean {
-  const isN = e.code === "KeyN" || e.key === "n" || e.key === "N";
-  if (!isN || !e.shiftKey || e.metaKey) return false;
-  return isMac ? e.ctrlKey && !e.altKey : e.altKey && !e.ctrlKey;
+export function isQuickNoteShortcut(e: KeyboardEvent): boolean {
+  return e.code === "KeyN" && e.altKey && e.shiftKey && !e.ctrlKey && !e.metaKey;
 }
 
 export function quickNoteShortcutLabel(isMac: boolean): string {
-  return isMac ? "⌃⇧N" : "Alt+Shift+N";
+  return isMac ? "⌥⇧N" : "Alt+Shift+N";
 }
 
 /** Splits pasted/typed text into one trimmed, non-empty title per line. */

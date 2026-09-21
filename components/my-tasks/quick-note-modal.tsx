@@ -13,7 +13,6 @@ import { toast } from "sonner";
 
 import { createPersonalTodo } from "@/lib/actions/personal-todos";
 import {
-  isMacPlatform,
   isQuickNoteShortcut,
   splitQuickNoteLines,
 } from "@/lib/personal-todos/quick-note-shortcut";
@@ -53,9 +52,8 @@ export function QuickNoteModal({ workspaceId }: { workspaceId: string }) {
   });
 
   useEffect(() => {
-    const isMac = isMacPlatform();
     function onKeyDown(e: KeyboardEvent) {
-      if (e.repeat || !isQuickNoteShortcut(e, isMac)) return;
+      if (e.repeat || !isQuickNoteShortcut(e)) return;
       e.preventDefault();
       e.stopPropagation();
       toggleRef.current();
