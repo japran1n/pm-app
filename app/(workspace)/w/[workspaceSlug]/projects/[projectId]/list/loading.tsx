@@ -4,7 +4,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 // + table shape.
 export default function ListLoading() {
   return (
-    <div className="flex flex-col gap-4 p-6">
+    <div className="flex flex-col gap-4 p-6 pt-4 lg:p-8 lg:pt-8">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <Skeleton className="h-9 w-64" />
         <Skeleton className="h-9 w-32" />

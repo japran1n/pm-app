@@ -841,7 +841,7 @@ export function PhaseTimeline({
                 <div
                   role="tooltip"
                   data-testid="phase-timeline-tooltip"
-                  className="w-fit max-w-52 rounded-md border border-border bg-popover p-2 text-xs text-popover-foreground shadow-md"
+                  className="w-fit max-w-52 rounded-md border border-border bg-popover p-2 text-xs text-popover-foreground shadow-xs"
                 >
                   <p className="font-medium">{hoveredRow.phase.name}</p>
                   <p className="text-muted-foreground">

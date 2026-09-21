@@ -447,7 +447,7 @@ export function GlobalTimeTracker({
               {taskDropdownOpen && taskResults.length > 0 && (
                 <div
                   role="listbox"
-                  className="absolute top-full left-0 z-50 mt-1 max-h-48 w-full overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
+                  className="absolute top-full left-0 z-50 mt-1 max-h-48 w-full overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-xs"
                 >
                   {taskResults.map((task) => (
                     <button

@@ -95,7 +95,7 @@ export const PreviewPane = forwardRef<PreviewPaneHandle, PreviewPaneProps>(
             "flex h-full w-full items-center justify-center rounded-md border border-border bg-muted text-sm text-muted-foreground"
           }
         >
-          Nema pregleda
+          No preview
         </div>
       )
     }

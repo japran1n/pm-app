@@ -49,7 +49,7 @@ export default async function NotificationsPage({
   );
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 p-6">
+    <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 p-6 pt-4 lg:p-8 lg:pt-8">
       <h1 className="text-xl font-semibold">Notifications</h1>
       <NotificationPanel
         workspaceSlug={workspaceSlug}

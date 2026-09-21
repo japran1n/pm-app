@@ -69,7 +69,7 @@ export function DocClientVisibilityToggle({
       onClick={handleToggle}
       disabled={disabled || isPending}
       aria-pressed={isShared}
-      className={isShared ? "text-emerald-600" : undefined}
+      className={isShared ? "text-status-done" : undefined}
     >
       {isPending ? (
         <Loader2 className="size-4 animate-spin" aria-hidden="true" />

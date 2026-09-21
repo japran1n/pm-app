@@ -89,7 +89,7 @@ export function ChatMessageSearch({
       </div>
 
       {isOpen && (
-        <div className="absolute inset-x-2 top-full z-20 mt-1 max-h-80 overflow-y-auto rounded-md border bg-popover shadow-md">
+        <div className="absolute inset-x-2 top-full z-20 mt-1 max-h-80 overflow-y-auto rounded-md border bg-popover shadow-xs">
           {isPending && (
             <div className="flex items-center gap-2 p-3 text-sm text-muted-foreground">
               <Loader2 className="size-3.5 animate-spin" />

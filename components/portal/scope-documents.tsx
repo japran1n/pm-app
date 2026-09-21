@@ -110,7 +110,7 @@ function DocumentRow({
         <span className="min-w-0 truncate font-medium">{document.title}</span>
       </button>
       <span className="shrink-0 text-xs text-muted-foreground">
-        {document.uploadedByName ?? "Unknown"} · {formatDate(document.createdAt)}
+        {document.uploadedByName ?? "Unknown"} · <span className="font-mono">{formatDate(document.createdAt)}</span>
       </span>
       {canManage && (
         <Button

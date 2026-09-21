@@ -66,10 +66,10 @@ export default async function PortalHowWeWorkPage({
     <div className="flex flex-col gap-10" data-testid="how-we-work-page">
       <section
         data-testid="how-we-work-hero"
-        className="rounded-lg border border-border bg-card p-6 shadow-sm sm:p-10"
+        className="rounded-lg border border-border bg-card p-6 shadow-xs sm:p-10"
       >
         <span className="text-xs font-medium uppercase tracking-[0.07em] text-muted-foreground">
-          Kako radimo
+          How we work
         </span>
         <h1 className="mt-2 text-2xl font-semibold text-foreground sm:text-3xl">
           One process, start to finish -- no surprises along the way.
@@ -87,7 +87,7 @@ export default async function PortalHowWeWorkPage({
 
       <section
         data-testid="how-we-work-guides-section"
-        className="rounded-lg border border-border bg-card p-5 shadow-sm sm:p-6"
+        className="rounded-lg border border-border bg-card p-5 shadow-xs sm:p-6"
       >
         <div className="mb-4 flex items-center gap-2">
           <BookOpen className="size-4 text-muted-foreground" aria-hidden="true" />

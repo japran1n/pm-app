@@ -30,7 +30,7 @@
 // `selfId` is required so this component can tell which member is "me";
 // it's the only new prop this feature adds.
 import * as React from "react";
-import { UsersIcon } from "lucide-react";
+import { ChevronDown, UsersIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { orderPeopleForWholeTeam, serializePeopleParam } from "@/lib/calendar/people-selection";
@@ -157,24 +157,27 @@ export function PeopleSwitcher({
             <span className="hidden text-muted-foreground sm:inline">Select people</span>
           </>
         ) : (
-          <AvatarGroup data-slot="people-switcher-avatar-group">
-            {visibleMembers.map((member) => (
-              <Avatar key={member.userId} size="sm">
-                {member.avatarUrl ? (
-                  <AvatarImage
-                    src={member.avatarUrl}
-                    alt={displayNameFor(member)}
-                  />
-                ) : null}
-                <AvatarFallback>{initialsFor(member)}</AvatarFallback>
-              </Avatar>
-            ))}
-            {overflowCount > 0 ? (
-              <AvatarGroupCount data-slot="people-switcher-overflow-count">
-                +{overflowCount}
-              </AvatarGroupCount>
-            ) : null}
-          </AvatarGroup>
+          <>
+            <AvatarGroup data-slot="people-switcher-avatar-group">
+              {visibleMembers.map((member) => (
+                <Avatar key={member.userId} size="sm">
+                  {member.avatarUrl ? (
+                    <AvatarImage
+                      src={member.avatarUrl}
+                      alt={displayNameFor(member)}
+                    />
+                  ) : null}
+                  <AvatarFallback>{initialsFor(member)}</AvatarFallback>
+                </Avatar>
+              ))}
+              {overflowCount > 0 ? (
+                <AvatarGroupCount data-slot="people-switcher-overflow-count">
+                  +{overflowCount}
+                </AvatarGroupCount>
+              ) : null}
+            </AvatarGroup>
+            <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+          </>
         )}
       </PopoverTrigger>
       <PopoverContent

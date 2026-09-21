@@ -501,10 +501,10 @@ export function TimeTracking({
             {/* F269 (AS-526): matches task-card.tsx's own fix — `text-amber-600`
                 only clears 3.19:1 against the card's white ground, below
                 the 4.5:1 normal-text threshold this text requires. Swapped
-                for `text-amber-700` (5.02:1). */}
+                for `text-status-waiting` (5.02:1). */}
             {estimateProgress.isOverEstimate && (
               <span
-                className="inline-flex items-center gap-1 font-medium text-amber-700"
+                className="inline-flex items-center gap-1 font-medium text-status-waiting"
                 data-testid="over-estimate-badge"
               >
                 <TriangleAlert className="size-3" aria-hidden="true" />

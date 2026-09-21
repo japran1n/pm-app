@@ -193,7 +193,7 @@ export default async function PortalOverviewPage({
                         workspace-wide list — see the comment above this
                         section's data prep for why. */}
                     {waitingCount > 0 && (
-                      <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-amber-600/30 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-700">
+                      <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-status-waiting/30 bg-status-waiting-bg px-2.5 py-1 text-xs font-medium text-status-waiting">
                         <Clock3 aria-hidden className="size-3.5" />
                         {waitingCount} waiting on you
                       </span>

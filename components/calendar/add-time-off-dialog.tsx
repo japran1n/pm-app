@@ -125,7 +125,7 @@ export function AddTimeOffDialog({ workspaceId }: { workspaceId: string }) {
               id="time-off-note"
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder="e.g. Godišnji odmor"
+              placeholder="e.g. Annual leave"
               maxLength={200}
             />
           </div>

@@ -419,13 +419,13 @@ export function PortalSidebar({
   const projectCard = hasMultipleProjects ? (
     <Link
       href={`/portal/${workspaceSlug}`}
-      className="hover-surface flex flex-col gap-0.5 rounded-md border border-sidebar-border px-3 py-2"
+      className="hover-surface flex min-w-0 flex-col gap-0.5 rounded-md border border-sidebar-border px-3 py-2"
     >
       <span className="text-xs font-medium uppercase tracking-[0.07em] text-muted-foreground">Project</span>
       <span className="truncate text-sm font-medium">{projectName}</span>
     </Link>
   ) : (
-    <div className="flex flex-col gap-0.5 rounded-md border border-sidebar-border px-3 py-2">
+    <div className="flex min-w-0 flex-col gap-0.5 rounded-md border border-sidebar-border px-3 py-2">
       <span className="text-xs font-medium uppercase tracking-[0.07em] text-muted-foreground">Project</span>
       <span className="truncate text-sm font-medium">{projectName}</span>
     </div>

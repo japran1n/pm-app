@@ -41,7 +41,7 @@ export function TaskTitleCell({
   trailing?: ReactNode;
 }) {
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex min-w-0 items-center gap-1">
       {leading}
       <span className="truncate">{title}</span>
       {trailing}
@@ -59,7 +59,7 @@ export function TaskTitleCell({
       )}
       {pendingClientApproval && (
         <span
-          className="inline-flex shrink-0 items-center text-amber-700"
+          className="inline-flex shrink-0 items-center text-status-waiting"
           data-testid="awaiting-client-indicator"
         >
           <CircleDot className="size-3.5" aria-hidden="true" />
@@ -71,7 +71,7 @@ export function TaskTitleCell({
           <TooltipTrigger
             render={
               <span
-                className="inline-flex shrink-0 items-center text-amber-700"
+                className="inline-flex shrink-0 items-center text-status-waiting"
                 data-testid="blocked-reason-indicator"
               >
                 <AlertTriangle className="size-3.5" aria-hidden="true" />

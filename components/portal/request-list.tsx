@@ -277,7 +277,7 @@ export function RequestList({
             )}
 
             {request.status === "accepted" && (
-              <p className="rounded-md border border-emerald-600/30 bg-emerald-600/5 p-3 text-sm">
+              <p className="rounded-md border border-status-done/30 bg-status-done/5 p-3 text-sm">
                 {request.convertedTaskTitle
                   ? `On the board as "${request.convertedTaskTitle}".`
                   : "Accepted and added to the project."}

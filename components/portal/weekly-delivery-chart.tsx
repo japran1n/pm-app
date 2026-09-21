@@ -207,7 +207,7 @@ export function WeeklyDeliveryChart({ weeks }: { weeks: WeeklyDeliveryWeek[] }) 
               <div
                 role="tooltip"
                 data-testid="weekly-delivery-tooltip"
-                className="w-fit max-w-36 rounded-md border border-border bg-popover p-2 text-xs text-popover-foreground shadow-md"
+                className="w-fit max-w-36 rounded-md border border-border bg-popover p-2 text-xs text-popover-foreground shadow-xs"
               >
                 <p className="font-medium">Week of {hovered.label}</p>
                 <p className="text-muted-foreground">

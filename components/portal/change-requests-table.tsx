@@ -102,7 +102,7 @@ export function ChangeRequestsTable({
                     Review this quote
                   </Link>
                 )}
-              <span className="ml-auto text-xs text-muted-foreground">
+              <span className="ml-auto font-mono text-xs text-muted-foreground">
                 {formatDate(request.createdAt)}
               </span>
             </div>
@@ -114,12 +114,12 @@ export function ChangeRequestsTable({
                 className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted-foreground"
                 data-testid={`quote-details-${request.id}`}
               >
-                {request.quotedHours != null && <span>Estimate: {request.quotedHours}h</span>}
+                {request.quotedHours != null && <span>Estimate: <span className="font-mono">{request.quotedHours}h</span></span>}
                 {request.quotedAmount != null && (
-                  <span>Price: {formatAmount(request.quotedAmount, request.quoteCurrency)}</span>
+                  <span>Price: <span className="font-mono">{formatAmount(request.quotedAmount, request.quoteCurrency)}</span></span>
                 )}
                 {request.quoteValidUntil && (
-                  <span>Valid until {formatDateUTC(request.quoteValidUntil)}</span>
+                  <span>Valid until <span className="font-mono">{formatDateUTC(request.quoteValidUntil)}</span></span>
                 )}
               </div>
             )}

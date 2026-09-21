@@ -42,6 +42,7 @@ import type {
   DeliverableState,
 } from "@/lib/queries/deliverables";
 import { deliverableKindSchema } from "@/lib/validation/deliverables";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -93,11 +94,11 @@ const STATE_LABELS: Record<DeliverableState, string> = {
 // not_started/in_progress render, so it reads as "still outstanding,
 // awaiting review" rather than "done".
 const STATE_BADGE_CLASS: Record<DeliverableState, string> = {
-  not_started: "bg-muted text-muted-foreground",
-  in_progress: "bg-muted text-muted-foreground",
-  delivered: "bg-amber-100 text-amber-800",
-  accepted: "bg-green-100 text-green-800",
-  waived: "bg-muted text-muted-foreground",
+  not_started: "",
+  in_progress: "",
+  delivered: "text-status-waiting",
+  accepted: "text-status-done",
+  waived: "",
 };
 
 function DeliverableRow({
@@ -414,12 +415,13 @@ function DeliverableRow({
           {blocking ? "Blocking — overdue moves the linked task to Blocked" : "Not blocking"}
         </span>
 
-        <span
-          className={`ml-auto rounded-full px-2 py-0.5 text-xs font-medium ${STATE_BADGE_CLASS[deliverable.state]}`}
+        <Badge
+          className={`ml-auto ${STATE_BADGE_CLASS[deliverable.state]}`}
+          variant={STATE_BADGE_CLASS[deliverable.state] ? "default" : "secondary"}
           data-testid="deliverable-state-badge"
         >
           {STATE_LABELS[deliverable.state]}
-        </span>
+        </Badge>
       </div>
 
       {linkedTask && (

@@ -294,7 +294,7 @@ export function HeaderSearch({
         <div
           id="header-search-results"
           role="listbox"
-          className="absolute top-full left-0 z-50 mt-1 w-full max-h-80 overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
+          className="absolute top-full left-0 z-50 mt-1 w-full max-h-80 overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-xs"
         >
           {loading && !hasResults && (
             <div className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground">

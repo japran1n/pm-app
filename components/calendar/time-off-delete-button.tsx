@@ -22,7 +22,7 @@ export function TimeOffDeleteButton({ entryId }: { entryId: string }) {
       data-testid="time-off-delete-button"
       title={error ?? "Remove"}
       disabled={isPending}
-      className="ml-auto shrink-0 rounded text-amber-900/60 hover:text-amber-900 disabled:opacity-50"
+      className="ml-auto shrink-0 rounded text-status-waiting/60 hover:text-status-waiting disabled:opacity-50"
       onClick={(event) => {
         event.stopPropagation();
         startTransition(async () => {

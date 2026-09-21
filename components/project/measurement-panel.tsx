@@ -44,6 +44,7 @@ import type {
   ProjectImprovement,
 } from "@/lib/queries/metrics";
 import { metricDirectionSchema, metricSourceSchema } from "@/lib/validation/metrics";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -94,10 +95,10 @@ const STATUS_LABELS: Record<string, string> = {
 // post-baseline snapshot reads "Not yet measured" rather than being
 // silently treated as an improvement.
 const STATUS_BADGE_CLASS: Record<string, string> = {
-  not_measured: "bg-muted text-muted-foreground",
-  improved: "bg-green-100 text-green-800",
-  regressed: "bg-red-100 text-red-800",
-  unchanged: "bg-muted text-muted-foreground",
+  not_measured: "",
+  improved: "text-status-done",
+  regressed: "text-status-blocked",
+  unchanged: "",
 };
 
 function MetricRow({
@@ -302,12 +303,13 @@ function MetricRow({
           </SelectContent>
         </Select>
 
-        <span
-          className={`ml-auto rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE_CLASS[status]}`}
+        <Badge
+          className={`ml-auto ${STATUS_BADGE_CLASS[status]}`}
+          variant={STATUS_BADGE_CLASS[status] ? "default" : "secondary"}
           data-testid="metric-status-badge"
         >
           {STATUS_LABELS[status]}
-        </span>
+        </Badge>
 
         <AlertDialog>
           <AlertDialogTrigger

@@ -367,11 +367,11 @@ export function TaskCard({
         {/* F083: "waiting on the client" — icon + text, never colour
             alone, same pairing convention. Uses the same amber
             "informing, not alarming" treatment the over-estimate badge
-            above uses (F269's AS-526-hardened `text-amber-700`),
+            above uses (F269's AS-526-hardened `text-status-waiting`),
             since this is a fact about the task, not an error. */}
         {task.pendingClientApproval && (
           <span
-            className="inline-flex items-center gap-1 text-xs font-medium text-amber-700"
+            className="inline-flex items-center gap-1 text-xs font-medium text-status-waiting"
             data-testid="awaiting-client-indicator"
           >
             <CircleDot className="size-3" aria-hidden="true" />
@@ -395,12 +395,12 @@ export function TaskCard({
             against the card's white ground — below the 4.5:1 normal-
             text threshold this `text-xs` badge text requires (large-text's
             3:1 exemption needs >=18pt/24px, or >=14pt/18.66px bold; this is
-            12px, not bold). Swapped for `text-amber-700` (#b45309,
+            12px, not bold). Swapped for `text-status-waiting` (#b45309,
             5.02:1) — see
             tests/unit/task-card-badge-text-contrast.test.ts. */}
         {estimateProgress?.isOverEstimate && (
           <span
-            className="inline-flex items-center gap-1 text-xs font-medium text-amber-700"
+            className="inline-flex items-center gap-1 text-xs font-medium text-status-waiting"
             data-testid="over-estimate-badge"
           >
             <TriangleAlert className="size-3" aria-hidden="true" />
@@ -455,7 +455,7 @@ export function TaskCard({
             <TooltipTrigger
               render={
                 <span
-                  className="inline-flex items-center gap-1 text-xs font-medium text-amber-700"
+                  className="inline-flex items-center gap-1 text-xs font-medium text-status-waiting"
                   data-testid="blocked-reason-indicator"
                 >
                   <AlertTriangle className="size-3" aria-hidden="true" />

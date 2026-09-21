@@ -327,7 +327,7 @@ export function HoursBurndownChart({
               <div
                 role="tooltip"
                 data-testid="hours-chart-tooltip"
-                className="w-fit max-w-40 rounded-md border border-border bg-popover p-2 text-xs text-popover-foreground shadow-md"
+                className="w-fit max-w-40 rounded-md border border-border bg-popover p-2 text-xs text-popover-foreground shadow-xs"
               >
                 <p className="font-medium">Week of {hovered.label}</p>
                 <p className="text-muted-foreground">

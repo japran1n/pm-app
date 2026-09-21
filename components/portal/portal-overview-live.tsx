@@ -45,7 +45,7 @@ export function PortalOverviewLive({
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-border p-5">
       <div className="flex items-center gap-2">
-        <CheckCircle2 aria-hidden="true" className="size-4 text-emerald-600" />
+        <CheckCircle2 aria-hidden="true" className="size-4 text-status-done" />
         <h2 className="text-sm font-semibold">Delivered this week</h2>
       </div>
       {deliveredThisWeek.length === 0 ? (

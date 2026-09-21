@@ -102,7 +102,7 @@ export const MentionList = forwardRef<MentionListHandle, MentionListProps>(
         <div
           role="listbox"
           aria-label="Mention someone"
-          className="min-w-40 rounded-md border border-border bg-popover p-1 text-sm text-muted-foreground shadow-md"
+          className="min-w-40 rounded-md border border-border bg-popover p-1 text-sm text-muted-foreground shadow-xs"
         >
           No matching members
         </div>
@@ -113,7 +113,7 @@ export const MentionList = forwardRef<MentionListHandle, MentionListProps>(
       <div
         role="listbox"
         aria-label="Mention someone"
-        className="min-w-40 max-h-64 overflow-y-auto rounded-md border border-border bg-popover p-1 shadow-md"
+        className="min-w-40 max-h-64 overflow-y-auto rounded-md border border-border bg-popover p-1 shadow-xs"
       >
         {items.map((item, index) => (
           <button

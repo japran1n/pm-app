@@ -30,7 +30,7 @@ export function ClientPresentationBanner({
   return (
     <div
       data-testid="client-presentation-banner"
-      className="flex flex-col gap-1 border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-900"
+      className="flex flex-col gap-1 border-b border-destructive/20 bg-destructive/5 px-4 py-2 text-sm text-destructive"
     >
       {presentations.map((presentation) => (
         <div
@@ -44,7 +44,7 @@ export function ClientPresentationBanner({
             {presentation.projectName ? ` for ${presentation.projectName}` : ""}
             {" "}
             {presentation.trigger === "today" ? "today" : "tomorrow"} at{" "}
-            {formatTime(presentation.startsAt)}
+            <span className="font-mono">{formatTime(presentation.startsAt)}</span>
             {" "}
             — double-check staging before you present.
           </span>

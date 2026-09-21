@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 
 import {
   Breadcrumb,
+  BreadcrumbEllipsis,
   BreadcrumbItem,
   BreadcrumbLink,
   BreadcrumbList,
@@ -22,7 +23,7 @@ import { useBreadcrumbExtra } from "@/components/nav/breadcrumb-context";
 const SEGMENT_LABELS: Record<string, string> = {
   "my-tasks": "My Tasks",
   projects: "Projects",
-  calendar: "Calendar",
+  calendar: "Planner",
   search: "Search",
   time: "Time",
   requests: "Client requests",
@@ -34,10 +35,28 @@ const SEGMENT_LABELS: Record<string, string> = {
   members: "Members",
   profile: "Profile",
   audit: "Audit log",
+  "status-templates": "Status templates",
+  "task-types": "Task types",
+  me: "My time",
   board: "Board",
   list: "List",
+  hours: "Hours",
+  staging: "Staging",
+  architecture: "Architecture",
+  brief: "Brief",
   columns: "Columns",
   t: "Task",
+  watching: "Watching",
+  team: "Team",
+  chat: "Chat",
+  approvals: "Approvals",
+  "preview-as-client": "Preview as client",
+  tools: "Tools",
+  docs: "Docs",
+  help: "Help",
+  webflow: "HTML → Webflow",
+  "code-editor": "Webflow Code Editor",
+  sitemap: "Sitemap Builder",
 };
 
 // Segments that are a resolved id (uuid, or a project's short task-number
@@ -86,11 +105,32 @@ export function AppBreadcrumb({
     crumbs.push(extra[extraIndex]);
   }
 
+  // When there are more than 3 crumbs, collapse middle ones into "..." so
+  // the breadcrumb doesn't squeeze every segment to 1-2 chars. Show only
+  // the workspace root, an ellipsis, and the current page — the page header
+  // below already shows the project/section name, so losing it from the
+  // crumb doesn't lose context.
+  type DisplayCrumb = { label: string; href?: string } | null;
+  const displayCrumbs: DisplayCrumb[] =
+    crumbs.length > 3
+      ? [crumbs[0], null, crumbs[crumbs.length - 1]]
+      : crumbs;
+
   return (
     <Breadcrumb>
       <BreadcrumbList className="flex-nowrap overflow-hidden text-xs">
-        {crumbs.map((crumb, index) => {
-          const isLast = index === crumbs.length - 1;
+        {displayCrumbs.map((crumb, index) => {
+          if (crumb === null) {
+            return (
+              <Fragment key="ellipsis">
+                <BreadcrumbItem>
+                  <BreadcrumbEllipsis />
+                </BreadcrumbItem>
+                <BreadcrumbSeparator />
+              </Fragment>
+            );
+          }
+          const isLast = index === displayCrumbs.length - 1;
           return (
             // BUGFIX: BreadcrumbSeparator renders its own <li> — the
             // shadcn Breadcrumb primitives are designed as a flat list of
@@ -105,7 +145,17 @@ export function AppBreadcrumb({
             // separator as a SIBLING of BreadcrumbItem inside this
             // Fragment, matching shadcn's own documented usage.
             <Fragment key={`${crumb.label}-${index}`}>
-              <BreadcrumbItem className={index === 0 ? "shrink-0" : "min-w-0"}>
+              {/* First crumb (workspace) gets a min-width so it's always
+                  visible; last crumb (current page) truncates rather than
+                  disappearing. All items are capped so no single one
+                  monopolises the available width. */}
+              <BreadcrumbItem className={
+                index === 0
+                  ? "min-w-[3rem] max-w-[8rem]"
+                  : isLast
+                  ? "min-w-0 max-w-[10rem]"
+                  : "min-w-[2rem] max-w-[6rem]"
+              }>
                 {isLast || !crumb.href ? (
                   <BreadcrumbPage className="truncate">
                     {crumb.label}

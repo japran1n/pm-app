@@ -7,7 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 // avoids an apparent hang on a URL people paste to each other.
 export default function TaskByKeyLoading() {
   return (
-    <div className="flex flex-col gap-4 p-6">
+    <div className="flex flex-col gap-4 p-6 pt-4 lg:p-8 lg:pt-8">
       <Skeleton className="h-6 w-48" />
       <Skeleton className="h-40 w-full" />
     </div>

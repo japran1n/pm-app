@@ -147,7 +147,7 @@ export function SitePreviewFrame({
         if (cancelled) return
 
         if (!probeRes.ok) {
-          setState({ status: "error", message: probe.error ?? "Nije moguće učitati pregled" })
+          setState({ status: "error", message: probe.error ?? "Unable to load preview" })
           return
         }
 
@@ -162,7 +162,7 @@ export function SitePreviewFrame({
             const body = (await htmlRes.json().catch(() => ({}))) as { error?: string }
             setState({
               status: "error",
-              message: body.error ?? "Nije moguće učitati pregled",
+              message: body.error ?? "Unable to load preview",
             })
             return
           }
@@ -175,7 +175,7 @@ export function SitePreviewFrame({
         setState({ status: "ready", mode: "src" })
       } catch {
         if (cancelled) return
-        setState({ status: "error", message: "Nije moguće učitati pregled" })
+        setState({ status: "error", message: "Unable to load preview" })
       }
     }
 
@@ -245,9 +245,9 @@ export function SitePreviewFrame({
   if (links.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center gap-1 rounded-md border border-border bg-card p-12 text-center shadow-xs">
-        <p className="text-sm font-medium text-foreground">Nema staging linka</p>
+        <p className="text-sm font-medium text-foreground">No staging link</p>
         <p className="text-sm text-muted-foreground">
-          Dodaj staging ili live link u podešavanjima projekta.
+          Add a staging or live link in the project settings.
         </p>
       </div>
     )
@@ -264,7 +264,9 @@ export function SitePreviewFrame({
             onValueChange={(value) => setSelectedId(value as string)}
           >
             <SelectTrigger size="sm">
-              <SelectValue placeholder="Izaberi link" />
+              <SelectValue placeholder="Select link">
+                {selectedLink?.label}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {links.map((link) => (
@@ -281,7 +283,7 @@ export function SitePreviewFrame({
             type="button"
             variant="ghost"
             size="icon-sm"
-            aria-label="Nazad"
+            aria-label="Back"
             disabled={history.length === 0}
             onClick={handleBack}
           >
@@ -300,7 +302,7 @@ export function SitePreviewFrame({
 
         {showVisibility && selectedLink && (
           <Badge variant={selectedLink.clientVisible ? "success" : "secondary"}>
-            {selectedLink.clientVisible ? "Vidljivo klijentu" : "Sakriveno"}
+            {selectedLink.clientVisible ? "Visible to client" : "Hidden"}
           </Badge>
         )}
 
@@ -328,7 +330,7 @@ export function SitePreviewFrame({
           type="button"
           variant="ghost"
           size="icon-sm"
-          aria-label="Osveži"
+          aria-label="Refresh"
           onClick={() => setReloadKey((key) => key + 1)}
         >
           <RotateCw />
@@ -341,7 +343,7 @@ export function SitePreviewFrame({
             rel="noopener noreferrer"
             className="inline-flex h-[34px] items-center rounded-md border border-border bg-secondary px-3 text-sm font-medium text-secondary-foreground transition-colors duration-200 hover:bg-accent hover:border-border-control-hover"
           >
-            Otvori u novom tabu
+            Open in new tab
           </a>
         )}
       </header>
@@ -365,7 +367,7 @@ export function SitePreviewFrame({
                   rel="noopener noreferrer"
                   className="inline-flex h-[34px] items-center rounded-md border border-border bg-transparent px-3 text-sm font-medium text-foreground transition-colors duration-200 hover:bg-accent hover:border-border-control-hover"
                 >
-                  Otvori u novom tabu
+                  Open in new tab
                 </a>
               )}
             </div>

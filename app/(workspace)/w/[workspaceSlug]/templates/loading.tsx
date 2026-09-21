@@ -4,7 +4,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 // header + list-of-template-rows shape.
 export default function TemplatesLoading() {
   return (
-    <div className="flex flex-col gap-8 p-6">
+    <div className="flex flex-col gap-8 p-6 pt-4 lg:p-8 lg:pt-8">
       <div className="flex flex-col gap-1">
         <Skeleton className="h-6 w-28" />
       </div>

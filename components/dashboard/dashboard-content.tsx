@@ -181,6 +181,7 @@ export function DashboardContent({
             <CardTitle className="text-sm font-medium text-muted-foreground">
               Tasks by status
             </CardTitle>
+            <p className="text-xs text-muted-foreground">Current totals across all time</p>
           </CardHeader>
           <CardContent>
             <StatusPieChart data={statusData} />

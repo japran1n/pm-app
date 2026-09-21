@@ -30,6 +30,7 @@ import {
 import { UserAvatar } from "@/components/user-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { TeamMemberBreadcrumb } from "@/components/team/team-member-breadcrumb";
 
 export default async function TeamMemberProfilePage({
   params,
@@ -102,7 +103,8 @@ export default async function TeamMemberProfilePage({
   const label = target.name ?? target.email ?? "Unknown member";
 
   return (
-    <div className="flex flex-col gap-6 p-6">
+    <div className="flex flex-col gap-6 p-6 pt-4 lg:p-8 lg:pt-8">
+      <TeamMemberBreadcrumb label={label} />
       <Link
         href={`/w/${workspaceSlug}/team`}
         className="flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground"

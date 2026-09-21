@@ -55,11 +55,11 @@ export function ProjectProgress({ project }: { project: PortalProject }) {
         } not started`}
       >
         <div
-          className="bg-emerald-500"
+          className="bg-status-done"
           style={{ width: `${donePct}%` }}
         />
         <div
-          className="bg-blue-500"
+          className="bg-status-progress"
           style={{ width: `${inProgressPct}%` }}
         />
       </div>
@@ -68,7 +68,7 @@ export function ProjectProgress({ project }: { project: PortalProject }) {
         {nextDue ? (
           <span>
             Next: {nextDue.title}
-            {nextDue.dueDate ? ` · ${formatDateUTC(nextDue.dueDate)}` : ""}
+            {nextDue.dueDate ? <><span> · </span><span className="font-mono">{formatDateUTC(nextDue.dueDate)}</span></> : ""}
           </span>
         ) : (
           <span>No upcoming dates</span>

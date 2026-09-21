@@ -56,7 +56,7 @@ function FileRow({ file }: { file: PortalFile }) {
           </span>
         </span>
         <span className="shrink-0 text-xs text-muted-foreground">
-          {file.taskTitle} · {formatDate(file.createdAt)}
+          {file.taskTitle} · <span className="font-mono">{formatDate(file.createdAt)}</span>
         </span>
       </button>
     </li>

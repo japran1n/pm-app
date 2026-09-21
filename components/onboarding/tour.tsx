@@ -285,7 +285,7 @@ export function OnboardingTour({
         role="dialog"
         aria-label={step.title}
         data-testid="onboarding-tour-step"
-        className="rounded-lg border bg-popover p-4 text-popover-foreground shadow-lg"
+        className="rounded-lg border bg-popover p-4 text-popover-foreground shadow-xs"
         style={cardStyle}
       >
         <p className="text-sm font-semibold">{step.title}</p>

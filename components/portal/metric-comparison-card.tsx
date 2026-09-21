@@ -92,7 +92,10 @@ export function computeMetricBarLayout(
 
 function formatValue(value: number, unit: string | null): string {
   const rounded = Number.isInteger(value) ? String(value) : value.toFixed(1);
-  return unit ? `${rounded}${unit}` : rounded;
+  if (!unit) return rounded;
+  // Prefix symbols ($, €, etc.) attach directly; word units need a space.
+  const needsSpace = /^[a-zA-Z]/.test(unit);
+  return needsSpace ? `${rounded} ${unit}` : `${rounded}${unit}`;
 }
 
 const STATUS_LABEL: Record<MetricMeasurementStatus, string> = {

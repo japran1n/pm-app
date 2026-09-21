@@ -93,7 +93,7 @@ export function ProjectLinksList({ links }: { links: ProjectLink[] }) {
             href={link.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="hover-surface group flex h-full flex-col gap-3 rounded-lg border border-border p-4 transition-all duration-150 hover:-translate-y-0.5 hover:scale-[1.02] hover:shadow-md"
+            className="hover-surface group flex h-full flex-col gap-3 rounded-lg border border-border p-4 transition-all duration-150 hover:-translate-y-0.5 hover:scale-[1.02]"
             data-testid="project-link-row"
           >
             <span className="flex items-start justify-between gap-2">

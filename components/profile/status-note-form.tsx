@@ -63,7 +63,7 @@ export function StatusNoteForm({
           id="status-note"
           value={note}
           onChange={(e) => setNote(e.target.value)}
-          placeholder="e.g. Vraćam se ponedeljak"
+          placeholder="e.g. Back on Monday"
           maxLength={140}
           disabled={isPending}
         />

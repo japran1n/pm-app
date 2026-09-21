@@ -77,7 +77,7 @@ export function ProjectGuidesList({ guides }: { guides: Doc[] }) {
             <button
               type="button"
               onClick={() => setOpenGuide(doc)}
-              className="hover-surface flex h-full w-full flex-col gap-2 rounded-lg border border-border p-4 text-left transition-all duration-150 hover:-translate-y-0.5 hover:shadow-sm"
+              className="hover-surface flex h-full w-full flex-col gap-2 rounded-lg border border-border p-4 text-left transition-all duration-150 hover:-translate-y-0.5"
               data-testid="project-guide-card"
             >
               <GraduationCap

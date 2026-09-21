@@ -144,13 +144,13 @@ export function ApprovalsQueue({
         <table className="w-full min-w-[860px] text-sm">
           <thead className="border-b bg-muted/40 text-left text-xs font-medium text-muted-foreground">
             <tr>
-              <th className="px-4 py-2">What</th>
+              <th className="py-2 pl-6 pr-4 lg:pl-8">What</th>
               <th className="px-4 py-2">Project</th>
               <th className="px-4 py-2">Decision</th>
               <th className="px-4 py-2">Who must decide</th>
               <th className="px-4 py-2">Waiting</th>
               <th className="px-4 py-2">What it blocks</th>
-              <th className="px-4 py-2" />
+              <th className="py-2 pl-4 pr-6 lg:pr-8" />
             </tr>
           </thead>
           <tbody className="divide-y">
@@ -177,7 +177,7 @@ export function ApprovalsQueue({
 
               return (
                 <tr key={approval.id} className="align-top hover:bg-muted/50">
-                  <td className="px-4 py-3 font-medium">
+                  <td className="py-3 pl-6 pr-4 font-medium lg:pl-8">
                     {whatHref ? (
                       <NextLink href={whatHref} className="underline-offset-2 hover:underline">
                         {approval.title}
@@ -228,7 +228,7 @@ export function ApprovalsQueue({
                         : approval.blocks.label
                       : "—"}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="py-3 pl-4 pr-6 lg:pr-8">
                     <div className="flex items-center justify-end gap-2">
                       <Button
                         variant="ghost"

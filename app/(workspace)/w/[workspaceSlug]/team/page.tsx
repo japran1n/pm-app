@@ -53,7 +53,7 @@ export default async function TeamPage({
   const members = await getWorkspaceMembers(workspace.id);
 
   return (
-    <div className="flex flex-col gap-6 p-6">
+    <div className="flex flex-col gap-6 p-6 pt-4 lg:p-8 lg:pt-8">
       <div className="flex flex-col gap-1">
         <h1 className="flex items-center gap-2 text-xl font-semibold">
           <Users className="size-5" aria-hidden="true" />

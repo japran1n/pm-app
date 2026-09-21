@@ -196,7 +196,7 @@ export function ProjectMembersList({
                 </span>
                 <span className="text-xs text-muted-foreground">
                   Added by {member.addedByName ?? "unknown"} on{" "}
-                  {formatDate(member.createdAt)}
+                  <span className="font-mono">{formatDate(member.createdAt)}</span>
                 </span>
               </div>
             </div>

@@ -30,6 +30,7 @@ import { toast } from "sonner";
 import { decideApproval, nudgeApprovalOwner } from "@/lib/actions/portal-approval";
 import { getApprovalDocSnapshotUrl } from "@/lib/actions/approvals";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import type { PortalApproval } from "@/lib/queries/approvals";
 import { cn } from "@/lib/utils";
@@ -257,18 +258,13 @@ export function ApprovalCard({
             configured on the project, not a fixed 4-value label lookup. */}
         <span className="text-xs font-medium uppercase tracking-[0.07em] text-muted-foreground">{approval.decisionType}</span>
         {!settled && approval.dueAt && (
-          <span
+          <Badge
             data-testid="approval-due-chip"
             data-overdue={overdue ? "true" : "false"}
-            className={cn(
-              "rounded-full px-2 py-0.5 text-xs font-medium",
-              overdue
-                ? "bg-status-blocked-bg text-status-blocked"
-                : "bg-status-waiting-bg text-status-waiting",
-            )}
+            className={overdue ? "text-status-blocked" : "text-status-waiting"}
           >
             {overdue ? "Overdue" : `Due ${formatDayMonthUTC(approval.dueAt)}`}
-          </span>
+          </Badge>
         )}
       </div>
 
@@ -385,12 +381,12 @@ export function ApprovalCard({
             "flex flex-col gap-1 rounded-lg border p-3 text-sm font-medium",
             settled.decision === "approved"
               ? "border-emerald-600/30 bg-emerald-600/5"
-              : "border-amber-600/30 bg-amber-600/5",
+              : "border-status-waiting/30 bg-status-waiting/5",
           )}
         >
           <div className="flex items-center gap-2">
             {settled.decision === "approved" ? (
-              <Check className="size-4 text-emerald-600" aria-hidden="true" />
+              <Check className="size-4 text-status-done" aria-hidden="true" />
             ) : (
               <MessageSquareWarning className="size-4" aria-hidden="true" />
             )}
@@ -411,7 +407,7 @@ export function ApprovalCard({
           )}
         </div>
       ) : isRequestingChanges ? (
-        <div className="flex flex-col gap-3 rounded-lg border border-amber-600/30 bg-amber-600/5 p-4">
+        <div className="flex flex-col gap-3 rounded-lg border border-status-waiting/30 bg-status-waiting/5 p-4">
           <p className="text-sm font-medium">What needs to change?</p>
           <Textarea
             value={message}

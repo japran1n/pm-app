@@ -18,11 +18,11 @@ export function TimeOffDayStrip({ entries }: { entries: TimeOffEntry[] }) {
     <div className="flex flex-col gap-0.5 px-1 py-0.5" data-testid="time-off-day-strip">
       {entries.map((entry) => {
         const who = entry.userName ?? entry.userEmail ?? "Someone";
-        const label = entry.note ? `${who} — ${entry.note}` : `${who} — odmor`;
+        const label = entry.note ? `${who} — ${entry.note}` : `${who} — time off`;
         return (
           <div
             key={entry.id}
-            className="flex items-center gap-1 truncate rounded bg-amber-100 px-1 py-0.5 text-[10px] text-amber-900"
+            className="flex items-center gap-1 truncate rounded bg-status-waiting-bg px-1 py-0.5 text-[10px] text-status-waiting"
             data-testid="time-off-entry"
             title={label}
           >

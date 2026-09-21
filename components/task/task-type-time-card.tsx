@@ -36,7 +36,7 @@ export function TaskTypeTimeCard({
           {totals.map((total) => (
             <div
               key={total.taskTypeId}
-              className="flex items-center justify-between gap-4 px-4 py-2.5 text-sm"
+              className="flex min-w-0 items-center justify-between gap-4 px-4 py-2.5 text-sm"
             >
               <span className="truncate font-medium">{total.taskTypeName}</span>
               <span className="shrink-0 font-mono text-muted-foreground tabular-nums">

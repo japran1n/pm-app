@@ -136,7 +136,7 @@ function PipelineStep({
       className={cn(
         "flex min-w-32 shrink-0 flex-col items-center justify-center gap-1.5 rounded-xl border px-4 py-3.5 text-center transition-colors",
         isClientBucket
-          ? "border-status-waiting bg-status-waiting-bg shadow-sm"
+          ? "border-status-waiting bg-status-waiting-bg shadow-xs"
           : "border-border bg-muted/40",
       )}
     >

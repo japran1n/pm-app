@@ -4,7 +4,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 // Next.js while the Server Component page below is fetching.
 export default function ProjectsLoading() {
   return (
-    <div className="flex flex-col gap-8 p-6">
+    <div className="flex flex-col gap-8 p-6 pt-4 lg:p-8 lg:pt-8">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex flex-col gap-2">
           <Skeleton className="h-6 w-32" />

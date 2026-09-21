@@ -1055,7 +1055,7 @@ export function TaskListTable({
         (see the effect above). */}
     {contextMenu && (
       <div
-        className="fixed z-50 min-w-40 rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/15"
+        className="fixed z-50 min-w-40 rounded-lg bg-popover p-1 text-popover-foreground shadow-xs ring-1 ring-foreground/15"
         style={{ top: contextMenu.y, left: contextMenu.x }}
         onClick={(event) => event.stopPropagation()}
       >

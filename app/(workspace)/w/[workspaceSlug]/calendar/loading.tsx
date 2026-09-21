@@ -5,7 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 // two-chart dashboard skeleton this route previously fell back to).
 export default function CalendarLoading() {
   return (
-    <div className="flex flex-col gap-6 p-6">
+    <div className="flex flex-col gap-6 p-6 pt-4 lg:p-8 lg:pt-8">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <Skeleton className="h-6 w-32" />
         <Skeleton className="h-9 w-48" />

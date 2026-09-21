@@ -303,7 +303,7 @@ export function TeamHoursView({
                     <TableCell className="font-medium whitespace-normal">
                       {people[entry.userId] ?? entry.userId}
                     </TableCell>
-                    <TableCell className="max-w-60 truncate whitespace-normal text-muted-foreground">
+                    <TableCell className="max-w-60 whitespace-normal text-muted-foreground">
                       {entry.taskTitle}
                     </TableCell>
                     <TableCell className="font-mono tabular-nums">{formatDuration(entry.minutes)}</TableCell>
