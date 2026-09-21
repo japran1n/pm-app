@@ -119,7 +119,7 @@ export function AccountMenu({
           <UserRound className="size-4" aria-hidden="true" />
           Profile
         </DropdownMenuItem>
-        {canManageWorkspace && (
+        {!isGuest && canManageWorkspace && (
           <DropdownMenuItem
             render={<Link href={`/w/${workspaceSlug}/settings`} onClick={onNavigate} />}
           >
@@ -177,7 +177,7 @@ export function AccountMenu({
             (preview-as-client/page.tsx) hard-gates to owner/admin itself, so
             a member/viewer/guest would only bounce; the hasClient guard
             prevents a meaningless link for workspaces that have no portal. */}
-        {hasClient && canManageWorkspace && (
+        {!isGuest && hasClient && canManageWorkspace && (
           <DropdownMenuItem
             render={<Link href={`/w/${workspaceSlug}/preview-as-client`} onClick={onNavigate} />}
           >

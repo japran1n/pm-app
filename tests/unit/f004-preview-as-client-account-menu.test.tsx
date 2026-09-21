@@ -101,15 +101,14 @@ describe("AppSidebar — Preview as client absent from sidebar groups (SB-019)",
     // The nav links in the sidebar scroll area — not opened menu
     // Look for the sidebar aside (desktop)
     const aside = document.querySelector("aside");
-    if (aside) {
+    expect(aside).not.toBeNull();
       // Preview as client must NOT appear in the sidebar group links
-      const allLinks = aside.querySelectorAll("a");
+      const allLinks = aside!.querySelectorAll("a");
       const previewLinks = Array.from(allLinks).filter((a) =>
         a.getAttribute("href")?.includes("preview-as-client"),
       );
       // Only nav links outside the menu — before opening menu the item shouldn't be in DOM
       expect(previewLinks).toHaveLength(0);
-    }
   });
 
   it("SB-019: 'Preview as client' appears in account menu for owner/admin with hasClient", async () => {
@@ -125,8 +124,8 @@ describe("AppSidebar — Preview as client absent from sidebar groups (SB-019)",
 
 describe("AppSidebar — guest filtering preserved (SB-006)", () => {
   it("SB-006: 'Preview as client' does not appear in account menu for a guest even with hasClient", async () => {
-    // guests are never canManageWorkspace, so the item should not appear
-    render(createElement(AppSidebar, { ...sidebarBase, isGuest: true, canManageWorkspace: false }));
+    // guest with canManageWorkspace + hasClient true: the component itself must gate
+    render(createElement(AppSidebar, { ...sidebarBase, isGuest: true, canManageWorkspace: true }));
 
     fireEvent.click(screen.getAllByRole("button", { name: /account menu/i })[0]);
     const menu = await screen.findByRole("menu");

@@ -15,6 +15,11 @@ import { afterEach } from "vitest";
 import { createElement } from "react";
 import "@testing-library/jest-dom/vitest";
 
+// SB-006: hasClient true so the guest cases exercise the "Preview as client" gate.
+vi.mock("@/components/auth/membership-provider", () => ({
+  useMembership: () => ({ role: "admin", hasClient: true, projectRoles: {} }),
+}));
+
 vi.mock("next/navigation", () => ({
   usePathname: () => "/w/acme",
   useRouter: () => ({ push: () => {}, refresh: () => {} }),
@@ -57,12 +62,12 @@ describe("AppSidebar settings nav item (F136, AS-239; relocated to AccountMenu b
     expect(within(menu).queryByText("Settings")).toBeNull();
   });
 
-  it("AS-239 (negative): a guest also gets no 'Settings' link even if canManageWorkspace were somehow true", async () => {
+  it("AS-239 (negative): a guest also gets no 'Settings' link even when canManageWorkspace is true (SB-006)", async () => {
     render(
       createElement(AppSidebar, {
         ...baseProps,
         isGuest: true,
-        canManageWorkspace: false,
+        canManageWorkspace: true,
       }),
     );
 

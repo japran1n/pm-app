@@ -14,6 +14,11 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import "@testing-library/jest-dom/vitest";
 
+// SB-006: hasClient true so the guest cases exercise the "Preview as client" gate.
+vi.mock("@/components/auth/membership-provider", () => ({
+  useMembership: () => ({ role: "admin", hasClient: true, projectRoles: {} }),
+}));
+
 vi.mock("next/navigation", () => ({
   usePathname: () => "/w/acme",
   useRouter: () => ({ push: () => {}, refresh: () => {} }),
@@ -109,7 +114,7 @@ describe("test_SB_018_watching_still_reachable_in_sidebar", () => {
 describe("test_SB_006_guest_filtering_preserved_across_sidebar_and_account_menu", () => {
   it("with role guest, neither the sidebar nor the (closed) account menu markup renders Team, Members, Settings, Templates, Archive, Trash, Preview as client, Client requests, or Approvals", () => {
     const html = renderToStaticMarkup(
-      createElement(AppSidebar, { ...baseProps, isGuest: true, canManageWorkspace: false }),
+      createElement(AppSidebar, { ...baseProps, isGuest: true, canManageWorkspace: true }),
     );
 
     expect(html).not.toContain('href="/w/acme/team"');
@@ -124,7 +129,7 @@ describe("test_SB_006_guest_filtering_preserved_across_sidebar_and_account_menu"
   });
 
   it("with role guest, opening the account menu itself also renders none of Templates, Archive, Trash, Settings", async () => {
-    render(createElement(AppSidebar, { ...baseProps, isGuest: true, canManageWorkspace: false }));
+    render(createElement(AppSidebar, { ...baseProps, isGuest: true, canManageWorkspace: true }));
 
     fireEvent.click(screen.getAllByRole("button", { name: /account menu/i })[0]);
     const menu = await screen.findByRole("menu");
