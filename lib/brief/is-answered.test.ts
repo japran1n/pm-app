@@ -18,10 +18,10 @@ describe("isBriefAnswerAnswered (BR-015, BR-016, BR-021, BR-044)", () => {
       expect(isBriefAnswerAnswered(q(t), { answerText: " hi " })).toBe(true);
     }
   });
-  it("BR-016: single_choice needs exactly one option", () => {
+  it("BR-016: single_choice needs at least one option (legacy multi-option rows count)", () => {
     expect(isBriefAnswerAnswered(q("single_choice"), { answerOptions: [] })).toBe(false);
     expect(isBriefAnswerAnswered(q("single_choice"), { answerOptions: ["a"] })).toBe(true);
-    expect(isBriefAnswerAnswered(q("single_choice"), { answerOptions: ["a", "b"] })).toBe(false);
+    expect(isBriefAnswerAnswered(q("single_choice"), { answerOptions: ["a", "b"] })).toBe(true);
   });
   it("BR-016: multi_choice needs at least one option; text is ignored", () => {
     expect(isBriefAnswerAnswered(q("multi_choice"), { answerOptions: null })).toBe(false);
@@ -33,6 +33,7 @@ describe("isBriefAnswerAnswered (BR-015, BR-016, BR-021, BR-044)", () => {
       ["short_text", "   ", null],
       ["long_text", "ok", null],
       ["single_choice", null, ["a", "b"]],
+      ["single_choice", null, []],
       ["multi_choice", null, ["a"]],
     ];
     for (const [t, text, options] of cases) {
