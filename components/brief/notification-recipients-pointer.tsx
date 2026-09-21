@@ -20,26 +20,25 @@ export function NotificationRecipientsPointer({
   const uniqueNames = [...new Set(recipientNames)];
 
   return (
-    <div
+    <span
       data-testid="notification-recipients-pointer"
-      className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 px-4 py-2.5 text-sm"
+      className="inline-flex flex-wrap items-center gap-1 text-sm text-muted-foreground"
     >
-      <span className="text-muted-foreground">
-        {uniqueNames.length > 0 ? (
-          <>
-            Answer changes notify{" "}
-            <span className="font-medium text-foreground">{uniqueNames.join(", ")}</span>.
-          </>
-        ) : (
-          "No decision owners are set for this project yet, so answer changes notify no one."
-        )}
-      </span>
+      {uniqueNames.length > 0 ? (
+        <>
+          Notifies:{" "}
+          <span className="font-medium text-foreground">{uniqueNames.join(", ")}</span>
+        </>
+      ) : (
+        "No notification recipients"
+      )}{" "}
+      &middot;{" "}
       <Link
         href={`/w/${workspaceSlug}/projects/${projectId}/settings`}
-        className="shrink-0 text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+        className="underline-offset-4 hover:text-foreground hover:underline"
       >
-        Manage notification recipients
+        Manage
       </Link>
-    </div>
+    </span>
   );
 }
