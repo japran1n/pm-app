@@ -4145,6 +4145,18 @@ export type Database = {
       }
     }
     Functions: {
+      _create_project_from_template_tasks: {
+        Args: {
+          p_created_by: string
+          p_default_phase_id: string
+          p_parent_task_id: string
+          p_phase_map: Json
+          p_position_start: number
+          p_project_id: string
+          p_tasks: Json
+        }
+        Returns: number
+      }
       accept_client_request_atomic: {
         Args: { p_request_id: string }
         Returns: {

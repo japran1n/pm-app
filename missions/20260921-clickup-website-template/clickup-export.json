@@ -1,0 +1,2392 @@
+{
+  "source": {
+    "list_id": "901612831610",
+    "name": "🌀 Team - Website 2.0",
+    "exported_at": "2026-09-21T16:38:41Z"
+  },
+  "list_description": "How this template works\n\nFollow the and the \nIf a task here contradicts them, the rules win — flag it, don’t work around it.\n\nAdd project-specific tasks in the right group. Don’t rename or delete template tasks.\n\nFound something that should be better? Create task in Template and Process Imporovements",
+  "statuses": [
+    "backlog",
+    "to do",
+    "blocked",
+    "canceled",
+    "in design",
+    "in dev",
+    "qa by dev",
+    "qa by design",
+    "awaiting client",
+    "approved",
+    "completed"
+  ],
+  "tasks": [
+    {
+      "clickup_id": "86d3wc77e",
+      "name": "Navigation Model",
+      "status": "backlog",
+      "task_type": "Design",
+      "description": null,
+      "checklists": [],
+      "children": [
+        {
+          "clickup_id": "86d3wc78j",
+          "name": "Header navigation",
+          "status": "backlog",
+          "task_type": null,
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d3wc78u",
+          "name": "Footer navigation",
+          "status": "backlog",
+          "task_type": null,
+          "description": null,
+          "checklists": [],
+          "children": []
+        }
+      ]
+    },
+    {
+      "clickup_id": "86d3w6x4z",
+      "name": "Preparation for Handoff Meeting",
+      "status": "backlog",
+      "task_type": "Design",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3w6tuz",
+      "name": "Design Improvements & Success Metrics",
+      "status": "backlog",
+      "task_type": "Design",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3w69gh",
+      "name": "Style Tile (9x)",
+      "status": "backlog",
+      "task_type": "Design",
+      "description": null,
+      "checklists": [],
+      "children": [
+        {
+          "clickup_id": "86d3w69q0",
+          "name": "Define the color palette",
+          "status": "backlog",
+          "task_type": null,
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d3w69rr",
+          "name": "Define the typography",
+          "status": "backlog",
+          "task_type": null,
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d3w69w4",
+          "name": "Define the button styles",
+          "status": "backlog",
+          "task_type": null,
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d3w69ya",
+          "name": "Define reusable components",
+          "status": "backlog",
+          "task_type": null,
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d3w6a0r",
+          "name": "Define the icon style",
+          "status": "backlog",
+          "task_type": null,
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d3w6a3d",
+          "name": "Define image treatment",
+          "status": "backlog",
+          "task_type": null,
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d3w6a51",
+          "name": "Define layout principles",
+          "status": "backlog",
+          "task_type": null,
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d3w6a7g",
+          "name": "Define depth and signature elements",
+          "status": "backlog",
+          "task_type": null,
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d3w6a97",
+          "name": "Define the motion direction",
+          "status": "backlog",
+          "task_type": null,
+          "description": null,
+          "checklists": [],
+          "children": []
+        }
+      ]
+    },
+    {
+      "clickup_id": "86d3w65ku",
+      "name": "Project Setup",
+      "status": "backlog",
+      "task_type": "Design",
+      "description": null,
+      "checklists": [],
+      "children": [
+        {
+          "clickup_id": "86d3w67at",
+          "name": "Sales-to-delivery handover  Call",
+          "status": "backlog",
+          "task_type": null,
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d3w66ky",
+          "name": "Workspace & tooling setup",
+          "status": "backlog",
+          "task_type": null,
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d3w66h4",
+          "name": "Research (Light)",
+          "status": "backlog",
+          "task_type": null,
+          "description": null,
+          "checklists": [],
+          "children": []
+        }
+      ]
+    },
+    {
+      "clickup_id": "86d3vapx3",
+      "name": "Site structure setup",
+      "status": "backlog",
+      "task_type": "Dev",
+      "description": "Create the empty structure of the site from the sitemap: all pages and folders, the asset folder structure, and the HTML sitemap page. No content or layout at this stage — names, slugs and folders only.",
+      "checklists": [],
+      "children": [
+        {
+          "clickup_id": "86d3vaq1g",
+          "name": "Page & folder structure created",
+          "status": "backlog",
+          "task_type": null,
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d3vaq28",
+          "name": "Asset folders created",
+          "status": "backlog",
+          "task_type": null,
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d1f9taz",
+          "name": "HTML Sitemap for navigation [footer]",
+          "status": "backlog",
+          "task_type": null,
+          "description": null,
+          "checklists": [],
+          "children": []
+        }
+      ]
+    },
+    {
+      "clickup_id": "86d3vafz1",
+      "name": "Design review & handoff call",
+      "status": "backlog",
+      "task_type": "Dev",
+      "description": null,
+      "checklists": [],
+      "children": [
+        {
+          "clickup_id": "86d3vag2b",
+          "name": "Components identified",
+          "status": "backlog",
+          "task_type": null,
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d3vag44",
+          "name": "Styles & variables checked",
+          "status": "backlog",
+          "task_type": null,
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d3vag4n",
+          "name": "States checked",
+          "status": "backlog",
+          "task_type": null,
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d3vag55",
+          "name": "CMS sections identified",
+          "status": "backlog",
+          "task_type": null,
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d3vag5z",
+          "name": "Question list written",
+          "status": "backlog",
+          "task_type": null,
+          "description": null,
+          "checklists": [],
+          "children": []
+        }
+      ]
+    },
+    {
+      "clickup_id": "86d3va2g8",
+      "name": "⬜️ Client-side decision owners",
+      "status": "backlog",
+      "task_type": "Ideation & Onboarding",
+      "description": "a written note of who on the client side approves what: content, brand and design, technical, and budget. One person can cover all four — that's fine, often faster. What matters is that for each type of decision we know the name to ask, and that it is written down somewhere we can both go back to. (On our side, we do the same for each phase deliverable.)",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3v9z0p",
+      "name": "⬜️ Access & accounts",
+      "status": "backlog",
+      "task_type": "Setup",
+      "description": null,
+      "checklists": [],
+      "children": [
+        {
+          "clickup_id": "86d1f9rdw",
+          "name": "Get Domain Credentials",
+          "status": "backlog",
+          "task_type": null,
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d1f9rkz",
+          "name": "Confirm the list of domains [redirected?]",
+          "status": "backlog",
+          "task_type": null,
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d1f9r3a",
+          "name": "Get Hosting Credentials",
+          "status": "backlog",
+          "task_type": null,
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d1f9t7g",
+          "name": "Get DNS Credentials",
+          "status": "backlog",
+          "task_type": null,
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d1f9r5n",
+          "name": "Get current Website Credentials",
+          "status": "backlog",
+          "task_type": null,
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d1f9r4j",
+          "name": "Create Webflow account",
+          "status": "backlog",
+          "task_type": null,
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d1f9t8t",
+          "name": "Create Cloudflare account",
+          "status": "backlog",
+          "task_type": null,
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d1f9t2n",
+          "name": "Create Finsweet (GDPR) account",
+          "status": "backlog",
+          "task_type": null,
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d1f9r9z",
+          "name": "Create Zapier account",
+          "status": "backlog",
+          "task_type": null,
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d1f9t4t",
+          "name": "Create Brevo account",
+          "status": "backlog",
+          "task_type": null,
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d1f9r8y",
+          "name": "Create Klaviyo account",
+          "status": "backlog",
+          "task_type": null,
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d2ht4qu",
+          "name": "Create BunnyCDN (for 3D elements)",
+          "status": "backlog",
+          "task_type": null,
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d1f9rua",
+          "name": "Create GitHub account",
+          "status": "canceled",
+          "task_type": null,
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d1f9rad",
+          "name": "Google Analytics access",
+          "status": "backlog",
+          "task_type": null,
+          "description": null,
+          "checklists": [],
+          "children": []
+        }
+      ]
+    },
+    {
+      "clickup_id": "86d3v9w2p",
+      "name": "⬜️ Workspace & tooling setup",
+      "status": "backlog",
+      "task_type": "Setup",
+      "description": null,
+      "checklists": [],
+      "children": [
+        {
+          "clickup_id": "86d3v9xw3",
+          "name": "ClickUp project created",
+          "status": "backlog",
+          "task_type": null,
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d3v9xx9",
+          "name": "Figma file created",
+          "status": "backlog",
+          "task_type": null,
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d3v9xya",
+          "name": "Google Drive folder created",
+          "status": "backlog",
+          "task_type": null,
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d3v9xzh",
+          "name": "Webflow site created",
+          "status": "backlog",
+          "task_type": null,
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d3v9y1h",
+          "name": "Password vault created (1Password)",
+          "status": "backlog",
+          "task_type": null,
+          "description": null,
+          "checklists": [],
+          "children": []
+        }
+      ]
+    },
+    {
+      "clickup_id": "86d3v9vpw",
+      "name": "⬜️ Project type declaration",
+      "status": "backlog",
+      "task_type": "Setup",
+      "description": "one of four values, recorded in writing: greenfield, rebuild with the same URLs, rebuild with a new structure, platform migration.",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3v9up3",
+      "name": "⬜️ Sales-to-delivery handover (Meeting)",
+      "status": "backlog",
+      "task_type": "Setup",
+      "description": "a working session where the Webflow lead and Design lead take ownership of what was sold. Covers the pricing calculator output, the client's stated goals, what was explicitly promised, and what was explicitly excluded.",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3v9tpd",
+      "name": "Redirect map (v1)",
+      "status": "backlog",
+      "task_type": "Dev",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3uxtkh",
+      "name": "Lang attribute on <html>",
+      "status": "backlog",
+      "task_type": "SEO",
+      "description": "**Description**\n`<html lang='en'>` (or 'sv', 'bs', etc.) declared correctly. Critical for screen readers and search localization. Webflow sets this via Site Settings → Localization.\n\n**How to check**\nView source; verify `<html lang='xx'>` matches site primary language.\n\n**Tools:** Webflow Site Settings, Browser DevTools\n\n**Link:** https://www.w3.org/International/questions/qa-html-language-declarations",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3uxt5t",
+      "name": "Accessibility — keyboard navigation",
+      "status": "backlog",
+      "task_type": "SEO",
+      "description": "**Description**\nFull site navigable via Tab/Shift-Tab/Enter/Esc. All interactive elements have visible focus state. No keyboard traps.\n\n**How to check**\nManual test: disconnect mouse, navigate entire site by keyboard. Lighthouse Accessibility audit.\n\n**Tools:** Keyboard, Lighthouse\n\n**Link:** https://www.w3.org/WAI/WCAG21/Understanding/keyboard.html",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3uxrr7",
+      "name": "Semantic HTML",
+      "status": "backlog",
+      "task_type": "SEO",
+      "description": "**Description**\nUse `<nav>`, `<main>`, `<article>`, `<section>`, `<aside>`, `<footer>` instead of divs-for-everything. In Webflow: change Tag in element Settings. Helps SEO crawlers parse structure.\n\n**How to check**\nInspect page structure in DevTools. Audit Webflow Designer element tags.\n\n**Tools:** Webflow Designer, Browser DevTools",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3uxrfk",
+      "name": "External links — rel attributes",
+      "status": "backlog",
+      "task_type": "SEO",
+      "description": "**Description**\nLinks to untrusted/paid/UGC sources use `rel='nofollow'`, `rel='sponsored'`, or `rel='ugc'`. Every `target='_blank'` paired with `rel='noopener noreferrer'` (security).\n\n**How to check**\nInspect elements on external links. Screaming Frog → External → audit rel attributes.\n\n**Tools:** Browser DevTools, Screaming Frog",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3uxr7d",
+      "name": "Internal linking — contextual links in content",
+      "status": "backlog",
+      "task_type": "SEO",
+      "description": "**Description**\nEvery content page should contain contextual internal links within prose (not just nav/footer), with varied, descriptive anchor text.\n\n**How to check**\nScreaming Frog → crawl → Inlinks/Outlinks per page. Review cornerstone content manually.\n\n**Tools:** Screaming Frog",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3uxqp8",
+      "name": "Open Graph tags per page",
+      "status": "backlog",
+      "task_type": "SEO",
+      "description": "**Description**\nog:title, og:description, og:image, og:url, og:type per page. CMS templates: dynamic from CMS fields. Set site-wide default OG image as fallback.\n\n**How to check**\nPage Settings → SEO → OG fields. Test with Facebook Sharing Debugger and LinkedIn Post Inspector on production URLs.\n\n**Tools:** Webflow Page Settings, Facebook Debugger, LinkedIn Post Inspector",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3uxqbw",
+      "name": "Image filenames descriptive",
+      "status": "backlog",
+      "task_type": "SEO",
+      "description": "**Description**\nRename IMG_0238.jpg to descriptive-hyphenated-name.jpg before upload. Reinforces topical relevance for Google Images.\n\n**How to check**\nAudit Webflow Assets panel filenames. Rename before upload; renaming after upload requires re-upload.\n\n**Tools:** Webflow Assets, File renaming",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3uwygj",
+      "name": "Alt text on all images",
+      "status": "backlog",
+      "task_type": "SEO",
+      "description": "**Description**\nEvery content image has descriptive alt text. Decorative images use empty `alt=''`. CMS images: alt populated per item, not inherited from collection default.\n\n**How to check**\nWebflow Audit panel flags missing alt. Screaming Frog → Images → Missing Alt Text report.\n\n**Tools:** Webflow Designer Audit, Screaming Frog\n\n**Link:** [https://webaim.org/techniques/alttext/](https://webaim.org/techniques/alttext/)",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3uwxyg",
+      "name": "Heading hierarchy (H1–H6)",
+      "status": "backlog",
+      "task_type": "SEO",
+      "description": "**Description**\nLogical nesting, no skipping levels (H2 → H4 is wrong). Headings structure content, not styling. Webflow Audit panel flags skipped levels.\n\n**How to check**\nWebflow Audit panel; Screaming Frog. Manual review of long-form pages.\n\n**Tools:** Webflow Designer Audit, Screaming Frog\n\n**Link:** [https://www.w3.org/WAI/tutorials/page-structure/headings/](https://www.w3.org/WAI/tutorials/page-structure/headings/)",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3uwxpu",
+      "name": "H1 — one per page, contains primary keyword",
+      "status": "backlog",
+      "task_type": "SEO",
+      "description": "**Description**\nEvery page needs exactly one `<h1>`. Should contain primary keyword. Different text from `<title>` (title is for SERP, H1 is for page).\n\n**How to check**\nScreaming Frog → H1 report. Audit pages with 0 or 2+ H1s. Inspect CMS templates where heading style may be used for sibling elements.\n\n**Tools:** Screaming Frog, Webflow Designer Audit\n\n**Link:** [https://developers.google.com/search/docs/appearance/structured-data](https://developers.google.com/search/docs/appearance/structured-data)",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3uwx9r",
+      "name": "Meta descriptions — unique per page",
+      "status": "backlog",
+      "task_type": "SEO",
+      "description": "**Description**\nUnique meta description per page, 150–160 characters, actionable, includes target keyword. Google rewrites ~70% of descriptions, but still worth writing well for click-through.\n\n**How to check**\nScreaming Frog → Meta Description report. Flag duplicates, missing, >160 chars.\n\n**Tools:** Webflow Page Settings, Screaming Frog\n\n**Link:** [https://developers.google.com/search/docs/appearance/snippet](https://developers.google.com/search/docs/appearance/snippet)",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3uwx33",
+      "name": "Title tags — unique per page",
+      "status": "backlog",
+      "task_type": "SEO",
+      "description": "**Description**\nUnique `<title>` per page, 50–60 characters, primary keyword near front, brand name at end. Dynamic on CMS templates via {{Name}} bindings.\n\n**How to check**\nScreaming Frog → Page Titles report. Flag duplicates, missing, >60 chars.\n\n**Tools:** Webflow Page Settings, Screaming Frog\n\n**Link:** [https://developers.google.com/search/docs/appearance/title-link](https://developers.google.com/search/docs/appearance/title-link)",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3uwwt4",
+      "name": "Webflow SEO Audit panel review",
+      "status": "backlog",
+      "task_type": "SEO",
+      "description": "**Description**\nWebflow Designer has an Audit tab (native) that flags missing alt text, header level skips, non-descriptive links, broken IDs. Review before every launch.\n\n**How to check**\nDesigner → Audit panel (right sidebar). Clear all flagged issues.",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3uwwfu",
+      "name": "Bing Webmaster Tools verified",
+      "status": "backlog",
+      "task_type": "SEO",
+      "description": "**Description**\nVerify domain in Bing Webmaster Tools; submit sitemap. Bing powers ChatGPT search, Duck Duck Go, and drives meaningful traffic in some regions.\n\n**How to check**\nBing Webmaster Tools → Add Site → verify via meta tag, DNS, or import from GSC.\n\n**Tools:** Bing Webmaster Tools\n\n**Link:** [https://www.bing.com/webmasters/](https://www.bing.com/webmasters/)",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3uwvtw",
+      "name": "Structured data validation on production",
+      "status": "backlog",
+      "task_type": "SEO",
+      "description": "**Description**\nAll schema must be validated on the PRODUCTION domain, not staging. Schema passes on staging may fail on production if canonical URLs differ.\n\n**How to check**\nGoogle Rich Results Test → paste production URL. Schema Markup Validator → paste production URL. Fix all errors before launch sign-off.\n\n**Tools:** Google Rich Results Test, Schema Markup Validator\n\n**Link:** [https://search.google.com/test/rich-results](https://search.google.com/test/rich-results)",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3uwvjx",
+      "name": "Structured data — LocalBusiness (if applicable)",
+      "status": "backlog",
+      "task_type": "SEO",
+      "description": "**Description**\nLocalBusiness schema for businesses with physical location: address, geo, openingHours, telephone, priceRange. Feeds local search and map pack signals.\n\n**How to check**\nGlobal head (if single location) or per-location page. Validate with Rich Results Test.\n\n**Tools:** Webflow Custom Code, Google Rich Results Test, Google Business Profile\n\n**Link:** [https://developers.google.com/search/docs/appearance/structured-data/local-business](https://developers.google.com/search/docs/appearance/structured-data/local-business)",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3uwv9m",
+      "name": "Structured data — FAQPage (where applicable)",
+      "status": "backlog",
+      "task_type": "SEO",
+      "description": "**Description**\nFAQPage schema on pages with genuine FAQ sections. Note: Google restricted FAQ rich results in 2023 to authoritative government/health sites; value is now lower but still valid signal.\n\n**How to check**\nValidate with Rich Results Test. Manage expectations with client — rich results rarely shown.\n\n**Tools:** Webflow Custom Code, Google Rich Results Test\n\n**Link:** [https://developers.google.com/search/docs/appearance/structured-data/faqpage](https://developers.google.com/search/docs/appearance/structured-data/faqpage)",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3uwv4q",
+      "name": "Structured data — Product (e-commerce)",
+      "status": "backlog",
+      "task_type": "SEO",
+      "description": "**Description**\nProduct schema on product pages: name, image, description, sku, brand, offers (price, priceCurrency, availability). Dynamic via CMS bindings. Critical for Shopyflow/Webflow Ecommerce catalogs.\n\n**How to check**\nCollection Template (product) → Custom Code → Head. Use mixed static + CMS-bound values. Validate each product page type in Rich Results Test.\n\n**Tools:** Webflow Custom Code, Google Rich Results Test, Google Merchant Center\n\n**Link:** [https://developers.google.com/search/docs/appearance/structured-data/product](https://developers.google.com/search/docs/appearance/structured-data/product)",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3uwuvt",
+      "name": "Structured data — Article / BlogPosting",
+      "status": "backlog",
+      "task_type": "SEO",
+      "description": "**Description**\nFor blog CMS: Article or BlogPosting schema with headline, datePublished, dateModified, author, image, publisher. Populate dynamically from CMS fields. Use ISO 8601 dates.\n\n**How to check**\nCollection Template Settings → Custom Code → Head. Validate with Rich Results Test on multiple CMS item URLs.\n\n**Tools:** Webflow Custom Code, Google Rich Results Test\n\n**Link:** [https://developers.google.com/search/docs/appearance/structured-data/article](https://developers.google.com/search/docs/appearance/structured-data/article)",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3uwukv",
+      "name": "Structured data — BreadcrumbList",
+      "status": "backlog",
+      "task_type": "SEO",
+      "description": "**Description**\nBreadcrumbList JSON-LD on all pages with visual breadcrumbs. On CMS templates, populate dynamically from CMS fields.\n\n**How to check**\nPage Settings → Custom Code (or Collection Template Settings) → Head. Validate per-page with Rich Results Test.\n\n**Tools:** Webflow Custom Code, Google Rich Results Test\n\n**Link:** [https://developers.google.com/search/docs/appearance/structured-data/breadcrumb](https://developers.google.com/search/docs/appearance/structured-data/breadcrumb)",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3uwu1m",
+      "name": "Structured data — Organization",
+      "status": "backlog",
+      "task_type": "SEO",
+      "description": "**Description**\nSite-wide Organization schema (JSON-LD) in global site-head custom code. Includes name, logo, url, sameAs (social profiles).\n\n**How to check**\nSite Settings → Custom Code → Head. Validate with Schema Markup Validator and Google Rich Results Test.\n\n**Tools:** Webflow Custom Code, Schema Markup Validator, Google Rich Results Test\n\n**Link:** [https://schema.org/Organization](https://schema.org/Organization)",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3uwtf6",
+      "name": "Hreflang tags (multilingual)",
+      "status": "backlog",
+      "task_type": "SEO",
+      "description": "**Description**\nIf site has multiple locales, hreflang tags must declare every locale variant and include x-default. Webflow Localization auto-generates these when enabled.\n\n**How to check**\nSettings → Localization → enable auto-generate hreflang. Validate in Search Console → Internationalization. Custom code hreflang WILL be overwritten by Webflow Localization if both active.\n\n**Tools:** Webflow Localization, Google Search Console\n\n**Link:** [https://help.webflow.com/hc/en-us/articles/33961235675155](https://help.webflow.com/hc/en-us/articles/33961235675155)",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3uwt1e",
+      "name": "JavaScript SEO (render check)",
+      "status": "backlog",
+      "task_type": "SEO",
+      "description": "**Description**\nWebflow sites render server-side — content is in HTML before JS executes. Verify via Google's URL Inspection (View crawled page). Custom-injected JS content must be testable via URL Inspection.\n\n**How to check**\nGoogle Search Console → URL Inspection → Live Test → View Crawled Page. Confirm all critical content is in HTML, not injected by JS.\n\n**Tools:** Google Search Console, Chrome DevTools (JS disabled)\n\n**Link:** [https://developers.google.com/search/docs/crawling-indexing/javascript/javascript-seo-basics](https://developers.google.com/search/docs/crawling-indexing/javascript/javascript-seo-basics)",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3uwrmr",
+      "name": "Image dimensions set (CLS prevention)",
+      "status": "backlog",
+      "task_type": "SEO",
+      "description": "**Description**\nEvery `<img>` must have width and height (or aspect-ratio in CSS) to reserve space before load and prevent layout shift.\n\n**How to check**\nChrome DevTools → Elements; inspect `<img>` tags for width/height attributes. Webflow image element sets these when dimensions provided.\n\n**Tools:** Chrome DevTools, Lighthouse\n\n**Link:** [https://web.dev/articles/optimize-cls](https://web.dev/articles/optimize-cls)",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3uwrau",
+      "name": "Lazy loading below-fold images",
+      "status": "backlog",
+      "task_type": "SEO",
+      "description": "**Description**\nImages below the fold should have `loading='lazy'`. Webflow applies this by default. Never lazy-load the LCP image.\n\n**How to check**\nView source on images; verify `loading='lazy'` on below-fold, absent (or `loading='eager'`) on LCP.\n\n**Tools:** Webflow Designer, Chrome DevTools\n\n**Link:** [https://web.dev/articles/browser-level-image-lazy-loading](https://web.dev/articles/browser-level-image-lazy-loading)",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3umtdz",
+      "name": "Responsive images (srcset)",
+      "status": "backlog",
+      "task_type": "SEO",
+      "description": "**Description**\nImages must serve appropriately sized versions per device. Enable Webflow's 'Use responsive image' setting. Set display sizes; Webflow generates srcset automatically.\n\n**How to check**\nView page source on an `<img>` tag; verify srcset and sizes attributes populated. Run Lighthouse 'Properly size images'.\n\n**Tools:** Webflow Designer (image settings), Chrome DevTools, Lighthouse\n\n**Link:** [https://help.webflow.com/hc/en-us/articles/33961164480019](https://help.webflow.com/hc/en-us/articles/33961164480019)",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3umtca",
+      "name": "Image format (WebP/AVIF)",
+      "status": "backlog",
+      "task_type": "SEO",
+      "description": "**Description**\nAll raster images should be WebP. AVIF for progressive enhancement via `<picture>`. Webflow converts uploaded images to WebP automatically for supporting browsers.\n\n**How to check**\nChrome DevTools → Network → filter 'Img' → check Type column for webp. Lighthouse flags legacy formats.\n\n**Tools:** Webflow Assets, Chrome DevTools, Lighthouse, Squoosh\n\n**Link:** [https://web.dev/articles/serve-images-webp](https://web.dev/articles/serve-images-webp)",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3umt8v",
+      "name": "Preconnect to critical origins",
+      "status": "backlog",
+      "task_type": "SEO",
+      "description": "**Description**\nEstablish early connections to origins of critical resources: Google Fonts, GA/GTM, CDNs used above-fold. Use `<link rel='preconnect'>` with crossorigin where applicable.\n\n**How to check**\nLighthouse → 'Preconnect to required origins'. Verify preconnect links present in `<head>`.\n\n**Tools:** Webflow Custom Code, Lighthouse\n\n**Link:** [https://web.dev/articles/preconnect-and-dns-prefetch](https://web.dev/articles/preconnect-and-dns-prefetch)",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3umt76",
+      "name": "Preload LCP image",
+      "status": "backlog",
+      "task_type": "SEO",
+      "description": "**Description**\nAbove-fold hero image must be preloaded via `<link rel='preload' as='image' fetchpriority='high'>`. Significantly improves LCP.\n\n**How to check**\nLighthouse audit flags 'Preload Largest Contentful Paint image'. Verify preload link in page `<head>`.\n\n**Tools:** Webflow Custom Code, Lighthouse, Chrome DevTools\n\n**Link:** [https://web.dev/articles/optimize-lcp](https://web.dev/articles/optimize-lcp)",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3umt4m",
+      "name": "Preload critical fonts",
+      "status": "backlog",
+      "task_type": "SEO",
+      "description": "**Description**\nPreload the font used for body text and hero headings. Use `<link rel='preload' as='font' type='font/woff2' crossorigin>`. Do not preload every weight.\n\n**How to check**\nView page source in `<head>`; verify preload link present. Chrome DevTools → Network → check font request priority.\n\n**Tools:** Webflow Custom Code, Chrome DevTools, Lighthouse\n\n**Link:** [https://web.dev/articles/font-best-practices](https://web.dev/articles/font-best-practices)",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3umrz7",
+      "name": "Cumulative Layout Shift (CLS)",
+      "status": "backlog",
+      "task_type": "SEO",
+      "description": "**Description**\nCLS measures visual stability. Target <0.1. Caused by images without dimensions, fonts swapping without matched fallbacks, ads/embeds injecting content, dynamically inserted elements above existing content.\n\n**How to check**\nPageSpeed Insights, Chrome DevTools → Performance → Layout Shifts. All images must have width/height or aspect-ratio.\n\n**Tools:** PageSpeed Insights, Chrome DevTools, Lighthouse\n\n**Link:** [https://web.dev/articles/cls](https://web.dev/articles/cls)",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3umrwe",
+      "name": "Interaction to Next Paint (INP)",
+      "status": "backlog",
+      "task_type": "SEO",
+      "description": "**Description**\nINP replaced FID in March 2024. Measures responsiveness to user interactions. Target <200ms at 75th percentile. Most commonly failed CWV in 2026.\n\n**How to check**\nPageSpeed Insights field data, DebugBear, Search Console → Core Web Vitals. Profile with Chrome DevTools → Performance.\n\n**Tools:** PageSpeed Insights, DebugBear, Chrome DevTools, Google Search Console\n\n**Link:** [https://web.dev/articles/inp](https://web.dev/articles/inp)",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3umrrq",
+      "name": "Largest Contentful Paint (LCP)",
+      "status": "backlog",
+      "task_type": "SEO",
+      "description": "**Description**\nLCP measures when the largest above-fold content element renders. Target <2.5s at 75th percentile on mobile. Common LCP elements: hero image, hero heading.\n\n**How to check**\nPageSpeed Insights (field data from CrUX), Chrome DevTools → Performance, Search Console → Core Web Vitals report.\n\n**Tools:** PageSpeed Insights, Lighthouse, Google Search Console, Chrome DevTools\n\n**Link:** [https://web.dev/articles/lcp](https://web.dev/articles/lcp)",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3umrme",
+      "name": "Breadcrumb navigation",
+      "status": "backlog",
+      "task_type": "SEO",
+      "description": "**Description**\nBreadcrumbs improve UX and are required for BreadcrumbList schema. Use semantic `<nav aria-label='Breadcrumb'>` with `<ol>`; last item uses `aria-current='page'`.\n\n**How to check**\nInspect element on pages with breadcrumbs; verify semantic markup. Run Rich Results Test for BreadcrumbList schema.\n\n**Tools:** Browser DevTools, Google Rich Results Test\n\n**Link:** [https://developers.google.com/search/docs/appearance/structured-data/breadcrumb](https://developers.google.com/search/docs/appearance/structured-data/breadcrumb)",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3umrhe",
+      "name": "Internal linking structure",
+      "status": "backlog",
+      "task_type": "SEO",
+      "description": "**Description**\nContextual links within content (not just nav/footer), varied anchor text, cornerstone pages linked from multiple contextually relevant pages.\n\n**How to check**\nScreaming Frog → Inlinks report per page. Audit orphan pages (0 inlinks). Verify cornerstone pages have 10+ contextual inlinks.\n\n**Tools:** Screaming Frog, Google Search Console\n\n**Link:** [https://developers.google.com/search/docs/crawling-indexing/links-crawlable](https://developers.google.com/search/docs/crawling-indexing/links-crawlable)",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3umr9v",
+      "name": "Site depth (max 3 clicks from home)",
+      "status": "backlog",
+      "task_type": "SEO",
+      "description": "**Description**\nEvery page should be reachable within 3–4 clicks from home. Deeper pages get crawled less often and rank worse. Achieved via flat IA, internal linking, and HTML sitemaps.\n\n**How to check**\nScreaming Frog → Crawl Depth report. Flag pages deeper than level 4.\n\n**Tools:** Screaming Frog\n\n**Link:** [https://medium.com/@sofian-bettayeb/webflow-tech-seo-and-aeo-for-2026-ab13f724007f](https://medium.com/@sofian-bettayeb/webflow-tech-seo-and-aeo-for-2026-ab13f724007f)",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3umqk4",
+      "name": "URL structure",
+      "status": "backlog",
+      "task_type": "SEO",
+      "description": "**Description**\nURLs must be short, readable, lowercase, hyphen-separated, keyword-relevant. No auto-generated IDs, no capital letters, no underscores, no query strings where avoidable.\n\n**How to check**\nReview all Page Settings → Slug and CMS Collection → Slug fields. Export via Screaming Frog and audit.\n\n**Tools:** Webflow Designer, Screaming Frog\n\n**Link:** [https://developers.google.com/search/docs/crawling-indexing/url-structure](https://developers.google.com/search/docs/crawling-indexing/url-structure)",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3umq95",
+      "name": "Redirect chain audit",
+      "status": "backlog",
+      "task_type": "SEO",
+      "description": "**Description**\nRedirects must resolve in one hop (A → C), not chain (A → B → C). Chains waste crawl budget and slow down users.\n\n**How to check**\nScreaming Frog → crawl with 'Follow Redirects'; inspect Redirect Chains report. Fix any chain of 2+ hops to direct redirect.\n\n**Tools:** Screaming Frog, Redirect Path (Chrome extension)\n\n**Link:** [https://www.screamingfrog.co.uk/seo-spider/](https://www.screamingfrog.co.uk/seo-spider/)",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3umq4g",
+      "name": "301 redirects (migrations)",
+      "status": "backlog",
+      "task_type": "SEO",
+      "description": "**Description**\nFor migrations: every old URL must 301 to its new equivalent. Native Webflow redirects are relative to root domain and do not apply to localized subdirectories. Webflow recommends staying under 1,000 redirects for performance.\n\n**How to check**\nSite Settings → Publishing → 301 Redirects. Use Finsweet bulk importer for large migrations. Test 20+ random old URLs manually after deploy; verify 301 status and final 200.\n\n**Tools:** Webflow Site Settings, Finsweet Bulk 301 Importer, Screaming Frog\n\n**Link:** [https://university.webflow.com/lesson/set-301-redirects-to-maintain-seo-ranking](https://university.webflow.com/lesson/set-301-redirects-to-maintain-seo-ranking)",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3umq0r",
+      "name": "XML sitemap generation and submission",
+      "status": "backlog",
+      "task_type": "SEO",
+      "description": "**Description**\nWebflow auto-generates sitemap.xml at /sitemap.xml. Must be submitted to Google Search Console and Bing Webmaster Tools. Excludes noindex pages automatically.\n\n**How to check**\nFetch [yourdomain.com/sitemap.xml](http://yourdomain.com/sitemap.xml). Submit URL in GSC → Sitemaps and Bing Webmaster Tools. Monitor 'Discovered URLs' count.\n\n**Tools:** Webflow Site Settings, Google Search Console, Bing Webmaster Tools",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3umpx5",
+      "name": "robots.txt configuration",
+      "status": "backlog",
+      "task_type": "SEO",
+      "description": "**Description**\nrobots.txt must not contain `Disallow: /`, must reference the sitemap, and must not block CSS/JS/font assets required for rendering\n\n**How to check**\nVisit [yourdomain.com/robots.txt](http://yourdomain.com/robots.txt). Test directives with Google Search Console robots.txt Tester. Confirm sitemap line is present.\n\n**Tools:** Webflow Site Settings, Google Search Console\n\n**Link:** [https://developers.google.com/search/docs/crawling-indexing/robots/intro](https://developers.google.com/search/docs/crawling-indexing/robots/intro)",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3umpru",
+      "name": "Per-page noindex on utility pages",
+      "status": "backlog",
+      "task_type": "SEO",
+      "description": "**Description**\n404 page, password page, thank-you/confirmation pages, internal-only landing pages must carry noindex. These do not belong in search results.\n\n**How to check**\nPage Settings → SEO → 'Exclude this page from search indexing'. Audit all utility pages before launch.\n\n**Tools:** Webflow Page Settings, Screaming Frog",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3umpmc",
+      "name": "webflow.io subdomain noindex",
+      "status": "backlog",
+      "task_type": "SEO",
+      "description": "**Description**\n\nStaging on [project.webflow.io](http://project.webflow.io) must be hidden from search engines to prevent duplicate-content indexing of the staging copy.\n**How to check**\nSite Settings → SEO → enable 'Disable Webflow subdomain indexing'. Verify with `site:project.webflow.io`.\n**Tools:** Webflow Site Settings, Google Search Console",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3umpc9",
+      "name": "Self-referencing canonicals per page",
+      "status": "backlog",
+      "task_type": "SEO",
+      "description": "**Description**\nEvery indexable page must have a canonical pointing to itself. Prevents third parties from establishing unintended canonical signals.\n**How to check**\nSpot-check 10+ pages with View Source or Screaming Frog. For CMS templates, verify canonical resolves to the actual item URL, not the template path.\n**Tools:** Screaming Frog, Google Search Console, Browser DevTools\n**Link:** [https://searchengineland.com/canonicaliz](https://searchengineland.com/canonicaliz)[ation-seo-448161](https://searchengineland.com/canonicaliz%EE%80%80ation-seo-448161)",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3umjuy",
+      "name": "Global canonical tag URL",
+      "status": "backlog",
+      "task_type": "SEO",
+      "description": "**Description**\nGlobal canonical URL set in Site Settings → SEO. Webflow appends each page's slug automatically. Prevents duplicate-content signals across www/non-www and HTTP/HTTPS variants.\n\n**How to check**\nSite Settings → SEO → Global canonical tag URL. View source on live pages; verify `<link rel='canonical'>` matches production domain (not [webflow.io](http://webflow.io)).\n\n**Tools:** Webflow Site Settings\n\n**Link:** [https://help.webflow.com/hc/en-us/a](https://help.webflow.com/hc/en-us/a)[rticles/33961263684115-Set-canonical-tags-to-improve-SEO](https://help.webflow.com/hc/en-us/a%EE%80%80rticles/339%EE%80%806126368411%EE%80%805-Set-canon%EE%80%80ical-tags-t%EE%80%80o-improve-SE%EE%80%80O)",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3ukr90",
+      "name": "Content import",
+      "status": "backlog",
+      "task_type": "Dev",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3uhqht",
+      "name": "🧩 Shared Components",
+      "status": "backlog",
+      "task_type": "Dev",
+      "description": null,
+      "checklists": [],
+      "children": [
+        {
+          "clickup_id": "86d3uhth7",
+          "name": "Shared Components Plan",
+          "status": "backlog",
+          "task_type": "Ad Hoc",
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d3vamxv",
+          "name": "❎ Closed Components",
+          "status": "backlog",
+          "task_type": "Ad Hoc",
+          "description": null,
+          "checklists": [],
+          "children": [
+            {
+              "clickup_id": "86d3uhr1c",
+              "name": "🧩 Component #1",
+              "status": "backlog",
+              "task_type": "Ad Hoc",
+              "description": "![](https://t25751970.p.clickup-attachments.com/t25751970/6e8b34e4-1b80-4696-878a-6bcfb76c013f/image.png)",
+              "checklists": [],
+              "children": []
+            },
+            {
+              "clickup_id": "86d3uhr1y",
+              "name": "🧩 Component #2",
+              "status": "backlog",
+              "task_type": "Ad Hoc",
+              "description": "![](https://t25751970.p.clickup-attachments.com/t25751970/7d6ac16a-1863-449c-b610-8407d4566586/image.png)",
+              "checklists": [],
+              "children": []
+            }
+          ]
+        },
+        {
+          "clickup_id": "86d3vamyx",
+          "name": "🈯️ Open Components",
+          "status": "backlog",
+          "task_type": "Ad Hoc",
+          "description": null,
+          "checklists": [],
+          "children": [
+            {
+              "clickup_id": "86d3uhr23",
+              "name": "🧩 Component #3",
+              "status": "backlog",
+              "task_type": "Dev",
+              "description": "![](https://t25751970.p.clickup-attachments.com/t25751970/06b81604-3771-46ad-b707-99cbf21266b0/image.png)",
+              "checklists": [],
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "clickup_id": "86d3uhaw5",
+      "name": "🟪 CMS",
+      "status": "backlog",
+      "task_type": "Dev",
+      "description": null,
+      "checklists": [],
+      "children": [
+        {
+          "clickup_id": "86d3uhq6p",
+          "name": "🗂️ CMS Plan",
+          "status": "backlog",
+          "task_type": "Ad Hoc",
+          "description": "First point in the project where CMS can be discussed against something real. The design is done, so what actually repeats — and what only looked like it repeated in the sitemap — is finally visible.\n**Format: one working session, then a written schema.** Nothing gets built in Webflow during this task.\n**Who brings what**\n*   **Dev** — runs the session, owns the schema document, flags what is expensive or impossible in Webflow\n*   **Design lead** — confirms what repeats, and answers the edge cases: longest realistic title, missing image, empty optional field, item with no related items. If the design has no answer, it gets designed now, not discovered mid-build\n*   **PM** — owns scope and the client conversation: real item counts, who edits what after launch, whether anything here is outside the agreed scope\n**Decide, per repeating section**\n*   CMS collection, static page, or a component reused across static pages. Three items that will never grow is not a collection — it is a section built three times, and cheaper that way\n*   Who edits it after launch: the client, or nobody. Content nobody touches does not need to be CMS\n*   Whether it needs its own URL. If not, it is probably a component\n**Define, per collection**\n*   Every field, its type, required or optional\n*   SEO fields: meta title, meta description, OG image, canonical override\n*   Slug rule — lowercase, hyphenated, no dates or IDs\n*   References and multi-references, and which side owns the relationship\n*   Sort order and default filtering\n*   Real item count today and expected in two years, checked against the Webflow plan limit\n**Done when** the schema document is written, the design lead has signed off on empty and overflow states, and PM has confirmed item volume and editing responsibilities with the client — all three in writing in this task. Building collections before that means re-binding every field when something changes.\n**Escalation:** disagreement about whether something is CMS is a scope question, not a technical one. It goes to PM, not resolved in the session.",
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d3uhrt4",
+          "name": "🟪 CMS Collection #1",
+          "status": "backlog",
+          "task_type": "Ad Hoc",
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d3uhrtw",
+          "name": "🟪 CMS Collection #2",
+          "status": "backlog",
+          "task_type": "Ad Hoc",
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d3uhru7",
+          "name": "🟪 CMS Collection #3",
+          "status": "backlog",
+          "task_type": "Ad Hoc",
+          "description": null,
+          "checklists": [],
+          "children": []
+        }
+      ]
+    },
+    {
+      "clickup_id": "86d3tz6uw",
+      "name": "Wireframe",
+      "status": "backlog",
+      "task_type": "Design",
+      "description": null,
+      "checklists": [],
+      "children": [
+        {
+          "clickup_id": "86d3w693t",
+          "name": "Low-Fidelity Wireframe",
+          "status": "backlog",
+          "task_type": "Ad Hoc",
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d3w696f",
+          "name": "Content Wireframe",
+          "status": "backlog",
+          "task_type": "Ad Hoc",
+          "description": null,
+          "checklists": [],
+          "children": []
+        }
+      ]
+    },
+    {
+      "clickup_id": "86d3mnqdk",
+      "name": "Clean up Google Drive (files etc)",
+      "status": "backlog",
+      "task_type": "Post Launch",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d3jeg6k",
+      "name": "Hem",
+      "status": "backlog",
+      "task_type": "Pages",
+      "description": null,
+      "checklists": [],
+      "children": [
+        {
+          "clickup_id": "86d3jegac",
+          "name": "Desktop",
+          "status": "backlog",
+          "task_type": "Ad Hoc",
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d3jega5",
+          "name": "Mobile",
+          "status": "backlog",
+          "task_type": "Ad Hoc",
+          "description": null,
+          "checklists": [],
+          "children": []
+        }
+      ]
+    },
+    {
+      "clickup_id": "86d3enfnd",
+      "name": "Meeting",
+      "status": "backlog",
+      "task_type": "Design",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d2uaa4z",
+      "name": "Prototype",
+      "status": "backlog",
+      "task_type": "Design",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d2u9xfr",
+      "name": "Clean up Figma-file ♻️",
+      "status": "backlog",
+      "task_type": "Design",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d2u9xf1",
+      "name": "Privacy Policy",
+      "status": "backlog",
+      "task_type": "Pages",
+      "description": null,
+      "checklists": [],
+      "children": [
+        {
+          "clickup_id": "86d3jeh7d",
+          "name": "Desktop",
+          "status": "backlog",
+          "task_type": "Ad Hoc",
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d3jeh7f",
+          "name": "Mobile",
+          "status": "backlog",
+          "task_type": "Ad Hoc",
+          "description": null,
+          "checklists": [],
+          "children": []
+        }
+      ]
+    },
+    {
+      "clickup_id": "86d2u9xeh",
+      "name": "Cookie Policy",
+      "status": "backlog",
+      "task_type": "Pages",
+      "description": null,
+      "checklists": [],
+      "children": [
+        {
+          "clickup_id": "86d3jeh52",
+          "name": "Desktop",
+          "status": "backlog",
+          "task_type": "Ad Hoc",
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d39fp45",
+          "name": "Mobile",
+          "status": "backlog",
+          "task_type": "Ad Hoc",
+          "description": null,
+          "checklists": [],
+          "children": []
+        }
+      ]
+    },
+    {
+      "clickup_id": "86d2u9xe5",
+      "name": "Page 404",
+      "status": "backlog",
+      "task_type": "Pages",
+      "description": null,
+      "checklists": [],
+      "children": [
+        {
+          "clickup_id": "86d3w70v8",
+          "name": "Desktop",
+          "status": "backlog",
+          "task_type": "Ad Hoc",
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d3jeh72",
+          "name": "Mobile",
+          "status": "backlog",
+          "task_type": "Ad Hoc",
+          "description": null,
+          "checklists": [],
+          "children": []
+        }
+      ]
+    },
+    {
+      "clickup_id": "86d2u9xdw",
+      "name": "Optimize images",
+      "status": "backlog",
+      "task_type": "Design",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d2u9xb5",
+      "name": "Annotations",
+      "status": "backlog",
+      "task_type": "Design",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d2u9xb2",
+      "name": "Open Graphs",
+      "status": "backlog",
+      "task_type": "Design",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d2u9x9u",
+      "name": "Cookie banner",
+      "status": "backlog",
+      "task_type": "Design",
+      "description": null,
+      "checklists": [],
+      "children": [
+        {
+          "clickup_id": "86d39fnxt",
+          "name": "Mobile",
+          "status": "backlog",
+          "task_type": "Ad Hoc",
+          "description": null,
+          "checklists": [],
+          "children": []
+        }
+      ]
+    },
+    {
+      "clickup_id": "86d2u9x87",
+      "name": "Webclip & Favicon + Icon for Webflow Workspace",
+      "status": "backlog",
+      "task_type": "Design",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d2u9wy0",
+      "name": "Styleguide",
+      "status": "backlog",
+      "task_type": "Design",
+      "description": null,
+      "checklists": [],
+      "children": [
+        {
+          "clickup_id": "86d2u9x1c",
+          "name": "Typography",
+          "status": "backlog",
+          "task_type": "Ad Hoc",
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d2u9x24",
+          "name": "Colors",
+          "status": "backlog",
+          "task_type": "Ad Hoc",
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d2u9x1h",
+          "name": "Grid",
+          "status": "backlog",
+          "task_type": "Ad Hoc",
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d2u9x1x",
+          "name": "Buttons",
+          "status": "backlog",
+          "task_type": "Ad Hoc",
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d2u9x6d",
+          "name": "Input fields",
+          "status": "backlog",
+          "task_type": "Ad Hoc",
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d2u9x8z",
+          "name": "Logo",
+          "status": "backlog",
+          "task_type": "Ad Hoc",
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d2uah5n",
+          "name": "Spacers",
+          "status": "backlog",
+          "task_type": "Ad Hoc",
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d2u9x9d",
+          "name": "Rich text (CMS)",
+          "status": "backlog",
+          "task_type": "Ad Hoc",
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d41dv1f",
+          "name": "Icons",
+          "status": "backlog",
+          "task_type": "Ad Hoc",
+          "description": null,
+          "checklists": [],
+          "children": []
+        }
+      ]
+    },
+    {
+      "clickup_id": "86d2u9wxw",
+      "name": "Footer",
+      "status": "backlog",
+      "task_type": "Design",
+      "description": null,
+      "checklists": [],
+      "children": [
+        {
+          "clickup_id": "86d39fnx0",
+          "name": "Mobile",
+          "status": "backlog",
+          "task_type": "Ad Hoc",
+          "description": null,
+          "checklists": [],
+          "children": []
+        }
+      ]
+    },
+    {
+      "clickup_id": "86d2u9wwq",
+      "name": "Mega Menu",
+      "status": "backlog",
+      "task_type": "Design",
+      "description": null,
+      "checklists": [],
+      "children": [
+        {
+          "clickup_id": "86d39fnv5",
+          "name": "Mobile",
+          "status": "backlog",
+          "task_type": "Ad Hoc",
+          "description": null,
+          "checklists": [],
+          "children": []
+        }
+      ]
+    },
+    {
+      "clickup_id": "86d2u9wwb",
+      "name": "Header",
+      "status": "backlog",
+      "task_type": "Design",
+      "description": null,
+      "checklists": [],
+      "children": [
+        {
+          "clickup_id": "86d39fnqx",
+          "name": "Mobile",
+          "status": "backlog",
+          "task_type": "Ad Hoc",
+          "description": null,
+          "checklists": [],
+          "children": []
+        }
+      ]
+    },
+    {
+      "clickup_id": "86d2u9w0a",
+      "name": "Directions",
+      "status": "backlog",
+      "task_type": "Design",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d2u9w04",
+      "name": "Moodboard",
+      "status": "backlog",
+      "task_type": "Design",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d2u9vz2",
+      "name": "Sitemap",
+      "status": "backlog",
+      "task_type": "Design",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d2u9vye",
+      "name": "Research",
+      "status": "backlog",
+      "task_type": "Design",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d2ht4t1",
+      "name": "Help clients deactivate unused accounts (hosting, Weglot, etc.).",
+      "status": "backlog",
+      "task_type": "Setup",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d2cn8y2",
+      "name": "Remove all the comments from Webflow designer",
+      "status": "backlog",
+      "task_type": "QA",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d1twjd3",
+      "name": "Add thumbnail to Showcase site",
+      "status": "backlog",
+      "task_type": "Design",
+      "description": "Thumbnail images should be JPEG, PNG, or GIF with a resolution of **540 x 360** pixels.",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d1twhg5",
+      "name": "Add us under Creator credits (to show site)",
+      "status": "backlog",
+      "task_type": "Setup",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d1twfbm",
+      "name": "Add Good Guys Partner code 🎖️",
+      "status": "backlog",
+      "task_type": "Setup",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d1f9tbh",
+      "name": "Site architecture (content sitemap)",
+      "status": "backlog",
+      "task_type": "Content",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d1f9tbb",
+      "name": "Set up tracking",
+      "status": "backlog",
+      "task_type": "Tracking",
+      "description": null,
+      "checklists": [],
+      "children": [
+        {
+          "clickup_id": "86d1f9tc0",
+          "name": "GTM",
+          "status": "backlog",
+          "task_type": "Tracking",
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d1f9tc1",
+          "name": "Google Analytics",
+          "status": "backlog",
+          "task_type": "Tracking",
+          "description": "IP addresses of your home, office, employees, and affiliates are filtered out",
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d1f9tc2",
+          "name": "Looker Studio",
+          "status": "backlog",
+          "task_type": "Tracking",
+          "description": null,
+          "checklists": [],
+          "children": []
+        }
+      ]
+    },
+    {
+      "clickup_id": "86d1f9tav",
+      "name": "Check Brave",
+      "status": "backlog",
+      "task_type": "QA",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d1f9tat",
+      "name": "Test all mail functions",
+      "status": "backlog",
+      "task_type": "Post Launch",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d1f9tam",
+      "name": "Get their brandbook",
+      "status": "backlog",
+      "task_type": "Setup",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d1f9ta1",
+      "name": "Set up tracking document for GTM (use template)",
+      "status": "backlog",
+      "task_type": "Dev",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d1f9t8a",
+      "name": "Delete temporary content",
+      "status": "backlog",
+      "task_type": "QA",
+      "description": null,
+      "checklists": [
+        {
+          "name": "Checklist",
+          "items": [
+            "Images",
+            "Posts",
+            "Assets (SVG)"
+          ]
+        }
+      ],
+      "children": []
+    },
+    {
+      "clickup_id": "86d1f9t7p",
+      "name": "Startup with client",
+      "status": "backlog",
+      "task_type": "Ideation & Onboarding",
+      "description": null,
+      "checklists": [],
+      "children": [
+        {
+          "clickup_id": "86d1f9t81",
+          "name": "Assign roles and responsibilities",
+          "status": "backlog",
+          "task_type": "Ideation & Onboarding",
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d1f9t82",
+          "name": "Set stakeholder",
+          "status": "backlog",
+          "task_type": "Ideation & Onboarding",
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d1f9t84",
+          "name": "Add the new client",
+          "status": "backlog",
+          "task_type": "Ideation & Onboarding",
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d1f9t83",
+          "name": "Project definition",
+          "status": "backlog",
+          "task_type": "Ideation & Onboarding",
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d1f9t85",
+          "name": "Share project to client",
+          "status": "backlog",
+          "task_type": "Ideation & Onboarding",
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d1f9t96",
+          "name": "Set date for launch",
+          "status": "backlog",
+          "task_type": "Ideation & Onboarding",
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d1f9t97",
+          "name": "Establish a communication plan",
+          "status": "backlog",
+          "task_type": "Ideation & Onboarding",
+          "description": "A communication plan ensures that wires don’t become crossed between those involved in your website launch project.\nHow can you make sure your communication plan will work?\n**Keep it simple** by creating a clear communication hierarchy and structure.",
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d1f9t9b",
+          "name": "Set up regular updates",
+          "status": "backlog",
+          "task_type": "Ideation & Onboarding",
+          "description": "Establishing consistent biweekly updates between all stakeholders will keep your project moving in the right direction.",
+          "checklists": [],
+          "children": []
+        }
+      ]
+    },
+    {
+      "clickup_id": "86d1f9t6x",
+      "name": "🕸️ Run a screaming frog ",
+      "status": "backlog",
+      "task_type": "Setup",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d1f9t6c",
+      "name": "1. Home (con)",
+      "status": "backlog",
+      "task_type": "Content",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d1f9t68",
+      "name": "10. Page (con)",
+      "status": "backlog",
+      "task_type": "Content",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d1f9t5r",
+      "name": "3. Page (con)",
+      "status": "backlog",
+      "task_type": "Content",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d1f9t3u",
+      "name": "Check forms (success/error messages)",
+      "status": "backlog",
+      "task_type": "QA",
+      "description": null,
+      "checklists": [],
+      "children": [
+        {
+          "clickup_id": "86d1f9t4c",
+          "name": "Let the customers reply to each mail if there is multiple.",
+          "status": "backlog",
+          "task_type": "Ad Hoc",
+          "description": null,
+          "checklists": [],
+          "children": []
+        }
+      ]
+    },
+    {
+      "clickup_id": "86d1f9t3r",
+      "name": "4. Page (con)",
+      "status": "backlog",
+      "task_type": "Content",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d1f9t1p",
+      "name": "14. Page (con)",
+      "status": "backlog",
+      "task_type": "Content",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d1f9t0v",
+      "name": "9. Page (con)",
+      "status": "backlog",
+      "task_type": "Content",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d1f9t09",
+      "name": "Secure the current website (data migration) 🈲",
+      "status": "backlog",
+      "task_type": "Setup",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d1f9rz4",
+      "name": "Collect links to social accounts",
+      "status": "backlog",
+      "task_type": "Setup",
+      "description": null,
+      "checklists": [
+        {
+          "name": "Checklist",
+          "items": [
+            "LinkedIn",
+            "Facebook",
+            "Instagram",
+            "TikTok"
+          ]
+        }
+      ],
+      "children": []
+    },
+    {
+      "clickup_id": "86d1f9ryr",
+      "name": "6. Page (con)",
+      "status": "backlog",
+      "task_type": "Content",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d1f9ruh",
+      "name": "TikTok Pixel",
+      "status": "backlog",
+      "task_type": "Tracking",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d1f9rqd",
+      "name": "⚙️ Webflow settings",
+      "status": "backlog",
+      "task_type": "Dev",
+      "description": null,
+      "checklists": [],
+      "children": [
+        {
+          "clickup_id": "86d3uk4td",
+          "name": "Webflow staging domain",
+          "status": "backlog",
+          "task_type": "Ad Hoc",
+          "description": "Site settings → Publishing → Staging. Set to `xyz-staging`\n![](https://t25751970.p.clickup-attachments.com/t25751970/037e7407-9b24-4cf8-9d46-cd6b591ce18c/image.png)",
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d1f9rtt",
+          "name": "Timezone",
+          "status": "backlog",
+          "task_type": "Dev",
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d1f9ruw",
+          "name": "⚡ Minify HTML, CSS, JS",
+          "status": "backlog",
+          "task_type": "Dev",
+          "description": "Site settings → Publishing → Advanced publishing options. Turn all three on.\n**What it does.** Strips whitespace, comments and line breaks from the published output. Small win on its own, but free. Minifying HTML also fixes the stray-gap problem between inline-block elements.",
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d3uk9q0",
+          "name": "Asynchronously load JS",
+          "status": "blocked",
+          "task_type": "Ad Hoc",
+          "description": "Enable in Site settings → Publishing → Advanced. Requires a paid Site plan and Workspace/Site owner-admin rights.\nEnable before the first line of custom JS is written, so all code is authored against it. On inherited projects leave it off during the build and move it to a pre-launch task with a full interaction regression test.\nAll custom JS follows Dev rules R1–R11. Also disable if the project consumes a shared Library — Webflow states Library elements may stop working.",
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d3ukcbg",
+          "name": "Per page CSS",
+          "status": "blocked",
+          "task_type": "Ad Hoc",
+          "description": "Site settings → Publishing → Advanced publishing options. Off by default.\n**What it does.** Instead of one site-wide CSS file, Webflow generates a shared file with global styles plus a page-specific file with only the styles that page uses. Webflow reports a 30–40% file size reduction in early testing. The biggest single performance win in this panel on class-heavy sites.\n**Access.** Only a Workspace owner/admin or Site owner/admin can toggle it. Confirm access before starting.\n**Skip entirely if this project consumes a shared Library** — Webflow states it can prevent Library elements from rendering correctly.\n**How it breaks things.** Webflow builds each page's CSS from what it can see in the Designer. It does not parse classes inside HTML Embeds. So a class loses its styles if it is only ever used inside an embed, added via `classList.add()`, or present in markup returned by a third-party script. The same class can work on one page and break on another — that inconsistency is the signature of this bug.\n**Fix.** Use the class at least once on a real Designer element on that page (`display: none` is enough), or move those styles into custom CSS in the head instead of a Webflow class.\n**Test after enabling.** Every page, plus every embed and every JS-driven UI element: modals, filters, toasts, tabs, dynamically loaded lists.",
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d3ukdv5",
+          "name": "Site language",
+          "status": "backlog",
+          "task_type": "Ad Hoc",
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d3ukdx9",
+          "name": "Staging password protection",
+          "status": "blocked",
+          "task_type": "Ad Hoc",
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d1f9rr8",
+          "name": "Index/noindex rules",
+          "status": "backlog",
+          "task_type": "Dev",
+          "description": "Configure what search engines can index. Enable indexing on production, disable on [webflow.io](http://webflow.io) staging, set `noindex` on utility pages (404, password, thank-you). Verify `robots.txt` and confirm sitemap excludes noindex URLs",
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d1f9rv0",
+          "name": "🚫 Indexing webflow.io",
+          "status": "backlog",
+          "task_type": "Dev",
+          "description": "Site settings → SEO → Indexing. Turn on **Disable Webflow subdomain indexing**, then publish. Webflow then serves a `noindex` robots.txt on the `.webflow.io` staging subdomain only. Your custom domain is unaffected.\n**Do it on day 1, not before launch.** The staging site is public and crawlable from the first publish. Once Google indexes it, the duplicate outranks nothing but sits in results as an unfinished version of the client's site, and removal takes weeks even after the setting is on.\n**This is not a substitute for staging password protection.** It stops indexing, not access. Anyone with the URL still sees the site.\n**Verify:** open [https://your-site.webflow.io/robots.txt](https://your-site.webflow.io/robots.txt) and confirm it disallows crawling. Do this after publishing — the setting has no effect until the next publish.\n**At launch:** confirm the production domain does _not_ inherit any noindex. Check `robots.txt` on the live domain and view-source for a stray `noindex` meta tag. This is the single most common launch failure in Webflow.",
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d1f9rw9",
+          "name": "Webclip",
+          "status": "backlog",
+          "task_type": "Dev",
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d1f9rwf",
+          "name": "Favicon",
+          "status": "backlog",
+          "task_type": "Dev",
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d2qryf1",
+          "name": "Disable Webflow branding",
+          "status": "backlog",
+          "task_type": "Ad Hoc",
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d2v4m6p",
+          "name": "🛡️ Bots & spam protection",
+          "status": "backlog",
+          "task_type": "Ad Hoc",
+          "description": "Site settings → Apps & Integrations. Enable **Cloudflare Turnstile spam protection** and **Spam filtering**. Both are site-level, apply to every form, and require no per-form markup — safe to turn on before any form exists.\nNote for the form components: with bot blocking on, submit buttons are disabled while protection loads. Style the disabled state in the Style panel, otherwise the button looks broken for the first moment of every page load.\n**Do not enable reCAPTCHA validation here.** It forces validation on every form site-wide and any form without a reCAPTCHA element silently fails to submit — effective immediately on save, no republish needed. That belongs in group 5, after all forms are built.",
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d3ukfpa",
+          "name": "🤖 reCAPTCHA validation",
+          "status": "backlog",
+          "task_type": "Ad Hoc",
+          "description": "Only if Turnstile bot blocking and spam filtering proved insufficient. Add the reCAPTCHA element to every form first, then paste the v2 Site Key and Secret Key in Site settings → Apps & Integrations and enable validation. Enabling before every form has the element breaks form submission site-wide, instantly, with no error message.",
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d3ukgu8",
+          "name": "Global canonical tag URL",
+          "status": "backlog",
+          "task_type": "Ad Hoc",
+          "description": "Site settings → SEO → Global canonical tag URL. Webflow generates no canonical tags at all without this field.\nEnter the **production** domain, even during a migration while the old site is still live. Format: [https://domain.com](https://domain.com) — protocol included, no trailing slash, and matching whatever the default domain will be after launch (`www` or not — keep whatever the old site uses). Confirm that with the client before entering it. Publish to apply.\nCanonicals on staging point at production URLs that may not exist yet. That is expected and harmless: staging is password-protected and noindex, so no crawler ever reads them. Do not verify canonicals on staging — verification happens on production in group 8.\nBlocked only if the `www` / non-`www` decision is still open. That is a client decision, chased by PM, not a dev blocker to solve.",
+          "checklists": [],
+          "children": []
+        }
+      ]
+    },
+    {
+      "clickup_id": "86d1f9rq2",
+      "name": "Identify Goals",
+      "status": "backlog",
+      "task_type": "Ideation & Onboarding",
+      "description": "*   What is the purpose of your new website or website redesign?\n*   What are your current website’s visitor pain points?\n*   How will the design drive value to your visitors?",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d1f9rpj",
+      "name": "5. Page (con)",
+      "status": "backlog",
+      "task_type": "Content",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d1f9rnk",
+      "name": "Check Chrome",
+      "status": "backlog",
+      "task_type": "QA",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d1f9rmn",
+      "name": "Check on iOS",
+      "status": "backlog",
+      "task_type": "QA",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d1f9rm1",
+      "name": "Localization",
+      "status": "backlog",
+      "task_type": "Dev",
+      "description": null,
+      "checklists": [
+        {
+          "name": "Checklist",
+          "items": [
+            "Set default language",
+            "Set secondary language"
+          ]
+        },
+        {
+          "name": "Checklist",
+          "items": []
+        }
+      ],
+      "children": []
+    },
+    {
+      "clickup_id": "86d1f9rjd",
+      "name": "2. Page (con)",
+      "status": "backlog",
+      "task_type": "Content",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d1f9rgx",
+      "name": "LinkedIn Pixel",
+      "status": "backlog",
+      "task_type": "Tracking",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d1f9rgm",
+      "name": "🌀 Global Animations",
+      "status": "backlog",
+      "task_type": "Dev",
+      "description": "Implement key high-impact animations defined in the design — 3D elements, horizontal scroll sections, scroll-triggered reveals, parallax, and any hero/feature-level motion that requires GSAP or custom interactions. Scope covers only \"heavy\" animations; micro-interactions (hovers, button states, menu transitions) are handled separately as part of their respective components.",
+      "checklists": [],
+      "children": [
+        {
+          "clickup_id": "86d1f9rhj",
+          "name": "Animation 1 🌀",
+          "status": "backlog",
+          "task_type": "Dev",
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d1f9rhm",
+          "name": "Animation 2 🌀",
+          "status": "backlog",
+          "task_type": "Dev",
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d1f9rhk",
+          "name": "Animation 3 🌀",
+          "status": "backlog",
+          "task_type": "Dev",
+          "description": null,
+          "checklists": [],
+          "children": []
+        }
+      ]
+    },
+    {
+      "clickup_id": "86d1f9rg6",
+      "name": "Facebook Pixel",
+      "status": "backlog",
+      "task_type": "Tracking",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d1f9rf8",
+      "name": "13. Page (con)",
+      "status": "backlog",
+      "task_type": "Content",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d1f9rec",
+      "name": "Cookie consent ",
+      "status": "backlog",
+      "task_type": "Dev",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d1f9rct",
+      "name": "12. Page (con)",
+      "status": "backlog",
+      "task_type": "Content",
+      "description": null,
+      "checklists": [
+        {
+          "name": "Checklist",
+          "items": []
+        }
+      ],
+      "children": []
+    },
+    {
+      "clickup_id": "86d1f9rca",
+      "name": "7. Page (con)",
+      "status": "backlog",
+      "task_type": "Content",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d1f9rc1",
+      "name": "Send launch mail to client",
+      "status": "backlog",
+      "task_type": "Launch",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d1f9rb3",
+      "name": "Create a content strategy",
+      "status": "backlog",
+      "task_type": "Setup",
+      "description": "https://www.orbitmedia.com/blog/website-launch-checklist/",
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d1f9rav",
+      "name": "11. Page (con)",
+      "status": "backlog",
+      "task_type": "Content",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d1f9rah",
+      "name": "⬜️ Sitemap & page hierarchy (Octopus)",
+      "status": "backlog",
+      "task_type": "Ideation & Onboarding",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d1f9ra7",
+      "name": "Collect all credentials and send to client (if accounts created)",
+      "status": "backlog",
+      "task_type": "Setup",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d1f9r9k",
+      "name": "Cookie/GDPR–banner",
+      "status": "backlog",
+      "task_type": "Tracking",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d1f9r9f",
+      "name": "Check Heading-structure",
+      "status": "backlog",
+      "task_type": "QA",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d1f9r8v",
+      "name": "Typeform - Needs assessment",
+      "status": "backlog",
+      "task_type": "Ideation & Onboarding",
+      "description": null,
+      "checklists": [
+        {
+          "name": "Checklist",
+          "items": [
+            "Custom questions",
+            "Custom Open graph"
+          ]
+        }
+      ],
+      "children": []
+    },
+    {
+      "clickup_id": "86d1f9r7v",
+      "name": "Style Guide",
+      "status": "backlog",
+      "task_type": "Dev",
+      "description": null,
+      "checklists": [],
+      "children": [
+        {
+          "clickup_id": "86d3uknqn",
+          "name": "Fonts",
+          "status": "backlog",
+          "task_type": "Dev",
+          "description": null,
+          "checklists": [],
+          "children": []
+        }
+      ]
+    },
+    {
+      "clickup_id": "86d1f9r6w",
+      "name": "Check on Andriod",
+      "status": "backlog",
+      "task_type": "QA",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d1f9r59",
+      "name": "📮 Forms",
+      "status": "backlog",
+      "task_type": "Dev",
+      "description": null,
+      "checklists": [],
+      "children": [
+        {
+          "clickup_id": "86d3uk0dx",
+          "name": "Form #1",
+          "status": "backlog",
+          "task_type": "Ad Hoc",
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d3uk0fe",
+          "name": "Form #2",
+          "status": "backlog",
+          "task_type": "Ad Hoc",
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d3uk0jx",
+          "name": "Form #3",
+          "status": "backlog",
+          "task_type": "Ad Hoc",
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d3uk12b",
+          "name": "📤 Brevo",
+          "status": "backlog",
+          "task_type": "Ad Hoc",
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d3uk13j",
+          "name": "📤 Zapier ",
+          "status": "backlog",
+          "task_type": "Ad Hoc",
+          "description": null,
+          "checklists": [],
+          "children": []
+        }
+      ]
+    },
+    {
+      "clickup_id": "86d1f9r4h",
+      "name": "8. Page (con)",
+      "status": "backlog",
+      "task_type": "Content",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d1f9r4e",
+      "name": "Show case site on Webflow",
+      "status": "backlog",
+      "task_type": "Post Launch",
+      "description": null,
+      "checklists": [],
+      "children": [
+        {
+          "clickup_id": "86d1f9r4y",
+          "name": "Add thumbnail",
+          "status": "backlog",
+          "task_type": "Ad Hoc",
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d1f9r4z",
+          "name": "Add project description",
+          "status": "backlog",
+          "task_type": "Ad Hoc",
+          "description": null,
+          "checklists": [],
+          "children": []
+        }
+      ]
+    },
+    {
+      "clickup_id": "86d1f9r3r",
+      "name": "15. Page (con)",
+      "status": "backlog",
+      "task_type": "Content",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d1f9r39",
+      "name": "Check Safari",
+      "status": "backlog",
+      "task_type": "QA",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d1f9r2g",
+      "name": "Get their fonts",
+      "status": "backlog",
+      "task_type": "Setup",
+      "description": null,
+      "checklists": [],
+      "children": []
+    },
+    {
+      "clickup_id": "86d1f9r1z",
+      "name": "🟩 Global Components ",
+      "status": "backlog",
+      "task_type": "Dev",
+      "description": null,
+      "checklists": [],
+      "children": [
+        {
+          "clickup_id": "86d1f9r2a",
+          "name": "🟩 Custom styles embed",
+          "status": "backlog",
+          "task_type": "Dev",
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d1f9r27",
+          "name": "🟩 Navigation / Mega menu",
+          "status": "backlog",
+          "task_type": "Dev",
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d1f9r28",
+          "name": "🟩 Footer",
+          "status": "backlog",
+          "task_type": "Dev",
+          "description": null,
+          "checklists": [],
+          "children": []
+        },
+        {
+          "clickup_id": "86d3uhut2",
+          "name": "🟩 Spacers",
+          "status": "backlog",
+          "task_type": "Ad Hoc",
+          "description": null,
+          "checklists": [],
+          "children": []
+        }
+      ]
+    }
+  ]
+}
