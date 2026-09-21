@@ -177,9 +177,21 @@ export function WeekTimeGrid({
     anchorPx: number;
   } | null>(null);
   const columnRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const gridHeight = MINUTES_PER_DAY * PX_PER_MINUTE;
   const defaultScrollTop = DEFAULT_VISIBLE_START_HOUR * PX_PER_HOUR;
+
+  // Set initial scroll position once on mount only. Inline ref callbacks
+  // re-run on every render (new function identity each time) and would
+  // reset the scroll position whenever any state changes.
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = defaultScrollTop;
+    }
+    // intentionally only on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function offsetForEvent(date: string, clientY: number): number {
     const el = columnRefs.current[date];
@@ -463,11 +475,9 @@ export function WeekTimeGrid({
   return (
     <div className="flex flex-col gap-2" data-testid="calendar-week-time-grid">
       <div
-        className="relative grid max-h-[36rem] grid-cols-[3.5rem_repeat(7,1fr)] gap-px overflow-y-auto rounded-md border border-border/60"
-        style={{ scrollPaddingTop: defaultScrollTop }}
-        ref={(el) => {
-          if (el) el.scrollTop = defaultScrollTop;
-        }}
+        className="relative grid grid-cols-[3.5rem_repeat(7,1fr)] gap-px overflow-y-auto rounded-md border border-border/60"
+        style={{ scrollPaddingTop: defaultScrollTop, maxHeight: "max(420px, calc(100svh - 200px))" }}
+        ref={scrollRef}
         data-testid="calendar-week-scroll-region"
       >
         <div className="relative" style={{ height: gridHeight }}>
