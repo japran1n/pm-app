@@ -10,6 +10,7 @@
 
 import { useCallback, useState } from "react";
 import {
+  deduplicateBlocks,
   extractScriptBlocks,
   extractStyleBlocks,
   type ScriptBlock,
@@ -86,9 +87,11 @@ export function useFetchSite(): {
       finalUrl: string;
     };
 
+    // Repeated embeds (e.g. one Embed per CMS item) collapse to one file;
+    // composeDocument fans an edit back out to every occurrence.
     const blocks: Block[] = [
-      ...extractStyleBlocks(html),
-      ...extractScriptBlocks(html),
+      ...deduplicateBlocks(extractStyleBlocks(html)),
+      ...deduplicateBlocks(extractScriptBlocks(html)),
     ];
 
     let corpus: Corpus | null = null;

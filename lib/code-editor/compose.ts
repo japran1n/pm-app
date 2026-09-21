@@ -3,7 +3,7 @@
 // Pure string manipulation (no DOM), mirroring the extraction approach in
 // extract.ts, so this is safe in the same runtimes.
 
-import type { StyleBlock, ScriptBlock } from './extract';
+import { stripCdata, type StyleBlock, type ScriptBlock } from './extract';
 import { injectStyleAgent } from '../site-preview/inject';
 
 export type Block = StyleBlock | ScriptBlock;
@@ -23,82 +23,67 @@ function isBlank(value: string | undefined | null): boolean {
   return !value || value.trim().length === 0;
 }
 
-/**
- * Finds the tag (of `block.type`) whose inner content exactly matches
- * `block.originalContent`, searching `html` starting at `fromIndex`. Unlike
- * a naked string/regex search over the whole document, this only ever
- * matches genuine `<style>`/`<script>` tag bodies -- so a CSS/JS string that
- * happens to appear elsewhere in the markup (e.g. inside another tag's
- * content, or as literal text) can never be mistaken for the block's real
- * location (bug: first-occurrence-only corruption).
- *
- * Callers advance `fromIndex` past a block's replaced region before
- * locating the next block, so two blocks sharing identical content each
- * resolve to their own, distinct tag occurrence instead of both landing on
- * the first one (bug: duplicate-content corruption).
- */
-function findBlockContentRange(
-  html: string,
-  type: Block['type'],
-  originalContent: string,
-  fromIndex: number
-): { contentStart: number; contentEnd: number } | null {
-  const re = tagRegexFor(type);
-  re.lastIndex = fromIndex;
-  let match: RegExpExecArray | null;
+interface TagSlot {
+  contentStart: number;
+  contentEnd: number;
+  content: string;
+  used: boolean;
+}
 
+/** Every genuine `<style>`/`<script>` tag body of `type` in `html`, in
+ * document order. Only real tag bodies are considered, so CSS/JS text that
+ * happens to appear elsewhere in the markup is never mistaken for a
+ * block's location. */
+function scanTags(html: string, type: Block['type']): TagSlot[] {
+  const re = tagRegexFor(type);
+  const slots: TagSlot[] = [];
+  let match: RegExpExecArray | null;
   while ((match = re.exec(html)) !== null) {
     const attrs = match[1] ?? '';
     const content = match[2] ?? '';
-
-    if (content === originalContent) {
-      const prefixLength = openTagName(type).length + attrs.length + 1; // +1 for '>'
-      const contentStart = match.index + prefixLength;
-      const contentEnd = contentStart + content.length;
-      return { contentStart, contentEnd };
-    }
-
-    // Guard against zero-length matches causing an infinite loop (can't
-    // actually happen with this pattern, but keep the scan well-behaved).
-    if (match.index === re.lastIndex) {
-      re.lastIndex += 1;
-    }
+    const contentStart = match.index + openTagName(type).length + attrs.length + 1; // +1 for '>'
+    slots.push({ contentStart, contentEnd: contentStart + content.length, content, used: false });
+    if (match.index === re.lastIndex) re.lastIndex += 1;
   }
+  return slots;
+}
 
-  return null;
+function wrapContent(block: Block): string {
+  if (!block.hasCdata) return block.content;
+  return block.type === 'script' && block.cdataStyle === 'comment'
+    ? `// <![CDATA[\n${block.content}\n// ]]>`
+    : `<![CDATA[${block.content}]]>`;
+}
+
+/** True when the user changed a block away from what was extracted. */
+function isEdited(block: Block): boolean {
+  const pristine = block.hasCdata ? stripCdata(block.originalContent) : block.originalContent;
+  return block.content !== pristine && block.content !== block.originalContent;
 }
 
 /**
  * Recomposes `html` by substituting each block's edited `content` for its
  * `originalContent`. Blocks are applied in array order.
  *
- * Substitution is done by locating the actual `<style>`/`<script>` tag
- * whose inner text equals `originalContent` (not a naked string replace),
- * so content that also happens to appear elsewhere in the document is never
- * mistaken for the block's real location. When two blocks share identical
- * `originalContent`, each is matched to its own distinct tag occurrence in
- * document order.
+ * Substitution locates the actual `<style>`/`<script>` tag whose inner text
+ * equals `originalContent` (not a naked string replace). A per-type cursor
+ * means two blocks sharing identical `originalContent` each resolve to their
+ * own, distinct tag occurrence in document order.
+ *
+ * Deduplicated blocks (see `deduplicateBlocks`) carry `duplicates`: the raw
+ * contents of the other tags they stand in for (e.g. one Embed per CMS
+ * item). Once the block has been edited, its new content is written into
+ * every one of those tags too; an unedited block leaves them untouched, so
+ * per-item values survive until the user actually changes the file.
+ * Duplicates are resolved after all primary blocks, against tags no
+ * primary claimed, so they never steal another block's tag.
  *
  * Blocks whose `originalContent` is empty or whitespace-only (e.g. newly
- * created, never-saved files) cannot be safely located in the document --
- * every position would match -- so they are never used to locate a
- * replacement; they always fall through to the "append as new tag" path
- * below.
- *
- * If a block's `originalContent` can no longer be found in the document
- * (e.g. it was already replaced, the source changed, or it's a new/empty
- * block), the block's current content is appended as a new
+ * created files) or can no longer be found are appended as a new
  * `<style>`/`<script>` tag immediately before `</body>` (or at the end of
  * the document if there is no closing body tag).
  *
- * When a block's `originalContent` was `<![CDATA[ ... ]]>`-wrapped in the
- * source document (`block.hasCdata`), the wrapper is restored around the
- * edited content on the way back out, so CDATA-wrapped script/style bodies
- * round-trip instead of losing their wrapper. For script blocks, the exact
- * original wrapper form is restored via `block.cdataStyle`: the bare XML
- * form `<![CDATA[...]]>` or the JS-comment form
- * `// <![CDATA[\n...\n// ]]>` sometimes used inside <script> tags so the
- * markers don't break JS parsing.
+ * CDATA wrappers are restored on the way out (`hasCdata` / `cdataStyle`).
  *
  * When `opts.injectStyleAgent` is true, the style agent script (F038) is
  * injected into the result so live style patches keep working against the
@@ -109,44 +94,69 @@ export function composeDocument(
   blocks: Block[],
   opts?: { injectStyleAgent?: boolean }
 ): string {
-  let result = html ?? '';
-
-  // Per-type search cursor, so that once a block's tag occurrence has been
-  // located and replaced, a subsequent block with identical originalContent
-  // resolves to the *next* occurrence rather than the same one.
-  const searchFrom: Record<Block['type'], number> = { style: 0, script: 0 };
+  const source = html ?? '';
+  const slots: Record<Block['type'], TagSlot[]> = {
+    style: scanTags(source, 'style'),
+    script: scanTags(source, 'script'),
+  };
+  const cursor: Record<Block['type'], number> = { style: 0, script: 0 };
+  const replacements: { start: number; end: number; text: string }[] = [];
+  const appended: string[] = [];
+  const duplicateJobs: { type: Block['type']; originals: string[]; text: string }[] = [];
 
   for (const block of blocks) {
-    const newContent = block.hasCdata
-      ? block.type === 'script' && block.cdataStyle === 'comment'
-        ? `// <![CDATA[\n${block.content}\n// ]]>`
-        : `<![CDATA[${block.content}]]>`
-      : block.content;
-
-    const range = isBlank(block.originalContent)
-      ? null
-      : findBlockContentRange(result, block.type, block.originalContent, searchFrom[block.type]);
-
-    if (range) {
-      result =
-        result.slice(0, range.contentStart) +
-        newContent +
-        result.slice(range.contentEnd);
-      searchFrom[block.type] = range.contentStart + newContent.length;
-    } else {
-      const tag =
-        block.type === 'style'
-          ? `<style>${newContent}</style>`
-          : `<script>${newContent}</script>`;
-
-      const bodyClose = /<\/body\s*>/i.exec(result);
-      if (!bodyClose) {
-        result = result + tag;
-      } else {
-        result =
-          result.slice(0, bodyClose.index) + tag + result.slice(bodyClose.index);
+    const newContent = wrapContent(block);
+    const list = slots[block.type];
+    let found = -1;
+    if (!isBlank(block.originalContent)) {
+      for (let i = cursor[block.type]; i < list.length; i += 1) {
+        if (!list[i].used && list[i].content === block.originalContent) {
+          found = i;
+          break;
+        }
       }
     }
+
+    if (found >= 0) {
+      const slot = list[found];
+      slot.used = true;
+      cursor[block.type] = found + 1;
+      replacements.push({ start: slot.contentStart, end: slot.contentEnd, text: newContent });
+    } else {
+      appended.push(
+        block.type === 'style' ? `<style>${newContent}</style>` : `<script>${newContent}</script>`
+      );
+    }
+
+    if (block.duplicates && block.duplicates.length > 0 && isEdited(block)) {
+      duplicateJobs.push({ type: block.type, originals: block.duplicates, text: newContent });
+    }
+  }
+
+  for (const job of duplicateJobs) {
+    const list = slots[job.type];
+    for (const original of job.originals) {
+      if (isBlank(original)) continue;
+      const slot = list.find((s) => !s.used && s.content === original);
+      if (!slot) continue;
+      slot.used = true;
+      replacements.push({ start: slot.contentStart, end: slot.contentEnd, text: job.text });
+    }
+  }
+
+  // Apply back-to-front so earlier offsets stay valid.
+  replacements.sort((a, b) => b.start - a.start);
+  let result = source;
+  for (const r of replacements) {
+    result = result.slice(0, r.start) + r.text + result.slice(r.end);
+  }
+
+  if (appended.length > 0) {
+    const tags = appended.join('');
+    const bodyClose = /<\/body\s*>/i.exec(result);
+    result = bodyClose
+      ? result.slice(0, bodyClose.index) + tags + result.slice(bodyClose.index)
+      : result + tags;
   }
 
   if (opts?.injectStyleAgent) {

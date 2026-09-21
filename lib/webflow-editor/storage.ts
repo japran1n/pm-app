@@ -16,6 +16,15 @@ export interface StoredBlock {
   type: "style" | "script";
   name?: string;
   activeVersionId: string;
+  /** Where the block lives in the page (Head / Embed / Footer). Optional:
+   * state saved before origins existed simply lacks it, and the layout
+   * re-derives it from the freshly extracted block on load. */
+  origin?: "head" | "embed" | "footer";
+  /** How many identical (CMS-repeated) tags this block stands for. */
+  occurrences?: number;
+  /** True for files the user created in the editor. Optional for older
+   * saved state. */
+  isUserCreated?: boolean;
 }
 
 export interface StoredVersion {
@@ -31,6 +40,8 @@ export interface EditorState {
   versions: Record<string, StoredVersion[]>;
   selectedBlockId?: string | null;
   url?: string;
+  /** Which file-list tab (CSS / JS) was last selected for this host. */
+  activeTab?: "css" | "js";
 }
 
 /**
@@ -61,6 +72,18 @@ function isValidBlock(value: unknown): value is StoredBlock {
   if (value.type !== "style" && value.type !== "script") return false;
   if (typeof value.activeVersionId !== "string") return false;
   if (value.name !== undefined && typeof value.name !== "string") return false;
+  if (
+    value.origin !== undefined &&
+    value.origin !== "head" &&
+    value.origin !== "embed" &&
+    value.origin !== "footer"
+  ) {
+    return false;
+  }
+  if (value.occurrences !== undefined && typeof value.occurrences !== "number") return false;
+  if (value.isUserCreated !== undefined && typeof value.isUserCreated !== "boolean") {
+    return false;
+  }
   return true;
 }
 
@@ -104,6 +127,12 @@ function validateEditorState(value: unknown): EditorState | null {
 
   if (value.url !== undefined && typeof value.url !== "string") {
     return null;
+  }
+
+  // Unknown/garbled tab values are dropped rather than invalidating the
+  // whole saved state -- the tab is a convenience, not data.
+  if (value.activeTab !== undefined && value.activeTab !== "css" && value.activeTab !== "js") {
+    delete value.activeTab;
   }
 
   return value as unknown as EditorState;

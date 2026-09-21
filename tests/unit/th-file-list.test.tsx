@@ -26,13 +26,22 @@ const BLOCKS: FileListEntry[] = [
   { index: 1, name: "main.js", type: "js", isDirty: true },
 ];
 
+// Two files of the same type, for behaviour that happens within one tab.
+const CSS_BLOCKS: FileListEntry[] = [
+  { index: 0, name: "styles.css", type: "css" },
+  { index: 1, name: "hero.css", type: "css" },
+];
+
 describe("FileList (TH-200, TH-201)", () => {
-  it("test_TH_200_lists_all_file_rows", () => {
+  it("test_TH_200_lists_all_file_rows_across_tabs", () => {
     render(
       <FileList blocks={BLOCKS} activeIndex={0} onSelect={() => {}} />,
     );
     expect(screen.getByTestId("file-row-0")).toBeInTheDocument();
+    expect(screen.queryByTestId("file-row-1")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("file-tab-js"));
     expect(screen.getByTestId("file-row-1")).toBeInTheDocument();
+    expect(screen.queryByTestId("file-row-0")).not.toBeInTheDocument();
   });
 
   it("test_TH_201_row_shows_name_and_dirty_marker", () => {
@@ -40,9 +49,10 @@ describe("FileList (TH-200, TH-201)", () => {
       <FileList blocks={BLOCKS} activeIndex={0} onSelect={() => {}} />,
     );
     expect(screen.getByText("styles.css")).toBeInTheDocument();
+    expect(screen.queryByTestId("dirty-indicator-0")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("file-tab-js"));
     expect(screen.getByText("main.js")).toBeInTheDocument();
     expect(screen.getByTestId("dirty-indicator-1")).toBeInTheDocument();
-    expect(screen.queryByTestId("dirty-indicator-0")).not.toBeInTheDocument();
   });
 });
 
@@ -50,7 +60,7 @@ describe("FileList selection (TH-203)", () => {
   it("test_TH_203_clicking_a_row_selects_it", () => {
     const onSelect = vi.fn();
     render(
-      <FileList blocks={BLOCKS} activeIndex={0} onSelect={onSelect} />,
+      <FileList blocks={CSS_BLOCKS} activeIndex={0} onSelect={onSelect} />,
     );
     fireEvent.click(screen.getByTestId("file-row-1"));
     expect(onSelect).toHaveBeenCalledWith(1);
@@ -58,15 +68,15 @@ describe("FileList selection (TH-203)", () => {
 
   it("test_TH_203_active_row_is_highlighted", () => {
     render(
-      <FileList blocks={BLOCKS} activeIndex={1} onSelect={() => {}} />,
+      <FileList blocks={CSS_BLOCKS} activeIndex={1} onSelect={() => {}} />,
     );
-    expect(screen.getByTestId("file-row-1")).toHaveClass("bg-accent");
-    expect(screen.getByTestId("file-row-0")).not.toHaveClass("bg-accent");
+    expect(screen.getByTestId("file-row-1")).toHaveClass("bg-muted");
+    expect(screen.getByTestId("file-row-0")).not.toHaveClass("bg-muted");
   });
 
   it("test_TH_203_arrow_down_moves_focus_to_next_row", () => {
     render(
-      <FileList blocks={BLOCKS} activeIndex={0} onSelect={() => {}} />,
+      <FileList blocks={CSS_BLOCKS} activeIndex={0} onSelect={() => {}} />,
     );
     const row0 = screen.getByTestId("file-row-0");
     row0.focus();
@@ -77,7 +87,7 @@ describe("FileList selection (TH-203)", () => {
   it("test_TH_203_enter_selects_the_focused_row", () => {
     const onSelect = vi.fn();
     render(
-      <FileList blocks={BLOCKS} activeIndex={0} onSelect={onSelect} />,
+      <FileList blocks={CSS_BLOCKS} activeIndex={0} onSelect={onSelect} />,
     );
     const row1 = screen.getByTestId("file-row-1");
     row1.focus();
@@ -165,20 +175,7 @@ describe("FileList inline rename (TH-204)", () => {
 });
 
 describe("FileList create user files (TH-205, TH-206)", () => {
-  it("test_TH_205_create_button_opens_type_menu", () => {
-    render(
-      <FileList
-        blocks={BLOCKS}
-        activeIndex={0}
-        onSelect={() => {}}
-        onCreate={() => {}}
-      />,
-    );
-    fireEvent.click(screen.getByTestId("create-file-button"));
-    expect(screen.getByTestId("create-file-menu")).toBeInTheDocument();
-  });
-
-  it("test_TH_205_creating_a_css_file_emits_onCreate_css", () => {
+  it("test_TH_205_creating_in_the_css_tab_emits_onCreate_css", () => {
     const onCreate = vi.fn();
     render(
       <FileList
@@ -188,13 +185,12 @@ describe("FileList create user files (TH-205, TH-206)", () => {
         onCreate={onCreate}
       />,
     );
+    expect(screen.getByText("CSS files")).toBeInTheDocument();
     fireEvent.click(screen.getByTestId("create-file-button"));
-    // Default selection is css.
-    fireEvent.click(screen.getByTestId("confirm-create-file"));
     expect(onCreate).toHaveBeenCalledWith("css");
   });
 
-  it("test_TH_206_creating_a_js_file_emits_onCreate_js", () => {
+  it("test_TH_206_creating_in_the_js_tab_emits_onCreate_js", () => {
     const onCreate = vi.fn();
     render(
       <FileList
@@ -204,15 +200,60 @@ describe("FileList create user files (TH-205, TH-206)", () => {
         onCreate={onCreate}
       />,
     );
+    fireEvent.click(screen.getByTestId("file-tab-js"));
+    expect(screen.getByText("JS files")).toBeInTheDocument();
     fireEvent.click(screen.getByTestId("create-file-button"));
-    fireEvent.click(screen.getByLabelText("JS"));
-    fireEvent.click(screen.getByTestId("confirm-create-file"));
     expect(onCreate).toHaveBeenCalledWith("js");
   });
 
-  it("test_TH_206_create_menu_closed_when_onCreate_not_provided", () => {
+  it("test_TH_206_create_button_hidden_when_onCreate_not_provided", () => {
     render(<FileList blocks={BLOCKS} activeIndex={0} onSelect={() => {}} />);
     expect(screen.queryByTestId("create-file-button")).not.toBeInTheDocument();
+  });
+});
+
+describe("FileList CSS/JS tabs", () => {
+  it("opens on the active file's tab", () => {
+    render(<FileList blocks={BLOCKS} activeIndex={1} onSelect={() => {}} />);
+    expect(screen.getByTestId("file-tab-js")).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByTestId("file-row-1")).toBeInTheDocument();
+  });
+
+  it("follows the active file into the other tab when selection changes", () => {
+    const { rerender } = render(
+      <FileList blocks={BLOCKS} activeIndex={0} onSelect={() => {}} />,
+    );
+    expect(screen.getByTestId("file-tab-css")).toHaveAttribute("aria-selected", "true");
+    rerender(<FileList blocks={BLOCKS} activeIndex={1} onSelect={() => {}} />);
+    expect(screen.getByTestId("file-tab-js")).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("controlled tab reports changes via onTabChange", () => {
+    const onTabChange = vi.fn();
+    render(
+      <FileList
+        blocks={BLOCKS}
+        activeIndex={0}
+        onSelect={() => {}}
+        tab="css"
+        onTabChange={onTabChange}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("file-tab-js"));
+    expect(onTabChange).toHaveBeenCalledWith("js");
+  });
+
+  it("renders the sub-label and a mono occurrence count", () => {
+    render(
+      <FileList
+        blocks={[{ index: 0, name: "card.css", type: "css", subLabel: "Original / Embed", occurrences: 20 }]}
+        activeIndex={0}
+        onSelect={() => {}}
+      />,
+    );
+    expect(screen.getByTestId("file-sublabel-0")).toHaveTextContent("Original / Embed");
+    expect(screen.getByTestId("occurrences-0")).toHaveTextContent("×20");
+    expect(screen.getByTestId("occurrences-0")).toHaveClass("font-mono");
   });
 });
 
@@ -232,6 +273,7 @@ describe("FileList delete (TH-207)", () => {
         onDelete={onDelete}
       />,
     );
+    fireEvent.click(screen.getByTestId("file-tab-js"));
     fireEvent.click(screen.getByTestId("delete-file-1"));
     expect(onDelete).toHaveBeenCalledWith(1);
   });
@@ -262,8 +304,10 @@ describe("FileList type icons render distinctly (TH-200)", () => {
       <FileList blocks={BLOCKS} activeIndex={0} onSelect={() => {}} />,
     );
     const svgs = container.querySelectorAll("svg");
-    // At least one icon per row.
-    expect(svgs.length).toBeGreaterThanOrEqual(2);
+    // At least one icon per visible row.
+    expect(svgs.length).toBeGreaterThanOrEqual(1);
+    fireEvent.click(screen.getByTestId("file-tab-js"));
+    expect(container.querySelectorAll("svg").length).toBeGreaterThanOrEqual(1);
   });
 });
 

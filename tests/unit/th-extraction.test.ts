@@ -46,12 +46,12 @@ describe("F037 extraction tests", () => {
 
   it("TH-123: style block name uses leading comment when present", () => {
     const name = deriveCssName("/* Main styles */\n.foo { color: red; }", 0);
-    expect(name).toBe("Main styles");
+    expect(name).toBe("Main-styles.css");
   });
 
   it("TH-124: style block name falls back to first selector when no comment", () => {
     const name = deriveCssName(".foo { color: red; }", 0);
-    expect(name).toBe(".foo");
+    expect(name).toBe("foo.css");
   });
 
   it("TH-125: style block name falls back to style-N.css when no comment or selector", () => {
@@ -61,12 +61,12 @@ describe("F037 extraction tests", () => {
 
   it("TH-126: script block name uses leading // comment when present", () => {
     const name = deriveJsName("// init handler\nconst x = 1;", 0);
-    expect(name).toBe("init handler");
+    expect(name).toBe("init-handler.js");
   });
 
   it("TH-127: script block name falls back to declaration name when no comment", () => {
     const name = deriveJsName("function initHandler() {}", 0);
-    expect(name).toBe("initHandler");
+    expect(name).toBe("initHandler.js");
   });
 
   it("TH-128: script block name falls back to script-N.js when no comment or declaration", () => {

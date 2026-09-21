@@ -1,4 +1,28 @@
-export interface StyleBlock {
+/** Where a block lives in the published page: `<head>` custom code, an
+ * Embed element (`.w-embed` / code component / rich-text embed) in the
+ * body, or body-level custom code before `</body>` ("Footer"). */
+export type BlockOrigin = 'head' | 'embed' | 'footer';
+
+export const ORIGIN_LABELS: Record<BlockOrigin, string> = {
+  head: 'Head',
+  embed: 'Embed',
+  footer: 'Footer',
+};
+
+/** Provenance fields shared by style and script blocks. All optional for
+ * backwards compatibility with older persisted / hand-built blocks. */
+interface BlockProvenance {
+  /** Where the block was found (see BlockOrigin). */
+  origin?: BlockOrigin;
+  /** Raw `originalContent` of every *other* tag this block stands in for
+   * after `deduplicateBlocks` collapsed repeated (e.g. CMS-item) embeds.
+   * composeDocument applies an edit to all of them. */
+  duplicates?: string[];
+  /** Total number of tags this block represents (1 + duplicates.length). */
+  occurrences?: number;
+}
+
+export interface StyleBlock extends BlockProvenance {
   index: number; // 0-based position in document
   type: 'style';
   originalContent: string; // content as found in HTML
@@ -23,7 +47,7 @@ const CDATA_COMMENT_WRAPPER_RE = /^\s*\/\/\s*<!\[CDATA\[[\s\S]*?\/\/\s*\]\]>\s*$
  * downstream name-derivation and editing see the real code/CSS, not the
  * XML escaping wrapper (F036).
  */
-function stripCdata(content: string): string {
+export function stripCdata(content: string): string {
   const match = (content ?? '').match(CDATA_WRAPPER_RE);
   if (match) {
     return match[1];
@@ -31,7 +55,7 @@ function stripCdata(content: string): string {
   return content;
 }
 
-export interface ScriptBlock {
+export interface ScriptBlock extends BlockProvenance {
   index: number; // 0-based position in document (among script blocks)
   type: 'script';
   originalContent: string; // content as found in HTML
@@ -49,98 +73,227 @@ export interface ScriptBlock {
 
 const SCRIPT_TAG_RE = /<script([^>]*)>([\s\S]*?)<\/script>/gi;
 
-const FIRST_LINE_COMMENT_RE = /^\s*\/\/(.*)$/;
-const DECLARATION_RE = /\b(?:const|let|var|function)\s+([A-Za-z_$][\w$]*)/;
 const MAX_NAME_LENGTH = 60;
-const CSS_FIRST_LINE_COMMENT_RE = /^\s*\/\*([\s\S]*?)\*\//;
-const CSS_SELECTOR_RE = /([.#]?[A-Za-z_-][\w-]*)\s*[,{]/;
+const MAX_COMMENT_TITLE_LENGTH = 40;
+const DECLARATION_RE = /\b(?:const|let|var|function\*?|class)\s+([A-Za-z_$][\w$]*)/;
+// First class or ID selector in a selector position (followed by a `{`
+// before any `;`/`}` -- so hex colours and ids inside values never match).
+const CSS_CLASS_OR_ID_RE = /(?:^|[\s,>+~{}(])[.#](-?[A-Za-z_][\w-]*)(?=[^{};]*\{)/;
+// data-* attribute used inside a selector string literal in JS.
+const JS_DATA_ATTR_RE = /['"`][^'"`\n]*\[\s*(data-[\w-]+)[^'"`\n]*['"`]/;
+const JS_SELECTOR_LITERAL_RE =
+  /(?:querySelector(?:All)?|getElementById|getElementsByClassName|\$)\(\s*['"`]\s*([.#]?)(-?[A-Za-z_][\w-]*)/;
 
 function truncateName(name: string): string {
   if (name.length <= MAX_NAME_LENGTH) {
     return name;
   }
-  return `${name.slice(0, MAX_NAME_LENGTH)}…`;
+  return name.slice(0, MAX_NAME_LENGTH);
+}
+
+/** Makes `raw` safe to use as a file name: keeps letters, digits, `_`, `-`
+ * and `.`, turns whitespace/other runs into single dashes, and trims stray
+ * dashes/dots at the ends. Case is preserved. */
+export function sanitizeFileName(raw: string): string {
+  return (raw ?? '')
+    .replace(/[^\w.-]+/g, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^[-.]+|[-.]+$/g, '');
+}
+
+/** Turns a leading comment into a short title, or null when it is not a
+ * usable title: decorative separator runs (`=====`, `-----`, `*****`) are
+ * stripped, and anything longer than 40 chars or not alphanumeric-ish is
+ * rejected. */
+function commentTitle(raw: string): string | null {
+  const text = (raw ?? '')
+    .replace(/[=\-*#~_/]{3,}/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!text || text.length > MAX_COMMENT_TITLE_LENGTH) return null;
+  if (!/^[\w\s.\-:()&/']+$/.test(text)) return null;
+  const safe = sanitizeFileName(text);
+  return safe || null;
+}
+
+function withExt(name: string, ext: '.css' | '.js'): string {
+  const base = truncateName(sanitizeFileName(name).replace(/\.(css|js)$/i, ''));
+  return base ? `${base}${ext}` : '';
+}
+
+function stripJsComments(src: string): string {
+  return src
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/(^|[^:'"`\\])\/\/[^\n]*/g, '$1');
 }
 
 /**
- * Derives a human-readable name for a CSS style block (F033).
+ * Derives a file name for a CSS style block, moden-style: `<name>.css`.
  *
- * 1. If the first non-whitespace content is a `/* ... *\/` comment, use its
- *    trimmed text.
- * 2. Otherwise use the first CSS selector found in the content.
- * 3. Otherwise fall back to `style-${index + 1}.css`.
- *
- * Result is truncated to 60 chars (with a trailing … if truncated).
+ * 1. A short (<= 40 chars) title-like leading comment. Separator comments
+ *    such as `/* ===== *\/` are ignored.
+ * 2. The first class or ID selector, without its `.`/`#`
+ *    (`.hero_stats-list {` -> `hero_stats-list.css`).
+ * 3. Otherwise (element-only selectors such as `html`/`body`)
+ *    `style-${index + 1}.css`.
  */
 export function deriveCssName(content: string, index: number): string {
   const src = content ?? '';
   const trimmed = src.replace(/^\s+/, '');
 
-  const commentMatch = trimmed.match(CSS_FIRST_LINE_COMMENT_RE);
+  const commentMatch = trimmed.match(/^\/\*([\s\S]*?)\*\//);
   if (commentMatch) {
-    const commentText = commentMatch[1].trim();
-    if (commentText) {
-      return truncateName(commentText);
-    }
+    const title = commentTitle(commentMatch[1]);
+    if (title) return withExt(title, '.css');
   }
 
-  const selectorMatch = src.match(CSS_SELECTOR_RE);
+  const code = src.replace(/\/\*[\s\S]*?\*\//g, ' ');
+  const selectorMatch = code.match(CSS_CLASS_OR_ID_RE);
   if (selectorMatch) {
-    return truncateName(selectorMatch[1]);
+    const name = withExt(selectorMatch[1], '.css');
+    if (name) return name;
   }
 
   return `style-${index + 1}.css`;
 }
 
 /**
- * Removes duplicate blocks by trimmed `originalContent`. When two or more
- * blocks share identical trimmed content, only the first occurrence (in
- * array order) is kept. Kept blocks retain their original `index` values
- * (indexes are not renumbered/compacted).
+ * Derives a file name for a JS script block, moden-style: `<name>.js`.
+ *
+ * 1. A short (<= 40 chars) title-like leading `//` or block comment.
+ *    Separator comments are ignored.
+ * 2. A `data-*` attribute used in a selector string literal
+ *    (`'[data-category-cursor]'` -> `data-category-cursor.js`).
+ * 3. The first declared const/let/var/function/class name.
+ * 4. A class/ID passed to querySelector/getElementById/etc.
+ * 5. Otherwise `script-${index + 1}.js`.
  */
-export function deduplicateBlocks<T extends { originalContent: string; index: number }>(
+export function deriveJsName(content: string, index: number): string {
+  const src = content ?? '';
+  const trimmed = src.replace(/^\s+/, '');
+
+  const lineComment = trimmed.match(/^\/\/(.*)/);
+  const blockComment = trimmed.match(/^\/\*([\s\S]*?)\*\//);
+  const rawComment = lineComment?.[1] ?? blockComment?.[1];
+  if (rawComment !== undefined) {
+    const title = commentTitle(rawComment);
+    if (title) return withExt(title, '.js');
+  }
+
+  const code = stripJsComments(src);
+
+  const dataAttr = code.match(JS_DATA_ATTR_RE);
+  if (dataAttr) {
+    const name = withExt(dataAttr[1], '.js');
+    if (name) return name;
+  }
+
+  const declMatch = code.match(DECLARATION_RE);
+  if (declMatch) {
+    const name = withExt(declMatch[1], '.js');
+    if (name) return name;
+  }
+
+  const selector = code.match(JS_SELECTOR_LITERAL_RE);
+  if (selector) {
+    const name = withExt(selector[2], '.js');
+    if (name) return name;
+  }
+
+  return `script-${index + 1}.js`;
+}
+
+/**
+ * Normalized signature used to collapse repeated embeds (e.g. one Embed
+ * per CMS item). Per-item variance is erased: comments, string/template
+ * literals (URLs, slugs, text), numbers, Webflow item IDs (24 hex chars),
+ * hex colours, unquoted `url(...)` values, and all whitespace.
+ */
+export function blockSignature(content: string): string {
+  return stripJsComments(content ?? '')
+    .replace(/"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`/g, 'S')
+    .replace(/url\(\s*[^)]*\)/gi, 'url()')
+    .replace(/\b[0-9a-f]{24}\b/gi, 'ID')
+    .replace(/#[0-9a-f]{3,8}\b/gi, '#H')
+    .replace(/-?\b\d+(?:\.\d+)?/g, '0')
+    .replace(/\s+/g, '');
+}
+
+export type DedupedBlock<T> = T & { duplicates?: string[]; occurrences?: number };
+
+/**
+ * Collapses repeated blocks into one. Blocks are grouped by `type` (when
+ * present) and `blockSignature(originalContent)`, so byte-identical blocks
+ * AND CMS-repeated embeds that differ only in bound values (strings,
+ * numbers, URLs, item IDs, whitespace) become ONE block. The first
+ * occurrence (in array order) is kept with its original `index`; the other
+ * occurrences' raw contents are recorded on it as `duplicates` (so
+ * composeDocument can apply an edit to all of them) and `occurrences`
+ * holds the total count. Input blocks are not mutated.
+ */
+export function deduplicateBlocks<T extends { originalContent: string; index: number; type?: string }>(
   blocks: T[]
-): T[] {
-  const seen = new Set<string>();
-  const result: T[] = [];
+): DedupedBlock<T>[] {
+  const byKey = new Map<string, DedupedBlock<T>>();
+  const result: DedupedBlock<T>[] = [];
 
   for (const block of blocks) {
-    const key = (block.originalContent ?? '').trim();
-    if (seen.has(key)) {
+    const trimmed = (block.originalContent ?? '').trim();
+    const sig = blockSignature(trimmed);
+    // When almost nothing survives normalization (e.g. a lone string),
+    // fall back to exact content so unrelated blocks never merge.
+    const identity = sig.length > 3 ? `sig:${sig}` : `raw:${trimmed}`;
+    const key = `${block.type ?? ''}|${identity}`;
+    const kept = byKey.get(key);
+    if (kept) {
+      kept.duplicates = [...(kept.duplicates ?? []), block.originalContent];
+      kept.occurrences = (kept.occurrences ?? 1) + 1;
       continue;
     }
-    seen.add(key);
-    result.push(block);
+    const copy: DedupedBlock<T> = { ...block };
+    byKey.set(key, copy);
+    result.push(copy);
   }
 
   return result;
 }
 
+const EMBED_OPEN_RE =
+  /<([a-z][\w-]*)\b[^>]*\bclass\s*=\s*["'][^"']*\b(?:w-embed|w-code-component|w-richtext)\b[^"']*["'][^>]*>/gi;
+
 /**
- * Derives a human-readable name for a JS script block.
- *
- * 1. If the first line of content is a `//` comment, use its text.
- * 2. Otherwise use the name from the first const/let/var/function declaration.
- * 3. Otherwise fall back to `script-${index + 1}.js`.
- *
- * Result is truncated to 60 chars (with a trailing … if truncated).
+ * Classifies where a tag starting at `pos` sits in `html`:
+ * - before `</head>` (or before `<body` when there is no `</head>`) -> head
+ * - inside an element carrying `w-embed` / `w-code-component` /
+ *   `w-richtext` -> embed
+ * - any other body-level position -> footer (footer custom code)
  */
-export function deriveJsName(content: string, index: number): string {
-  const firstLine = (content ?? '').split('\n')[0] ?? '';
-  const commentMatch = firstLine.match(FIRST_LINE_COMMENT_RE);
-  if (commentMatch) {
-    const commentText = commentMatch[1].trim();
-    if (commentText) {
-      return truncateName(commentText);
-    }
+export function detectOrigin(html: string, pos: number): BlockOrigin {
+  const lower = html.toLowerCase();
+  const headClose = lower.indexOf('</head');
+  const bodyOpen = lower.search(/<body[\s>]/);
+  const headEnd = headClose >= 0 ? headClose : bodyOpen;
+  if (headEnd >= 0 && pos < headEnd) return 'head';
+
+  EMBED_OPEN_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  let last: { tag: string; end: number } | null = null;
+  while ((match = EMBED_OPEN_RE.exec(html)) !== null) {
+    if (match.index >= pos) break;
+    last = { tag: match[1].toLowerCase(), end: match.index + match[0].length };
+  }
+  if (last) {
+    // Still inside that element? Count same-name opens/closes between its
+    // opening tag and `pos`, ignoring the bodies of style/script tags.
+    const between = html
+      .slice(last.end, pos)
+      .replace(/<(style|script)\b[^>]*>[\s\S]*?<\/\1>/gi, '');
+    const opens = (between.match(new RegExp(`<${last.tag}\\b`, 'gi')) ?? []).length;
+    const closes = (between.match(new RegExp(`</${last.tag}\\s*>`, 'gi')) ?? []).length;
+    if (closes <= opens) return 'embed';
   }
 
-  const declMatch = (content ?? '').match(DECLARATION_RE);
-  if (declMatch) {
-    return truncateName(declMatch[1]);
-  }
-
-  return `script-${index + 1}.js`;
+  return 'footer';
 }
 
 /**
@@ -181,6 +334,7 @@ export function extractStyleBlocks(html: string): StyleBlock[] {
         originalContent: content,
         content: unwrapped,
         name: deriveCssName(unwrapped, index),
+        origin: detectOrigin(html, match.index),
         hasCdata: CDATA_WRAPPER_RE.test(content ?? ''),
       });
       index += 1;
@@ -234,6 +388,7 @@ export function extractScriptBlocks(html: string): ScriptBlock[] {
         originalContent: content,
         content: unwrapped,
         name: deriveJsName(unwrapped, index),
+        origin: detectOrigin(html, match.index),
         hasCdata: CDATA_WRAPPER_RE.test(content ?? ''),
         cdataStyle: CDATA_COMMENT_WRAPPER_RE.test(content ?? '') ? 'comment' : 'bare',
       });

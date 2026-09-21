@@ -47,6 +47,16 @@ function languageForBlock(file: Block): "css" | "javascript" {
   return file.type === "style" ? "css" : "javascript";
 }
 
+/** Per-file Monaco model URI. Giving every file its own model (with a
+ * `.css` / `.js` extension) means a style block is never parsed by the
+ * JS/TS worker -- previously one shared model was switched between
+ * languages and kept the TS diagnostics ("';' expected") on plain CSS. */
+function modelPathForBlock(file: Block): string {
+  return file.type === "style"
+    ? `file:///style-${file.index}.css`
+    : `file:///script-${file.index}.js`;
+}
+
 /**
  * Editor pane for a single style/script block. Renders Monaco bound to the
  * block's content, reporting edits via `onChange`. Language mode follows
@@ -65,6 +75,12 @@ export function EditorPane({
   const [copyStatus, setCopyStatus] = useState<"idle" | "success" | "error">("idle");
 
   const language = useMemo(() => languageForBlock(file), [file]);
+  const modelPath = useMemo(() => modelPathForBlock(file), [file]);
+  const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
+  const contentRef = useRef(file.content);
+  useEffect(() => {
+    contentRef.current = file.content;
+  }, [file.content]);
   const monacoTheme = resolvedTheme === "dark" ? "vs-dark" : "light";
 
   // Completion providers (F053, F035) — registered once per Monaco mount,
@@ -175,10 +191,31 @@ export function EditorPane({
       });
 
       monacoInstanceRef.current = monaco;
+      editorRef.current = editor as Monaco.editor.IStandaloneCodeEditor;
       registerCompletionProviders(monaco);
     },
     [registerCompletionProviders],
   );
+
+  // Belt and braces: whenever the file (and so possibly the language)
+  // changes, make sure the live model really is in the right language and
+  // drop any markers another language's worker left on it.
+  useEffect(() => {
+    const monaco = monacoInstanceRef.current;
+    const model = editorRef.current?.getModel?.();
+    if (!monaco?.editor?.setModelLanguage || !model) return;
+    // Models outlive a file/host (they're keyed by path), so a reused path
+    // may carry stale text -- the block's content is the source of truth.
+    if (model.getValue() !== contentRef.current) {
+      model.setValue(contentRef.current);
+    }
+    if (model.getLanguageId() !== language) {
+      monaco.editor.setModelLanguage(model, language);
+    }
+    for (const owner of ["typescript", "javascript", "css"]) {
+      if (owner !== language) monaco.editor.setModelMarkers(model, owner, []);
+    }
+  }, [language, modelPath]);
 
   const handleRetry = useCallback(() => {
     setLoadError(null);
@@ -229,7 +266,9 @@ export function EditorPane({
       </div>
       <Editor
         key={retryKey}
+        path={modelPath}
         language={language}
+        defaultLanguage={language}
         theme={monacoTheme}
         value={file.content}
         onChange={handleChange}

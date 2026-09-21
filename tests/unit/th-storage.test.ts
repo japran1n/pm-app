@@ -272,3 +272,40 @@ describe("F091 quota failure handling", () => {
     expect(thrown).toBeNull();
   });
 });
+
+describe("origin / tab fields (moden-style file list)", () => {
+  const HOST = "origin-test.webflow.io";
+
+  it("round-trips origin, occurrences, isUserCreated and activeTab", () => {
+    const state = makeState({ activeTab: "js" });
+    state.blocks = state.blocks.map((b) => ({ ...b, origin: "embed", occurrences: 20, isUserCreated: false }));
+    saveEditorState(HOST, state);
+    const loaded = loadEditorState(HOST);
+    expect(loaded?.activeTab).toBe("js");
+    expect(loaded?.blocks[0].origin).toBe("embed");
+    expect(loaded?.blocks[0].occurrences).toBe(20);
+  });
+
+  it("old saved blocks without origin still load", () => {
+    const state = makeState();
+    state.blocks = state.blocks.map(({ origin: _o, ...rest }) => rest);
+    saveEditorState(HOST, state);
+    expect(loadEditorState(HOST)).not.toBeNull();
+  });
+
+  it("rejects an unknown origin value", () => {
+    const state = makeState();
+    window.localStorage.setItem(
+      getStorageKey(HOST),
+      JSON.stringify({ ...state, blocks: state.blocks.map((b) => ({ ...b, origin: "sidebar" })) }),
+    );
+    expect(loadEditorState(HOST)).toBeNull();
+  });
+
+  it("drops a garbled activeTab without discarding the state", () => {
+    window.localStorage.setItem(getStorageKey(HOST), JSON.stringify({ ...makeState(), activeTab: "html" }));
+    const loaded = loadEditorState(HOST);
+    expect(loaded).not.toBeNull();
+    expect(loaded?.activeTab).toBeUndefined();
+  });
+});

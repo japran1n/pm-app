@@ -16,7 +16,7 @@
 //     useLiveCss whenever a CSS block's content changes.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FileList, type FileListEntry } from "@/components/code-editor/file-list";
+import { FileList, type FileListEntry, type FileTab } from "@/components/code-editor/file-list";
 import EditorLazy from "@/components/code-editor/editor-lazy";
 import { type PreviewPaneHandle } from "@/components/code-editor/preview-pane";
 import { PreviewChrome } from "@/components/code-editor/preview-chrome";
@@ -27,6 +27,7 @@ import { useHostReset } from "@/lib/code-editor/use-host-reset";
 import { useLiveCss } from "@/lib/code-editor/use-live-css";
 import { useDirtyState } from "@/lib/code-editor/use-dirty-state";
 import { composeDocument } from "@/lib/code-editor/compose";
+import { ORIGIN_LABELS, blockSignature, type BlockOrigin } from "@/lib/code-editor/extract";
 import type { Corpus } from "@/lib/code-editor/corpus";
 import { saveEditorState, loadEditorState, type EditorState } from "@/lib/webflow-editor/storage";
 import {
@@ -74,6 +75,9 @@ type PersistedBlock = {
   name?: string;
   activeVersionId: string;
   content: string;
+  origin?: BlockOrigin;
+  occurrences?: number;
+  isUserCreated?: boolean;
 };
 
 type PersistedState = {
@@ -82,6 +86,7 @@ type PersistedState = {
   selectedBlockId?: string | null;
   url?: string;
   activeIndex?: number;
+  activeTab?: FileTab;
 };
 
 let creationCounter = 0;
@@ -101,11 +106,20 @@ function toFileListEntries(
     const activeVer = versionEntry?.versions.find(
       (v) => v.id === versionEntry.activeVersionId,
     );
+    // moden-style sub-label: "<active version> / <origin>".
+    const versionName = activeVer?.name ?? "Original";
+    const originLabel = block.origin
+      ? ORIGIN_LABELS[block.origin]
+      : block.isUserCreated
+        ? "Custom"
+        : undefined;
     return {
       index,
       name: block.name ?? (block.type === "style" ? `style-${index}.css` : `script-${index}.js`),
       type: block.type === "style" ? "css" : "js",
       isModified: activeVer != null && !activeVer.isOriginal,
+      subLabel: originLabel ? `${versionName} / ${originLabel}` : versionName,
+      occurrences: block.occurrences,
     };
   });
 }
@@ -140,19 +154,38 @@ export function EditorLayout({ initialBlocks, html, corpus, hostname, url }: Edi
     // the source of truth for the initial block list rather than only
     // patching content onto the extracted blocks, so a mount with a valid
     // restored state actually reflects what the user had open.
-    const extractedByIndex = new Map(initialBlocks.map((b) => [b.index, b]));
-    return restoredState.blocks.map((stored): EditableBlock => {
-      const extracted = extractedByIndex.get(stored.index);
+    // Style and script indexes are numbered independently, so match on
+    // type + index (matching on index alone paired styles with scripts).
+    const keyOf = (type: string, index: number) => `${type}:${index}`;
+    const extractedByKey = new Map(initialBlocks.map((b) => [keyOf(b.type, b.index), b]));
+    const extractedSignatures = new Set(
+      initialBlocks.map((b) => `${b.type}|${blockSignature(b.content)}`),
+    );
+    const restored: EditableBlock[] = [];
+    for (const stored of restoredState.blocks) {
+      const extracted = extractedByKey.get(keyOf(stored.type, stored.index));
       if (extracted) {
-        return {
+        // Origin/duplicates always come from the fresh extraction, so
+        // state saved before origins existed is re-derived here.
+        restored.push({
           ...extracted,
           content: typeof stored.content === "string" ? stored.content : extracted.content,
           name: stored.name ?? extracted.name,
-        };
+        });
+        continue;
       }
-      // No matching extracted block at this index -- this was a
-      // user-created file that only exists in the persisted state.
-      return {
+      // Legacy state (no isUserCreated flag) may hold a repeated CMS embed
+      // that is now deduplicated into another block -- drop it rather than
+      // resurrecting it as an appended user file.
+      if (
+        stored.isUserCreated === undefined &&
+        extractedSignatures.has(`${stored.type}|${blockSignature(stored.content ?? "")}`)
+      ) {
+        continue;
+      }
+      // No matching extracted block -- a user-created file that only exists
+      // in the persisted state.
+      restored.push({
         type: stored.type,
         index: stored.index,
         name: stored.name,
@@ -160,8 +193,9 @@ export function EditorLayout({ initialBlocks, html, corpus, hostname, url }: Edi
         originalContent: "",
         hasCdata: false,
         isUserCreated: true,
-      };
-    });
+      });
+    }
+    return restored.length > 0 ? restored : initialBlocks;
   }, [initialBlocks, restoredState]);
 
   const {
@@ -186,6 +220,14 @@ export function EditorLayout({ initialBlocks, html, corpus, hostname, url }: Edi
     })(),
   });
 
+  // moden-style CSS / JS tab, remembered per host in the editor state.
+  // Defaults to the active file's type.
+  const [activeTab, setActiveTab] = useState<FileTab>(() => {
+    if (restoredState?.activeTab) return restoredState.activeTab;
+    const active = effectiveInitialBlocks[activeIndex];
+    return active?.type === "script" ? "js" : "css";
+  });
+
   // TH-209..TH-219 — per-block named version state. Initialized lazily (on
   // first access of a block) as a single read-only "Original" snapshot of
   // that block's initial content; the first edit forks a "Draft" off it.
@@ -199,6 +241,10 @@ export function EditorLayout({ initialBlocks, html, corpus, hostname, url }: Edi
   useHostReset(hostname ?? "", () => {
     resetBlocks(effectiveInitialBlocks);
     setVersionsByBlock({});
+    setActiveTab(
+      restoredState?.activeTab ??
+        (effectiveInitialBlocks[0]?.type === "script" ? "js" : "css"),
+    );
   });
 
   // F089/F090 — persist the working set (blocks + content + which file is
@@ -215,14 +261,18 @@ export function EditorLayout({ initialBlocks, html, corpus, hostname, url }: Edi
         name: b.name,
         activeVersionId: "current",
         content: b.content,
+        origin: b.origin,
+        occurrences: b.occurrences,
+        isUserCreated: b.isUserCreated,
       })),
       versions: {},
       selectedBlockId: activeIndex >= 0 ? String(activeIndex) : null,
       url: url ?? undefined,
       activeIndex,
+      activeTab,
     };
     saveEditorState(hostname, persisted as unknown as EditorState);
-  }, [blocks, activeIndex, hostname, url]);
+  }, [blocks, activeIndex, activeTab, hostname, url]);
 
   const previewRef = useRef<PreviewPaneHandle | null>(null);
 
@@ -270,8 +320,33 @@ export function EditorLayout({ initialBlocks, html, corpus, hostname, url }: Edi
               isUserCreated: true,
             };
       addBlock(newBlock);
+      setActiveTab(type);
     },
     [blocks.length, addBlock],
+  );
+
+  // Selecting a file always shows its tab (so picking a file of the other
+  // type switches tabs).
+  const handleSelect = useCallback(
+    (index: number) => {
+      setActiveIndex(index);
+      const block = blocks[index];
+      if (block) setActiveTab(block.type === "style" ? "css" : "js");
+    },
+    [blocks, setActiveIndex],
+  );
+
+  // Switching tabs opens the first file of that type (if any), so the
+  // editor never shows a file from the hidden tab.
+  const handleTabChange = useCallback(
+    (tab: FileTab) => {
+      setActiveTab(tab);
+      const wanted = tab === "css" ? "style" : "script";
+      if (blocks[activeIndex]?.type === wanted) return;
+      const first = blocks.findIndex((b) => b.type === wanted);
+      if (first >= 0) setActiveIndex(first);
+    },
+    [blocks, activeIndex, setActiveIndex],
   );
 
   const handleRename = useCallback(
@@ -485,7 +560,9 @@ export function EditorLayout({ initialBlocks, html, corpus, hostname, url }: Edi
             <FileList
               blocks={toFileListEntries(blocks, versionsByBlock)}
               activeIndex={activeIndex}
-              onSelect={setActiveIndex}
+              onSelect={handleSelect}
+              tab={activeTab}
+              onTabChange={handleTabChange}
               onRename={handleRename}
               onCreate={handleCreate}
               onDelete={deleteBlock}
