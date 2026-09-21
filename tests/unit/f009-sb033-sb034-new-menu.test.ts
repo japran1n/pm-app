@@ -33,8 +33,8 @@ const STUBS: Record<string, string> = {
   "@/components/notifications/notification-bell": `import React from "react"; export const NotificationBell=()=>React.createElement("div");`,
   "@/components/auth/membership-provider": `export const useMembership=()=>({role:window.__role||"admin",hasClient:window.__hasClient!==false,projectRoles:{}});`,
   "@/lib/actions/auth": `export async function signOut(){}`,
-  "@/lib/actions/projects": `export async function reorderProject(){return {ok:true}}`,
-  "@/components/new-project-dialog": `import React from "react"; export const NewProjectDialog=()=>null;`,
+  "@/lib/actions/projects": `export async function reorderProject(){return {ok:true}} export async function createProject(){return {ok:true,data:{name:"x"}}}`,
+  "@/lib/actions/templates": `export async function createProjectFromTemplate(){return {ok:true,data:{name:"x",taskCount:0}}}`,
   "@/components/project-favorite-button": `import React from "react"; export const ProjectFavoriteButton=()=>null;`,
 };
 
@@ -153,14 +153,29 @@ for (const width of [1280, 375]) {
       });
     }, 60_000);
 
-    it(`test_SB_033_${where}_project_and_request_open_their_existing_pages`, async () => {
+    // F028: the REAL NewProjectDialog is mounted (not stubbed). Clicking
+    // Project must make the create dialog actually visible, in place.
+    it(`test_SB_033_${where}_project_opens_real_new_project_dialog_in_place`, async () => {
       await withPage(width, async (p) => {
-        let m = await openMenu(p, width);
+        const dialog = p.getByRole("dialog", { name: "New Project" });
+        expect(await dialog.count()).toBe(0);
+        const m = await openMenu(p, width);
         await m.getByRole("menuitem", { name: "Project" }).click();
-        expect(await pushes(p)).toEqual(["/w/acme/projects"]);
-        m = await openMenu(p, width);
+        await dialog.waitFor({ state: "visible" });
+        expect(await dialog.getByLabel("Name").isVisible()).toBe(true);
+        expect(await dialog.getByRole("button", { name: "Create Project" }).isVisible()).toBe(true);
+        expect(await pushes(p)).toEqual([]);
+        // Cancel closes it again.
+        await dialog.getByRole("button", { name: "Cancel" }).click();
+        await dialog.waitFor({ state: "detached" });
+      });
+    }, 60_000);
+
+    it(`test_SB_033_${where}_request_opens_its_existing_page`, async () => {
+      await withPage(width, async (p) => {
+        const m = await openMenu(p, width);
         await m.getByRole("menuitem", { name: "Request" }).click();
-        expect(await pushes(p)).toEqual(["/w/acme/projects", "/w/acme/requests"]);
+        expect(await pushes(p)).toEqual(["/w/acme/requests"]);
       });
     }, 60_000);
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { CheckSquare, FolderPlus, Inbox, Plus } from "lucide-react";
 
@@ -10,8 +11,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { NewProjectDialog } from "@/components/new-project-dialog";
 import { canWrite } from "@/lib/auth/permissions";
-import { SHORTCUT_EVENTS, type NewTaskShortcutDetail } from "@/lib/hooks/use-shortcut";
+import {
+  SHORTCUT_EVENTS,
+  type NewTaskShortcutDetail,
+} from "@/lib/hooks/use-shortcut";
 import { cn } from "@/lib/utils";
 
 // F009 (SB-033, SB-034): sidebar "+ New" menu. Reuses the existing create
@@ -20,8 +25,9 @@ import { cn } from "@/lib/utils";
 //    shortcut uses, which opens that project's real NewTaskDialog. Tasks
 //    belong to a project, so elsewhere it goes to the Projects page to pick
 //    one (NewTaskDialog owns its open state and has no other entry point).
-//  - Project: NewProjectDialog owns its own trigger/open state on the
-//    Projects page, so this navigates there.
+//  - Project: opens the real NewProjectDialog in place (F028), mounted as a
+//    controlled sibling of the menu. The mobile Sheet is deliberately NOT
+//    closed, since closing it would unmount this component and the dialog.
 //  - Request: requests are raised by clients in the portal; the team-side
 //    surface is the Client requests inbox, so this navigates there. Same
 //    gate as that nav item (workspace has a client, owner/admin).
@@ -30,12 +36,14 @@ import { cn } from "@/lib/utils";
 // button is not rendered at all.
 export function NewMenu({
   workspaceSlug,
+  workspaceId,
   isGuest,
   canManageWorkspace,
   hasClient,
   onNavigate,
 }: {
   workspaceSlug: string;
+  workspaceId: string;
   isGuest: boolean;
   canManageWorkspace: boolean;
   hasClient: boolean;
@@ -44,8 +52,10 @@ export function NewMenu({
   const router = useRouter();
   const pathname = usePathname();
   const membership = useMembership();
+  const [projectDialogOpen, setProjectDialogOpen] = useState(false);
 
-  const canCreate = !isGuest && (membership ? canWrite({ role: membership.role }) : true);
+  const canCreate =
+    !isGuest && (membership ? canWrite({ role: membership.role }) : true);
   const canRequest = !isGuest && canManageWorkspace && hasClient;
 
   if (!canCreate && !canRequest) return null;
@@ -70,42 +80,53 @@ export function NewMenu({
   };
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <button
-            type="button"
-            className={cn(
-              "flex h-8 w-full items-center gap-2 rounded-md border bg-transparent px-2 text-sm font-medium text-foreground",
-              "transition-colors duration-200 hover:border-[var(--border-control-hover)] hover:bg-muted/50",
-              "motion-safe:active:scale-[0.97]",
-            )}
-          />
-        }
-      >
-        <Plus className="size-4 shrink-0" aria-hidden="true" />
-        <span className="flex-1 text-left">New</span>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-56">
-        {canCreate && (
-          <DropdownMenuItem onClick={newTask}>
-            <CheckSquare className="size-4" aria-hidden="true" />
-            Task
-          </DropdownMenuItem>
-        )}
-        {canCreate && (
-          <DropdownMenuItem onClick={() => go(`/w/${workspaceSlug}/projects`)}>
-            <FolderPlus className="size-4" aria-hidden="true" />
-            Project
-          </DropdownMenuItem>
-        )}
-        {canRequest && (
-          <DropdownMenuItem onClick={() => go(`/w/${workspaceSlug}/requests`)}>
-            <Inbox className="size-4" aria-hidden="true" />
-            Request
-          </DropdownMenuItem>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <button
+              type="button"
+              className={cn(
+                "flex h-8 w-full items-center gap-2 rounded-md border bg-transparent px-2 text-sm font-medium text-foreground",
+                "transition-colors duration-200 hover:border-[var(--border-control-hover)] hover:bg-muted/50",
+                "motion-safe:active:scale-[0.97]",
+              )}
+            />
+          }
+        >
+          <Plus className="size-4 shrink-0" aria-hidden="true" />
+          <span className="flex-1 text-left">New</span>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="w-56">
+          {canCreate && (
+            <DropdownMenuItem onClick={newTask}>
+              <CheckSquare className="size-4" aria-hidden="true" />
+              Task
+            </DropdownMenuItem>
+          )}
+          {canCreate && (
+            <DropdownMenuItem onClick={() => setProjectDialogOpen(true)}>
+              <FolderPlus className="size-4" aria-hidden="true" />
+              Project
+            </DropdownMenuItem>
+          )}
+          {canRequest && (
+            <DropdownMenuItem
+              onClick={() => go(`/w/${workspaceSlug}/requests`)}
+            >
+              <Inbox className="size-4" aria-hidden="true" />
+              Request
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {canCreate && (
+        <NewProjectDialog
+          workspaceId={workspaceId}
+          open={projectDialogOpen}
+          onOpenChange={setProjectDialogOpen}
+        />
+      )}
+    </>
   );
 }

@@ -44,12 +44,24 @@ import type { TaskTemplatePickerOption } from "@/lib/queries/templates";
 export function NewProjectDialog({
   workspaceId,
   templateOptions = [],
+  open: controlledOpen,
+  onOpenChange,
 }: {
   workspaceId: string;
   templateOptions?: TaskTemplatePickerOption[];
+  // F028: optional controlled mode (used by the sidebar "+ New" menu). When
+  // `open` is provided the dialog renders no "New Project" trigger button.
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const isControlled = controlledOpen !== undefined;
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = isControlled ? controlledOpen : internalOpen;
+  const setOpen = (next: boolean) => {
+    if (!isControlled) setInternalOpen(next);
+    onOpenChange?.(next);
+  };
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -144,14 +156,16 @@ export function NewProjectDialog({
         }
       }}
     >
-      <DialogTrigger
-        render={
-          <Button className="gap-1.5">
-            <Plus className="size-4" aria-hidden="true" />
-            New Project
-          </Button>
-        }
-      />
+      {!isControlled && (
+        <DialogTrigger
+          render={
+            <Button className="gap-1.5">
+              <Plus className="size-4" aria-hidden="true" />
+              New Project
+            </Button>
+          }
+        />
+      )}
       <DialogContent>
         <DialogHeader>
           <DialogTitle>New Project</DialogTitle>
