@@ -31,7 +31,7 @@ const STUBS: Record<string, string> = {
   "next-themes": `export const useTheme=()=>({theme:"light",resolvedTheme:"light",setTheme(){}});`,
   "sonner": `export const toast={error(){},success(){}};`,
   "@/components/notifications/notification-bell": `import React from "react"; export const NotificationBell=()=>React.createElement("div");`,
-  "@/components/auth/membership-provider": `export const useMembership=()=>({role:window.__role||"admin",hasClient:window.__hasClient!==false,projectRoles:{}});`,
+  "@/components/auth/membership-provider": `export const useMembership=()=>window.__nullMembership?null:({role:window.__role||"admin",hasClient:window.__hasClient!==false,projectRoles:{}});`,
   "@/lib/actions/auth": `export async function signOut(){}`,
   "@/lib/actions/projects": `export async function reorderProject(){return {ok:true}} export async function createProject(){return {ok:true,data:{name:"x"}}}`,
   "@/lib/actions/templates": `export async function createProjectFromTemplate(){return {ok:true,data:{name:"x",taskCount:0}}}`,
@@ -101,7 +101,7 @@ createRoot(document.getElementById("root")!).render(
   css = (await postcss([tailwind()]).process(readFileSync(file, "utf8"), { from: file })).css;
 }, 180_000);
 
-type Opts = { role?: string; guest?: boolean; manage?: boolean; hasClient?: boolean; path?: string };
+type Opts = { nullMembership?: boolean; role?: string; guest?: boolean; manage?: boolean; hasClient?: boolean; path?: string };
 async function withPage<T>(width: number, fn: (p: Page) => Promise<T>, opts: Opts = {}): Promise<T> {
   let browser: Browser | undefined;
   try {
@@ -114,7 +114,7 @@ async function withPage<T>(width: number, fn: (p: Page) => Promise<T>, opts: Opt
     );
     await page.evaluate((o) => {
       const w = window as unknown as Record<string, unknown>;
-      w.__role = o.role; w.__guest = o.guest; w.__manage = o.manage; w.__hasClient = o.hasClient; w.__path = o.path;
+      w.__role = o.role; w.__guest = o.guest; w.__manage = o.manage; w.__hasClient = o.hasClient; w.__nullMembership = o.nullMembership; w.__path = o.path;
       w.__events = [];
       window.addEventListener("pm-app:shortcut:new-task", (e) => (w.__events as unknown[]).push((e as CustomEvent).detail));
     }, opts);
@@ -281,6 +281,37 @@ for (const width of [1280, 375]) {
           expect((await items(m)).map((t) => t.trim())).toEqual(["Task", "Project"]);
         },
         { hasClient: false },
+      );
+    }, 60_000);
+    // F031: full role matrix, real Chromium, gated by the shared predicate.
+    for (const [role, shows] of Object.entries({ owner: true, admin: true, member: true, viewer: false, client: false, guest: false })) {
+      it(`test_SB_034_${where}_role_${role}_${shows ? "sees" : "hides"}_new_button`, async () => {
+        await withPage(
+          width,
+          async (p) => {
+            if (shows) {
+              const m = await openMenu(p, width);
+              expect((await items(m)).map((t) => t.trim())).toEqual(["Task", "Project"]);
+            } else {
+              const s = await scope(p, width);
+              await s.getByRole("button", { name: /Search/ }).waitFor({ state: "visible" });
+              expect(await s.getByRole("button", { name: /^New$/ }).count()).toBe(0);
+            }
+          },
+          { role, manage: true, guest: role === "guest" },
+        );
+      }, 60_000);
+    }
+
+    it(`test_SB_034_${where}_null_membership_fails_closed`, async () => {
+      await withPage(
+        width,
+        async (p) => {
+          const s = await scope(p, width);
+          await s.getByRole("button", { name: /Search/ }).waitFor({ state: "visible" });
+          expect(await s.getByRole("button", { name: /^New$/ }).count()).toBe(0);
+        },
+        { nullMembership: true, manage: true },
       );
     }, 60_000);
   });

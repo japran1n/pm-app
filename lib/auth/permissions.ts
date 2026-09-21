@@ -177,6 +177,18 @@ export function canWrite(ctx: PermissionContext): boolean {
   return ctx.role !== "viewer" && !isClient(ctx);
 }
 
+// F031 (SB-034): creating a workspace-level project (and, by the sidebar's
+// "+ New" menu, the create entry points that hang off it). This is the
+// guest-aware predicate `canWrite`'s doc comment above calls for: an
+// explicit ALLOW-list (owner/admin/member), so viewer, guest, client and any
+// role added later are denied by default. Consumed by both `createProject`
+// (server re-check) and the sidebar "+ New" menu so the two cannot drift.
+// Callers with no resolvable membership must fail closed themselves (there
+// is no role to pass) -- see components/nav/new-menu.tsx.
+export function canCreateProject(ctx: PermissionContext): boolean {
+  return ctx.role === "owner" || ctx.role === "admin" || ctx.role === "member";
+}
+
 // --- Task-level predicates -------------------------------------------------
 
 // Editing a task's fields (title, description, status, assignee, etc).

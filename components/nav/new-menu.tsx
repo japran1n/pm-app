@@ -12,7 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { NewProjectDialog } from "@/components/new-project-dialog";
-import { canWrite } from "@/lib/auth/permissions";
+import { canCreateProject } from "@/lib/auth/permissions";
 import {
   SHORTCUT_EVENTS,
   type NewTaskShortcutDetail,
@@ -49,8 +49,11 @@ export function NewMenu({
   const membership = useMembership();
   const [projectDialogOpen, setProjectDialogOpen] = useState(false);
 
+  // Fail closed: no resolvable membership (provider absent, or the layout's
+  // memberships query failed) means no create entries. The `isGuest` prop is
+  // an extra deny on top of the shared predicate, never an allow.
   const canCreate =
-    !isGuest && (membership ? canWrite({ role: membership.role }) : true);
+    !isGuest && membership !== null && canCreateProject({ role: membership.role });
 
   if (!canCreate) return null;
 

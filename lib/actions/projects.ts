@@ -15,7 +15,7 @@ import {
   requireActiveMembership,
   requireWorkspaceAdmin,
 } from "@/lib/auth/require-membership";
-import { canWrite } from "@/lib/auth/permissions";
+import { canCreateProject, canWrite } from "@/lib/auth/permissions";
 import { writeAudit } from "@/lib/activity/audit";
 import type { Database } from "@/lib/supabase/database.types";
 import type { ActionResult } from "@/lib/actions/authz";
@@ -101,21 +101,16 @@ export async function createProject(
     };
   }
 
-  // F128 (AS-216, AS-217): viewers are read-only (canWrite deliberately
-  // does not exclude guest — see its doc comment in lib/auth/permissions.ts;
-  // guest write access is separately scoped by F134's AS-223).
-  if (!canWrite({ role: membership.role })) {
+  // F031 (SB-034): one shared predicate (lib/auth/permissions.ts) also backs
+  // the sidebar "+ New" menu. Allow-list: owner/admin/member. The branches
+  // below only pick the error message.
+  if (!canCreateProject({ role: membership.role })) {
+    if (membership.role === "guest") {
+      return { ok: false, error: "Guests cannot create projects." };
+    }
     return {
       ok: false,
       error: "Viewers don't have permission to create projects.",
-    };
-  }
-
-  // Guests are project-scoped contributors; they cannot create new projects.
-  if (membership.role === "guest") {
-    return {
-      ok: false,
-      error: "Guests cannot create projects.",
     };
   }
 
