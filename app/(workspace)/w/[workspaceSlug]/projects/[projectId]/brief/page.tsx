@@ -201,10 +201,10 @@ export default async function ProjectBriefPage({
                   )}
                 </>
               ) : documentLookupFailed ? (
-                <p className="text-sm text-warning" role="alert">
+                <p className="text-sm text-muted-foreground" role="alert">
                   Couldn&apos;t check for an existing brief document, so the
-                  Generate Document, Request Approval and Approve actions are
-                  unavailable until you reload the page.
+                  Generate Document, Request Approval, Approve and Withdraw
+                  approval actions are unavailable until you reload the page.
                 </p>
               ) : (
                 <GenerateDocumentButton

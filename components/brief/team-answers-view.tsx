@@ -94,8 +94,10 @@ export function TeamAnswersView({ items }: { items: TeamAnswersViewQuestion[] })
             {isAnswered && answer ? (
               <>
                 <AnswerValue question={question} answer={answer} />
-                <p className="font-mono text-xs text-muted-foreground">
-                  {answer.answeredByName ?? "Someone"} · {formatRelative(answer.updatedAt)}
+                <p className="text-xs text-muted-foreground">
+                  <span>{answer.answeredByName ?? "Someone"}</span>
+                  {" · "}
+                  <span className="font-mono">{formatRelative(answer.updatedAt)}</span>
                 </p>
               </>
             ) : question.required ? (

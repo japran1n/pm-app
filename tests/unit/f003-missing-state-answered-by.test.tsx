@@ -39,9 +39,12 @@ describe("F003", () => {
     expect(el.className).toContain("text-warning");
   });
 
-  it("test_BR_017_answered_row_shows_name_and_relative_time_mono", () => {
+  it("test_BR_017_answered_row_person_name_sans_relative_time_mono", () => {
     render(<TeamAnswersView items={[{ question: q(), answer: a(), hasRevisions: false }]} />);
-    const el = screen.getByText("Ana · 2d ago");
-    expect(el.className).toContain("font-mono");
+    const name = screen.getByText("Ana");
+    expect(name.className).not.toContain("font-mono");
+    expect(name.closest(".font-mono")).toBeNull();
+    const time = screen.getByText("2d ago");
+    expect(time.className).toContain("font-mono");
   });
 });
