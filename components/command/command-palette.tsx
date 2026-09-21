@@ -217,8 +217,10 @@ export function CommandPalette({
   React.useEffect(() => {
     function onOpenRequest(event: Event) {
       const detail = (event as CustomEvent<{ handled?: boolean } | null>).detail;
-      if (detail && typeof detail === "object") detail.handled = true;
+      // Acknowledge only after opening succeeds, so a throwing open lets
+      // the sidebar fall back instead of producing a dead click.
       setOpen(true);
+      if (detail && typeof detail === "object") detail.handled = true;
     }
 
     window.addEventListener(COMMAND_PALETTE_OPEN_EVENT, onOpenRequest);

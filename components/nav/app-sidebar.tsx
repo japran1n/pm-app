@@ -26,7 +26,10 @@ import {
 
 import { useMembership } from "@/components/auth/membership-provider";
 import { cn } from "@/lib/utils";
-import { COMMAND_PALETTE_OPEN_EVENT } from "@/lib/hooks/use-shortcut";
+import {
+  COMMAND_PALETTE_OPEN_EVENT,
+  isMacPlatform,
+} from "@/lib/hooks/use-shortcut";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -336,7 +339,7 @@ function SidebarContent({
   const [isMac, setIsMac] = useState(false);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- post-hydration platform read
-    setIsMac(/mac|iphone|ipad/i.test(navigator.platform || navigator.userAgent || ""));
+    setIsMac(isMacPlatform());
   }, []);
   const openSearch = () => {
     onNavigate?.();
@@ -344,7 +347,14 @@ function SidebarContent({
     // listener). If none answers, fall back to the search page.
     const detail = { handled: false };
     window.dispatchEvent(new CustomEvent(COMMAND_PALETTE_OPEN_EVENT, { detail }));
-    if (!detail.handled) router.push(`/w/${workspaceSlug}/search`);
+    if (!detail.handled) {
+      if (process.env.NODE_ENV === "development") {
+        console.warn(
+          "[AppSidebar] No CommandPalette acknowledged the open request; falling back to the /search page. Check that <CommandPalette> is mounted and listens for COMMAND_PALETTE_OPEN_EVENT.",
+        );
+      }
+      router.push(`/w/${workspaceSlug}/search`);
+    }
   };
   // C5: the client-request nav item is workspace-dependent, so it reads
   // the same server-fetched `hasClient` flag the task sheet's share toggle
