@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { slugifySection, uniqueSectionIds } from "@/lib/brief/slugify-section";
 import { cn } from "@/lib/utils";
@@ -17,6 +17,8 @@ export type BriefTocSection = {
 export { slugifySection };
 
 const BOTTOM_TOLERANCE_PX = 4;
+// After a click, the programmatic scroll must not overwrite the chosen entry.
+const CLICK_SUPPRESS_MS = 800;
 
 /**
  * Nearest ancestor that actually scrolls (the app shell scrolls inside a
@@ -53,6 +55,7 @@ export function BriefToc({ sections }: { sections: BriefTocSection[] }) {
   const idsKey = items.map((s) => s.id).join("|");
 
   const [active, setActive] = useState<string | null>(items[0]?.id ?? null);
+  const suppressUntil = useRef(0);
 
   useEffect(() => {
     if (!idsKey) return;
@@ -64,13 +67,15 @@ export function BriefToc({ sections }: { sections: BriefTocSection[] }) {
     const scrollTarget: HTMLElement | Window = scrollRoot ?? window;
 
     const update = () => {
+      if (Date.now() < suppressUntil.current) return;
+      const first = ids.find((id) => visible.has(id));
       // Short last sections can never reach the observer's trigger band, so
-      // when the page is scrolled to the bottom the last one wins.
+      // at the bottom pick the last intersecting section, else the last one.
       if (isScrolledToBottom(scrollRoot)) {
-        setActive(last);
+        const lastVisible = [...ids].reverse().find((id) => visible.has(id));
+        setActive(lastVisible ?? last);
         return;
       }
-      const first = ids.find((id) => visible.has(id));
       if (first) setActive(first);
     };
 
@@ -91,15 +96,19 @@ export function BriefToc({ sections }: { sections: BriefTocSection[] }) {
       }
     }
     scrollTarget.addEventListener("scroll", update, { passive: true });
+    window.addEventListener("resize", update);
+    update();
     return () => {
       observer?.disconnect();
       scrollTarget.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
     };
   }, [idsKey]);
 
   if (sections.length <= 1) return null;
 
   const go = (id: string) => {
+    suppressUntil.current = Date.now() + CLICK_SUPPRESS_MS;
     setActive(id);
     const reduce =
       typeof window.matchMedia === "function" &&

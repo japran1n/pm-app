@@ -130,6 +130,93 @@ describe("BriefToc scroll-spy", () => {
     expect(current()).toEqual(["品牌1/2"]);
   });
 
+  function containerFixture(top: () => number) {
+    document.body.innerHTML = "";
+    const container = document.createElement("div");
+    container.style.overflowY = "auto";
+    document.body.appendChild(container);
+    for (const id of uniqueSectionIds(names)) {
+      const el = document.createElement("div");
+      el.id = id;
+      container.appendChild(el);
+    }
+    Object.defineProperty(container, "clientHeight", { value: 600, configurable: true });
+    Object.defineProperty(container, "scrollHeight", { value: 2000, configurable: true });
+    Object.defineProperty(container, "scrollTop", { get: top, configurable: true });
+    return container;
+  }
+
+  it("test_BR_032_click_second_to_last_at_max_scroll_stays_active", () => {
+    const container = containerFixture(() => 1400);
+    render(createElement(BriefToc, { sections }));
+    fireEvent.click(screen.getByText("Бренд"));
+    // the smooth scroll lands at the bottom and fires scroll events
+    act(() => {
+      fireEvent.scroll(container);
+    });
+    expect(current()).toEqual(["Бренд1/2"]);
+  });
+
+  it("test_BR_032_bottom_picks_last_intersecting_not_forced_last", () => {
+    const container = containerFixture(() => 1400);
+    render(createElement(BriefToc, { sections }));
+    const ids = uniqueSectionIds(names);
+    act(() => {
+      cb(
+        [{ isIntersecting: true, target: document.getElementById(ids[2])! } as unknown as IntersectionObserverEntry],
+        {} as IntersectionObserver,
+      );
+    });
+    act(() => {
+      fireEvent.scroll(container);
+    });
+    expect(current()).toEqual(["Бренд1/2"]);
+  });
+
+  it("test_BR_032_observer_root_is_scroll_container", () => {
+    const opts: IntersectionObserverInit[] = [];
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        constructor(_c: IntersectionObserverCallback, o: IntersectionObserverInit) {
+          opts.push(o);
+        }
+        observe() {}
+        disconnect() {}
+        unobserve() {}
+      },
+    );
+    const container = containerFixture(() => 0);
+    render(createElement(BriefToc, { sections }));
+    expect(opts[0].root).toBe(container);
+  });
+
+  it("test_BR_032_resize_triggers_update_and_is_removed_on_unmount", () => {
+    let top = 0;
+    const container = containerFixture(() => top);
+    const add = vi.spyOn(window, "addEventListener");
+    const remove = vi.spyOn(window, "removeEventListener");
+    const { unmount } = render(createElement(BriefToc, { sections }));
+    expect(current()).toEqual(["Brand & Voice1/2"]);
+    expect(container).toBeTruthy();
+    expect(add.mock.calls.some((c) => c[0] === "resize")).toBe(true);
+    top = 1400; // layout changed to bottom; resize re-evaluates
+    act(() => {
+      fireEvent(window, new Event("resize"));
+    });
+    expect(current()).toEqual(["品牌1/2"]);
+    unmount();
+    expect(remove.mock.calls.some((c) => c[0] === "resize")).toBe(true);
+    add.mockRestore();
+    remove.mockRestore();
+  });
+
+  it("test_BR_032_initial_update_on_mount_at_bottom", () => {
+    containerFixture(() => 1400);
+    render(createElement(BriefToc, { sections }));
+    expect(current()).toEqual(["品牌1/2"]);
+  });
+
   it("test_BR_032_click_uses_auto_behavior_with_reduced_motion", () => {
     vi.stubGlobal("matchMedia", (q: string) => ({ matches: q.includes("reduce") }));
     render(createElement(BriefToc, { sections }));
