@@ -155,4 +155,20 @@ describe("F025 SB-009 real 375px mobile nav", () => {
       for (const h of heights) expect(h).toBeGreaterThanOrEqual(44);
     });
   }, 60_000);
+
+  // F035 (FU-22): the author's `w-64` must be the class that wins over the
+  // shared Sheet default (`w-3/4` = 281.25px at 375). Sheet is 256px and fits
+  // the viewport (desktop aside is a separate 240px column, untouched).
+  it("test_SB_009_375px_sheet_width_is_authors_w_64_256px", async () => {
+    await withPage(375, async (p) => {
+      await p.getByRole("button", { name: "Open navigation" }).click();
+      const dialog = p.getByRole("dialog");
+      await dialog.waitFor({ state: "visible" });
+      await p.waitForTimeout(400); // slide-in transition
+      const w = await dialog.evaluate((el) => el.getBoundingClientRect().width);
+      expect(w).toBeCloseTo(256, 0);
+      expect(w).not.toBeCloseTo(281.25, 0);
+      expect(w).toBeLessThan(375);
+    });
+  }, 60_000);
 });

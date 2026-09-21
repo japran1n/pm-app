@@ -161,6 +161,7 @@ export function NewMenu({
           templateOptions={templateOptions}
           open={projectDialogOpen}
           onOpenChange={setProjectDialogOpen}
+          onCreated={onNavigate}
         />
       )}
     </>

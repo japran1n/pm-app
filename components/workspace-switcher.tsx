@@ -84,7 +84,7 @@ export function WorkspaceSwitcher({
                 logoUrl={workspace.logoUrl}
                 size="sm"
               />
-              <span className="truncate">{workspace.name}</span>
+              <span className="min-w-0 break-words">{workspace.name}</span>
             </span>
             {workspace.id === currentWorkspaceId ? (
               <Check className="text-muted-foreground" />

@@ -193,6 +193,39 @@ for (const width of [1280, 375]) {
       });
     }, 60_000);
 
+    // F035 (FU-22): after a SUCCESSFUL create the mobile Sheet closes too;
+    // on desktop there is no Sheet and the aside stays put. Cancel must NOT
+    // close the Sheet (dialog not unmounted mid-flow).
+    it(`test_SB_033_${where}_successful_project_create_${width < 768 ? "closes_mobile_sheet" : "keeps_desktop_aside"}`, async () => {
+      await withPage(width, async (p) => {
+        const m = await openMenu(p, width);
+        await m.getByRole("menuitem", { name: "Project" }).click();
+        const dialog = p.getByRole("dialog", { name: "New Project" });
+        await dialog.waitFor({ state: "visible" });
+        await dialog.getByLabel("Name").fill("Apollo Two");
+        await dialog.getByRole("button", { name: "Create Project" }).click();
+        await dialog.waitFor({ state: "detached" });
+        if (width < 768) {
+          await p.getByRole("button", { name: "Open navigation" }).waitFor({ state: "visible" });
+          await p.waitForFunction(() => document.querySelectorAll("[role=dialog]").length === 0);
+        } else {
+          expect(await p.locator("aside").isVisible()).toBe(true);
+        }
+      });
+    }, 60_000);
+
+    it(`test_SB_033_${where}_cancelled_project_create_keeps_sheet_open`, async () => {
+      await withPage(width, async (p) => {
+        const m = await openMenu(p, width);
+        await m.getByRole("menuitem", { name: "Project" }).click();
+        const dialog = p.getByRole("dialog", { name: "New Project" });
+        await dialog.waitFor({ state: "visible" });
+        await dialog.getByRole("button", { name: "Cancel" }).click();
+        await dialog.waitFor({ state: "detached" });
+        if (width < 768) expect(await p.getByRole("dialog").count()).toBe(1);
+      });
+    }, 60_000);
+
     // F029: NewTaskDialog is really mounted (as on the board/list pages), so
     // the click must produce a visible New Task dialog, not just an event.
     for (const sub of ["board", "list"]) {
@@ -215,7 +248,7 @@ for (const width of [1280, 375]) {
 
     // F029: on every other project subroute no NewTaskDialog is mounted. The
     // click must not silently no-op: it navigates to the board, which hosts it.
-    for (const sub of ["brief", "settings", "docs", "hours", "architecture"]) {
+    for (const sub of ["brief", "settings", "docs", "hours", "architecture", "staging", "print"]) {
       it(`test_SB_033_${where}_task_on_${sub}_route_does_not_noop_navigates_to_board`, async () => {
         await withPage(
           width,

@@ -327,15 +327,17 @@ export default async function WorkspaceLayout({
 
   const workspaceIds = (memberships ?? []).map((m) => m.workspace_id);
 
-  // F134 (AS-222): role in the active workspace specifically.
-  const isGuest =
-    (memberships ?? []).find((m) => m.workspace_id === activeWorkspace.id)
-      ?.role === "guest";
-
-  // F135 (AS-231): full workspace role for MembershipProvider.
+  // F135 (AS-231): full workspace role for MembershipProvider. Falls back
+  // to "guest" when the memberships query errored or returned no row.
   const activeWorkspaceRole =
     (memberships ?? []).find((m) => m.workspace_id === activeWorkspace.id)
       ?.role ?? "guest";
+
+  // F134 (AS-222) / F035 (FU-22): derived from the SAME resolved role, so the
+  // sidebar's guest flag and the provider's role fail closed together when the
+  // memberships query errors (previously a second `.find()` left isGuest
+  // false while the role fell back to "guest").
+  const isGuest = activeWorkspaceRole === "guest";
 
   const projectRoles: Record<string, ProjectRole> = {};
   for (const row of projectMemberRows ?? []) {

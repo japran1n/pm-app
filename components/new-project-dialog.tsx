@@ -46,6 +46,7 @@ export function NewProjectDialog({
   templateOptions = [],
   open: controlledOpen,
   onOpenChange,
+  onCreated,
 }: {
   workspaceId: string;
   templateOptions?: TaskTemplatePickerOption[];
@@ -53,6 +54,10 @@ export function NewProjectDialog({
   // `open` is provided the dialog renders no "New Project" trigger button.
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  // F035: called after a SUCCESSFUL create (dialog already closed), so a host
+  // such as the mobile nav Sheet can close itself without unmounting the
+  // dialog mid-flow.
+  onCreated?: () => void;
 }) {
   const router = useRouter();
   const isControlled = controlledOpen !== undefined;
@@ -103,6 +108,7 @@ export function NewProjectDialog({
         toast.success(`${result.data.name} created.`);
         resetAndClose();
         router.refresh();
+        onCreated?.();
       } else {
         setError(result.error);
         toast.error(result.error);
@@ -138,6 +144,7 @@ export function NewProjectDialog({
         );
         resetAndClose();
         router.refresh();
+        onCreated?.();
       } else {
         setTemplateError(result.error);
         toast.error(result.error);

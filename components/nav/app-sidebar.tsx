@@ -749,7 +749,7 @@ export function AppSidebar({
               </Button>
             }
           />
-          <SheetContent side="left" className="w-64 p-0">
+          <SheetContent side="left" className="w-64 data-[side=left]:w-64 p-0">
             <SidebarContent
               workspaceSlug={workspaceSlug}
               workspaces={workspaces}
