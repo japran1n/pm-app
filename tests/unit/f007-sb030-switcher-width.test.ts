@@ -133,7 +133,22 @@ function measure(scope: Locator) {
     r.selectNodeContents(span);
     const rects = Array.from(r.getClientRects());
     const sp = span.getBoundingClientRect();
+    const row = btn.parentElement!.parentElement!.getBoundingClientRect();
+    const aside = (btn.closest("aside,[role=dialog]") as HTMLElement);
+    const acs = getComputedStyle(aside);
+    const asideInner =
+      aside.getBoundingClientRect().width -
+      parseFloat(acs.paddingLeft) - parseFloat(acs.paddingRight) -
+      parseFloat(acs.borderLeftWidth) - parseFloat(acs.borderRightWidth);
+    const nextSib = btn.parentElement!.parentElement!.nextElementSibling!.getBoundingClientRect();
     return {
+      inRow: b.top >= row.top - 0.5 && b.bottom <= row.bottom + 0.5 && b.left >= row.left - 0.5 && b.right <= row.right + 0.5,
+      rowRect: [row.top, row.bottom],
+      btnRect: [b.top, b.bottom],
+      labelInViewport: rects.length > 0 && rects.every((x) => x.top >= 0 && x.bottom <= innerHeight),
+      overlapsNext: b.bottom > nextSib.top + 0.5,
+      asideInner,
+      rowInner: row.width,
       textOverflow: cs.textOverflow,
       clipped: span.scrollWidth > span.clientWidth + 1 || btn.scrollWidth > btn.clientWidth + 1,
       textInsideSpan: rects.every((x) => x.right <= sp.right + 1 && x.left >= sp.left - 1),
@@ -146,6 +161,21 @@ function measure(scope: Locator) {
   }, NAME);
 }
 
+// F027: containment, not self-fit. The trigger must sit inside the header row,
+// the label must be inside the viewport vertically, it must not overlap the
+// block below, and it must span the sidebar's own inner width (minus the row's
+// horizontal padding and the bell) -- compared against the aside, not the
+// flex-1 column that matches the button by construction.
+function expectContained(m: Awaited<ReturnType<typeof measure>>) {
+  expect(m.inRow, `btn ${m.btnRect} vs row ${m.rowRect}`).toBe(true);
+  expect(m.labelInViewport).toBe(true);
+  expect(m.overlapsNext).toBe(false);
+  // Row padding (px-3 = 24) + gap-2 (8) + bell (>=38) leaves the trigger
+  // strictly narrower than the aside; it must still fill nearly all of it.
+  expect(m.btnWidth).toBeLessThanOrEqual(m.asideInner);
+  expect(m.btnWidth).toBeGreaterThanOrEqual(m.asideInner - 24 - 8 - 44 - 1);
+}
+
 describe("F007 SB-030 workspace switcher full width, 40-char name", () => {
   it("test_SB_030_desktop_1280_name_fully_visible_and_trigger_fills_column", async () => {
     await withPage(1280, async (p) => {
@@ -155,7 +185,7 @@ describe("F007 SB-030 workspace switcher full width, 40-char name", () => {
       expect(m.textInsideSpan).toBe(true);
       expect(m.btnH).toBeGreaterThanOrEqual(m.btnScrollH - 1);
       expect(m.title).toBe(NAME);
-      expect(m.btnWidth).toBeGreaterThanOrEqual(m.colWidth - 1);
+      expectContained(m);
     });
   }, 60_000);
 
@@ -169,7 +199,7 @@ describe("F007 SB-030 workspace switcher full width, 40-char name", () => {
       expect(m.clipped).toBe(false);
       expect(m.textInsideSpan).toBe(true);
       expect(m.btnH).toBeGreaterThanOrEqual(m.btnScrollH - 1);
-      expect(m.btnWidth).toBeGreaterThanOrEqual(m.colWidth - 1);
+      expectContained(m);
     });
   }, 60_000);
 });

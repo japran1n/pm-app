@@ -41,11 +41,14 @@ export function NotificationBellSkeleton() {
 }
 
 // workspace-switcher-figure.tsx: the trigger is a `size="sm"` (h-[34px])
-// outline Button spanning `w-full max-w-56` with a `rounded-lg` corner.
+// outline Button spanning `w-full` (no max-width cap, F007) with a `rounded-lg`
+// corner. Its min-h is 34px; a long name wraps and grows it inside the header
+// row (`min-h-12 py-1.5`, F027), which a fixed skeleton cannot predict. The
+// common single-line name matches the 34px box exactly, so no jump.
 export function WorkspaceSwitcherSkeleton() {
   return (
     <span
-      className="block h-[34px] w-full max-w-56 animate-pulse rounded-lg border border-border bg-muted"
+      className="block h-[34px] w-full animate-pulse rounded-lg border border-border bg-muted"
       aria-hidden="true"
     />
   );

@@ -409,7 +409,7 @@ function SidebarContent({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex h-12 items-center gap-2 border-b px-3">
+      <div className="flex min-h-12 items-center gap-2 border-b px-3 py-1.5">
         <div className="min-w-0 flex-1">
           {workspaceSwitcherSlot ?? (
             <WorkspaceSwitcher

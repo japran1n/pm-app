@@ -32,10 +32,11 @@ describe("AS-017/AS-020: Suspense fallbacks hold each figure's exact footprint",
     expect(html).toMatch(/max-md:size-11/);
   });
 
-  it("WorkspaceSwitcherSkeleton reserves the sm-Button trigger's own box (h-[34px], w-full max-w-56, rounded-lg)", () => {
+  it("WorkspaceSwitcherSkeleton reserves the sm-Button trigger's own box (h-[34px], w-full with no max-w cap, rounded-lg)", () => {
     const html = renderToStaticMarkup(createElement(WorkspaceSwitcherSkeleton));
     expect(html).toMatch(/h-\[34px\]/);
-    expect(html).toMatch(/max-w-56/);
+    expect(html).toMatch(/w-full/);
+    expect(html).not.toMatch(/max-w-/);
     expect(html).toMatch(/rounded-lg/);
   });
 
