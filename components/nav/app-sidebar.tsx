@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useId, useState, useTransition } from "react";
+import { useCallback, useEffect, useId, useRef, useState, useTransition } from "react";
 import {
   LayoutDashboard,
   KanbanSquare,
@@ -365,6 +365,27 @@ function SidebarContent({
     chatUnreadBadge,
   );
 
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [showFade, setShowFade] = useState(false);
+  const updateFade = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setShowFade(el.scrollHeight > el.clientHeight && el.scrollTop + el.clientHeight < el.scrollHeight - 1);
+  }, []);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    updateFade();
+    el.addEventListener("scroll", updateFade, { passive: true });
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(updateFade) : null;
+    ro?.observe(el);
+    Array.from(el.children).forEach((c) => ro?.observe(c));
+    return () => {
+      el.removeEventListener("scroll", updateFade);
+      ro?.disconnect();
+    };
+  }, [updateFade]);
+
   return (
     <div className="flex h-full flex-col">
       <div className="flex h-12 items-center gap-2 border-b px-3">
@@ -422,15 +443,20 @@ function SidebarContent({
           `overflow-y-auto` only ever shows a scrollbar when its content
           genuinely exceeds its allotted (bounded via `min-h-0` +
           `flex-1` up the chain to the sidebar's own `h-svh`) height. */}
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+      <div className="relative flex min-h-0 flex-1 flex-col">
+      <div
+        ref={scrollRef}
+        data-testid="sidebar-scroll"
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto"
+      >
         <nav
           data-tour="sidebar-nav"
-          className="flex shrink-0 flex-col gap-3 p-2"
+          className="flex shrink-0 flex-col gap-2 p-2"
         >
           {groups.map((group, groupIndex) => (
             <div key={group.label ?? `group-${groupIndex}`} className="flex flex-col gap-0.5">
               {group.label === "Tools" ? (
-                <p className="mb-1 mt-3 px-2 text-xs text-muted-foreground uppercase tracking-wide">
+                <p className="mb-1 mt-2 px-2 text-xs text-muted-foreground uppercase tracking-wide">
                   <button
                     type="button"
                     onClick={toggleTools}
@@ -447,7 +473,7 @@ function SidebarContent({
                 </p>
               ) : (
                 group.label && (
-                  <p className="px-2 mb-1 mt-3 text-xs text-muted-foreground uppercase tracking-wide">
+                  <p className="px-2 mb-1 mt-2 text-xs text-muted-foreground uppercase tracking-wide">
                     {group.label}
                   </p>
                 )
@@ -477,7 +503,7 @@ function SidebarContent({
                       // md:hidden`), so a `sm:` check would leave 640-767px
                       // tablet widths (where the mobile Sheet is still what's
                       // shown) under-sized.
-                      "flex min-h-9 items-center gap-2.5 rounded-[4px] px-2 py-1.5 text-sm max-md:min-h-11",
+                      "flex items-center gap-2.5 rounded-[4px] px-2 py-1.5 text-sm md:h-8 md:py-0 max-md:min-h-11",
                       isActive
                         ? "bg-accent text-foreground font-medium"
                         : "text-muted-foreground hover:bg-accent",
@@ -519,6 +545,14 @@ function SidebarContent({
             onNavigate={onNavigate}
           />
         </div>
+      </div>
+      {showFade ? (
+        <div
+          aria-hidden="true"
+          data-testid="sidebar-bottom-fade"
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-sidebar to-transparent"
+        />
+      ) : null}
       </div>
 
       {/* UX: `shrink-0` makes explicit what was already true structurally
