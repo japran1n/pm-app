@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { createElement } from "react";
-import { cleanup, render, screen, fireEvent, act } from "@testing-library/react";
+import { cleanup, render, screen, fireEvent, act, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { readFileSync } from "node:fs";
@@ -60,6 +60,8 @@ describe("F006", () => {
 
   it("test_SB_009_mobile_sheet_uses_same_sidebar_content", () => {
     render(createElement(AppSidebar, props));
-    expect(screen.getAllByRole("button", { name: /menu/i }).length).toBeGreaterThan(0);
+    // Real hamburger (the old /menu/i matched the desktop AccountMenu trigger).
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    expect(within(screen.getByRole("dialog")).getByRole("link", { name: /dashboard/i })).toBeInTheDocument();
   });
 });
