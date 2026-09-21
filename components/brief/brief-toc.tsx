@@ -19,6 +19,7 @@ export { slugifySection };
 const BOTTOM_TOLERANCE_PX = 4;
 // After a click, the programmatic scroll must not overwrite the chosen entry.
 const CLICK_SUPPRESS_MS = 800;
+const now = () => Date.now();
 
 /**
  * Nearest ancestor that actually scrolls (the app shell scrolls inside a
@@ -67,7 +68,7 @@ export function BriefToc({ sections }: { sections: BriefTocSection[] }) {
     const scrollTarget: HTMLElement | Window = scrollRoot ?? window;
 
     const update = () => {
-      if (Date.now() < suppressUntil.current) return;
+      if (now() < suppressUntil.current) return;
       const first = ids.find((id) => visible.has(id));
       // Short last sections can never reach the observer's trigger band, so
       // at the bottom pick the last intersecting section, else the last one.
@@ -108,7 +109,7 @@ export function BriefToc({ sections }: { sections: BriefTocSection[] }) {
   if (sections.length <= 1) return null;
 
   const go = (id: string) => {
-    suppressUntil.current = Date.now() + CLICK_SUPPRESS_MS;
+    suppressUntil.current = now() + CLICK_SUPPRESS_MS;
     setActive(id);
     const reduce =
       typeof window.matchMedia === "function" &&
