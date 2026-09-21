@@ -11,6 +11,12 @@ import { afterEach } from "vitest";
 import { createElement } from "react";
 import "@testing-library/jest-dom/vitest";
 
+// FU-8 / SB-004: the bell is an unrelated async client that calls a server
+// action (cookies()) on mount; stub it so E251 rejections do not flood the run.
+vi.mock("@/components/notifications/notification-bell", () => ({
+  NotificationBell: () => null,
+}));
+
 vi.mock("next/navigation", () => ({
   usePathname: () => "/w/acme",
   useRouter: () => ({ push: () => {}, refresh: () => {} }),
