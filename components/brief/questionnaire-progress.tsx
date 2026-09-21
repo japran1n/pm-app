@@ -7,17 +7,23 @@
 export function QuestionnaireProgress({
   currentIndex,
   total,
+  isReview = false,
 }: {
   currentIndex: number;
   total: number;
+  // F010: the review step follows the last section; label it "Review".
+  isReview?: boolean;
 }) {
-  const current = currentIndex + 1;
+  const current = isReview ? total : currentIndex + 1;
   const fraction = total > 0 ? Math.min(1, Math.max(0, current / total)) : 0;
 
   return (
     <div className="flex flex-col gap-2" data-testid="questionnaire-progress">
-      <p className="text-sm text-muted-foreground" data-testid="questionnaire-progress-text">
-        Step {current} of {total}
+      <p
+        className="text-sm text-muted-foreground"
+        data-testid="questionnaire-progress-text"
+      >
+        {isReview ? "Review" : `Step ${current} of ${total}`}
       </p>
       <div
         className="h-1.5 w-full rounded-full bg-muted"

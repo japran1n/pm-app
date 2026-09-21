@@ -100,7 +100,7 @@ describe("F055: AS-114 / BR-040 the questionnaire presents one section per step"
     expect(screen.getByTestId("questionnaire-required-badge")).toBeTruthy();
   });
 
-  it("BR-041: Next is disabled on the last section and Previous returns to prior sections", () => {
+  it("BR-041/BR-043: Next on the last section opens the review step and Previous returns to prior sections", () => {
     render(<PortalQuestionnaire questions={questions} initialAnswers={[]} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
@@ -110,10 +110,12 @@ describe("F055: AS-114 / BR-040 the questionnaire presents one section per step"
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
 
     expect(screen.getByText("Third question?")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(screen.getByText("Review your answers")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Next" })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Previous" }));
-    expect(screen.getByText("Second question?")).toBeTruthy();
+    expect(screen.getByText("Third question?")).toBeTruthy();
   });
 
   it("pre-fills the answer stub from initialAnswers when one exists for the current question", () => {

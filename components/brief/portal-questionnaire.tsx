@@ -8,6 +8,7 @@ import { useAutosave } from "@/lib/hooks/use-autosave";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { QuestionnaireProgress } from "@/components/brief/questionnaire-progress";
+import { PortalBriefReview } from "@/components/brief/portal-brief-review";
 import { AnswerInput } from "@/components/brief/answer-input";
 import { groupBySection } from "@/lib/brief/group-by-section";
 
@@ -79,8 +80,10 @@ function QuestionField({
 }) {
   const { saving, lastSaved } = useAutosave(draft, async (value) => {
     if (!briefId || isLocked) return;
-    const text = value.text != null && value.text.trim() === "" ? null : value.text;
-    const optionsList = value.options && value.options.length > 0 ? value.options : null;
+    const text =
+      value.text != null && value.text.trim() === "" ? null : value.text;
+    const optionsList =
+      value.options && value.options.length > 0 ? value.options : null;
     await saveBriefAnswer(briefId, question.id, text, optionsList);
   });
   const saved = lastSaved !== null;
@@ -91,7 +94,9 @@ function QuestionField({
   return (
     <div className="flex flex-col gap-3" data-testid="questionnaire-question">
       <div className="flex items-start justify-between gap-3">
-        <h3 className="text-base font-medium text-foreground">{question.prompt}</h3>
+        <h3 className="text-base font-medium text-foreground">
+          {question.prompt}
+        </h3>
         {question.required && (
           <Badge variant="outline" data-testid="questionnaire-required-badge">
             Required
@@ -100,13 +105,19 @@ function QuestionField({
       </div>
 
       {question.helpText && (
-        <p className="text-sm text-muted-foreground" data-testid="questionnaire-help-text">
+        <p
+          className="text-sm text-muted-foreground"
+          data-testid="questionnaire-help-text"
+        >
           {question.helpText}
         </p>
       )}
 
       {existingAnswer?.hasRevisions && (
-        <p className="text-sm text-muted-foreground" data-testid="questionnaire-edited-indicator">
+        <p
+          className="text-sm text-muted-foreground"
+          data-testid="questionnaire-edited-indicator"
+        >
           You&apos;ve edited this answer
         </p>
       )}
@@ -115,12 +126,17 @@ function QuestionField({
         question={question}
         value={draft.text}
         selectedOptions={draft.options ?? []}
-        onChange={(text, options) => onDraftChange(question.id, { text, options })}
+        onChange={(text, options) =>
+          onDraftChange(question.id, { text, options })
+        }
         disabled={isLocked}
       />
 
       {showError && (
-        <p className="text-sm text-destructive" data-testid="questionnaire-required-error">
+        <p
+          className="text-sm text-destructive"
+          data-testid="questionnaire-required-error"
+        >
           This question is required
         </p>
       )}
@@ -145,7 +161,12 @@ export function PortalQuestionnaire({
   const sections = useMemo(() => groupBySection(questions), [questions]);
 
   const answersByQuestionId = useMemo(
-    () => new Map(initialAnswers.filter((a) => a.questionId).map((a) => [a.questionId, a])),
+    () =>
+      new Map(
+        initialAnswers
+          .filter((a) => a.questionId)
+          .map((a) => [a.questionId, a]),
+      ),
     [initialAnswers],
   );
 
@@ -155,7 +176,11 @@ export function PortalQuestionnaire({
     const idx = sections.findIndex((sec) =>
       sec.questions.some((q) => {
         const a = answersByQuestionId.get(q.id);
-        return !(a && (Boolean(a.answerText) || (a.answerOptions && a.answerOptions.length > 0)));
+        return !(
+          a &&
+          (Boolean(a.answerText) ||
+            (a.answerOptions && a.answerOptions.length > 0))
+        );
       }),
     );
     return idx === -1 ? Math.max(0, sections.length - 1) : idx;
@@ -165,14 +190,17 @@ export function PortalQuestionnaire({
     Object.fromEntries(
       questions.map((q) => {
         const a = answersByQuestionId.get(q.id);
-        return [q.id, { text: a?.answerText ?? "", options: a?.answerOptions ?? null }];
+        return [
+          q.id,
+          { text: a?.answerText ?? "", options: a?.answerOptions ?? null },
+        ];
       }),
     ),
   );
   const [showErrors, setShowErrors] = useState(false);
-  const [saveStates, setSaveStates] = useState<Record<string, { saving: boolean; saved: boolean }>>(
-    {},
-  );
+  const [saveStates, setSaveStates] = useState<
+    Record<string, { saving: boolean; saved: boolean }>
+  >({});
 
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -183,37 +211,42 @@ export function PortalQuestionnaire({
     setShowErrors(false);
   }, []);
 
-  const handleSaveState = useCallback((id: string, saving: boolean, saved: boolean) => {
-    setSaveStates((prev) => {
-      const cur = prev[id];
-      if (cur && cur.saving === saving && cur.saved === saved) return prev;
-      return { ...prev, [id]: { saving, saved } };
-    });
-  }, []);
-
-  const section = sections[currentSectionIndex];
-  if (!section) return null;
+  const handleSaveState = useCallback(
+    (id: string, saving: boolean, saved: boolean) => {
+      setSaveStates((prev) => {
+        const cur = prev[id];
+        if (cur && cur.saving === saving && cur.saved === saved) return prev;
+        return { ...prev, [id]: { saving, saved } };
+      });
+    },
+    [],
+  );
 
   const total = sections.length;
+  // F010: index === sections.length is the review step (BR-043).
+  const isReview = currentSectionIndex === total;
+  const section = sections[currentSectionIndex];
+  if (!section && !isReview) return null;
   const isFirst = currentSectionIndex === 0;
-  const isLast = currentSectionIndex === total - 1;
 
-  const draftFor = (q: BriefQuestion): Draft => drafts[q.id] ?? { text: "", options: null };
-  const isUnansweredRequired = (q: BriefQuestion) => q.required && !isAnswered(q, draftFor(q));
+  const draftFor = (q: BriefQuestion): Draft =>
+    drafts[q.id] ?? { text: "", options: null };
+  const isUnansweredRequired = (q: BriefQuestion) =>
+    q.required && !isAnswered(q, draftFor(q));
 
   // Aggregated autosave indicator for the current section (BR-042).
-  const sectionStates = section.questions.map((q) => saveStates[q.id]);
+  const sectionStates = (section?.questions ?? []).map((q) => saveStates[q.id]);
   const anySaving = sectionStates.some((s) => s?.saving);
   const anySaved = sectionStates.some((s) => s?.saved);
 
   // BR-041: Next is blocked only by unanswered REQUIRED questions.
   const handleNext = () => {
-    if (section.questions.some(isUnansweredRequired)) {
+    if (section && section.questions.some(isUnansweredRequired)) {
       setShowErrors(true);
       return;
     }
     setShowErrors(false);
-    setCurrentSectionIndex((i) => Math.min(total - 1, i + 1));
+    setCurrentSectionIndex((i) => Math.min(total, i + 1));
   };
 
   const handleBack = () => {
@@ -252,68 +285,120 @@ export function PortalQuestionnaire({
         </p>
       )}
 
-      <QuestionnaireProgress currentIndex={currentSectionIndex} total={total} />
+      <QuestionnaireProgress
+        currentIndex={currentSectionIndex}
+        total={total}
+        isReview={isReview}
+      />
 
-      <section className="flex flex-col gap-6" data-testid="questionnaire-section">
-        <h2 className="text-lg font-semibold text-foreground" data-testid="questionnaire-section-title">
-          {section.name}
-        </h2>
-
-        {section.questions.map((q) => (
-          <QuestionField
-            key={q.id}
-            question={q}
-            existingAnswer={answersByQuestionId.get(q.id) ?? null}
-            draft={draftFor(q)}
-            onDraftChange={handleDraftChange}
-            briefId={briefId}
-            isLocked={isLocked}
-            showError={showErrors && isUnansweredRequired(q)}
-            onSaveState={handleSaveState}
-          />
-        ))}
-
-        <p
-          className="font-mono text-xs text-muted-foreground"
-          data-testid="questionnaire-autosave-status"
-          aria-live="polite"
+      {isReview ? (
+        <PortalBriefReview
+          sections={sections.map((sec, sectionIndex) => ({
+            name: sec.name,
+            sectionIndex,
+            questions: sec.questions,
+            // Live drafts, so unsaved-but-typed values show up in the review.
+            answers: new Map(
+              sec.questions.map((q) => {
+                const d = draftFor(q);
+                return [
+                  q.id,
+                  { answerText: d.text, answerOptions: d.options },
+                ] as const;
+              }),
+            ),
+          }))}
+          onEditSection={(i) => {
+            setShowErrors(false);
+            setCurrentSectionIndex(i);
+          }}
+        />
+      ) : (
+        <section
+          className="flex flex-col gap-6"
+          data-testid="questionnaire-section"
         >
-          {anySaving ? "Saving…" : anySaved ? "Saved" : ""}
-        </p>
-      </section>
+          <h2
+            className="text-lg font-semibold text-foreground"
+            data-testid="questionnaire-section-title"
+          >
+            {section.name}
+          </h2>
+
+          {section.questions.map((q) => (
+            <QuestionField
+              key={q.id}
+              question={q}
+              existingAnswer={answersByQuestionId.get(q.id) ?? null}
+              draft={draftFor(q)}
+              onDraftChange={handleDraftChange}
+              briefId={briefId}
+              isLocked={isLocked}
+              showError={showErrors && isUnansweredRequired(q)}
+              onSaveState={handleSaveState}
+            />
+          ))}
+
+          <p
+            className="font-mono text-xs text-muted-foreground"
+            data-testid="questionnaire-autosave-status"
+            aria-live="polite"
+          >
+            {anySaving ? "Saving…" : anySaved ? "Saved" : ""}
+          </p>
+        </section>
+      )}
 
       <div className="flex items-center justify-between gap-3">
-        <Button type="button" variant="outline" disabled={isFirst} onClick={handleBack}>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={isFirst}
+          onClick={handleBack}
+        >
           Previous
         </Button>
-        <Button type="button" disabled={isLast} onClick={handleNext}>
-          Next
-        </Button>
-      </div>
-
-      <div className="flex flex-col gap-2 border-t border-border pt-4" data-testid="questionnaire-submit">
-        {submitted ? (
-          <p className="text-sm text-foreground" data-testid="questionnaire-submitted-message">
-            Brief submitted. You can still edit your answers.
-          </p>
-        ) : (
-          <>
-            <Button
-              type="button"
-              onClick={handleSubmit}
-              disabled={!briefId || submitting}
-              data-testid="questionnaire-submit-button"
-            >
-              {submitting ? "Submitting…" : "Submit"}
-            </Button>
-            {submitError && (
-              <p className="text-sm text-destructive" data-testid="questionnaire-submit-error">
-                {submitError}
-              </p>
-            )}
-          </>
+        {!isReview && (
+          <Button type="button" onClick={handleNext}>
+            Next
+          </Button>
         )}
       </div>
+
+      {isReview && (
+        <div
+          className="flex flex-col gap-2 border-t border-border pt-4"
+          data-testid="questionnaire-submit"
+        >
+          {submitted ? (
+            <p
+              className="text-sm text-foreground"
+              data-testid="questionnaire-submitted-message"
+            >
+              Brief submitted. You can still edit your answers.
+            </p>
+          ) : (
+            <>
+              <Button
+                type="button"
+                onClick={handleSubmit}
+                disabled={!briefId || submitting || !allRequiredAnswered}
+                data-testid="questionnaire-submit-button"
+              >
+                {submitting ? "Submitting…" : "Submit"}
+              </Button>
+              {submitError && (
+                <p
+                  className="text-sm text-destructive"
+                  data-testid="questionnaire-submit-error"
+                >
+                  {submitError}
+                </p>
+              )}
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
