@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { BriefAnswer, BriefQuestion } from "@/lib/queries/brief";
 import { saveBriefAnswer, submitBrief } from "@/lib/actions/brief";
@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { QuestionnaireProgress } from "@/components/brief/questionnaire-progress";
 import { AnswerInput } from "@/components/brief/answer-input";
+import { groupBySection } from "@/lib/brief/group-by-section";
 
 // F055 (missions/20260910-182104, AS-113, AS-114): the client-facing
 // questionnaire. AS-114 ("one question at a time") is the whole reason
@@ -49,6 +50,84 @@ export function isAnswered(
   }
 }
 
+type Draft = { text: string | null; options: string[] | null };
+
+// F009 (missions/20260921-brief-redesign, BR-040..BR-047): the wizard now shows
+// one SECTION per step (all of the section's questions at once). Each question
+// owns its own debounced autosave (same saveBriefAnswer call as before); the
+// section-level indicator aggregates them. `currentSectionIndex` is the only
+// navigation state so a review step (index === sections.length) can be added
+// later without restructuring.
+function QuestionField({
+  question,
+  existingAnswer,
+  draft,
+  onDraftChange,
+  briefId,
+  isLocked,
+  showError,
+  onSaveState,
+}: {
+  question: BriefQuestion;
+  existingAnswer: BriefAnswer | null;
+  draft: Draft;
+  onDraftChange: (id: string, draft: Draft) => void;
+  briefId?: string | null;
+  isLocked: boolean;
+  showError: boolean;
+  onSaveState: (id: string, saving: boolean, saved: boolean) => void;
+}) {
+  const { saving, lastSaved } = useAutosave(draft, async (value) => {
+    if (!briefId || isLocked) return;
+    const text = value.text != null && value.text.trim() === "" ? null : value.text;
+    const optionsList = value.options && value.options.length > 0 ? value.options : null;
+    await saveBriefAnswer(briefId, question.id, text, optionsList);
+  });
+  const saved = lastSaved !== null;
+  useEffect(() => {
+    onSaveState(question.id, saving, saved);
+  }, [question.id, saving, saved, onSaveState]);
+
+  return (
+    <div className="flex flex-col gap-3" data-testid="questionnaire-question">
+      <div className="flex items-start justify-between gap-3">
+        <h3 className="text-base font-medium text-foreground">{question.prompt}</h3>
+        {question.required && (
+          <Badge variant="outline" data-testid="questionnaire-required-badge">
+            Required
+          </Badge>
+        )}
+      </div>
+
+      {question.helpText && (
+        <p className="text-sm text-muted-foreground" data-testid="questionnaire-help-text">
+          {question.helpText}
+        </p>
+      )}
+
+      {existingAnswer?.hasRevisions && (
+        <p className="text-sm text-muted-foreground" data-testid="questionnaire-edited-indicator">
+          You&apos;ve edited this answer
+        </p>
+      )}
+
+      <AnswerInput
+        question={question}
+        value={draft.text}
+        selectedOptions={draft.options ?? []}
+        onChange={(text, options) => onDraftChange(question.id, { text, options })}
+        disabled={isLocked}
+      />
+
+      {showError && (
+        <p className="text-sm text-destructive" data-testid="questionnaire-required-error">
+          This question is required
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function PortalQuestionnaire({
   questions,
   initialAnswers,
@@ -59,112 +138,91 @@ export function PortalQuestionnaire({
   initialAnswers: BriefAnswer[];
   briefId?: string | null;
   // F076 (AS-148/AS-149/AS-150): once the brief is approved, every answer
-  // input renders disabled and a banner explains why. Optional so existing
-  // render tests that don't pass a brief.state (F055/F057/etc.) keep
-  // passing unmodified -- undefined/any non-"approved" value behaves
-  // exactly like the pre-F076 always-editable state.
+  // input renders disabled and a banner explains why.
   briefState?: "draft" | "submitted" | "approved" | null;
 }) {
   const isLocked = briefState === "approved";
-  // F058 (AS-117): resume at the first unanswered question on load rather
-  // than always starting at index 0. An answer "counts" if it has non-empty
-  // text or at least one selected option. If every question is answered,
-  // land on the last one; if none are answered, index 0 is already correct.
-  const firstUnanswered = questions.findIndex(
-    (q) =>
-      !initialAnswers.some(
-        (a) =>
-          a.questionId === q.id &&
-          (Boolean(a.answerText) || (a.answerOptions && a.answerOptions.length > 0)),
-      ),
-  );
-  const [currentIndex, setCurrentIndex] = useState(
-    firstUnanswered === -1 ? Math.max(0, questions.length - 1) : firstUnanswered,
-  );
+  const sections = useMemo(() => groupBySection(questions), [questions]);
 
   const answersByQuestionId = useMemo(
     () => new Map(initialAnswers.filter((a) => a.questionId).map((a) => [a.questionId, a])),
     [initialAnswers],
   );
 
-  const total = questions.length;
-  const question = questions[currentIndex];
-  const existingAnswer = question ? answersByQuestionId.get(question.id) ?? null : null;
-
-  // Local, controlled per-question draft text -- reset whenever the
-  // current question changes so switching questions with Previous/Next
-  // shows that question's own saved-or-in-progress answer, not the
-  // previous question's draft (AS-114's "one question at a time" still
-  // applies to the input itself, not just the prompt). Reset happens
-  // during render (the "adjusting state when a prop changes" pattern),
-  // not in an effect, so there's no extra render pass and no
-  // set-state-in-effect lint violation.
-  const [renderedQuestionId, setRenderedQuestionId] = useState(question?.id);
-  const [draft, setDraft] = useState<{ text: string | null; options: string[] | null }>({
-    text: existingAnswer?.answerText ?? "",
-    options: existingAnswer?.answerOptions ?? null,
+  // F058 (AS-117), section-level: resume at the first section that still has
+  // an unanswered question; if all are answered, land on the last section.
+  const [currentSectionIndex, setCurrentSectionIndex] = useState(() => {
+    const idx = sections.findIndex((sec) =>
+      sec.questions.some((q) => {
+        const a = answersByQuestionId.get(q.id);
+        return !(a && (Boolean(a.answerText) || (a.answerOptions && a.answerOptions.length > 0)));
+      }),
+    );
+    return idx === -1 ? Math.max(0, sections.length - 1) : idx;
   });
-  // F060 (AS-123): tracks whether the current question failed required
-  // validation on the last Next attempt, so the inline error can render.
-  const [validationError, setValidationError] = useState(false);
 
-  // F061 (AS-124/AS-125/AS-126): submit state for the whole questionnaire.
-  // `submitted` flips true on success and never flips back to false --
-  // AS-126 means the form stays fully editable afterwards (nothing here
-  // disables AnswerInput or the autosave wiring), it's purely a status
-  // message shown alongside the still-editable form.
+  const [drafts, setDrafts] = useState<Record<string, Draft>>(() =>
+    Object.fromEntries(
+      questions.map((q) => {
+        const a = answersByQuestionId.get(q.id);
+        return [q.id, { text: a?.answerText ?? "", options: a?.answerOptions ?? null }];
+      }),
+    ),
+  );
+  const [showErrors, setShowErrors] = useState(false);
+  const [saveStates, setSaveStates] = useState<Record<string, { saving: boolean; saved: boolean }>>(
+    {},
+  );
+
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
-  if (question?.id !== renderedQuestionId) {
-    setRenderedQuestionId(question?.id);
-    setDraft({
-      text: existingAnswer?.answerText ?? "",
-      options: existingAnswer?.answerOptions ?? null,
+  const handleDraftChange = useCallback((id: string, draft: Draft) => {
+    setDrafts((prev) => ({ ...prev, [id]: draft }));
+    setShowErrors(false);
+  }, []);
+
+  const handleSaveState = useCallback((id: string, saving: boolean, saved: boolean) => {
+    setSaveStates((prev) => {
+      const cur = prev[id];
+      if (cur && cur.saving === saving && cur.saved === saved) return prev;
+      return { ...prev, [id]: { saving, saved } };
     });
-    setValidationError(false);
-  }
+  }, []);
 
-  // AS-116: no save control anywhere in this component -- saveFn fires
-  // purely from `draft` changing, debounced. AS-118 is then satisfied
-  // server-side: saveBriefAnswer actually writes the row, so a later
-  // reload's initialAnswers (re-fetched via getBriefForClient) includes it.
-  const { saving, lastSaved } = useAutosave(draft, async (value) => {
-    if (!briefId || !question || isLocked) return;
-    const text = value.text != null && value.text.trim() === "" ? null : value.text;
-    const optionsList = value.options && value.options.length > 0 ? value.options : null;
-    await saveBriefAnswer(briefId, question.id, text, optionsList);
-  });
+  const section = sections[currentSectionIndex];
+  if (!section) return null;
 
-  if (!question) return null;
+  const total = sections.length;
+  const isFirst = currentSectionIndex === 0;
+  const isLast = currentSectionIndex === total - 1;
 
-  const isFirst = currentIndex === 0;
-  const isLast = currentIndex === total - 1;
+  const draftFor = (q: BriefQuestion): Draft => drafts[q.id] ?? { text: "", options: null };
+  const isUnansweredRequired = (q: BriefQuestion) => q.required && !isAnswered(q, draftFor(q));
 
+  // Aggregated autosave indicator for the current section (BR-042).
+  const sectionStates = section.questions.map((q) => saveStates[q.id]);
+  const anySaving = sectionStates.some((s) => s?.saving);
+  const anySaved = sectionStates.some((s) => s?.saved);
+
+  // BR-041: Next is blocked only by unanswered REQUIRED questions.
   const handleNext = () => {
-    if (question.required && !isAnswered(question, draft)) {
-      setValidationError(true);
+    if (section.questions.some(isUnansweredRequired)) {
+      setShowErrors(true);
       return;
     }
-    setValidationError(false);
-    setCurrentIndex((i) => Math.min(total - 1, i + 1));
+    setShowErrors(false);
+    setCurrentSectionIndex((i) => Math.min(total - 1, i + 1));
   };
 
-  // AS-124: every required question must be answered before submit is
-  // allowed. The current question's in-progress draft takes precedence
-  // over its possibly-stale saved answer (autosave may still be
-  // in-flight/debounced); every other question is checked against its
-  // last-saved answer from `initialAnswers`.
-  const allRequiredAnswered = questions.every((q) => {
-    if (!q.required) return true;
-    if (q.id === question.id) return isAnswered(q, draft);
-    const saved = answersByQuestionId.get(q.id);
-    return isAnswered(q, {
-      text: saved?.answerText ?? "",
-      options: saved?.answerOptions ?? null,
-    });
-  });
+  const handleBack = () => {
+    setShowErrors(false);
+    setCurrentSectionIndex((i) => Math.max(0, i - 1));
+  };
+
+  // AS-124: every required question must be answered before submit.
+  const allRequiredAnswered = !questions.some(isUnansweredRequired);
 
   const handleSubmit = async () => {
     if (!briefId) return;
@@ -194,64 +252,38 @@ export function PortalQuestionnaire({
         </p>
       )}
 
-      <QuestionnaireProgress currentIndex={currentIndex} total={total} />
+      <QuestionnaireProgress currentIndex={currentSectionIndex} total={total} />
 
-      <div className="flex flex-col gap-3" data-testid="questionnaire-question">
-        <div className="flex items-start justify-between gap-3">
-          <h2 className="text-base font-medium text-foreground">{question.prompt}</h2>
-          {question.required && (
-            <Badge variant="outline" data-testid="questionnaire-required-badge">
-              Required
-            </Badge>
-          )}
-        </div>
+      <section className="flex flex-col gap-6" data-testid="questionnaire-section">
+        <h2 className="text-lg font-semibold text-foreground" data-testid="questionnaire-section-title">
+          {section.name}
+        </h2>
 
-        {question.helpText && (
-          <p className="text-sm text-muted-foreground">{question.helpText}</p>
-        )}
-
-        {existingAnswer?.hasRevisions && (
-          <p
-            className="text-sm text-muted-foreground"
-            data-testid="questionnaire-edited-indicator"
-          >
-            You&apos;ve edited this answer
-          </p>
-        )}
-
-        <AnswerInput
-          question={question}
-          value={draft.text}
-          selectedOptions={draft.options ?? []}
-          onChange={(text, options) => {
-            setDraft({ text, options });
-            setValidationError(false);
-          }}
-          disabled={isLocked}
-        />
-
-        {validationError && (
-          <p className="text-sm text-destructive" data-testid="questionnaire-required-error">
-            This question is required
-          </p>
-        )}
+        {section.questions.map((q) => (
+          <QuestionField
+            key={q.id}
+            question={q}
+            existingAnswer={answersByQuestionId.get(q.id) ?? null}
+            draft={draftFor(q)}
+            onDraftChange={handleDraftChange}
+            briefId={briefId}
+            isLocked={isLocked}
+            showError={showErrors && isUnansweredRequired(q)}
+            onSaveState={handleSaveState}
+          />
+        ))}
 
         <p
           className="font-mono text-xs text-muted-foreground"
           data-testid="questionnaire-autosave-status"
           aria-live="polite"
         >
-          {saving ? "Saving…" : lastSaved ? "Saved" : ""}
+          {anySaving ? "Saving…" : anySaved ? "Saved" : ""}
         </p>
-      </div>
+      </section>
 
       <div className="flex items-center justify-between gap-3">
-        <Button
-          type="button"
-          variant="outline"
-          disabled={isFirst}
-          onClick={() => setCurrentIndex((i) => Math.max(0, i - 1))}
-        >
+        <Button type="button" variant="outline" disabled={isFirst} onClick={handleBack}>
           Previous
         </Button>
         <Button type="button" disabled={isLast} onClick={handleNext}>

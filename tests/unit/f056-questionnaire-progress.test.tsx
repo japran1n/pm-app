@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 //
 // F056 (AS-115): the portal questionnaire shows progress through the
-// question set as a "Question N of M" label plus a visual progress bar
+// question set as a "Step N of M" (BR-040) label plus a visual progress bar
 // whose filled width reflects (currentIndex + 1) / total.
 
 import { createElement } from "react";
@@ -20,7 +20,7 @@ describe("QuestionnaireProgress (F056: AS-115)", () => {
     render(createElement(QuestionnaireProgress, { currentIndex: 0, total: 5 }));
 
     expect(screen.getByTestId("questionnaire-progress-text")).toHaveTextContent(
-      "Question 1 of 5",
+      "Step 1 of 5",
     );
   });
 
@@ -28,7 +28,7 @@ describe("QuestionnaireProgress (F056: AS-115)", () => {
     render(createElement(QuestionnaireProgress, { currentIndex: 2, total: 5 }));
 
     expect(screen.getByTestId("questionnaire-progress-text")).toHaveTextContent(
-      "Question 3 of 5",
+      "Step 3 of 5",
     );
   });
 

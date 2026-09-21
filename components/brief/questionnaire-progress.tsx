@@ -1,7 +1,7 @@
 "use client";
 
 // F056 (missions/20260910-182104, AS-115): visual progress indicator for
-// the one-question-at-a-time portal questionnaire. Shows "Question N of M"
+// the section-per-step portal questionnaire. Shows "Question N of M"
 // text plus a filled progress bar so respondents can see how far through
 // the question set they are.
 export function QuestionnaireProgress({
@@ -17,7 +17,7 @@ export function QuestionnaireProgress({
   return (
     <div className="flex flex-col gap-2" data-testid="questionnaire-progress">
       <p className="text-sm text-muted-foreground" data-testid="questionnaire-progress-text">
-        Question {current} of {total}
+        Step {current} of {total}
       </p>
       <div
         className="h-1.5 w-full rounded-full bg-muted"

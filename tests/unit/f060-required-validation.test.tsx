@@ -44,7 +44,7 @@ describe("F060 AS-123: required question blocks Next when unanswered", () => {
 
     const questions: BriefQuestion[] = [
       makeQuestion({ id: "q1", required: true }),
-      makeQuestion({ id: "q2", prompt: "Second question", required: false }),
+      makeQuestion({ id: "q2", category: "Section B", position: 1, prompt: "Second question", required: false }),
     ];
     const answers: BriefAnswer[] = [];
 
@@ -63,7 +63,7 @@ describe("F060: optional question allows Next when unanswered", () => {
   it("advances to the next question with no error", () => {
     const questions: BriefQuestion[] = [
       makeQuestion({ id: "q1", required: false }),
-      makeQuestion({ id: "q2", prompt: "Second question", required: false }),
+      makeQuestion({ id: "q2", category: "Section B", position: 1, prompt: "Second question", required: false }),
     ];
     const answers: BriefAnswer[] = [];
 
@@ -82,7 +82,7 @@ describe("F060 AS-123: required question allows Next once answered", () => {
 
     const questions: BriefQuestion[] = [
       makeQuestion({ id: "q1", required: true }),
-      makeQuestion({ id: "q2", prompt: "Second question", required: false }),
+      makeQuestion({ id: "q2", category: "Section B", position: 1, prompt: "Second question", required: false }),
     ];
     const answers: BriefAnswer[] = [];
 
@@ -108,7 +108,7 @@ describe("F060 AS-123: required question allows Next once answered", () => {
         answerType: "single_choice",
         options: ["A", "B"],
       }),
-      makeQuestion({ id: "q2", prompt: "Second question", required: false }),
+      makeQuestion({ id: "q2", category: "Section B", position: 1, prompt: "Second question", required: false }),
     ];
     const answers: BriefAnswer[] = [];
 
