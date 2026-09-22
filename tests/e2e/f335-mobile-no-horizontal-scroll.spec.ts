@@ -411,7 +411,12 @@ test.describe("AS-517: no primary view scrolls horizontally on a phone", () => {
       { label: "calendar", path: `/w/${workspaceSlug}/calendar` },
       { label: "search", path: `/w/${workspaceSlug}/search?q=long` },
       { label: "trash", path: `/w/${workspaceSlug}/trash` },
-      { label: "archive", path: `/w/${workspaceSlug}/archive` },
+      // F012 folded the standalone /archive page into the projects page's
+      // ?filter=archived view (/archive now server-redirects there) — F043:
+      // point this check at the canonical URL so the archived view is
+      // actually horizontal-scroll-checked, instead of asserting against a
+      // URL this route no longer settles on.
+      { label: "archive", path: `/w/${workspaceSlug}/projects?filter=archived` },
       { label: "templates", path: `/w/${workspaceSlug}/templates` },
       { label: "settings", path: `/w/${workspaceSlug}/settings` },
       { label: "settings/members", path: `/w/${workspaceSlug}/settings/members` },

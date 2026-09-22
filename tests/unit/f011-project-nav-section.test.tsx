@@ -33,6 +33,7 @@ vi.mock("sonner", () => ({
 }));
 
 import { ProjectNavList } from "@/components/nav/project-nav-list";
+import { DOT_COLORS } from "@/lib/nav/project-color";
 
 afterEach(() => {
   cleanup();
@@ -49,8 +50,18 @@ describe("test_SB_043_colour_dot_and_open_task_count", () => {
       }),
     );
 
-    const dot = container.querySelector('nav[aria-label="Projects"] .rounded-full');
+    // F043 (SB-043 hardening): assert the dot actually carries one of the
+    // vetted palette classes from lib/nav/project-color.ts, not merely any
+    // `.rounded-full` descendant (a stray unrelated rounded-full element,
+    // e.g. an avatar or badge, would have satisfied the old assertion).
+    const paletteSelector = DOT_COLORS.map(
+      (c) => `nav[aria-label="Projects"] .rounded-full.${c}`,
+    ).join(", ");
+    const dot = container.querySelector(paletteSelector);
     expect(dot).toBeTruthy();
+    expect(dot).toHaveClass("rounded-full");
+    const hasPaletteClass = DOT_COLORS.some((c) => dot?.classList.contains(c));
+    expect(hasPaletteClass).toBe(true);
   });
 
   it("shows the open-task count in a font-mono element when non-zero", () => {

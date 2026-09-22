@@ -158,6 +158,97 @@ describe("F012 SB-045: Projects page archived filter", () => {
     expect(getArchivedWorkspaceProjectsMock).toHaveBeenCalledWith("ws-1");
   });
 
+  it("SB-045: ?filter=ARCHIVED (wrong case) falls back to the active view without crashing", async () => {
+    const { default: ProjectsPage } = await import(
+      "@/app/(workspace)/w/[workspaceSlug]/projects/page"
+    );
+
+    const element = await ProjectsPage({
+      params: Promise.resolve({ workspaceSlug: "acme" }),
+      searchParams: Promise.resolve({ filter: "ARCHIVED" }),
+    });
+
+    const html = renderToStaticMarkup(element);
+    expect(html).toContain("All projects in Acme.");
+    expect(html).not.toContain(
+      "Archiving hides a project from the active list without deleting its data.",
+    );
+  });
+
+  it("SB-045: ?filter=bogus falls back to the active view without crashing", async () => {
+    const { default: ProjectsPage } = await import(
+      "@/app/(workspace)/w/[workspaceSlug]/projects/page"
+    );
+
+    const element = await ProjectsPage({
+      params: Promise.resolve({ workspaceSlug: "acme" }),
+      searchParams: Promise.resolve({ filter: "bogus" }),
+    });
+
+    const html = renderToStaticMarkup(element);
+    expect(html).toContain("All projects in Acme.");
+    expect(html).not.toContain(
+      "Archiving hides a project from the active list without deleting its data.",
+    );
+  });
+
+  it("SB-045: ?filter= (empty string) falls back to the active view without crashing", async () => {
+    const { default: ProjectsPage } = await import(
+      "@/app/(workspace)/w/[workspaceSlug]/projects/page"
+    );
+
+    const element = await ProjectsPage({
+      params: Promise.resolve({ workspaceSlug: "acme" }),
+      searchParams: Promise.resolve({ filter: "" }),
+    });
+
+    const html = renderToStaticMarkup(element);
+    expect(html).toContain("All projects in Acme.");
+    expect(html).not.toContain(
+      "Archiving hides a project from the active list without deleting its data.",
+    );
+  });
+
+  it("SB-045: repeated ?filter=archived&filter=archived (array form) falls back to the active view without crashing", async () => {
+    const { default: ProjectsPage } = await import(
+      "@/app/(workspace)/w/[workspaceSlug]/projects/page"
+    );
+
+    // Next.js hands a repeated query param to Server Components as a
+    // string array. The page only reads `filterParam[0]` in that case
+    // (see filterParam derivation in page.tsx), which is "archived" here
+    // — so per the current contract this array form does resolve to the
+    // archived view, not a fallback. This pins that behaviour explicitly
+    // (rather than asserting a fallback the code doesn't implement) so a
+    // future change to the array-handling logic is caught either way.
+    const element = await ProjectsPage({
+      params: Promise.resolve({ workspaceSlug: "acme" }),
+      searchParams: Promise.resolve({ filter: ["archived", "archived"] }),
+    });
+
+    const html = renderToStaticMarkup(element);
+    expect(html).toContain(
+      "Archiving hides a project from the active list without deleting its data.",
+    );
+  });
+
+  it("SB-045: repeated filter array with a non-archived first value falls back to the active view without crashing", async () => {
+    const { default: ProjectsPage } = await import(
+      "@/app/(workspace)/w/[workspaceSlug]/projects/page"
+    );
+
+    const element = await ProjectsPage({
+      params: Promise.resolve({ workspaceSlug: "acme" }),
+      searchParams: Promise.resolve({ filter: ["bogus", "archived"] }),
+    });
+
+    const html = renderToStaticMarkup(element);
+    expect(html).toContain("All projects in Acme.");
+    expect(html).not.toContain(
+      "Archiving hides a project from the active list without deleting its data.",
+    );
+  });
+
   it("SB-045: the default active section (ProjectsGridSection) never calls getArchivedWorkspaceProjects", async () => {
     const { ProjectsGridSection } = await import(
       "@/app/(workspace)/w/[workspaceSlug]/projects/page"
