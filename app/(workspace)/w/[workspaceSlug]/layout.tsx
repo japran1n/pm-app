@@ -477,8 +477,7 @@ export default async function WorkspaceLayout({
             <Suspense fallback={<NavBadgeSkeleton />}>
               <InboxBadgeFigure
                 workspaceId={activeWorkspace.id}
-                isGuest={isGuest}
-                hasClient={(clientMemberCount ?? 0) > 0}
+                isClient={activeWorkspaceRole === "client"}
               />
             </Suspense>
           }

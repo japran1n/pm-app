@@ -1,12 +1,14 @@
 // @vitest-environment jsdom
 //
 // F054 (FU-M4-7, M4 scrutiny attempt 2, SB-054): the Inbox badge figure
-// must apply the SAME `hasClient` gate the sidebar itself uses for its
-// "Client requests"/"Approvals" nav items, alongside `isGuest`, so a
-// client-less workspace's badge never includes approvals/requests counts
-// that no nav item on the page is actually showing. It must also be
-// absent (no badge element at all) when the aggregate is 0, and must
-// distinguish a failed reconcile from a legitimate zero.
+// must apply the SAME gate the Inbox tabs themselves use
+// (`getVisibleInboxTabs`/`lib/inbox/visible-tabs.ts`, F049), so a caller
+// who can't reach the approvals/requests tabs never sees their counts
+// inflate this badge. F060 replaced the earlier `isGuest || !hasClient`
+// gate (which diverged from the tabs' own `role === "client"` rule) with
+// a single `isClient` prop threaded straight into `getVisibleInboxTabs`.
+// It must also be absent (no badge element at all) when the aggregate is
+// 0, and must distinguish a failed reconcile from a legitimate zero.
 //
 // FU-M4-7: `getOpenApprovalCountForWorkspace` and
 // `getOpenClientRequestCountForWorkspace` never reject -- like
@@ -32,7 +34,7 @@ vi.mock("@/lib/queries/client-requests", () => ({
   getOpenClientRequestCountForWorkspace: vi.fn(),
 }));
 
-async function renderFigure(props: { workspaceId: string; isGuest: boolean; hasClient: boolean }) {
+async function renderFigure(props: { workspaceId: string; isClient: boolean }) {
   const { InboxBadgeFigure } = await import("@/components/nav/figures/inbox-badge-figure");
   const element = await InboxBadgeFigure(props);
   return render(createElement(() => element));
@@ -56,15 +58,14 @@ describe("F054 FU-M4-7 (SB-054): Inbox badge hasClient gate + real error-state r
 
     const { container } = await renderFigure({
       workspaceId: "w1",
-      isGuest: false,
-      hasClient: true,
+      isClient: false,
     });
 
     expect(container.textContent).toBe("");
     expect(container.querySelector('[aria-label="Inbox count unavailable"]')).toBeNull();
   });
 
-  it("test_SB_054_client_less_workspace_excludes_approvals_and_requests_from_the_badge", async () => {
+  it("test_SB_054_client_caller_excludes_approvals_and_requests_from_the_badge", async () => {
     const { getNotificationsForWorkspace } = await import("@/lib/queries/notifications");
     const { getOpenApprovalCountForWorkspace } = await import("@/lib/queries/approvals");
     const { getOpenClientRequestCountForWorkspace } = await import("@/lib/queries/client-requests");
@@ -73,22 +74,21 @@ describe("F054 FU-M4-7 (SB-054): Inbox badge hasClient gate + real error-state r
       unreadCount: 2,
     } as never);
     // These two would blow the count up to 2 + 5 + 5 = 12 if wrongly
-    // included for a client-less workspace -- they must never even be
-    // called/counted when hasClient is false.
+    // included for a caller whose visible-tabs list omits "approvals" --
+    // they must never even be called/counted when isClient is true.
     vi.mocked(getOpenApprovalCountForWorkspace).mockResolvedValueOnce({ count: 5 });
     vi.mocked(getOpenClientRequestCountForWorkspace).mockResolvedValueOnce({ count: 5 });
 
     const { container } = await renderFigure({
       workspaceId: "w1",
-      isGuest: false,
-      hasClient: false,
+      isClient: true,
     });
 
     // Only the notifications count (2) should show -- not 12.
     expect(container.textContent).toBe("2");
   });
 
-  it("test_SB_054_hasClient_true_and_not_guest_still_includes_approvals_and_requests", async () => {
+  it("test_SB_054_non_client_caller_still_includes_approvals_and_requests", async () => {
     const { getNotificationsForWorkspace } = await import("@/lib/queries/notifications");
     const { getOpenApprovalCountForWorkspace } = await import("@/lib/queries/approvals");
     const { getOpenClientRequestCountForWorkspace } = await import("@/lib/queries/client-requests");
@@ -101,8 +101,7 @@ describe("F054 FU-M4-7 (SB-054): Inbox badge hasClient gate + real error-state r
 
     const { container } = await renderFigure({
       workspaceId: "w1",
-      isGuest: false,
-      hasClient: true,
+      isClient: false,
     });
 
     expect(container.textContent).toBe("6");
@@ -124,8 +123,7 @@ describe("F054 FU-M4-7 (SB-054): Inbox badge hasClient gate + real error-state r
 
     const { container } = await renderFigure({
       workspaceId: "w1",
-      isGuest: false,
-      hasClient: true,
+      isClient: false,
     });
 
     expect(container.querySelector('[aria-label="Inbox count unavailable"]')).not.toBeNull();
@@ -150,8 +148,7 @@ describe("F054 FU-M4-7 (SB-054): Inbox badge hasClient gate + real error-state r
 
     const { container } = await renderFigure({
       workspaceId: "w1",
-      isGuest: false,
-      hasClient: true,
+      isClient: false,
     });
 
     expect(container.querySelector('[aria-label="Inbox count unavailable"]')).not.toBeNull();
@@ -176,8 +173,7 @@ describe("F054 FU-M4-7 (SB-054): Inbox badge hasClient gate + real error-state r
 
     const { container } = await renderFigure({
       workspaceId: "w1",
-      isGuest: false,
-      hasClient: true,
+      isClient: false,
     });
 
     expect(container.querySelector('[aria-label="Inbox count unavailable"]')).not.toBeNull();
@@ -198,8 +194,7 @@ describe("F054 FU-M4-7 (SB-054): Inbox badge hasClient gate + real error-state r
 
     const { container } = await renderFigure({
       workspaceId: "w1",
-      isGuest: false,
-      hasClient: true,
+      isClient: false,
     });
 
     // Must not render as if it were a legitimate zero (absent/no textContent)
@@ -222,8 +217,7 @@ describe("F054 FU-M4-7 (SB-054): Inbox badge hasClient gate + real error-state r
 
     const { container } = await renderFigure({
       workspaceId: "w1",
-      isGuest: false,
-      hasClient: true,
+      isClient: false,
     });
 
     // 80 + 15 + 10 = 105 > 99.
@@ -243,8 +237,7 @@ describe("F054 FU-M4-7 (SB-054): Inbox badge hasClient gate + real error-state r
 
     const { container } = await renderFigure({
       workspaceId: "w1",
-      isGuest: false,
-      hasClient: true,
+      isClient: false,
     });
 
     expect(container.textContent).toBe("99");

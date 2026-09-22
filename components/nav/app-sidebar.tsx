@@ -405,6 +405,24 @@ function SidebarContent({
     inboxBadge,
   );
 
+  // F060 (SB-056): every `?tab=` value a sibling item on the same path
+  // explicitly claims via its own `hrefTab` (e.g. "Client requests" claims
+  // `requests`, "Approvals" claims `approvals`) -- computed once across all
+  // groups/items so the tab-less item below (Inbox) can tell, for any given
+  // `?tab=`, whether some OTHER item already owns it.
+  const claimedTabsByPath = new Map<string, Set<string>>();
+  for (const group of groups) {
+    for (const item of group.items) {
+      const [itemPath, itemQuery] = item.href.split("?");
+      const itemTab = itemQuery
+        ? new URLSearchParams(itemQuery).get("tab")
+        : null;
+      if (!itemTab) continue;
+      if (!claimedTabsByPath.has(itemPath)) claimedTabsByPath.set(itemPath, new Set());
+      claimedTabsByPath.get(itemPath)!.add(itemTab);
+    }
+  }
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showFade, setShowFade] = useState(false);
   const updateFade = useCallback(() => {
@@ -560,14 +578,22 @@ function SidebarContent({
                 // alone, so it stayed active even when the URL's `?tab=`
                 // pointed at a sibling item's own tab (e.g. `?tab=approvals`
                 // also lit up "Inbox" since both share the `/inbox` path).
-                // A tab-less item's "own" tab is implicitly `all` -- it must
-                // only be active when the URL carries no `tab` param (or an
-                // empty one), i.e. exactly the state its own href resolves
-                // to. Tab-bearing items are unaffected: they already require
-                // an exact tab match via `currentTab === hrefTab`.
+                // F060 (SB-056): that fix over-corrected for `?tab=`
+                // values that have NO dedicated sidebar item at all
+                // (`notifications`, `watching` -- only `all`/`approvals`/
+                // `requests` have one). For those, the old "only active
+                // when no currentTab" rule left every item inactive. A
+                // tab-less item's real rule is "active whenever no OTHER
+                // item on the same path claims the current tab" -- which
+                // still excludes it exactly when a sibling (Approvals/
+                // Client requests) owns the current tab, but now also
+                // covers `notifications`/`watching`, which no sibling
+                // claims. Tab-bearing items are unaffected: they still
+                // require an exact tab match via `currentTab === hrefTab`.
                 const isActive = hrefTab
                   ? pathMatches && currentTab === hrefTab
-                  : pathMatches && !currentTab;
+                  : pathMatches &&
+                    (!currentTab || !claimedTabsByPath.get(hrefPath)?.has(currentTab));
 
                 return (
                   <Link

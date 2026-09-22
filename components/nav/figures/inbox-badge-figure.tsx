@@ -33,26 +33,40 @@
 // was always the typed `error` field, which this file previously ignored
 // entirely for approvals/requests and read from the wrong field
 // (`unreadCount`'s sibling `error`) for notifications.
+//
+// F060 (SB-054): approvals/requests gating now uses the SAME predicate as
+// the Inbox tabs themselves (`getVisibleInboxTabs` / `lib/inbox/visible-tabs.ts`,
+// F049) instead of the sidebar nav item's own `isGuest || !hasClient` gate.
+// Those two gates diverged: the nav items (and the old gate here) hid for
+// guests and client-less workspaces, but the actual `/inbox?tab=approvals`
+// and `?tab=requests` tab content -- gated only on `role !== "client"` --
+// stayed reachable for both. A guest (or a caller in a client-less
+// workspace) could open those tabs and see real counts while this badge
+// silently excluded them from the aggregate, so the number in the sidebar
+// never matched what the tabs actually showed. Passing `isClient` (which,
+// like the tab-page itself, is always `false` here -- the workspace layout
+// already redirects an actual `client` role to `/portal/*` before this
+// component ever renders) keeps the two in lockstep for every future
+// caller, not just the ones excluded by the retired guest/hasClient rule.
 import { getNotificationsForWorkspace } from "@/lib/queries/notifications";
 import { getOpenApprovalCountForWorkspace } from "@/lib/queries/approvals";
 import { getOpenClientRequestCountForWorkspace } from "@/lib/queries/client-requests";
 import { inboxBadgeCount } from "@/lib/inbox/inbox-badge-count";
+import { getVisibleInboxTabs } from "@/lib/inbox/visible-tabs";
 import { Badge } from "@/components/ui/badge";
 
 export async function InboxBadgeFigure({
   workspaceId,
-  isGuest,
-  hasClient,
+  isClient,
 }: {
   workspaceId: string;
-  isGuest: boolean;
-  hasClient: boolean;
+  isClient: boolean;
 }) {
-  // FU-M4-4 (SB-054): approvals/requests only contribute when the caller
-  // both isn't a guest AND the workspace actually has a client -- matching
-  // app-sidebar.tsx's own `!isGuest` (guestExcluded) + `hasClient` gate for
-  // those exact two nav items.
-  const approvalsRequestsGated = isGuest || !hasClient;
+  // F060 (SB-054): approvals/requests only contribute when those tabs are
+  // actually in the caller's visible-tabs list -- the exact same rule the
+  // Inbox page itself uses to decide which tabs to render.
+  const visibleTabs = getVisibleInboxTabs(isClient);
+  const approvalsRequestsGated = !visibleTabs.includes("approvals");
 
   // F054 (FU-M4-7, SB-054): each query fails open (never rejects) and
   // reports failure through its own typed `error` field -- run them in
