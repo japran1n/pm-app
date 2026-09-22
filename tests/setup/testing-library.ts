@@ -16,8 +16,67 @@
 // every `waitFor`/`findBy*` call in the suite uniformly, so no single call
 // site can be the next mole.
 import { configure } from "@testing-library/dom";
+import { readFileSync, existsSync } from "node:fs";
+import { join } from "node:path";
 
 configure({ asyncUtilTimeout: 5000 });
+
+// FU-20 (M3 scrutiny attempt 2): this global setupFiles module used to run
+// its "no Supabase env configured -> fill in localhost dummies" check below
+// BEFORE any `.env` had ever been read into process.env -- vitest, unlike
+// Next.js, never auto-loads `.env`. Every individual integration suite
+// (tests/integration/rls-project-favorites.test.ts and ~40 siblings) loads
+// `.env` itself at file-import time via its own `loadDotEnv()`, but that
+// runs strictly AFTER this setupFiles module (vitest always finishes
+// setupFiles before importing the test file), and each of those loaders
+// guards with `if (!(key in process.env))` -- so once the dummy fallback
+// below has already written NEXT_PUBLIC_SUPABASE_URL etc. into process.env,
+// every suite's own loader sees the keys "already set" and skips loading
+// the real values from `.env`, permanently pointing every live-DB suite at
+// `http://127.0.0.1:54321` even when `.env` holds real hosted-project
+// credentials and no local `supabase start` stack is running there. That
+// produced `TypeError: fetch failed` / `ECONNREFUSED 127.0.0.1:54321` deep
+// inside `beforeAll`, which read (misleadingly) like a fetch/undici/pool
+// problem rather than an env-precedence one. Loading `.env` HERE, first,
+// with the same "don't clobber a real pre-set env var" semantics every
+// per-file loader already uses, means a real `.env` wins before the dummy
+// fallback ever gets a chance to run -- restoring every suite's ability to
+// dial the actual linked project, while a bare checkout with no `.env` at
+// all still falls through to the harmless localhost dummy exactly as
+// before.
+//
+// Gated on the SAME `ALLOW_HOSTED_TESTS=1` (or `CI`) opt-in the hosted-
+// project guard below already requires, rather than unconditional: this
+// repo's default local `npm test` run must keep exercising every unit test
+// (including the hundreds that mock Supabase entirely and never dial
+// anything) without ever touching the real hosted project or requiring
+// that opt-in var, and loading a real `.env` unconditionally here would
+// make the hosted-project guard below fire for every single test file,
+// not just the live-DB integration suites -- turning a narrowly-scoped
+// safety check into a blanket failure of the whole suite. Preloading only
+// under the explicit opt-in keeps that default path byte-identical while
+// still letting a deliberate `ALLOW_HOSTED_TESTS=1 npx vitest run
+// tests/integration/rls-project-favorites.test.ts` (or CI, which sets
+// real values as actual OS env vars before vitest starts, not via `.env`)
+// see the real credentials instead of the dummy fallback.
+const allowHostedTests = process.env.ALLOW_HOSTED_TESTS === "1" || Boolean(process.env.CI);
+if (allowHostedTests) {
+  const path = join(process.cwd(), ".env");
+  if (existsSync(path)) {
+    const contents = readFileSync(path, "utf8");
+    for (const line of contents.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const eq = trimmed.indexOf("=");
+      if (eq === -1) continue;
+      const key = trimmed.slice(0, eq).trim();
+      const value = trimmed.slice(eq + 1).trim();
+      if (key && !(key in process.env)) {
+        process.env[key] = value;
+      }
+    }
+  }
+}
 
 // Audit TST-001: integration suites sign in real users and (some) mutate
 // the database they point at. CI runs them against an ephemeral local

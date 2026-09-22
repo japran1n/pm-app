@@ -331,8 +331,25 @@ describe.skipIf(!haveAdminCreds)(
         .insert({ user_id: userBId, project_id: projectAId })
         .select("user_id");
 
-      // RLS with_check rejects this: either a returned error or zero rows.
+      // RLS with_check rejects this: either a returned error or zero rows
+      // in the response.
       expect(error !== null || (data ?? []).length === 0).toBe(true);
+
+      // FU-20: tighten from a response-shape-only check to a positive
+      // row-absence check via the admin (service-role) client — this
+      // proves the row was genuinely never persisted, not merely that
+      // clientA's own response happened to omit it (e.g. a hypothetical
+      // RLS bug that let the INSERT through under `with_check` but denied
+      // only the `.select()` read-back would have passed the assertion
+      // above while still leaving a real, wrongly-attributed row in the
+      // table).
+      const { data: adminRows, error: adminError } = await adminClient
+        .from("project_favorites")
+        .select("user_id, project_id")
+        .eq("user_id", userBId)
+        .eq("project_id", projectAId);
+      expect(adminError).toBeNull();
+      expect(adminRows ?? []).toHaveLength(0);
     });
 
     it("test_project_hard_delete_still_succeeds_with_a_favourite_present_ON_DELETE_CASCADE", async () => {

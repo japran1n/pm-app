@@ -130,7 +130,13 @@ describe("test_SB_006_guest_filtering_preserved_across_sidebar_and_account_menu"
     expect(html).not.toContain('href="/w/acme/settings/members"');
     expect(html).not.toContain('href="/w/acme/settings"');
     expect(html).not.toContain('href="/w/acme/templates"');
-    expect(html).not.toContain('href="/w/acme/archive"');
+    // FU-20: the sidebar/account menu never render a bare
+    // `href="/w/acme/archive"` for ANY role — F012 (SB-046) moved Archive to
+    // `/w/acme/projects?filter=archived` for everyone, not just guests — so
+    // asserting its absence here proved nothing about guest-specific
+    // filtering (it would pass identically for an owner). Guest gating for
+    // this item is exercised via the "Archive" label assertions in the
+    // account-menu test below instead.
     expect(html).not.toContain('href="/w/acme/trash"');
     expect(html).not.toContain('href="/w/acme/preview-as-client"');
     expect(html).not.toContain('href="/w/acme/requests"');

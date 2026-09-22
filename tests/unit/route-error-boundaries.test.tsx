@@ -14,7 +14,6 @@ import "@testing-library/jest-dom/vitest";
 // is the correct boundary for a unit test).
 
 import WorkspaceHomeError from "@/app/(workspace)/w/[workspaceSlug]/error";
-import ArchiveError from "@/app/(workspace)/w/[workspaceSlug]/archive/error";
 import CalendarError from "@/app/(workspace)/w/[workspaceSlug]/calendar/error";
 import MyTasksError from "@/app/(workspace)/w/[workspaceSlug]/my-tasks/error";
 import NotificationsError from "@/app/(workspace)/w/[workspaceSlug]/notifications/error";
@@ -68,7 +67,6 @@ const routeErrorBoundaries: Array<{
   }) => React.ReactElement;
 }> = [
   { name: "workspace home", Component: WorkspaceHomeError },
-  { name: "archive", Component: ArchiveError },
   { name: "calendar", Component: CalendarError },
   { name: "my-tasks", Component: MyTasksError },
   { name: "notifications", Component: NotificationsError },
@@ -134,7 +132,7 @@ describe("AS-500: route error boundaries never blank the app shell", () => {
     const reset = vi.fn();
     const error = new Error("boom");
 
-    render(<ArchiveError error={error} reset={reset} />);
+    render(<TemplatesError error={error} reset={reset} />);
 
     fireEvent.click(screen.getByRole("button", { name: /try again/i }));
 
@@ -158,7 +156,7 @@ describe("AS-500: route error boundaries never blank the app shell", () => {
     // entirely on the parent layout staying mounted rather than trying to
     // recreate the shell.
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    render(<ArchiveError error={new Error("boom")} reset={vi.fn()} />);
+    render(<TemplatesError error={new Error("boom")} reset={vi.fn()} />);
     expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
     consoleSpy.mockRestore();
   });

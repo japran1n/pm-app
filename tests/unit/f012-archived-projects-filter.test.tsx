@@ -10,9 +10,13 @@ import { renderToStaticMarkup } from "react-dom/server";
 const redirectMock = vi.fn((path: string) => {
   throw new Error(`REDIRECT:${path}`);
 });
+const permanentRedirectMock = vi.fn((path: string) => {
+  throw new Error(`REDIRECT:${path}`);
+});
 
 vi.mock("next/navigation", () => ({
   redirect: redirectMock,
+  permanentRedirect: permanentRedirectMock,
   useRouter: () => ({
     push: vi.fn(),
     replace: vi.fn(),
@@ -296,8 +300,12 @@ describe("F012 SB-046: /archive redirects to the canonical projects URL", () => 
       ArchivePage({ params: Promise.resolve({ workspaceSlug: "acme" }) }),
     ).rejects.toThrow("REDIRECT:/w/acme/projects?filter=archived");
 
-    expect(redirectMock).toHaveBeenCalledWith(
+    // FU-20: this route now issues a 308 via permanentRedirect() rather
+    // than a 307 via redirect() — the destination never varies per
+    // request, so the redirect itself is cacheable.
+    expect(permanentRedirectMock).toHaveBeenCalledWith(
       "/w/acme/projects?filter=archived",
     );
+    expect(redirectMock).not.toHaveBeenCalled();
   });
 });
