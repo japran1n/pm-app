@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 
 import { legacyInboxRedirectPath } from "@/lib/inbox/legacy-redirect";
 
@@ -50,34 +50,80 @@ describe("legacyInboxRedirectPath (SB-056)", () => {
   });
 });
 
+// F053 (FU-M4-6): replaces the old readFileSync/toContain source-text
+// grep with a genuinely behavioural check — mock `next/navigation`'s
+// `permanentRedirect` to throw (the same "redirect() actually throws"
+// technique already used by tests/unit/f009-legacy-portal-route-
+// redirects.test.ts), invoke each legacy route page's default export
+// (a real async Server Component function) with a slug + search params,
+// and assert it actually calls permanentRedirect with the exact mapped
+// Inbox URL. This is non-vacuous: if the page stopped calling
+// permanentRedirect, or called it with the wrong URL, or ever returned
+// normally instead of throwing, these assertions fail — a source-text
+// grep for the string "permanentRedirect(" could still pass with dead
+// code that never executes it.
+const { permanentRedirectMock } = vi.hoisted(() => ({
+  permanentRedirectMock: vi.fn((url: string) => {
+    throw new Error(`NEXT_REDIRECT:${url}`);
+  }),
+}));
+vi.mock("next/navigation", () => ({
+  permanentRedirect: permanentRedirectMock,
+}));
+
 describe("legacy standalone route pages redirect (SB-056)", () => {
-  // Fail-without-fix check: proves each page module actually calls
-  // permanentRedirect with the mapped Inbox URL, not just that the pure
-  // helper above works in isolation. Reading the source directly (rather
-  // than rendering, which would require full Next.js server-component
-  // request context) keeps this fast and dependency-free, same technique
-  // already used elsewhere in this suite (e.g. f078-discovery-approvals).
-  const routes: Array<{ file: string; tab: string }> = [
-    { file: "approvals", tab: "approvals" },
-    { file: "requests", tab: "requests" },
-    { file: "watching", tab: "watching" },
-    { file: "notifications", tab: "notifications" },
+  const routes: Array<{
+    file: string;
+    tab: string;
+    importPath: string;
+  }> = [
+    {
+      file: "approvals",
+      tab: "approvals",
+      importPath: "@/app/(workspace)/w/[workspaceSlug]/approvals/page",
+    },
+    {
+      file: "requests",
+      tab: "requests",
+      importPath: "@/app/(workspace)/w/[workspaceSlug]/requests/page",
+    },
+    {
+      file: "watching",
+      tab: "watching",
+      importPath: "@/app/(workspace)/w/[workspaceSlug]/watching/page",
+    },
+    {
+      file: "notifications",
+      tab: "notifications",
+      importPath: "@/app/(workspace)/w/[workspaceSlug]/notifications/page",
+    },
   ];
 
-  for (const { file, tab } of routes) {
-    it(`${file}/page.tsx calls permanentRedirect via legacyInboxRedirectPath("${tab}")`, async () => {
-      const { readFileSync } = await import("node:fs");
-      const { join } = await import("node:path");
-      const source = readFileSync(
-        join(
-          process.cwd(),
-          `app/(workspace)/w/[workspaceSlug]/${file}/page.tsx`,
-        ),
-        "utf8",
+  for (const { file, tab, importPath } of routes) {
+    it(`${file}/page.tsx redirects to /w/acme/inbox?tab=${tab}`, async () => {
+      vi.resetModules();
+      const { default: RedirectPage } = await import(importPath);
+
+      await expect(
+        RedirectPage({
+          params: Promise.resolve({ workspaceSlug: "acme" }),
+          searchParams: Promise.resolve({}),
+        }),
+      ).rejects.toThrow(`NEXT_REDIRECT:/w/acme/inbox?tab=${tab}`);
+    });
+
+    it(`${file}/page.tsx preserves extra search params in the redirect`, async () => {
+      vi.resetModules();
+      const { default: RedirectPage } = await import(importPath);
+
+      await expect(
+        RedirectPage({
+          params: Promise.resolve({ workspaceSlug: "acme" }),
+          searchParams: Promise.resolve({ highlight: "123" }),
+        }),
+      ).rejects.toThrow(
+        `NEXT_REDIRECT:/w/acme/inbox?tab=${tab}&highlight=123`,
       );
-      expect(source).toContain("permanentRedirect(");
-      expect(source).toContain(`"${tab}"`);
-      expect(source).not.toMatch(/^\s*export default async function \w+Page[\s\S]*return \(/m);
     });
   }
 });

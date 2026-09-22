@@ -26,20 +26,6 @@ export function NavBadgeSkeleton({ className }: { className?: string }) {
   );
 }
 
-// notification-bell-figure.tsx: the bell trigger is a `size="icon"` Button
-// (h-[38px] w-[38px], max-md:size-11 in the mobile top bar) with the
-// unread-count badge absolutely positioned on top of it -- the badge never
-// changes the button's own footprint, so only the button's box needs to be
-// reserved here.
-export function NotificationBellSkeleton() {
-  return (
-    <span
-      className="inline-flex h-[38px] w-[38px] shrink-0 animate-pulse rounded-md border border-border bg-muted max-md:size-11"
-      aria-hidden="true"
-    />
-  );
-}
-
 // workspace-switcher-figure.tsx: the trigger is a `size="sm"` (h-[34px])
 // outline Button spanning `w-full` (no max-width cap, F007) with a `rounded-lg`
 // corner. Its min-h is 34px; a long name wraps (SB-030 forbids truncating it) and
