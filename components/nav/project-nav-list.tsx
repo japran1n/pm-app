@@ -163,14 +163,6 @@ export function ProjectNavList({
   const allFavoriteProjects = orderedProjects
     .filter((project) => favoriteIds.has(project.id))
     .sort((a, b) => a.name.localeCompare(b.name));
-  // The non-favourite group IS drag-reorderable (this feature) — its
-  // order is `orderedIds` (the local, optimistic mirror of
-  // `sidebar_position`), not the raw prop order, so a completed drag
-  // renders in its new position immediately, before the server round
-  // trip resolves.
-  const allOtherProjects = orderedProjects.filter(
-    (project) => !favoriteIds.has(project.id),
-  );
 
   // F011 (SB-041): the pinned favourites group is capped at 5 via
   // `selectSidebarProjects` (lib/nav/select-sidebar-projects.ts).
@@ -178,6 +170,22 @@ export function ProjectNavList({
     allFavoriteProjects,
     [],
     allFavoriteProjects,
+  );
+  // F041 (M3 scrutiny FU-3, SB-041): only the first 5 (alphabetically)
+  // favourites get the pinned/favourite visual treatment above -- anything
+  // past that cap must NOT be discarded from the sidebar entirely. Those
+  // overflow favourites fall back into the ordinary non-favourite group
+  // below (still reachable, still draggable, just without the pinned
+  // styling), rather than `allOtherProjects`'s previous "filter out every
+  // favourite id" which silently dropped them once there were more than 5.
+  const pinnedFavoriteIds = new Set(favoriteProjects.map((p) => p.id));
+  // The non-favourite (+ overflow-favourite) group IS drag-reorderable
+  // (this feature) — its order is `orderedIds` (the local, optimistic
+  // mirror of `sidebar_position`), not the raw prop order, so a completed
+  // drag renders in its new position immediately, before the server round
+  // trip resolves.
+  const allOtherProjects = orderedProjects.filter(
+    (project) => !pinnedFavoriteIds.has(project.id),
   );
   // F040 (M3 scrutiny FU-2, SB-042): the no-favourites case now actually
   // wires `selectSidebarProjects` into the render path -- the section
