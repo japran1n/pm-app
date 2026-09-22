@@ -91,12 +91,19 @@ export function ProjectNavList({
   const pathname = usePathname();
   const [open, setOpen] = useState(true);
   const membership = useMembership();
-  // Same "no provider in the tree is a permissive default" convention
-  // membership-provider.tsx documents on its own `useMembership` — a
-  // viewer/guest (canWrite === false) can still see the list but can't
-  // drag; every other caller (including every test that doesn't wrap
-  // this in a MembershipProvider) can.
-  const canReorder = membership ? canWrite({ role: membership.role }) : true;
+  // F046 (M3 scrutiny attempt 2, FU-19): no `MembershipProvider` in the
+  // tree now defaults to `false`, not `true` -- a mutation-capable control
+  // (drag-and-drop reorder persists to `projects.sidebar_position` via a
+  // Server Action) is exactly the case the rest of this codebase's
+  // fail-closed convention exists for (AS-231's "never a control that will
+  // fail" — see this file's own `canReorder && ...` gate on the drag
+  // handle below). An absent provider means the caller's role is
+  // genuinely unknown, so the safe default is "can't drag" rather than
+  // "can", matching every other write-affordance's fail-closed default in
+  // this app (as opposed to a purely read-only default like `hasClient`,
+  // which stays permissive because showing/hiding a read-only control
+  // carries no such risk).
+  const canReorder = membership ? canWrite({ role: membership.role }) : false;
 
   // F263 (AS-510): local, optimistic mirror of each project's favourite
   // status -- re-synced whenever the SET of project ids changes (a
@@ -345,12 +352,25 @@ export function ProjectNavList({
     // `nextOrderedIds.indexOf(...)` here).
     const newPosition = nextOrderedIds.indexOf(String(active.id));
 
-    reorderProject(String(active.id), newPosition).then((result) => {
-      if (!result.ok) {
-        toast.error(result.error);
+    reorderProject(String(active.id), newPosition)
+      .then((result) => {
+        if (!result.ok) {
+          toast.error(result.error);
+          setOrderedIds(previousOrderedIds);
+        }
+      })
+      .catch(() => {
+        // F046 (M3 scrutiny attempt 2, FU-19): the Server Action itself
+        // rejecting (network error, thrown exception rather than a
+        // returned `{ ok: false }`) previously had no `.catch` at all --
+        // an unhandled promise rejection that ALSO left `orderedIds`
+        // permanently pointing at the optimistic (never-persisted) order,
+        // silently out of sync with the server forever. Same rollback +
+        // generic toast fallback as account-menu.tsx's F021/F024b
+        // sign-out `catch` block.
+        toast.error("Couldn't reorder this project. Please try again.");
         setOrderedIds(previousOrderedIds);
-      }
-    });
+      });
   }
 
   function renderProjectRow(

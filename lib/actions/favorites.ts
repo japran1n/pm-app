@@ -1,4 +1,5 @@
 "use server";
+import { revalidatePath } from "next/cache";
 import { logger } from "@/lib/observability/logger";
 
 
@@ -34,7 +35,9 @@ export type ToggleProjectFavoriteResult = ActionResult<{ projectId: string; isFa
 async function resolveVisibleProject(
   supabase: Awaited<ReturnType<typeof createClient>>,
   projectId: string,
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<
+  { ok: true; workspaceSlug: string | null } | { ok: false; error: string }
+> {
   // RLS's `projects_select_active_members` (already visibility-scoped per
   // F132/F134/F134's is_project_visible_to_row) is the single source of
   // truth for "can this caller see this project" -- no second copy of that
@@ -44,9 +47,17 @@ async function resolveVisibleProject(
   // not-found, or soft-deleted -- all collapsed to the same generic error,
   // same as the rest of this codebase's "don't leak which case it was"
   // convention (AS-144's cousin at the row level).
+  //
+  // F046: also selects the owning workspace's slug (via the same,
+  // already-RLS-scoped row) purely so the caller below can revalidate the
+  // sidebar's own path after a favourite/unfavourite write -- same
+  // `revalidatePath(\`/w/${slug}\`, "layout")` convention createProject/
+  // editProject/archiveProject/restoreProject in lib/actions/projects.ts
+  // already use, so a server-rendered `isFavorite` prop this write just
+  // changed doesn't linger stale until the next unrelated navigation.
   const { data, error } = await supabase
     .from("projects")
-    .select("id")
+    .select("id, workspaces(slug)")
     .eq("id", projectId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -55,7 +66,26 @@ async function resolveVisibleProject(
     return { ok: false, error: "Project not found." };
   }
 
-  return { ok: true };
+  const workspaceSlug = Array.isArray(data.workspaces)
+    ? (data.workspaces[0]?.slug ?? null)
+    : ((data.workspaces as { slug: string } | null)?.slug ?? null);
+
+  return { ok: true, workspaceSlug };
+}
+
+function revalidateSidebar(workspaceSlug: string | null, actionName: string) {
+  if (!workspaceSlug) return;
+  try {
+    revalidatePath(`/w/${workspaceSlug}`, "layout");
+  } catch (revalidateError) {
+    // Same non-fatal cache-freshness rationale as lib/actions/projects.ts:
+    // revalidatePath throws outside an active request/render context (e.g.
+    // this action invoked from a test harness). The write itself already
+    // succeeded, so this is not an action failure.
+    logger.error(`${actionName}: revalidatePath failed (non-fatal)`, {
+      error: revalidateError,
+    });
+  }
 }
 
 // Favourites a project (idempotent: already-favourited is still ok:true,
@@ -100,6 +130,8 @@ export async function favoriteProject(
     return { ok: false, error: "Could not favourite this project." };
   }
 
+  revalidateSidebar(visible.workspaceSlug, "favoriteProject");
+
   return { ok: true, data: { projectId: parsed.data.projectId, isFavorite: true } };
 }
 
@@ -129,6 +161,25 @@ export async function unfavoriteProject(
     logger.error("unfavoriteProject: write failed", { error: error });
     return { ok: false, error: "Could not remove this favourite." };
   }
+
+  // F046: no visibility gate needed here (unlike favoriteProject) -- this
+  // is a plain own-row delete, harmless even if the project has since
+  // become invisible to the caller -- but the sidebar path still needs
+  // revalidating so a re-sync away in ProjectNavList/ProjectFavoriteButton
+  // sees the server's fresh `isFavorite: false` rather than a stale
+  // cached render. Best-effort lookup only: if the project row is gone or
+  // not visible, there's nothing to revalidate.
+  const { data: projectRow } = await supabase
+    .from("projects")
+    .select("workspaces(slug)")
+    .eq("id", parsed.data.projectId)
+    .maybeSingle();
+  const workspaceSlug = projectRow
+    ? Array.isArray(projectRow.workspaces)
+      ? (projectRow.workspaces[0]?.slug ?? null)
+      : ((projectRow.workspaces as { slug: string } | null)?.slug ?? null)
+    : null;
+  revalidateSidebar(workspaceSlug, "unfavoriteProject");
 
   return {
     ok: true,

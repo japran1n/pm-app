@@ -41,12 +41,24 @@ export function ProjectFavoriteButton({
   const [localIsFavorite, setLocalIsFavorite] = useState(isFavorite);
   const [isPending, startTransition] = useTransition();
 
-  // Re-sync when the server-derived prop changes for a DIFFERENT reason
-  // (e.g. the layout re-fetched after navigation) -- same "adjust state
-  // during render on prop change" convention as Watchers' syncedTaskId.
+  // Re-sync when the server-derived prop changes -- either because the
+  // caller now points at a DIFFERENT project (`projectId` changed) or
+  // because THIS SAME project's confirmed favourite status changed
+  // upstream (`isFavorite` changed): a server refresh (e.g.
+  // revalidatePath from lib/actions/favorites.ts firing after this same
+  // action settles server-side, or a sibling tab/session toggling the
+  // same project) that disagrees with this button's local optimistic
+  // state must win rather than be silently discarded, per F046 (M3
+  // scrutiny attempt 2, FU-19). Tracking both fields in the sync key
+  // (rather than `projectId` alone, the pre-fix behaviour) means a prop
+  // update that only changes `isFavorite` is no longer ignored just
+  // because `projectId` stayed the same. Same "adjust state during
+  // render on prop change" convention as Watchers' syncedTaskId.
   const [syncedProjectId, setSyncedProjectId] = useState(projectId);
-  if (projectId !== syncedProjectId) {
+  const [syncedIsFavorite, setSyncedIsFavorite] = useState(isFavorite);
+  if (projectId !== syncedProjectId || isFavorite !== syncedIsFavorite) {
     setSyncedProjectId(projectId);
+    setSyncedIsFavorite(isFavorite);
     setLocalIsFavorite(isFavorite);
   }
 
