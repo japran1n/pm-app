@@ -52,8 +52,9 @@ describe("SB-009: mobile nav Sheet at 375px", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
     const dialog = within(screen.getByRole("dialog"));
 
-    // Primary work band
-    for (const name of ["Dashboard", "My Tasks", "Watching"]) {
+    // Primary work band. F013 (SB-057): "Watching" no longer has its own
+    // sidebar item -- it's now an Inbox tab.
+    for (const name of ["Dashboard", "My Tasks"]) {
       expect(dialog.getByRole("link", { name: new RegExp(name, "i") })).toBeInTheDocument();
     }
     // Plan and Team groups

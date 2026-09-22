@@ -81,9 +81,10 @@ describe("AppSidebar on a short viewport (F119, AS-069)", () => {
     expect(text).toContain("Chat");
     // F003 (SB-016): "Trash" moved into AccountMenu (formerly the
     // sidebar's own "Other" group) and no longer renders in static
-    // markup until that menu is opened -- "Watching" replaces it here as
-    // the still-in-sidebar item this assertion checks for (SB-018).
-    expect(text).toContain("Watching");
+    // markup until that menu is opened. F013 (SB-057): "Watching" no
+    // longer has its own sidebar item either (absorbed into the Inbox
+    // tabs) -- "Chat" (asserted above) is this test's still-in-sidebar
+    // item.
 
     // Every project remains reachable via the always-present "All
     // projects" link (SB-044), not necessarily printed directly in this

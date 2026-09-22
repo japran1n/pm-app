@@ -102,21 +102,24 @@ describe("test_SB_017_templates_archive_trash_help_in_account_menu", () => {
 });
 
 describe("test_SB_018_watching_still_reachable_in_sidebar", () => {
-  it("a sidebar item 'Watching' links to /w/acme/watching, reachable without opening the account menu", () => {
+  // F013 (SB-057): superseded -- "Watching" is no longer its own sidebar
+  // item as of F013; it is absorbed into the Inbox tabs
+  // (`/w/acme/inbox?tab=watching`). This describe block now asserts the
+  // new, intentional absence instead of the old standalone link.
+  it("no standalone 'Watching' sidebar item exists anymore (absorbed into Inbox tabs, F013/SB-057)", () => {
     const html = renderToStaticMarkup(
       createElement(AppSidebar, { ...baseProps, isGuest: false }),
     );
 
-    expect(html).toContain('href="/w/acme/watching"');
-    expect(html).toContain("Watching");
+    expect(html).not.toContain('href="/w/acme/watching"');
   });
 
-  it("is also reachable for a guest (personal notification preference, not gated)", () => {
+  it("also absent for a guest", () => {
     const html = renderToStaticMarkup(
       createElement(AppSidebar, { ...baseProps, isGuest: true }),
     );
 
-    expect(html).toContain('href="/w/acme/watching"');
+    expect(html).not.toContain('href="/w/acme/watching"');
   });
 });
 

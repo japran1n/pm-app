@@ -16,7 +16,6 @@ import {
   Inbox,
   MessageCircle,
   CheckSquare,
-  Eye,
   Code2,
   Network,
   FileCode2,
@@ -158,15 +157,11 @@ function navGroups(
     // unreadCount, which chat-nav-list.tsx already treats as the
     // source of truth for "unread" there).
     { href: `/w/${workspaceSlug}/chat`, label: "Chat", icon: MessageCircle, badge: chatUnreadBadge ?? countBadge(chatUnreadCount) },
-    // F003 (SB-016, SB-018): the "Other" group is dissolved (Templates,
-    // Archive, Trash and Help moved into AccountMenu -- see that
-    // component). Watching has nowhere else to live yet (F013 will give it
-    // a proper home), so it moves here into the primary "Work" band as a
-    // temporary measure per this feature's own clarified implementation.
-    // Not guest-gated, same as before: watching is a personal notification
-    // preference any active member (including a guest) can use, per
-    // lib/actions/watchers.ts's own "any active member" access rule.
-    { href: `/w/${workspaceSlug}/watching`, label: "Watching", icon: Eye },
+    // F013 (SB-057): "Watching" is no longer its own sidebar item -- it is
+    // now one of the Inbox tabs (`/w/<slug>/inbox?tab=watching`,
+    // components/inbox/inbox-tab-nav.tsx). F014 adds the "Inbox" item
+    // itself to this band; nothing here reintroduces a standalone
+    // "Watching" link.
   ];
 
   // F010 (TH-001, TH-002, TH-003, TH-005, TH-007, TH-012): dedicated "Tools"

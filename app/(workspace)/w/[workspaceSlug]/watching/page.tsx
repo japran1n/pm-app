@@ -1,12 +1,11 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
-import { Eye } from "lucide-react";
 
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { getWatchedTasksForUser } from "@/lib/queries/watching";
-import { StatusBadge } from "@/components/ui/status-badge";
-import { STATUS_LABELS, STATUS_COLORS } from "@/lib/task-colors";
-import { EmptyState } from "@/components/empty-state";
+// F013: list-rendering itself now lives in this shared component, reused
+// behaviour-identically by the Inbox "Watching" tab -- see that file's own
+// header comment.
+import { WatchingTaskList } from "@/components/watching/watching-task-list";
 
 // Feature request "Watching feed": lists every task the signed-in caller
 // is currently watching (F163/F164's task_watchers), sorted by most
@@ -42,50 +41,7 @@ export default async function WatchingPage({
         </p>
       </div>
 
-      {watchedTasks.length === 0 ? (
-        <EmptyState
-          icon={Eye}
-          title="You're not watching any tasks"
-          description="Watch a task from its detail view to get notified about its activity here."
-        />
-      ) : (
-        <ul className="flex flex-col gap-2">
-          {watchedTasks.map((task) => {
-            const statusColor =
-              STATUS_COLORS[task.status as keyof typeof STATUS_COLORS] ??
-              "var(--muted-foreground)";
-            const statusLabel =
-              STATUS_LABELS[task.status as keyof typeof STATUS_LABELS] ?? task.status;
-            return (
-              <li key={task.taskId}>
-                <Link
-                  href={
-                    task.taskKey
-                      ? `/w/${workspaceSlug}/t/${task.taskKey}`
-                      : `/w/${workspaceSlug}/projects/${task.projectId}/list`
-                  }
-                  className="flex flex-col gap-1.5 rounded-lg border p-3 transition-colors hover:bg-accent"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <StatusBadge label={statusLabel} color={statusColor} />
-                      <span className="truncate text-sm font-medium">{task.taskTitle}</span>
-                    </div>
-                    <span className="shrink-0 text-xs text-muted-foreground">
-                      {task.projectName}
-                    </span>
-                  </div>
-                  {task.lastActivitySummary && (
-                    <p className="line-clamp-1 text-xs text-muted-foreground">
-                      {task.lastActivitySummary}
-                    </p>
-                  )}
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-      )}
+      <WatchingTaskList workspaceSlug={workspaceSlug} watchedTasks={watchedTasks} />
     </div>
   );
 }

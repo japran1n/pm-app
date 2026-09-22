@@ -134,7 +134,9 @@ describe("F025 SB-009 real 375px mobile nav", () => {
       await p.getByRole("button", { name: "Open navigation" }).click();
       const dialog = p.getByRole("dialog");
       await dialog.waitFor({ state: "visible" });
-      for (const name of [/dashboard/i, /my tasks/i, /watching/i, /^team$/i, /apollo launch/i]) {
+      // F013 (SB-057): "Watching" no longer has its own sidebar item --
+      // it's absorbed into the Inbox tabs.
+      for (const name of [/dashboard/i, /my tasks/i, /^team$/i, /apollo launch/i]) {
         expect(await dialog.getByRole("link", { name }).first().isVisible(), String(name)).toBe(true);
       }
       expect(await dialog.getByRole("button", { name: "Account menu" }).isVisible()).toBe(true);
