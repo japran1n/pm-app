@@ -225,10 +225,19 @@ export function ProjectNavList({
   // the caller has `limit` or fewer projects there's no truncation
   // happening at all, so showing them plainly (same as before this
   // feature) isn't misleading and stays unchanged.
-  const isTrueEmptyRecents =
-    noFavourites &&
-    !hasRecentMatch &&
-    allOtherProjects.length > SIDEBAR_PROJECTS_LIMIT;
+  // F045 (M3 scrutiny attempt 2, FU-18): the previous
+  // `allOtherProjects.length > SIDEBAR_PROJECTS_LIMIT` conjunct here was an
+  // untested threshold that appears nowhere in SB-042's own text ("with 0
+  // favorites, up to 5 recently visited; with none, an empty state") -- it
+  // gated the empty state on how many OTHER projects existed, so a
+  // workspace with 0 favourites, 0 recognised recents, and (say) 3
+  // projects rendered those 3 projects plainly instead of the empty state
+  // SB-042 describes. Showing the existing (<=5) projects was never the
+  // intended fallback: the empty state exists precisely so recency (not
+  // incidental list order) decides what appears here. Dropped so 0
+  // favourites + 0 recents always yields the empty state, at every
+  // project count (0/3/5/6+, all pinned by tests below).
+  const isTrueEmptyRecents = noFavourites && !hasRecentMatch;
   // F044 (M3 scrutiny attempt 2, FU-17): the section's TOTAL row count
   // (pinned favourites + everything below) must never exceed
   // `SIDEBAR_PROJECTS_LIMIT`, not just the pinned favourites group on its
@@ -271,12 +280,16 @@ export function ProjectNavList({
     const rest = pool.filter((p) => !recentIdSet.has(p.id));
     return [...recentMatches, ...rest].slice(0, limit);
   }
+  // F045: `isTrueEmptyRecents` is now exactly `noFavourites &&
+  // !hasRecentMatch` (see its own comment above), so the branch below is
+  // simply "0 favourites, >=1 matching recent -> recency-ranked slice" vs.
+  // "0 favourites, 0 matching recents -> nothing" (rendered as the empty
+  // state, not this list, further down) -- no separate length-gated
+  // fallback slice of `allOtherProjects` remains.
   const otherProjects = noFavourites
     ? hasRecentMatch
       ? selectSidebarProjects([], recentIds, allOtherProjects, SIDEBAR_PROJECTS_LIMIT)
-      : isTrueEmptyRecents
-        ? []
-        : allOtherProjects.slice(0, SIDEBAR_PROJECTS_LIMIT)
+      : []
     : selectRemainingOthers(allOtherProjects, remainingSlots);
 
   // dnd-kit setup, same PointerSensor+KeyboardSensor pairing as the board

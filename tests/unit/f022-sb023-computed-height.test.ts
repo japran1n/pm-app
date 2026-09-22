@@ -42,7 +42,9 @@ beforeAll(async () => {
       currentWorkspaceId: "w1",
       currentUser: { id: "u1", name: "T", email: "t@example.com", avatarUrl: null },
       isGuest: false,
-      projects: [{ id: "p1", name: "Apollo Launch", key: null }],
+      // F045 (SB-042 boundary fix): `isFavorite: true` keeps this project
+      // out of the now-unconditional 0-favourites/0-recents empty state.
+      projects: [{ id: "p1", name: "Apollo Launch", key: null, isFavorite: true }],
     }),
   );
   const file = join(process.cwd(), "app/globals.css");

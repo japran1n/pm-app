@@ -30,6 +30,17 @@ vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
 
+// F045 (SB-042 boundary fix): with 0 favourites AND 0 recognised recent
+// visits, project-nav-list.tsx now renders its own empty state
+// unconditionally. This file's own focus is the favourite pin/star
+// toggle, not that empty-state boundary (covered by
+// tests/unit/f045-project-nav-empty-state-boundary.test.tsx), so mock a
+// recognised recent visit for the lone non-favourite project used below
+// to keep it out of the empty branch.
+vi.mock("@/lib/nav/recent-projects", () => ({
+  readRecentProjectIds: () => ["p1"],
+}));
+
 import { ProjectNavList } from "@/components/nav/project-nav-list";
 
 afterEach(() => {

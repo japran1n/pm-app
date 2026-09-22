@@ -30,7 +30,9 @@ describe("ProjectNavList row identifier (UI polish: no icon/dot/key)", () => {
       createElement(ProjectNavList, {
         workspaceSlug: "acme",
         workspaceId: "w1",
-        projects: [{ id: "p1", name: "Rocket Project", key: "RK", icon: "🚀" }],
+        projects: [
+          { id: "p1", name: "Rocket Project", key: "RK", icon: "🚀", isFavorite: true },
+        ],
       }),
     );
 
@@ -44,7 +46,9 @@ describe("ProjectNavList row identifier (UI polish: no icon/dot/key)", () => {
       createElement(ProjectNavList, {
         workspaceSlug: "acme",
         workspaceId: "w1",
-        projects: [{ id: "p1", name: "Plain Project", key: "PL", icon: null }],
+        projects: [
+          { id: "p1", name: "Plain Project", key: "PL", icon: null, isFavorite: true },
+        ],
       }),
     );
 

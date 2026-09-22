@@ -47,7 +47,7 @@ import { AppSidebar } from "@/components/nav/app-sidebar";
 createRoot(document.getElementById("root")!).render(
   <AppSidebar workspaceSlug="acme" workspaces={[{id:"w1",name:"Acme",slug:"acme"}]} currentWorkspaceId="w1"
     currentUser={{id:"u1",name:"T",email:"t@example.com",avatarUrl:null}} isGuest={false} canManageWorkspace={true}
-    projects={[{id:"p1",name:"Apollo Launch",slug:"apollo"}] as never} />
+    projects={[{id:"p1",name:"Apollo Launch",slug:"apollo",isFavorite:true}] as never} />
 );
 (window as any).__mounted = true;`,
   );

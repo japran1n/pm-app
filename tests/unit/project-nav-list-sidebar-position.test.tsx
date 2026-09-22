@@ -34,6 +34,16 @@ vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
 
+// F045 (SB-042 boundary fix): with 0 favourites AND 0 recognised recent
+// visits, project-nav-list.tsx now renders its own empty state
+// unconditionally (see that file's own comment on `isTrueEmptyRecents`).
+// This file's own focus is sidebar_position ORDER, not the empty-state
+// boundary (that's covered by
+// tests/unit/f045-project-nav-empty-state-boundary.test.tsx). Give at
+// least one favourite in each fixture below so these projects render via
+// the non-favourite "remaining slots" path (which always preserves
+// `allOtherProjects`'s own order -- the thing this file actually tests)
+// instead of ever entering the 0-favourites empty-state branch.
 import { ProjectNavList } from "@/components/nav/project-nav-list";
 
 afterEach(() => {
@@ -51,6 +61,7 @@ describe("ProjectNavList renders in sidebar_position order", () => {
         workspaceSlug: "acme",
         workspaceId: "w1",
         projects: [
+          { id: "pf", name: "Favourite Anchor", key: "FA", isFavorite: true },
           { id: "p3", name: "Zebra Project", key: "ZB", isFavorite: false },
           { id: "p1", name: "Alpha Project", key: "AL", isFavorite: false },
           { id: "p2", name: "Middle Project", key: "MD", isFavorite: false },
@@ -78,6 +89,7 @@ describe("ProjectNavList renders in sidebar_position order", () => {
 
   it("re-syncs to the new prop order when the underlying project id set changes (e.g. after a server refetch)", () => {
     const initialProjects = [
+      { id: "pf", name: "Favourite Anchor", key: "FA", isFavorite: true },
       { id: "p1", name: "First Project", key: "FP", isFavorite: false },
       { id: "p2", name: "Second Project", key: "SP", isFavorite: false },
     ];
@@ -102,7 +114,7 @@ describe("ProjectNavList renders in sidebar_position order", () => {
       createElement(ProjectNavList, {
         workspaceSlug: "acme",
         workspaceId: "w1",
-        projects: [initialProjects[1], initialProjects[0]],
+        projects: [initialProjects[0], initialProjects[2], initialProjects[1]],
       }),
     );
 

@@ -46,7 +46,7 @@ describe("test_SB_043_colour_dot_and_open_task_count", () => {
       createElement(ProjectNavList, {
         workspaceSlug: "acme",
         workspaceId: "w1",
-        projects: [{ id: "p1", name: "Alpha Project", key: "AL", openTaskCount: 3 }],
+        projects: [{ id: "p1", name: "Alpha Project", key: "AL", openTaskCount: 3, isFavorite: true }],
       }),
     );
 
@@ -69,7 +69,7 @@ describe("test_SB_043_colour_dot_and_open_task_count", () => {
       createElement(ProjectNavList, {
         workspaceSlug: "acme",
         workspaceId: "w1",
-        projects: [{ id: "p1", name: "Alpha Project", key: "AL", openTaskCount: 4 }],
+        projects: [{ id: "p1", name: "Alpha Project", key: "AL", openTaskCount: 4, isFavorite: true }],
       }),
     );
 
@@ -82,7 +82,7 @@ describe("test_SB_043_colour_dot_and_open_task_count", () => {
       createElement(ProjectNavList, {
         workspaceSlug: "acme",
         workspaceId: "w1",
-        projects: [{ id: "p1", name: "Alpha Project", key: "AL", openTaskCount: 0 }],
+        projects: [{ id: "p1", name: "Alpha Project", key: "AL", openTaskCount: 0, isFavorite: true }],
       }),
     );
 
@@ -94,7 +94,7 @@ describe("test_SB_043_colour_dot_and_open_task_count", () => {
       createElement(ProjectNavList, {
         workspaceSlug: "acme",
         workspaceId: "w1",
-        projects: [{ id: "p1", name: "Alpha Project", key: "AL" }],
+        projects: [{ id: "p1", name: "Alpha Project", key: "AL", isFavorite: true }],
       }),
     );
 
@@ -110,7 +110,7 @@ describe("test_SB_044_all_projects_link", () => {
       createElement(ProjectNavList, {
         workspaceSlug: "acme",
         workspaceId: "w1",
-        projects: [{ id: "p1", name: "Alpha Project", key: "AL" }],
+        projects: [{ id: "p1", name: "Alpha Project", key: "AL", isFavorite: true }],
       }),
     );
 

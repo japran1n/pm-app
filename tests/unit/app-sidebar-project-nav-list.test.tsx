@@ -73,8 +73,8 @@ describe("ProjectNavList (F262)", () => {
         workspaceSlug: "acme",
         workspaceId: "w1",
         projects: [
-          { id: "p1", name: "Marketing Site", key: "MS" },
-          { id: "p2", name: "Mobile App", key: "MA" },
+          { id: "p1", name: "Marketing Site", key: "MS", isFavorite: true },
+          { id: "p2", name: "Mobile App", key: "MA", isFavorite: true },
         ],
       }),
     );
@@ -93,8 +93,8 @@ describe("ProjectNavList (F262)", () => {
         workspaceSlug: "acme",
         workspaceId: "w1",
         projects: [
-          { id: "p1", name: "Marketing Site", key: "MS" },
-          { id: "p2", name: "Mobile App", key: "MA" },
+          { id: "p1", name: "Marketing Site", key: "MS", isFavorite: true },
+          { id: "p2", name: "Mobile App", key: "MA", isFavorite: true },
         ],
       }),
     );
@@ -113,8 +113,8 @@ describe("ProjectNavList (F262)", () => {
         workspaceSlug: "acme",
         workspaceId: "w1",
         projects: [
-          { id: "p1", name: "Marketing Site", key: "MS" },
-          { id: "p2", name: "Mobile App", key: "MA" },
+          { id: "p1", name: "Marketing Site", key: "MS", isFavorite: true },
+          { id: "p2", name: "Mobile App", key: "MA", isFavorite: true },
         ],
       }),
     );
@@ -158,7 +158,7 @@ describe("AppSidebar renders the Projects section (F262)", () => {
     const html = renderToStaticMarkup(
       createElement(AppSidebar, {
         ...baseSidebarProps,
-        projects: [{ id: "p1", name: "Marketing Site", key: "MS" }],
+        projects: [{ id: "p1", name: "Marketing Site", key: "MS", isFavorite: true }],
       }),
     );
 

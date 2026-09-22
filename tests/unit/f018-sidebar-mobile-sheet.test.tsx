@@ -21,7 +21,16 @@ const props = {
   currentUser: { id: "u1", name: "T", email: "t@example.com", avatarUrl: null },
   isGuest: false,
   canManageWorkspace: true,
-  projects: [{ id: "p1", name: "Apollo Launch", slug: "apollo" }] as never,
+  // F045 (SB-042 boundary fix): 0 favourites + 0 recognised recent visits
+  // now always renders the section's own empty state (see
+  // project-nav-list.tsx's own `isTrueEmptyRecents` comment), so this
+  // fixture needs `isFavorite: true` to keep rendering an actual project
+  // row -- this file's own focus is the mobile Sheet nav tree, not that
+  // boundary (covered by
+  // tests/unit/f045-project-nav-empty-state-boundary.test.tsx).
+  projects: [
+    { id: "p1", name: "Apollo Launch", slug: "apollo", isFavorite: true },
+  ] as never,
 };
 
 const origWidth = window.innerWidth;

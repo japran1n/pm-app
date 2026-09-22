@@ -388,8 +388,12 @@ describe("Mobile navigation tap targets are at least 44px (F265, AS-518)", () =>
   // passed so ProjectNavList rendered its empty state, not its rows. This
   // renders AppSidebar WITH a non-empty `projects` array and asserts on
   // every one of those four previously-missed controls.
+  // F045 (SB-042 boundary fix): `isFavorite: true` keeps this project out
+  // of the now-unconditional 0-favourites/0-recents empty state -- this
+  // file's own focus is 44px tap targets, not that boundary (covered by
+  // tests/unit/f045-project-nav-empty-state-boundary.test.tsx).
   const PROJECTS = [
-    { id: "p1", name: "Acme Website", key: "AW", isFavorite: false },
+    { id: "p1", name: "Acme Website", key: "AW", isFavorite: true },
   ];
 
   it("test_AS_518_mobile_notification_bell_trigger_is_44px", () => {
