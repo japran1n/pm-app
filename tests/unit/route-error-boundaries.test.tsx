@@ -16,7 +16,6 @@ import "@testing-library/jest-dom/vitest";
 import WorkspaceHomeError from "@/app/(workspace)/w/[workspaceSlug]/error";
 import CalendarError from "@/app/(workspace)/w/[workspaceSlug]/calendar/error";
 import MyTasksError from "@/app/(workspace)/w/[workspaceSlug]/my-tasks/error";
-import NotificationsError from "@/app/(workspace)/w/[workspaceSlug]/notifications/error";
 import ProjectsError from "@/app/(workspace)/w/[workspaceSlug]/projects/error";
 import ProjectBoardError from "@/app/(workspace)/w/[workspaceSlug]/projects/[projectId]/board/error";
 import ProjectListError from "@/app/(workspace)/w/[workspaceSlug]/projects/[projectId]/list/error";
@@ -43,7 +42,6 @@ import ProjectSettingsRecordError from "@/app/(workspace)/w/[workspaceSlug]/proj
 import ProjectSettingsSiteError from "@/app/(workspace)/w/[workspaceSlug]/projects/[projectId]/settings/site/error";
 import ProjectSettingsPortalError from "@/app/(workspace)/w/[workspaceSlug]/projects/[projectId]/settings/portal/error";
 import ProjectHoursError from "@/app/(workspace)/w/[workspaceSlug]/projects/[projectId]/hours/error";
-import RequestsError from "@/app/(workspace)/w/[workspaceSlug]/requests/error";
 import PreviewAsClientError from "@/app/(workspace)/w/[workspaceSlug]/preview-as-client/error";
 import SettingsTaskTypesError from "@/app/(workspace)/w/[workspaceSlug]/settings/task-types/error";
 import SettingsStatusTemplatesError from "@/app/(workspace)/w/[workspaceSlug]/settings/status-templates/error";
@@ -69,7 +67,6 @@ const routeErrorBoundaries: Array<{
   { name: "workspace home", Component: WorkspaceHomeError },
   { name: "calendar", Component: CalendarError },
   { name: "my-tasks", Component: MyTasksError },
-  { name: "notifications", Component: NotificationsError },
   { name: "projects list", Component: ProjectsError },
   { name: "project board", Component: ProjectBoardError },
   { name: "project list", Component: ProjectListError },
@@ -91,7 +88,6 @@ const routeErrorBoundaries: Array<{
   { name: "project settings site", Component: ProjectSettingsSiteError },
   { name: "project settings portal", Component: ProjectSettingsPortalError },
   { name: "project hours", Component: ProjectHoursError },
-  { name: "requests", Component: RequestsError },
   { name: "preview as client", Component: PreviewAsClientError },
   { name: "settings task types", Component: SettingsTaskTypesError },
   { name: "settings status templates", Component: SettingsStatusTemplatesError },

@@ -68,7 +68,7 @@ export function NeedsYouCard({
           ) : null}
         </div>
         <Link
-          href={`/w/${workspaceSlug}/notifications`}
+          href={`/w/${workspaceSlug}/inbox?tab=notifications`}
           className="text-sm text-muted-foreground hover:text-foreground"
         >
           Inbox &rarr;
@@ -118,7 +118,7 @@ export function NeedsYouCard({
         )}
         {overflowCount > 0 ? (
           <Link
-            href={`/w/${workspaceSlug}/notifications`}
+            href={`/w/${workspaceSlug}/inbox?tab=notifications`}
             className="mt-2 block text-sm text-muted-foreground hover:text-foreground"
           >
             {overflowCount} more in inbox &rarr;

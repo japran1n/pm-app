@@ -453,7 +453,7 @@ export function NotificationPanel({
       )}
 
       <Link
-        href={`/w/${workspaceSlug}/notifications`}
+        href={`/w/${workspaceSlug}/inbox?tab=notifications`}
         className="px-1 py-1 text-center text-xs text-muted-foreground hover:text-foreground hover:underline"
       >
         View all notifications

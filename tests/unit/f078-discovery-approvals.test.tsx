@@ -89,9 +89,11 @@ describe("F078 AS-152: BriefApprovalStatus dedicated status section", () => {
     expect(screen.getByTestId("brief-approval-status").textContent).toContain("Approved");
   });
 
-  it("links through to the workspace approvals queue", () => {
+  it("links through to the Inbox's Approvals tab", () => {
+    // F015: the standalone approvals queue is now the Inbox's
+    // "Approvals" tab -- this link was updated alongside that redirect.
     render(<BriefApprovalStatus workspaceSlug="acme" state="pending" />);
     const link = screen.getByRole("link", { name: /view in approvals/i });
-    expect(link.getAttribute("href")).toBe("/w/acme/approvals");
+    expect(link.getAttribute("href")).toBe("/w/acme/inbox?tab=approvals");
   });
 });

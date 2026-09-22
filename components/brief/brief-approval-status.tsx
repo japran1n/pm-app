@@ -35,7 +35,7 @@ export function BriefApprovalStatus({ workspaceSlug, state }: BriefApprovalStatu
     >
       <span>{STATE_LABEL[state]}</span>
       <Link
-        href={`/w/${workspaceSlug}/approvals`}
+        href={`/w/${workspaceSlug}/inbox?tab=approvals`}
         className="underline-offset-4 hover:text-foreground hover:underline"
       >
         View in approvals

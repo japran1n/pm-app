@@ -208,7 +208,7 @@ function navGroups(
     ...(hasClient
       ? [
           {
-            href: `/w/${workspaceSlug}/requests`,
+            href: `/w/${workspaceSlug}/inbox?tab=requests`,
             label: "Client requests",
             icon: Inbox,
             // F083: a change request is at least as time-sensitive as a
@@ -221,7 +221,7 @@ function navGroups(
           // meaningless clutter for a workspace with no client to ever
           // decide one.
           {
-            href: `/w/${workspaceSlug}/approvals`,
+            href: `/w/${workspaceSlug}/inbox?tab=approvals`,
             label: "Approvals",
             icon: CheckSquare,
             badge: approvalsBadge ?? countBadge(approvalsCount),

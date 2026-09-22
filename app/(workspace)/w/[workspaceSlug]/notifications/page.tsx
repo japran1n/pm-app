@@ -1,63 +1,30 @@
-import { redirect } from "next/navigation";
+import { permanentRedirect } from "next/navigation";
 
-import { getCurrentUser } from "@/lib/auth/current-user";
-import { getNotificationsForWorkspace } from "@/lib/queries/notifications";
-import { NotificationPanel } from "@/components/notifications/notification-panel";
+import { legacyInboxRedirectPath } from "@/lib/inbox/legacy-redirect";
 
-// F208: the full notifications page — the bell popover's "View all
-// notifications" link target, for older items beyond the popover's
-// capped list. Server Component: fetches this workspace's notifications
-// (a wider limit than the popover's default) and passes them down to the
-// same <NotificationPanel> the bell uses, so mark-read/mark-all behaviour
-// (AS-386, AS-387) is defined in exactly one place, not duplicated for
-// this page.
-//
-// Access: every active member (including guests) sees their own
-// notifications — unlike Archive/Members/Templates/Trash, this is a
-// strictly self-scoped inbox (RLS: user_id = auth.uid()), not a
-// workspace-broad admin-adjacent view, so there is no guest gate here.
-const PAGE_LIMIT = 100;
-
-export default async function NotificationsPage({
+// F015 (SB-056): the standalone Notifications page merged into the
+// Inbox's "Notifications" tab (F013). This route stays live for old
+// bookmarks/links (e.g. components/dashboard/needs-you-card.tsx's "Inbox"
+// link, and the dashboard's Needs-you actionHref) but now only redirects
+// to the canonical `/w/<slug>/inbox?tab=notifications` URL — same
+// permanent-redirect rationale as the Archive route's own F047/F012
+// precedent (app/(workspace)/w/[workspaceSlug]/archive/page.tsx).
+// loading.tsx/error.tsx deleted alongside this change since this route
+// never renders anything anymore.
+export default async function NotificationsRedirectPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ workspaceSlug: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { workspaceSlug } = await params;
-
-  const { supabase, user } = await getCurrentUser();
-
-  if (!user) {
-    redirect("/sign-in");
-  }
-
-  const { data: workspace } = await supabase
-    .from("workspaces")
-    .select("id")
-    .eq("slug", workspaceSlug)
-    .maybeSingle();
-
-  // Defensive fallback only — the layout guard one level up already
-  // redirects away when the workspace can't be resolved for this caller.
-  if (!workspace) {
-    redirect("/onboarding");
-  }
-
-  const { list, unreadCount } = await getNotificationsForWorkspace(
-    workspace.id,
-    PAGE_LIMIT,
-  );
-
-  return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 p-6 pt-4 lg:p-8 lg:pt-8">
-      <h1 className="text-xl font-semibold">Notifications</h1>
-      <NotificationPanel
-        workspaceSlug={workspaceSlug}
-        workspaceId={workspace.id}
-        initialNotifications={list}
-        initialUnreadCount={unreadCount}
-        emptyStateClassName="flex flex-col items-center gap-2 rounded-lg border border-dashed py-16 text-center"
-      />
-    </div>
+  const resolvedSearchParams = await searchParams;
+  permanentRedirect(
+    legacyInboxRedirectPath(
+      workspaceSlug,
+      "notifications",
+      resolvedSearchParams,
+    ),
   );
 }

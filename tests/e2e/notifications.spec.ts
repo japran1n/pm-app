@@ -314,14 +314,24 @@ test.describe("Notification bell live badge (F209: AS-388)", () => {
     }
   }
 
-  test("AS-388: a new notification for the signed-in user increments the bell's badge live, with no reload", async ({
+  test("AS-388: a new notification for the signed-in user updates the Inbox badge/title live, with no reload", async ({
     page,
     baseURL,
   }) => {
     await loginAsRecipient(page, baseURL!);
 
-    const bell = page.getByRole("button", { name: "Notifications" });
-    await expect(bell).toBeVisible();
+    // F014/F015: the sidebar NotificationBell (and its "Notifications, N
+    // unread" accessible name) is gone -- its unread count is folded into
+    // the "Inbox" nav item's own aggregate badge instead
+    // (components/nav/figures/inbox-badge-figure.tsx), and its live
+    // Realtime side effect (this test's actual live-update proof) moved
+    // to the document title/favicon badge
+    // (components/notifications/notifications-realtime-effects.tsx,
+    // lib/notifications/use-unread-badge.ts) since the Inbox nav badge
+    // itself is a Suspense-streamed Server Component with no client-side
+    // Realtime subscription of its own.
+    const inboxLink = page.getByRole("link", { name: /^Inbox/ });
+    await expect(inboxLink).toBeVisible();
 
     // "user A assigns a task" -> a `task_assigned` notification row lands
     // for "user B" — the exact shape F207's real assignment fan-out
@@ -356,13 +366,16 @@ test.describe("Notification bell live badge (F209: AS-388)", () => {
     // No reload, no manual re-fetch trigger from the test — this must be
     // the app's own Realtime subscription + reconciliation picking up the
     // live insert (tab-focus reconciliation is a client-side fallback,
-    // not what's exercised here: the page never loses focus).
-    await expect(
-      page.getByRole("button", { name: "Notifications, 1 unread" }),
-    ).toBeVisible({ timeout: 15_000 });
+    // not what's exercised here: the page never loses focus), surfacing
+    // as the "(1) " unread prefix use-unread-badge.ts applies to
+    // document.title.
+    await expect
+      .poll(() => page.title(), { timeout: 15_000 })
+      .toMatch(/^\(1\) /);
 
-    // Prepended into the (now-open) panel too.
-    await bell.click();
+    // Navigating to the Inbox (the bell's popover replacement) shows the
+    // same notification.
+    await inboxLink.click();
     await expect(page.getByText(/assigned you to/i)).toBeVisible();
   });
 });

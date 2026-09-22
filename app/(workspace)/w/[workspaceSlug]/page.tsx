@@ -249,7 +249,7 @@ export default async function WorkspacePage({
       title: approval.blocks?.label ?? "An approval request",
       subtitle: `${approval.projectName} · requested ${new Date(approval.requestedAt).toLocaleDateString()}`,
       actionLabel: "Review",
-      actionHref: `/w/${workspaceSlug}/approvals`,
+      actionHref: `/w/${workspaceSlug}/inbox?tab=approvals`,
       _date: approval.requestedAt,
     } as AttentionItem & { _date: string });
   }
@@ -284,7 +284,7 @@ export default async function WorkspacePage({
       title: notification.task?.title ?? "A mention",
       subtitle: notification.task?.key ?? "",
       actionLabel: "View",
-      actionHref: `/w/${workspaceSlug}/notifications`,
+      actionHref: `/w/${workspaceSlug}/inbox?tab=notifications`,
       _date: notification.createdAt,
     } as AttentionItem & { _date: string });
   }

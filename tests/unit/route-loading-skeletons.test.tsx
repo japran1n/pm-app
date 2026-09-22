@@ -20,7 +20,6 @@ import WorkspaceHomeLoading from "@/app/(workspace)/w/[workspaceSlug]/loading";
 import ProjectsLoading from "@/app/(workspace)/w/[workspaceSlug]/projects/loading";
 import MembersLoading from "@/app/(workspace)/w/[workspaceSlug]/settings/members/loading";
 import ProfileSettingsLoading from "@/app/(workspace)/w/[workspaceSlug]/settings/profile/loading";
-import NotificationsLoading from "@/app/(workspace)/w/[workspaceSlug]/notifications/loading";
 import AuditLoading from "@/app/(workspace)/w/[workspaceSlug]/settings/audit/loading";
 import WorkspaceSettingsLoading from "@/app/(workspace)/w/[workspaceSlug]/settings/loading";
 import TemplatesLoading from "@/app/(workspace)/w/[workspaceSlug]/templates/loading";
@@ -43,7 +42,6 @@ const routes: Array<{ name: string; Component: () => React.ReactElement; minSkel
   { name: "projects list", Component: ProjectsLoading, minSkeletons: 5 },
   { name: "settings/members", Component: MembersLoading, minSkeletons: 5 },
   { name: "settings/profile", Component: ProfileSettingsLoading, minSkeletons: 5 },
-  { name: "notifications", Component: NotificationsLoading, minSkeletons: 5 },
   { name: "settings/audit", Component: AuditLoading, minSkeletons: 8 },
   { name: "settings (workspace general)", Component: WorkspaceSettingsLoading, minSkeletons: 5 },
   { name: "templates", Component: TemplatesLoading, minSkeletons: 4 },
