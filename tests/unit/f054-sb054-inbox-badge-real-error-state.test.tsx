@@ -207,4 +207,46 @@ describe("F054 FU-M4-7 (SB-054): Inbox badge hasClient gate + real error-state r
     expect(container.querySelector('[aria-label="Inbox count unavailable"]')).not.toBeNull();
     expect(container.querySelector(".shrink-0.px-1\\.5")).toBeNull();
   });
+
+  // F055 (FU-M4-8, SB-054): render-level case for an aggregate over 99.
+  it("test_SB_054_aggregate_over_99_renders_as_99_plus", async () => {
+    const { getNotificationsForWorkspace } = await import("@/lib/queries/notifications");
+    const { getOpenApprovalCountForWorkspace } = await import("@/lib/queries/approvals");
+    const { getOpenClientRequestCountForWorkspace } = await import("@/lib/queries/client-requests");
+    vi.mocked(getNotificationsForWorkspace).mockResolvedValueOnce({
+      list: [],
+      unreadCount: 80,
+    } as never);
+    vi.mocked(getOpenApprovalCountForWorkspace).mockResolvedValueOnce({ count: 15 });
+    vi.mocked(getOpenClientRequestCountForWorkspace).mockResolvedValueOnce({ count: 10 });
+
+    const { container } = await renderFigure({
+      workspaceId: "w1",
+      isGuest: false,
+      hasClient: true,
+    });
+
+    // 80 + 15 + 10 = 105 > 99.
+    expect(container.textContent).toBe("99+");
+  });
+
+  it("test_SB_054_aggregate_of_exactly_99_renders_the_real_number_not_capped", async () => {
+    const { getNotificationsForWorkspace } = await import("@/lib/queries/notifications");
+    const { getOpenApprovalCountForWorkspace } = await import("@/lib/queries/approvals");
+    const { getOpenClientRequestCountForWorkspace } = await import("@/lib/queries/client-requests");
+    vi.mocked(getNotificationsForWorkspace).mockResolvedValueOnce({
+      list: [],
+      unreadCount: 99,
+    } as never);
+    vi.mocked(getOpenApprovalCountForWorkspace).mockResolvedValueOnce({ count: 0 });
+    vi.mocked(getOpenClientRequestCountForWorkspace).mockResolvedValueOnce({ count: 0 });
+
+    const { container } = await renderFigure({
+      workspaceId: "w1",
+      isGuest: false,
+      hasClient: true,
+    });
+
+    expect(container.textContent).toBe("99");
+  });
 });

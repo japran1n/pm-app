@@ -24,6 +24,7 @@ import { logger } from "@/lib/observability/logger";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { resolvePeople } from "@/lib/queries/people";
 import { formatTaskKey } from "@/lib/tasks/task-key";
+import { MIRRORED_QUEUE_NOTIFICATION_KINDS } from "@/lib/notifications/fanout";
 import type { UserAvatarPerson } from "@/components/user-avatar";
 
 export type NotificationKind =
@@ -134,6 +135,19 @@ function resolveChatMention(
  * correct even when `list` is capped by `limit` — e.g. 25 unread
  * notifications with `limit: 20` still shows "25", not "20".
  *
+ * F055 (FU-M4-8, SB-054): `unreadCount` excludes any row whose `kind` is
+ * one of `MIRRORED_QUEUE_NOTIFICATION_KINDS` (lib/notifications/fanout.ts)
+ * -- `client_request_submitted`, `approval_owner_nudge`, and
+ * `approval_decided` each fan out alongside an entity that one of the
+ * Inbox badge's OTHER two sources already counts directly (a pending
+ * client request / a still-open approval), so counting the notification
+ * too would double-count the same underlying item in the aggregate badge
+ * (lib/inbox/inbox-badge-count.ts). Every other kind (mention,
+ * comment_reply, task_assigned, task_due_soon, watcher_update, the chat
+ * kinds, portal_task_decided, client_deliverable_submitted,
+ * brief_answer_changed) has no counted-elsewhere sibling, so it still
+ * contributes normally.
+ *
  * F210 (AS-390): a notification whose task was deleted, or whose task's
  * project the caller can no longer see (made private after the
  * notification fired — both cases "treat both the same way" per this
@@ -188,7 +202,7 @@ export async function getNotificationsForWorkspace(
     // unread row, not just the page the panel renders.
     supabase
       .from("notifications")
-      .select("id, task_id")
+      .select("id, task_id, kind")
       .eq("workspace_id", workspaceId)
       .is("read_at", null),
   ]);
@@ -289,7 +303,9 @@ export async function getNotificationsForWorkspace(
   });
 
   const unreadCount = (unreadRows ?? []).filter(
-    (row) => !row.task_id || isAccessible(row.task_id),
+    (row) =>
+      !MIRRORED_QUEUE_NOTIFICATION_KINDS.includes(row.kind) &&
+      (!row.task_id || isAccessible(row.task_id)),
   ).length;
 
   return { list, unreadCount };

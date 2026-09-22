@@ -77,6 +77,28 @@ export type PortalNotificationKind =
 // below, so it was never going to fit that function either way).
 export type ChatNotificationKind = "chat_dm" | "chat_thread_reply";
 
+// F055 (FU-M4-8, SB-054): the three notification kinds that MIRROR an
+// entity already counted directly by one of the Inbox badge's other two
+// sources (lib/inbox/inbox-badge-count.ts) -- a pending client request
+// contributes to `getOpenClientRequestCountForWorkspace`'s count already,
+// so the `client_request_submitted` notification that fanned out alongside
+// it must not ALSO add +1 via `unreadCount`, or the same underlying entity
+// gets counted twice in the same badge. Same reasoning for
+// `approval_owner_nudge` (a still-open approval already counted by
+// `getOpenApprovalCountForWorkspace`) and `approval_decided` (fires when an
+// approval leaves the open queue, so by definition no longer contributes to
+// that count, but would otherwise still be double-counted against the
+// approval that generated it while both rows briefly coexist unread).
+// `getNotificationsForWorkspace` (lib/queries/notifications.ts) excludes
+// exactly these three kinds from `unreadCount` for this reason -- see that
+// function's own doc comment and lib/inbox/inbox-badge-count.ts's top-of-
+// file rule.
+export const MIRRORED_QUEUE_NOTIFICATION_KINDS: readonly string[] = [
+  "client_request_submitted",
+  "approval_owner_nudge",
+  "approval_decided",
+];
+
 // F068: a brief answer saved/edited while the brief is already in state
 // 'submitted' or 'approved' -- fanned out to that project's decision
 // owners (project_decision_owners), never through computeFanoutRecipients

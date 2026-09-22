@@ -17,6 +17,22 @@
 // (see each query's own doc comment), so this helper never needs to know
 // about failure -- a failed source simply contributes 0, never throwing
 // and never blocking the other two.
+//
+// F055 (FU-M4-8, SB-054) -- de-duplication rule: `unreadNotifications`
+// (getNotificationsForWorkspace's `unreadCount`, lib/queries/
+// notifications.ts) already EXCLUDES any notification whose kind mirrors
+// an entity one of this sum's other two sources counts directly --
+// `client_request_submitted` (mirrors a row `openRequests` already
+// counts) and `approval_owner_nudge`/`approval_decided` (both mirror a
+// row `pendingApprovals` already counts) -- see
+// `MIRRORED_QUEUE_NOTIFICATION_KINDS` (lib/notifications/fanout.ts) and
+// that query's own doc comment for the full per-kind rationale. The rule
+// in one sentence: count each underlying entity once, never once per
+// (queue item) + once per (notification about that queue item). This
+// function itself stays a pure three-way sum over already-deduplicated
+// inputs -- it never re-derives or re-applies the dedupe rule itself, so
+// a caller that fetches its three counts from the query layer above
+// always gets a correctly-deduplicated total.
 export type InboxBadgeCounts = {
   unreadNotifications: number;
   pendingApprovals: number;
