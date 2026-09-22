@@ -97,4 +97,22 @@ describe("F052 (SB-056): sidebar active-state honours the tab search param", () 
     const link = links[0];
     expect(link).not.toHaveAttribute("aria-current");
   });
+
+  // FU-M4-11 (M4 scrutiny attempt 2, SB-056): "Inbox" (tab-less href) used to
+  // stay active on `pathMatches` alone, so it lit up alongside "Approvals" or
+  // "Client requests" whenever the URL shared its `/inbox` path but carried a
+  // sibling's own `?tab=` value -- two `aria-current="page"` links at once.
+  // Exactly one sidebar link must carry `aria-current="page"` for each of
+  // these three URLs.
+  it.each([
+    ["/inbox", "", "Inbox"],
+    ["/inbox", "?tab=approvals", "Approvals"],
+    ["/inbox", "?tab=requests", "Client requests"],
+  ])("exactly one link is aria-current='page' for /w/acme%s%s (expected: %s)", (path, search, expectedLabel) => {
+    renderAt(`/w/acme${path}`, search);
+
+    const current = document.querySelectorAll('a[aria-current="page"]');
+    expect(current.length).toBe(1);
+    expect(current[0]).toHaveTextContent(expectedLabel);
+  });
 });

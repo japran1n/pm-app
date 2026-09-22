@@ -555,9 +555,19 @@ function SidebarContent({
                 const pathMatches = exact
                   ? pathname === hrefPath
                   : pathname === hrefPath || pathname.startsWith(`${hrefPath}/`);
+                // FU-M4-11 (M4 scrutiny attempt 2): a tab-less item (e.g.
+                // Inbox, no `?tab=` in its own href) matched on `pathMatches`
+                // alone, so it stayed active even when the URL's `?tab=`
+                // pointed at a sibling item's own tab (e.g. `?tab=approvals`
+                // also lit up "Inbox" since both share the `/inbox` path).
+                // A tab-less item's "own" tab is implicitly `all` -- it must
+                // only be active when the URL carries no `tab` param (or an
+                // empty one), i.e. exactly the state its own href resolves
+                // to. Tab-bearing items are unaffected: they already require
+                // an exact tab match via `currentTab === hrefTab`.
                 const isActive = hrefTab
                   ? pathMatches && currentTab === hrefTab
-                  : pathMatches;
+                  : pathMatches && !currentTab;
 
                 return (
                   <Link
