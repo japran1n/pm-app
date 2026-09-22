@@ -11,7 +11,16 @@ export async function WatchingTabContent({
   workspaceSlug: string;
   userId: string;
 }) {
-  const watchedTasks = await getWatchedTasksForUser(userId);
+  const { list: watchedTasks, error } = await getWatchedTasksForUser(userId);
+
+  // F057 (FU-M4-10): a real fetch failure must never render the same
+  // "not watching anything" empty state a legitimate zero-row result
+  // would — throw so app/(workspace)/w/[workspaceSlug]/inbox/error.tsx
+  // (and this route's own error.tsx) renders an error affordance instead,
+  // matching F050's convention on RequestsTabContent.
+  if (error) {
+    throw new Error(error);
+  }
 
   return (
     <div className="flex flex-col gap-4">

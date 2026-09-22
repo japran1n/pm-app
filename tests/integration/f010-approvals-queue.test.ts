@@ -250,7 +250,8 @@ describe.skipIf(!haveAdminCreds)("F010 — getOpenApprovalsForWorkspace (AS-027)
 
   it("AS_027_queue_returns_open_requests_across_projects_oldest_first_excludes_settled", async () => {
     const { getOpenApprovalsForWorkspace } = await import("@/lib/queries/approvals");
-    const rows = await getOpenApprovalsForWorkspace(workspaceId);
+    const { list: rows, error } = await getOpenApprovalsForWorkspace(workspaceId);
+    expect(error).toBeUndefined();
 
     // Excludes the withdrawn request entirely — never surfaced, not even
     // as a settled row (this queue only shows OPEN requests).
@@ -276,7 +277,7 @@ describe.skipIf(!haveAdminCreds)("F010 — getOpenApprovalsForWorkspace (AS-027)
     const { getOpenApprovalsForWorkspace, getDecisionOwnerNames } = await import(
       "@/lib/queries/approvals"
     );
-    const rows = await getOpenApprovalsForWorkspace(workspaceId);
+    const { list: rows } = await getOpenApprovalsForWorkspace(workspaceId);
     const owners = await getDecisionOwnerNames(
       rows.map((r) => ({ projectId: r.projectId, decisionType: r.decisionType })),
     );

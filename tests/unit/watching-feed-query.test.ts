@@ -13,6 +13,7 @@ const mockTaskWatchersEq2 = vi.fn();
 const mockTasksSelect = vi.fn();
 const mockProjectsIn = vi.fn();
 const mockActivityOrder = vi.fn();
+const mockRpc = vi.fn();
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(async () => ({
@@ -70,7 +71,7 @@ vi.mock("@/lib/supabase/server", () => ({
       }
       throw new Error(`Unexpected table: ${table}`);
     }),
-    rpc: vi.fn(async () => ({ data: [], error: null })),
+    rpc: mockRpc,
   })),
 }));
 
@@ -92,10 +93,12 @@ describe("getWatchedTasksForUser (query layer)", () => {
       error: null,
     });
     mockActivityOrder.mockResolvedValue({ data: [], error: null });
+    mockRpc.mockResolvedValue({ data: [], error: null });
   });
 
   it("never selects a bare `key` column off `tasks` (tasks has no `key` column)", async () => {
-    await getWatchedTasksForUser("user-1");
+    const result = await getWatchedTasksForUser("user-1");
+    expect(result.error).toBeUndefined();
 
     expect(mockTasksSelect).toHaveBeenCalledTimes(1);
     const columns = mockTasksSelect.mock.calls[0][0] as string;
@@ -109,9 +112,44 @@ describe("getWatchedTasksForUser (query layer)", () => {
   });
 
   it("assembles taskKey from the embedded project's key + the task's number", async () => {
-    const items = await getWatchedTasksForUser("user-1");
+    const { list: items } = await getWatchedTasksForUser("user-1");
 
     expect(items).toHaveLength(1);
     expect(items[0].taskKey).toBe("PM-7");
+  });
+
+  // F057 (FU-M4-10, SB-052): a failure on the `projects` lookup used to be
+  // logged and swallowed, then papered over by buildWatchedTaskItems's
+  // "Unknown project" fallback -- indistinguishable from a genuinely
+  // nameless project. This forces the REAL error return shape the
+  // Supabase client actually produces on a failed query (an `{ error }`
+  // object from the mocked `.in()` call, not a rejected promise --
+  // `getWatchedTasksForUser` never awaits a throwing call here) and
+  // asserts the typed `error` is now surfaced instead of a silent `[]`.
+  it("test_SB_052_watching_query_surfaces_a_project_lookup_failure_instead_of_swallowing_it", async () => {
+    mockProjectsIn.mockResolvedValue({
+      data: null,
+      error: { message: "relation does not exist", code: "42P01" },
+    });
+
+    const result = await getWatchedTasksForUser("user-1");
+
+    expect(result.error).toBeTruthy();
+    expect(result.list).toEqual([]);
+  });
+
+  // Same class of defect on the latest-activity RPC: a failure there used
+  // to be logged and swallowed, silently rendering every row as if it had
+  // no activity history instead of surfacing the failure.
+  it("test_SB_052_watching_query_surfaces_an_activity_lookup_failure_instead_of_swallowing_it", async () => {
+    mockRpc.mockResolvedValue({
+      data: null,
+      error: { message: "function does not exist", code: "42883" },
+    });
+
+    const result = await getWatchedTasksForUser("user-1");
+
+    expect(result.error).toBeTruthy();
+    expect(result.list).toEqual([]);
   });
 });

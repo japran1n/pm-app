@@ -171,11 +171,11 @@ export default async function WorkspacePage({
     { overdue: [], today: [], thisWeek: [], later: [] },
     "getMyTasks",
   );
-  const approvals = unwrap<WorkspaceApproval[]>(
+  const approvals = unwrap<{ list: WorkspaceApproval[]; error?: string }>(
     approvalsResult,
-    [],
+    { list: [] },
     "getOpenApprovalsForWorkspace",
-  );
+  ).list;
   const clientRequests = unwrap<{ list: TeamClientRequest[]; error?: string }>(
     clientRequestsResult,
     { list: [] },

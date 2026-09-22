@@ -81,14 +81,16 @@ vi.mock("@/lib/queries/notifications", () => ({
 }));
 
 vi.mock("@/lib/queries/approvals", () => ({
-  getOpenApprovalsForWorkspace: vi.fn(async () => [
-    {
-      id: "a1",
-      title: "Guest-visible approval",
-      projectName: "Apollo",
-      requestedAt: "2026-06-03T09:00:00.000Z",
-    },
-  ]),
+  getOpenApprovalsForWorkspace: vi.fn(async () => ({
+    list: [
+      {
+        id: "a1",
+        title: "Guest-visible approval",
+        projectName: "Apollo",
+        requestedAt: "2026-06-03T09:00:00.000Z",
+      },
+    ],
+  })),
 }));
 
 vi.mock("@/lib/queries/client-requests", () => ({
@@ -105,7 +107,7 @@ vi.mock("@/lib/queries/client-requests", () => ({
 }));
 
 vi.mock("@/lib/queries/watching", () => ({
-  getWatchedTasksForUser: vi.fn(async () => []),
+  getWatchedTasksForUser: vi.fn(async () => ({ list: [] })),
 }));
 
 describe("SB-051: the All tab renders the same item set for a guest as for any other non-client role", () => {

@@ -49,12 +49,22 @@ export type WatchedTaskListItem = {
 
 /** Fetches every task the given user is currently watching
  * (`task_watchers.is_watching = true`), sorted by most recent activity.
- * Returns an empty array (never throws) on any read failure — same
- * fail-open-to-empty convention `getFavoriteProjectIds` already uses for
- * this sidebar/dashboard-adjacent class of read. */
+ *
+ * F057 (FU-M4-10, SB-052): returns getWorkspaceClientRequests's own
+ * `{ list, error }` shape (lib/queries/client-requests.ts) instead of a
+ * bare array — a real read failure on any of the watcher/task/project
+ * queries below used to collapse to `[]`, indistinguishable from
+ * "watching nothing", and (for the project lookup specifically) could
+ * render a row with a blank/"Unknown project" name instead of surfacing
+ * the failure. `error` is set for a failure on the watcher query, the
+ * task query, OR the project-name query — the last one because a project
+ * name is core render data for every row here, not a nullable extra. The
+ * activity lookup remains best-effort (a missing "what changed" summary
+ * degrades gracefully; see below), matching AS/SB conventions elsewhere
+ * that only the row's core identity fields gate the error path. */
 export async function getWatchedTasksForUser(
   userId: string,
-): Promise<WatchedTaskListItem[]> {
+): Promise<{ list: WatchedTaskListItem[]; error?: string }> {
   const supabase = await createClient();
 
   const { data: watcherRows, error: watcherError } = await supabase
@@ -65,11 +75,11 @@ export async function getWatchedTasksForUser(
 
   if (watcherError) {
     logger.error("getWatchedTasksForUser: watcher query failed", { error: watcherError });
-    return [];
+    return { list: [], error: "Couldn't load watched tasks." };
   }
 
   const taskIds = (watcherRows ?? []).map((row) => row.task_id);
-  if (taskIds.length === 0) return [];
+  if (taskIds.length === 0) return { list: [] };
 
   // `tasks` has no `key` column -- a task's displayed "KEY-NUMBER"
   // identifier (e.g. "PM-142") is derived at read time via formatTaskKey
@@ -85,11 +95,11 @@ export async function getWatchedTasksForUser(
 
   if (taskError) {
     logger.error("getWatchedTasksForUser: task query failed", { error: taskError });
-    return [];
+    return { list: [], error: "Couldn't load watched tasks." };
   }
 
   const tasks = taskRows ?? [];
-  if (tasks.length === 0) return [];
+  if (tasks.length === 0) return { list: [] };
 
   const projectIds = Array.from(new Set(tasks.map((task) => task.project_id)));
   const { data: projectRows, error: projectError } = await supabase
@@ -98,7 +108,13 @@ export async function getWatchedTasksForUser(
     .in("id", projectIds);
 
   if (projectError) {
+    // F057: a project name is core render data for every row here (not a
+    // nullable extra) — swallowing this used to let a row fall through to
+    // `buildWatchedTaskItems`'s "Unknown project" fallback, which reads
+    // identically to a genuinely nameless/deleted project. Surface the
+    // failure instead of guessing.
     logger.error("getWatchedTasksForUser: project query failed", { error: projectError });
+    return { list: [], error: "Couldn't load watched tasks." };
   }
   const projectNameById = new Map(
     (projectRows ?? []).map((project) => [project.id, project.name]),
@@ -112,7 +128,11 @@ export async function getWatchedTasksForUser(
     .rpc("get_latest_task_activity", { task_ids: tasks.map((task) => task.id) });
 
   if (activityError) {
+    // F057: previously logged-and-continued, which rendered every row as
+    // if it had no activity history (silently wrong "what changed"
+    // summaries and sort order) instead of surfacing the failure.
     logger.error("getWatchedTasksForUser: activity query failed", { error: activityError });
+    return { list: [], error: "Couldn't load watched tasks." };
   }
 
   type ActivityRow = {
@@ -145,12 +165,14 @@ export async function getWatchedTasksForUser(
     ]),
   );
 
-  return buildWatchedTaskItems(
-    tasks as unknown as WatchingQueryTaskRow[],
-    projectNameById,
-    latestActivityByTask,
-    actorLabelById,
-  );
+  return {
+    list: buildWatchedTaskItems(
+      tasks as unknown as WatchingQueryTaskRow[],
+      projectNameById,
+      latestActivityByTask,
+      actorLabelById,
+    ),
+  };
 }
 
 export type WatchingQueryTaskRow = {

@@ -14,7 +14,16 @@ export async function ApprovalsTabContent({
   workspaceSlug: string;
   workspaceId: string;
 }) {
-  const approvals = await getOpenApprovalsForWorkspace(workspaceId);
+  const { list: approvals, error } = await getOpenApprovalsForWorkspace(workspaceId);
+
+  // F057 (FU-M4-10): a real fetch failure must never render the same
+  // "nothing waiting" empty state a legitimate zero-row result would —
+  // throw so app/(workspace)/w/[workspaceSlug]/inbox/error.tsx (and this
+  // route's own error.tsx) renders an error affordance instead, matching
+  // F050's convention on RequestsTabContent.
+  if (error) {
+    throw new Error(error);
+  }
 
   const ownerNames = await getDecisionOwnerNames(
     approvals.map((a) => ({ projectId: a.projectId, decisionType: a.decisionType })),

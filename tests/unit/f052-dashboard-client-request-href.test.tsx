@@ -50,7 +50,7 @@ vi.mock("@/lib/queries/my-tasks", () => ({
 }));
 
 vi.mock("@/lib/queries/approvals", () => ({
-  getOpenApprovalsForWorkspace: async () => [],
+  getOpenApprovalsForWorkspace: async () => ({ list: [] }),
 }));
 
 vi.mock("@/lib/queries/client-requests", () => ({

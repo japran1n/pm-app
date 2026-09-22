@@ -37,31 +37,44 @@ export async function AllTabContent({
   canSeeApprovals: boolean;
   canSeeRequests: boolean;
 }) {
-  const [notificationsResult, approvals, requestsResult, watchedTasks] = await Promise.all([
-    getNotificationsForWorkspace(workspaceId, 50),
-    canSeeApprovals ? getOpenApprovalsForWorkspace(workspaceId) : Promise.resolve([]),
-    canSeeRequests
-      ? getWorkspaceClientRequests(workspaceId)
-      : Promise.resolve<Awaited<ReturnType<typeof getWorkspaceClientRequests>>>({
-          list: [],
-        }),
-    getWatchedTasksForUser(userId),
-  ]);
+  const [notificationsResult, approvalsResult, requestsResult, watchedTasksResult] =
+    await Promise.all([
+      getNotificationsForWorkspace(workspaceId, 50),
+      canSeeApprovals
+        ? getOpenApprovalsForWorkspace(workspaceId)
+        : Promise.resolve<Awaited<ReturnType<typeof getOpenApprovalsForWorkspace>>>({
+            list: [],
+          }),
+      canSeeRequests
+        ? getWorkspaceClientRequests(workspaceId)
+        : Promise.resolve<Awaited<ReturnType<typeof getWorkspaceClientRequests>>>({
+            list: [],
+          }),
+      getWatchedTasksForUser(userId),
+    ]);
 
-  // F050 (FU-M4-3): a real fetch failure on either source that feeds the
-  // merged "All" tab must never render "Your inbox is empty" — that's
-  // indistinguishable from "you have nothing waiting on you". Throw so
-  // inbox/error.tsx renders an error affordance instead. Approvals/watching
-  // already fail open to [] on their own read errors (pre-existing
-  // convention in those queries) and are out of scope for this fix — see
-  // handoff "Out-of-scope work needed".
+  // F050/F057 (FU-M4-3, FU-M4-10): a real fetch failure on ANY source that
+  // feeds the merged "All" tab must never render "Your inbox is empty" —
+  // that's indistinguishable from "you have nothing waiting on you".
+  // Throw so inbox/error.tsx renders an error affordance instead.
+  // Approvals/watching now return the same typed `{ list, error }` shape
+  // as notifications/requests (F057), so all four sources are checked the
+  // same way here.
   if (notificationsResult.error) {
     throw new Error(notificationsResult.error);
+  }
+  if (approvalsResult.error) {
+    throw new Error(approvalsResult.error);
   }
   if (requestsResult.error) {
     throw new Error(requestsResult.error);
   }
+  if (watchedTasksResult.error) {
+    throw new Error(watchedTasksResult.error);
+  }
+  const approvals = approvalsResult.list;
   const requests = requestsResult.list;
+  const watchedTasks = watchedTasksResult.list;
 
   const items: MergedItem[] = [
     ...notificationsResult.list.map((n) => ({

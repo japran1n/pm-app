@@ -335,9 +335,19 @@ export type WorkspaceApproval = PortalApproval & {
 // `approval_requests_select_team` already scopes this to projects
 // visible to the caller's own (non-client) membership, so a team member
 // only ever sees their own workspace's queue, never another workspace's.
+//
+// F057 (FU-M4-10, SB-052): mirrors getWorkspaceClientRequests's own
+// `{ list, error }` return shape (lib/queries/client-requests.ts) instead
+// of collapsing a real `approval_requests` read failure to a bare `[]` —
+// that used to be indistinguishable from "genuinely nothing pending",
+// which could hide an overdue approval behind a reassuring empty state.
+// `error` is set only when the `approval_requests` query itself fails; the
+// upstream `projects` lookup returning zero rows is still this function's
+// legitimate "nothing to show" path (no projects means no approvals),
+// not a reconcile failure.
 export async function getOpenApprovalsForWorkspace(
   workspaceId: string,
-): Promise<WorkspaceApproval[]> {
+): Promise<{ list: WorkspaceApproval[]; error?: string }> {
   const supabase = await createClient();
 
   const { data: projects, error: projectsError } = await supabase
@@ -348,10 +358,10 @@ export async function getOpenApprovalsForWorkspace(
 
   if (projectsError) {
     logger.error("getOpenApprovalsForWorkspace: failed to load projects", { error: projectsError });
-    return [];
+    return { list: [], error: "Couldn't load approvals." };
   }
   const projectIds = (projects ?? []).map((p) => p.id);
-  if (projectIds.length === 0) return [];
+  if (projectIds.length === 0) return { list: [] };
   const projectNames = new Map((projects ?? []).map((p) => [p.id, p.name]));
 
   const { data, error } = await supabase
@@ -365,9 +375,9 @@ export async function getOpenApprovalsForWorkspace(
 
   if (error) {
     logger.error("getOpenApprovalsForWorkspace: failed to load approval requests", { error });
-    return [];
+    return { list: [], error: "Couldn't load approvals." };
   }
-  if (!data?.length) return [];
+  if (!data?.length) return { list: [] };
 
   const requesterIds = [...new Set(data.map((row) => row.requested_by))];
   const people = await resolvePeople(requesterIds);
@@ -440,7 +450,7 @@ export async function getOpenApprovalsForWorkspace(
     }
   }
 
-  return data.map((row) => {
+  const list = data.map((row) => {
     let blocks: WorkspaceApproval["blocks"] = null;
     if (row.subject_type === "task" && row.subject_id) {
       const task = taskById.get(row.subject_id);
@@ -464,6 +474,8 @@ export async function getOpenApprovalsForWorkspace(
       blocks,
     };
   });
+
+  return { list };
 }
 
 // F014 (perf): lightweight sibling of getOpenApprovalsForWorkspace above,

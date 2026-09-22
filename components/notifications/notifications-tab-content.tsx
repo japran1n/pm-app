@@ -15,10 +15,21 @@ export async function NotificationsTabContent({
   workspaceSlug: string;
   workspaceId: string;
 }) {
-  const { list, unreadCount } = await getNotificationsForWorkspace(
+  const { list, unreadCount, error } = await getNotificationsForWorkspace(
     workspaceId,
     PAGE_LIMIT,
   );
+
+  // F057 (FU-M4-10, SB-052): getNotificationsForWorkspace has returned a
+  // typed `error` since F308, but this wrapper never consumed it — a real
+  // fetch failure rendered the identical "no notifications" empty state a
+  // legitimate zero-row result would. Throw so
+  // app/(workspace)/w/[workspaceSlug]/inbox/error.tsx (and this route's
+  // own error.tsx) renders an error affordance instead, matching F050's
+  // convention on RequestsTabContent.
+  if (error) {
+    throw new Error(error);
+  }
 
   return (
     <NotificationPanel

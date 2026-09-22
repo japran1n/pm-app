@@ -78,7 +78,7 @@ describe("FU-M4-9: ApprovalsTabContent renders the same item set + props as the 
       { id: "a2", projectId: "p1", decisionType: "scope", title: "Scope change" },
     ];
     vi.doMock("@/lib/queries/approvals", () => ({
-      getOpenApprovalsForWorkspace: vi.fn(async () => fixtureApprovals),
+      getOpenApprovalsForWorkspace: vi.fn(async () => ({ list: fixtureApprovals })),
       getDecisionOwnerNames: vi.fn(
         async () =>
           new Map([
@@ -258,7 +258,7 @@ describe("FU-M4-9: WatchingTabContent restores the dropped explanatory subhead",
   it("test_FU_M4_9_watching_tab_renders_the_restored_subhead_copy", async () => {
     vi.resetModules();
     vi.doMock("@/lib/queries/watching", () => ({
-      getWatchedTasksForUser: vi.fn(async () => []),
+      getWatchedTasksForUser: vi.fn(async () => ({ list: [] })),
     }));
     const { WatchingTabContent } = await import(
       "@/components/watching/watching-tab-content"
