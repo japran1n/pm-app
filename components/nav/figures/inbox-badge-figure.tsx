@@ -9,10 +9,16 @@
 // aggregate number: unread notifications + pending approvals + open
 // client requests (`lib/inbox/inbox-badge-count.ts`'s pure sum -- see that
 // file's own doc comment for why these three sources and no others).
-// Approvals/requests are only fetched for a non-guest caller, matching the
-// exact same `guestExcluded` gate the sidebar already applies to those two
-// nav items themselves (components/nav/app-sidebar.tsx) -- a guest never
-// sees a count that includes numbers from pages it can't reach.
+//
+// FU-M4-4 (M4 scrutiny, SB-054): approvals/requests are only fetched for a
+// caller who can actually reach those two queues -- the SAME two-part gate
+// the sidebar itself applies to its "Client requests"/"Approvals" nav
+// items (components/nav/app-sidebar.tsx): `!isGuest` AND `hasClient` (a
+// workspace with no client at all never shows those nav items either, so
+// their counts must never inflate this badge). The previous version of
+// this file only checked `isGuest`, which left this badge counting
+// approvals/requests for a client-less workspace even though the nav items
+// contributing those counts were never rendered for anyone.
 import { logger } from "@/lib/observability/logger";
 import { getNotificationsForWorkspace } from "@/lib/queries/notifications";
 import { getOpenApprovalCountForWorkspace } from "@/lib/queries/approvals";
@@ -20,44 +26,77 @@ import { getOpenClientRequestCountForWorkspace } from "@/lib/queries/client-requ
 import { inboxBadgeCount } from "@/lib/inbox/inbox-badge-count";
 import { Badge } from "@/components/ui/badge";
 
+function resolvedOrZero(
+  result: PromiseSettledResult<number>,
+  label: string,
+): number {
+  if (result.status === "fulfilled") {
+    return result.value;
+  }
+  logger.error(`InboxBadgeFigure: failed to look up ${label}`, {
+    error: result.reason,
+  });
+  return 0;
+}
+
 export async function InboxBadgeFigure({
   workspaceId,
   isGuest,
+  hasClient,
 }: {
   workspaceId: string;
   isGuest: boolean;
+  hasClient: boolean;
 }) {
-  // Every source below already fails open to 0 on its own fetch error (see
-  // each query's own doc comment) -- this figure adds one more layer of
-  // defense (a `.catch` per source) so a rejected promise from any one of
-  // them can never take the other two, or the whole nav item, down with
-  // it. SB-055: a failure here means "no badge", never a broken sidebar.
-  const [unreadNotifications, pendingApprovals, openRequests] = await Promise.all([
-    getNotificationsForWorkspace(workspaceId)
-      .then((result) => result.unreadCount)
-      .catch((error) => {
-        logger.error("InboxBadgeFigure: failed to look up unread notifications", { error });
-        return 0;
-      }),
-    isGuest
+  // FU-M4-4 (SB-054): approvals/requests only contribute when the caller
+  // both isn't a guest AND the workspace actually has a client -- matching
+  // app-sidebar.tsx's own `!isGuest` (guestExcluded) + `hasClient` gate for
+  // those exact two nav items.
+  const approvalsRequestsGated = isGuest || !hasClient;
+
+  // FU-M4-4 (M4 scrutiny): `Promise.allSettled` (not `Promise.all` +
+  // per-source `.catch`) so this figure can tell "every source resolved,
+  // sum is legitimately 0" apart from "a source actually failed" --
+  // restoring the same `reconcileFailed` distinction the removed
+  // NotificationBell surfaced (components/notifications/notification-bell.tsx)
+  // instead of the flattened "on any error, contribute a silent 0" this
+  // file previously replaced it with.
+  const [notificationsResult, approvalsResult, requestsResult] = await Promise.allSettled([
+    getNotificationsForWorkspace(workspaceId).then((result) => result.unreadCount),
+    approvalsRequestsGated
       ? Promise.resolve(0)
-      : getOpenApprovalCountForWorkspace(workspaceId).catch((error) => {
-          logger.error("InboxBadgeFigure: failed to look up open approvals", { error });
-          return 0;
-        }),
-    isGuest
+      : getOpenApprovalCountForWorkspace(workspaceId),
+    approvalsRequestsGated
       ? Promise.resolve(0)
-      : getOpenClientRequestCountForWorkspace(workspaceId).catch((error) => {
-          logger.error("InboxBadgeFigure: failed to look up open client requests", { error });
-          return 0;
-        }),
+      : getOpenClientRequestCountForWorkspace(workspaceId),
   ]);
+
+  const reconcileFailed = [notificationsResult, approvalsResult, requestsResult].some(
+    (result) => result.status === "rejected",
+  );
+
+  const unreadNotifications = resolvedOrZero(notificationsResult, "unread notifications");
+  const pendingApprovals = resolvedOrZero(approvalsResult, "open approvals");
+  const openRequests = resolvedOrZero(requestsResult, "open client requests");
 
   const count = inboxBadgeCount({
     unreadNotifications,
     pendingApprovals,
     openRequests,
   });
+
+  // FU-M4-4 (SB-054): a failed reconcile is never indistinguishable from a
+  // legitimate zero -- shown as the same small muted-outline dot the bell
+  // used, rather than either a stale/wrong count or silence (no badge).
+  if (reconcileFailed) {
+    return (
+      <span
+        className="ml-auto size-2.5 shrink-0 rounded-full border border-background bg-muted-foreground"
+        aria-label="Inbox count unavailable"
+        title="Couldn't sync Inbox counts — showing the last known state."
+      />
+    );
+  }
 
   if (count <= 0) {
     return null;

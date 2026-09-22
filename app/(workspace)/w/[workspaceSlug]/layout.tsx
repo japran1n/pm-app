@@ -475,7 +475,11 @@ export default async function WorkspaceLayout({
           // file-header comment for exactly what it replaces.
           inboxBadge={
             <Suspense fallback={<NavBadgeSkeleton />}>
-              <InboxBadgeFigure workspaceId={activeWorkspace.id} isGuest={isGuest} />
+              <InboxBadgeFigure
+                workspaceId={activeWorkspace.id}
+                isGuest={isGuest}
+                hasClient={(clientMemberCount ?? 0) > 0}
+              />
             </Suspense>
           }
           workspaceSwitcherSlot={
