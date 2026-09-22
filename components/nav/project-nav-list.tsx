@@ -229,13 +229,55 @@ export function ProjectNavList({
     noFavourites &&
     !hasRecentMatch &&
     allOtherProjects.length > SIDEBAR_PROJECTS_LIMIT;
+  // F044 (M3 scrutiny attempt 2, FU-17): the section's TOTAL row count
+  // (pinned favourites + everything below) must never exceed
+  // `SIDEBAR_PROJECTS_LIMIT`, not just the pinned favourites group on its
+  // own. Before this fix, whenever >=1 favourite existed the branch below
+  // fell through to the unbounded `allOtherProjects`, so the "<=5 digest
+  // plus an All projects link" design only ever applied to brand-new
+  // accounts with 0 favourites. `favoriteProjects` above is already capped
+  // to `SIDEBAR_PROJECTS_LIMIT` by `selectSidebarProjects`, so the budget
+  // left for the rest of the section is simply the remainder.
+  //
+  // Read against SB-041's actual text ("the sidebar Projects section lists
+  // up to 5 favorited projects") -- it says nothing about the OTHER rows
+  // in the section, so capping the section's total at the same limit is a
+  // reading the existing assertion already permits; this does not require
+  // (and must not add) a superseding assertion. This does supersede F041's
+  // "6th+ favourite spills into the non-pinned group and is guaranteed
+  // visible" behaviour: a favourite beyond the pinned cap is no longer
+  // guaranteed a row once the section's total budget is exhausted -- it's
+  // still one click away via the "All projects" link (SB-044), same as any
+  // other overflow project.
+  const remainingSlots = Math.max(
+    0,
+    SIDEBAR_PROJECTS_LIMIT - favoriteProjects.length,
+  );
+  // Within that remaining budget: recently-visited projects first (still
+  // useful context even when favourites exist), then the rest of
+  // `allOtherProjects` in its existing (sidebar_position) order, per FU-17's
+  // "pinned favourites first, then recents, then remaining projects,
+  // truncating the combined list" ordering.
+  function selectRemainingOthers(
+    pool: SidebarProjectItem[],
+    limit: number,
+  ): SidebarProjectItem[] {
+    if (limit <= 0) return [];
+    const byId = new Map(pool.map((p) => [p.id, p]));
+    const recentMatches = recentIds
+      .map((id) => byId.get(id))
+      .filter((p): p is SidebarProjectItem => Boolean(p));
+    const recentIdSet = new Set(recentMatches.map((p) => p.id));
+    const rest = pool.filter((p) => !recentIdSet.has(p.id));
+    return [...recentMatches, ...rest].slice(0, limit);
+  }
   const otherProjects = noFavourites
     ? hasRecentMatch
       ? selectSidebarProjects([], recentIds, allOtherProjects, SIDEBAR_PROJECTS_LIMIT)
       : isTrueEmptyRecents
         ? []
-        : allOtherProjects
-    : allOtherProjects;
+        : allOtherProjects.slice(0, SIDEBAR_PROJECTS_LIMIT)
+    : selectRemainingOthers(allOtherProjects, remainingSlots);
 
   // dnd-kit setup, same PointerSensor+KeyboardSensor pairing as the board
   // (components/board/board.tsx) for consistency — see that file's own

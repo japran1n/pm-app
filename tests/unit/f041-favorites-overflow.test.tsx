@@ -5,6 +5,17 @@
 // filtered out every favourite id while `favoriteProjects` (the pinned
 // group) only rendered the first 5 -- any favourite beyond that cap was
 // filtered from BOTH groups and vanished from the sidebar entirely.
+//
+// SUPERSEDED (partially) by F044 (M3 scrutiny attempt 2, FU-17): the
+// section's TOTAL row count is now capped at `SIDEBAR_PROJECTS_LIMIT` (5)
+// in every branch, not just the pinned favourites group. With 8 favourites
+// that means only 5 rows total render in the section (all pinned) -- the
+// remaining 3 are no longer guaranteed a non-pinned row; they're still
+// reachable via the "All projects" link (SB-044), same as any other
+// overflow project. See project-nav-list.tsx's own `remainingSlots`
+// comment for the full rationale and why this reading of SB-041's text
+// ("lists up to 5 favorited projects") doesn't require a superseding
+// assertion.
 
 import { createElement } from "react";
 import { render, cleanup, within } from "@testing-library/react";
@@ -36,10 +47,9 @@ afterEach(() => {
 });
 
 describe("ProjectNavList favourites overflow (F041, SB-041)", () => {
-  it("SB-041: with 8 favourites, all 8 project names are present and exactly 5 sit in the pinned group", () => {
+  it("test_SB_041_eight_favourites_cap_pinned_group_at_five", () => {
     // Names chosen so alphabetical order is predictable: P01..P08 -> the
-    // pinned group (capped at 5) takes the first 5 alphabetically (P01-P05),
-    // and P06-P08 must still render, just outside the pinned group.
+    // pinned group (capped at 5) takes the first 5 alphabetically (P01-P05).
     const projects = Array.from({ length: 8 }, (_, i) => {
       const n = String(i + 1).padStart(2, "0");
       return {
@@ -63,12 +73,8 @@ describe("ProjectNavList favourites overflow (F041, SB-041)", () => {
     ) as HTMLElement;
     expect(nav).toBeTruthy();
 
-    // All 8 names must be present SOMEWHERE in the sidebar.
-    for (const project of projects) {
-      expect(within(nav).getByText(project.name)).toBeInTheDocument();
-    }
-
-    // Exactly 5 of them sit inside the pinned "Favourite projects" group.
+    // Exactly 5 of them sit inside the pinned "Favourite projects" group
+    // (P01-P05, alphabetically first).
     const pinnedGroup = within(nav).getByLabelText(
       "Favourite projects",
     ) as HTMLElement;
@@ -77,14 +83,14 @@ describe("ProjectNavList favourites overflow (F041, SB-041)", () => {
     );
     expect(pinnedNames).toHaveLength(5);
 
-    // The remaining 3 must still be reachable elsewhere in the nav (not
-    // discarded), i.e. rendered outside the pinned group.
-    const overflowNames = projects.filter(
-      (p) => !within(pinnedGroup).queryByText(p.name),
-    );
-    expect(overflowNames).toHaveLength(3);
-    for (const project of overflowNames) {
-      expect(within(nav).getByText(project.name)).toBeInTheDocument();
-    }
+    // F044 (M3 scrutiny attempt 2, FU-17): the section's TOTAL row count is
+    // now capped at 5 in every branch, not just the pinned group -- with 8
+    // favourites and a remaining budget of 0 (5 favourites already fill the
+    // cap), P06-P08 do NOT get a guaranteed non-pinned row anymore. This is
+    // the deliberate supersession of this test's original "all 8 present
+    // somewhere" expectation (see this file's header comment) and is
+    // asserted directly by tests/unit/f044-cap-section-in-every-branch.test.tsx.
+    const allLinks = within(nav).getAllByRole("link");
+    expect(allLinks).toHaveLength(5);
   });
 });
