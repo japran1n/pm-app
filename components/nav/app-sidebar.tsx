@@ -138,6 +138,19 @@ function navGroups(
       </Badge>
     ) : null;
   const work: NavItem[] = [
+    // F013 (SB-057): "Watching" is no longer its own sidebar item -- it is
+    // now one of the Inbox tabs (`/w/<slug>/inbox?tab=watching`,
+    // components/inbox/inbox-tab-nav.tsx).
+    // F014 (SB-053, SB-054, SB-055): "Inbox" itself -- one badge summing
+    // unread notifications + pending approvals + open client requests
+    // (lib/inbox/inbox-badge-count.ts), replacing the removed notification
+    // bell's own unread badge.
+    // F048 (SB-053, scrutiny FU-M4-1): moved to the front of the primary
+    // nav group -- the assertion requires Inbox be the *first* item, not
+    // merely present, since it's now the single daily entry point for
+    // everything that used to be scattered across the removed bell,
+    // Approvals, Client requests and Watching links.
+    { href: `/w/${workspaceSlug}/inbox`, label: "Inbox", icon: Inbox, badge: inboxBadge },
     { href: `/w/${workspaceSlug}`, label: "Dashboard", icon: LayoutDashboard, exact: true },
     // F230 (AS-435): "My Tasks" placed above "Projects" -- per the
     // feature spec's own "since this is the daily-driver screen" note.
@@ -155,14 +168,6 @@ function navGroups(
     // unreadCount, which chat-nav-list.tsx already treats as the
     // source of truth for "unread" there).
     { href: `/w/${workspaceSlug}/chat`, label: "Chat", icon: MessageCircle, badge: chatUnreadBadge ?? countBadge(chatUnreadCount) },
-    // F013 (SB-057): "Watching" is no longer its own sidebar item -- it is
-    // now one of the Inbox tabs (`/w/<slug>/inbox?tab=watching`,
-    // components/inbox/inbox-tab-nav.tsx).
-    // F014 (SB-053, SB-054, SB-055): "Inbox" itself -- one badge summing
-    // unread notifications + pending approvals + open client requests
-    // (lib/inbox/inbox-badge-count.ts), replacing the removed notification
-    // bell's own unread badge.
-    { href: `/w/${workspaceSlug}/inbox`, label: "Inbox", icon: Inbox, badge: inboxBadge },
   ];
 
   // F010 (TH-001, TH-002, TH-003, TH-005, TH-007, TH-012): dedicated "Tools"
