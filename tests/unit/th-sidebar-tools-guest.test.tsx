@@ -33,13 +33,6 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 
-// NotificationBell opens a genuine Supabase Realtime WebSocket on mount,
-// which jsdom cannot support -- stub it, same convention as the other
-// app-sidebar test files in this suite.
-vi.mock("@/components/notifications/notification-bell", () => ({
-  NotificationBell: () => createElement("div", { "data-testid": "notification-bell-stub" }),
-}));
-
 import { AppSidebar } from "@/components/nav/app-sidebar";
 
 afterEach(() => {

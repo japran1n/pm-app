@@ -14,10 +14,6 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { createElement } from "react";
 import "@testing-library/jest-dom/vitest";
 
-vi.mock("@/components/notifications/notification-bell", () => ({
-  NotificationBell: () => null,
-}));
-
 // F001 (SB-010): "Approvals"/"Client requests" only render when the
 // workspace has a client — the sidebar reads this from useMembership().
 vi.mock("@/components/auth/membership-provider", () => ({

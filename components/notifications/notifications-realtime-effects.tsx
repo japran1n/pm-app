@@ -23,9 +23,9 @@
 // mounted once in the workspace layout, alongside the other persistent
 // providers (MembershipProvider, WorkspacePresenceProvider), so it keeps
 // running on every page under `/w/[workspaceSlug]/*` regardless of
-// whether the Inbox page itself is open. notification-bell.tsx itself is
-// left in place, unused, rather than deleted -- see this feature's own
-// handoff for why.
+// whether the Inbox page itself is open. notification-bell.tsx and
+// notification-bell-figure.tsx have since been deleted outright (F059,
+// SB-055) now that nothing references them any more.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";

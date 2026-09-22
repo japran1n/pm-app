@@ -11,9 +11,6 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
   useRouter: () => ({ push() {}, replace() {}, refresh() {}, prefetch() {}, back() {}, forward() {} }),
 }));
-vi.mock("@/components/notifications/notification-bell", () => ({
-  NotificationBell: () => createElement("div"),
-}));
 vi.mock("@/components/auth/membership-provider", () => ({
   useMembership: () => ({ role: "admin", hasClient: true, projectRoles: {} }),
 }));

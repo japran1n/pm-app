@@ -30,7 +30,6 @@ const STUBS: Record<string, string> = {
   "next/link": `import React from "react"; export default function Link({href,prefetch,scroll,replace,children,...r}){return React.createElement("a",{href:typeof href==="string"?href:String(href),...r},children)}`,
   "next-themes": `export const useTheme=()=>({theme:"light",resolvedTheme:"light",setTheme(){}});`,
   "sonner": `export const toast={error(){},success(){}};`,
-  "@/components/notifications/notification-bell": `import React from "react"; export const NotificationBell=()=>React.createElement("div");`,
   "@/components/auth/membership-provider": `export const useMembership=()=>({role:"admin",hasClient:true,projectRoles:{}});`,
   "@/lib/actions/auth": `export async function signOut(){}`,
   "@/lib/actions/templates": `export async function listProjectTemplateOptions(){return []} export async function createProjectFromTemplate(){return {ok:true,data:{name:"x",taskCount:0}}}`,

@@ -26,9 +26,6 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
   useRouter: () => ({ push() {}, replace() {}, refresh() {}, prefetch() {}, back() {}, forward() {} }),
 }));
-vi.mock("@/components/notifications/notification-bell", () => ({
-  NotificationBell: () => createElement("div"),
-}));
 
 import { AppSidebar } from "@/components/nav/app-sidebar";
 

@@ -28,15 +28,19 @@ import { InboxTabNav } from "@/components/inbox/inbox-tab-nav";
 const NON_CLIENT_ROLES = ["owner", "admin", "member", "guest"] as const;
 
 // ---------------------------------------------------------------------------
-// Integration-level regression test: exercises the ACTUAL role -> boolean
-// mapping in app/(workspace)/w/[workspaceSlug]/inbox/page.tsx (not a
-// hand-computed boolean), so it fails if that mapping regresses back to
-// F013's `isGuest` rule. Mutation-tested: reverting page.tsx's
-// `const isClient = membership?.role === "client";` to F013's
-// `const isGuest = (membership?.role ?? "guest") === "guest";` (and the
-// `!isGuest` derivations) makes the guest-role case below fail, because the
-// rendered markup would then be missing the Approvals/Requests tab links a
-// guest is entitled to.
+// Pure-function-level check only: this loop derives `isClient` from a fixed
+// list of non-client role strings, so it is always `false` and every
+// iteration exercises the exact same `getVisibleInboxTabs`/`InboxTabNav`
+// call with the exact same input -- it does NOT exercise the real
+// role -> boolean mapping in app/(workspace)/w/[workspaceSlug]/inbox/page.tsx
+// (that page is never imported here), and it would NOT fail if that page's
+// mapping regressed back to F013's `isGuest` rule. It is kept only as a
+// cheap parity check that `getVisibleInboxTabs`/`InboxTabNav` themselves
+// expose Approvals/Requests to any non-client role. The REAL, non-vacuous
+// regression coverage for the page's own role -> boolean mapping is the
+// `describe("SB-052 (page-level regression): ...")` block below, which
+// imports and calls the actual `InboxPage` for both a guest and a client
+// membership row.
 // ---------------------------------------------------------------------------
 
 describe("SB-052: tab visibility matches the old pages' real access rule for every role", () => {
@@ -45,7 +49,9 @@ describe("SB-052: tab visibility matches the old pages' real access rule for eve
       // Every one of these roles could open the old /approvals and
       // /requests pages directly (only `role === "client"` was ever
       // redirected away) — the isClient predicate must therefore be
-      // false for all of them, not just non-guest roles.
+      // false for all of them, not just non-guest roles. (NON_CLIENT_ROLES
+      // never contains "client", so this is always false -- see the header
+      // comment above.)
       const isClient = (role as string) === "client";
       const tabs = getVisibleInboxTabs(isClient);
 

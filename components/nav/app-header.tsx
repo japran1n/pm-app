@@ -6,9 +6,12 @@
 // `/w/acme/projects/8f3c…/board` there was nothing on screen naming the
 // project or the view, so getting back a level meant guessing. The
 // breadcrumb (components/nav/app-breadcrumb.tsx) fixes the "where am I"
-// half of that; the notification bell and user menu stay where F267's
-// original AUTONOMOUS_DECISION put them (sidebar) — moving those is still
-// out of scope here, no assertion drives it.
+// half of that; the user menu stays where F267's original
+// AUTONOMOUS_DECISION put it (sidebar) — moving it is still out of scope
+// here, no assertion drives it. The notification bell that used to sit
+// alongside it was removed by F014/F059 (SB-055); its unread count now
+// lives in the sidebar's Inbox nav badge, and the side effects it used to
+// mount live on in components/notifications/notifications-realtime-effects.tsx.
 //
 // Server Component: no interactivity of its own, just passes the
 // workspace identifiers down to the Client Components (HeaderSearch,

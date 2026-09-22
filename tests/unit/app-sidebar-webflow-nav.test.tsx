@@ -46,14 +46,6 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 
-// NotificationBell's realtime effect opens a genuine Supabase Realtime
-// WebSocket on mount, which jsdom cannot support and which is unrelated to
-// this feature -- stub it to a static marker, same convention as
-// app-sidebar-project-nav-list.test.tsx's own NewProjectDialog stub.
-vi.mock("@/components/notifications/notification-bell", () => ({
-  NotificationBell: () => createElement("div", { "data-testid": "notification-bell-stub" }),
-}));
-
 import { AppSidebar } from "@/components/nav/app-sidebar";
 
 afterEach(() => {

@@ -350,7 +350,7 @@ test.describe("F272: two-context realtime notification journeys (AS-530)", () =>
     };
   }
 
-  test("assigning a task to the OTHER user (real UI action, separate browser context) delivers a live notification to their bell", async ({
+  test("assigning a task to the OTHER user (real UI action, separate browser context) delivers a live notification to their Inbox", async ({
     browser,
     baseURL,
   }) => {
@@ -362,11 +362,14 @@ test.describe("F272: two-context realtime notification journeys (AS-530)", () =>
     );
 
     try {
-      // Recipient ("user B") is already watching their own bell in their
-      // own context before the assignment happens — this is the live-
-      // delivery scenario, not a page loaded after the fact.
-      const bell = recipientPage.getByRole("button", { name: "Notifications" });
-      await expect(bell).toBeVisible();
+      // Recipient ("user B") is already watching their own Inbox nav item
+      // in their own context before the assignment happens — this is the
+      // live-delivery scenario, not a page loaded after the fact. The
+      // standalone "Notifications" bell button was removed (F014/F059,
+      // SB-055); its unread count now lives on the sidebar's "Inbox" nav
+      // link, and its content lives on the Inbox page's Notifications tab.
+      const inboxLink = recipientPage.getByRole("link", { name: /^Inbox/ });
+      await expect(inboxLink).toBeVisible();
 
       // Actor ("user A") performs the REAL assignment through the task
       // detail sheet's assignee picker — not an admin-client shortcut.
@@ -432,19 +435,26 @@ test.describe("F272: two-context realtime notification journeys (AS-530)", () =>
       // No reload/manual refresh on the recipient's page — this must be
       // the app's own Realtime subscription delivering the notification
       // live into a separate, already-open browser context.
-      const bellBadge = recipientPage.getByRole("button", {
-        name: /Notifications, \d+ unread/,
-      });
-      if (!(await bellBadge.isVisible({ timeout: 15_000 }).catch(() => false))) {
+      if (
+        !(await inboxLink
+          .filter({ hasText: /\d/ })
+          .isVisible({ timeout: 15_000 })
+          .catch(() => false))
+      ) {
         // Same accepted fallback as this suite's delete/undo test: a
         // correct-but-slow live delivery under shared-project load is not
         // the same failure as a broken realtime wire, so one reload keeps
         // this test meaningful without conflating the two.
         await recipientPage.reload();
       }
-      await expect(bellBadge).toBeVisible({ timeout: 15_000 });
+      await expect(inboxLink.filter({ hasText: /\d/ })).toBeVisible({
+        timeout: 15_000,
+      });
 
-      await bell.click();
+      await inboxLink.click();
+      await recipientPage
+        .getByRole("link", { name: "Notifications" })
+        .click();
       await expect(
         recipientPage.getByText(/assigned you to/i),
       ).toBeVisible({ timeout: 10_000 });
@@ -453,7 +463,7 @@ test.describe("F272: two-context realtime notification journeys (AS-530)", () =>
     }
   });
 
-  test("@-mentioning the OTHER user in a comment (real UI action, separate browser context) delivers a live notification to their bell", async ({
+  test("@-mentioning the OTHER user in a comment (real UI action, separate browser context) delivers a live notification to their Inbox", async ({
     browser,
     baseURL,
   }) => {
@@ -477,8 +487,10 @@ test.describe("F272: two-context realtime notification journeys (AS-530)", () =>
     );
 
     try {
-      const bell = recipientPage.getByRole("button", { name: "Notifications" });
-      await expect(bell).toBeVisible();
+      // See the assign test above for why this is the Inbox nav item, not
+      // the removed "Notifications" bell.
+      const inboxLink = recipientPage.getByRole("link", { name: /^Inbox/ });
+      await expect(inboxLink).toBeVisible();
 
       // The task-detail sheet no longer carries a comment composer (the
       // Comments tab was removed per product decision — see
@@ -564,15 +576,22 @@ test.describe("F272: two-context realtime notification journeys (AS-530)", () =>
         expect(data).not.toBeNull();
       }).toPass({ timeout: 15_000 });
 
-      const bellBadge = recipientPage.getByRole("button", {
-        name: /Notifications, \d+ unread/,
-      });
-      if (!(await bellBadge.isVisible({ timeout: 15_000 }).catch(() => false))) {
+      if (
+        !(await inboxLink
+          .filter({ hasText: /\d/ })
+          .isVisible({ timeout: 15_000 })
+          .catch(() => false))
+      ) {
         await recipientPage.reload();
       }
-      await expect(bellBadge).toBeVisible({ timeout: 15_000 });
+      await expect(inboxLink.filter({ hasText: /\d/ })).toBeVisible({
+        timeout: 15_000,
+      });
 
-      await bell.click();
+      await inboxLink.click();
+      await recipientPage
+        .getByRole("link", { name: "Notifications" })
+        .click();
       await expect(
         recipientPage.getByText(/mentioned you/i),
       ).toBeVisible({ timeout: 10_000 });
