@@ -13,7 +13,7 @@ export async function RequestsBadgeFigure({
 }: {
   workspaceId: string;
 }) {
-  const count = await getOpenClientRequestCountForWorkspace(workspaceId);
+  const { count } = await getOpenClientRequestCountForWorkspace(workspaceId);
 
   if (!(typeof count === "number" && count > 0)) {
     return null;

@@ -70,7 +70,7 @@ describe("F015: client-requests badge count query", () => {
 
     const result = await getOpenClientRequestCountForWorkspace("ws-1");
 
-    expect(result).toBe(3);
+    expect(result.count).toBe(3);
     expect(fromMock).toHaveBeenCalledTimes(2);
     expect(fromMock).toHaveBeenCalledWith("client_requests");
     // Confirms the count-only shape, not a full row select.
@@ -105,8 +105,8 @@ describe("F015: client-requests badge count query", () => {
 
     const result = await getOpenClientRequestCountForWorkspace("ws-1");
 
-    expect(result).toBe(2);
-    expect(result).toBe(expectedOpenCount);
+    expect(result.count).toBe(2);
+    expect(result.count).toBe(expectedOpenCount);
   });
 
   it("returns 0 without querying client_requests when the workspace has no projects", async () => {
@@ -118,7 +118,7 @@ describe("F015: client-requests badge count query", () => {
 
     const result = await getOpenClientRequestCountForWorkspace("ws-empty");
 
-    expect(result).toBe(0);
+    expect(result.count).toBe(0);
     expect(fromMock).toHaveBeenCalledTimes(1);
   });
 });

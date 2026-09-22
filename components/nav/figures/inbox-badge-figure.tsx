@@ -19,25 +19,25 @@
 // this file only checked `isGuest`, which left this badge counting
 // approvals/requests for a client-less workspace even though the nav items
 // contributing those counts were never rendered for anyone.
-import { logger } from "@/lib/observability/logger";
+//
+// F054 (FU-M4-7, SB-054): `reconcileFailed` is now derived from each
+// query's own typed `error` field (getNotificationsForWorkspace's
+// `error`/`unreadError`-equivalent shape, and the matching `{ count,
+// error }` shape `getOpenApprovalCountForWorkspace` /
+// `getOpenClientRequestCountForWorkspace` now return -- see those files'
+// own doc comments), never from a `Promise.allSettled` rejection. None of
+// these three query functions ever reject: each fails open internally
+// (network/DB errors are caught, logged, and turned into `{ ..., error:
+// "..." }` or a bare `0`/`[]`), so a `Promise.allSettled` rejection branch
+// was dead code that could never actually fire -- the real error signal
+// was always the typed `error` field, which this file previously ignored
+// entirely for approvals/requests and read from the wrong field
+// (`unreadCount`'s sibling `error`) for notifications.
 import { getNotificationsForWorkspace } from "@/lib/queries/notifications";
 import { getOpenApprovalCountForWorkspace } from "@/lib/queries/approvals";
 import { getOpenClientRequestCountForWorkspace } from "@/lib/queries/client-requests";
 import { inboxBadgeCount } from "@/lib/inbox/inbox-badge-count";
 import { Badge } from "@/components/ui/badge";
-
-function resolvedOrZero(
-  result: PromiseSettledResult<number>,
-  label: string,
-): number {
-  if (result.status === "fulfilled") {
-    return result.value;
-  }
-  logger.error(`InboxBadgeFigure: failed to look up ${label}`, {
-    error: result.reason,
-  });
-  return 0;
-}
 
 export async function InboxBadgeFigure({
   workspaceId,
@@ -54,30 +54,27 @@ export async function InboxBadgeFigure({
   // those exact two nav items.
   const approvalsRequestsGated = isGuest || !hasClient;
 
-  // FU-M4-4 (M4 scrutiny): `Promise.allSettled` (not `Promise.all` +
-  // per-source `.catch`) so this figure can tell "every source resolved,
-  // sum is legitimately 0" apart from "a source actually failed" --
-  // restoring the same `reconcileFailed` distinction the removed
-  // NotificationBell surfaced (components/notifications/notification-bell.tsx)
-  // instead of the flattened "on any error, contribute a silent 0" this
-  // file previously replaced it with.
-  const [notificationsResult, approvalsResult, requestsResult] = await Promise.allSettled([
-    getNotificationsForWorkspace(workspaceId).then((result) => result.unreadCount),
+  // F054 (FU-M4-7, SB-054): each query fails open (never rejects) and
+  // reports failure through its own typed `error` field -- run them in
+  // parallel with `Promise.all` (safe: none of them can reject) and
+  // reconcile from those `error` fields, not from settlement status.
+  const [notifications, approvals, requests] = await Promise.all([
+    getNotificationsForWorkspace(workspaceId),
     approvalsRequestsGated
-      ? Promise.resolve(0)
+      ? Promise.resolve<{ count: number; error?: string }>({ count: 0 })
       : getOpenApprovalCountForWorkspace(workspaceId),
     approvalsRequestsGated
-      ? Promise.resolve(0)
+      ? Promise.resolve<{ count: number; error?: string }>({ count: 0 })
       : getOpenClientRequestCountForWorkspace(workspaceId),
   ]);
 
-  const reconcileFailed = [notificationsResult, approvalsResult, requestsResult].some(
-    (result) => result.status === "rejected",
+  const reconcileFailed = Boolean(
+    notifications.error || approvals.error || requests.error,
   );
 
-  const unreadNotifications = resolvedOrZero(notificationsResult, "unread notifications");
-  const pendingApprovals = resolvedOrZero(approvalsResult, "open approvals");
-  const openRequests = resolvedOrZero(requestsResult, "open client requests");
+  const unreadNotifications = notifications.unreadCount;
+  const pendingApprovals = approvals.count;
+  const openRequests = requests.count;
 
   const count = inboxBadgeCount({
     unreadNotifications,

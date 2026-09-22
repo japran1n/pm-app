@@ -14,7 +14,7 @@ export async function ApprovalsBadgeFigure({
 }: {
   workspaceId: string;
 }) {
-  const count = await getOpenApprovalCountForWorkspace(workspaceId);
+  const { count } = await getOpenApprovalCountForWorkspace(workspaceId);
 
   if (!(typeof count === "number" && count > 0)) {
     return null;

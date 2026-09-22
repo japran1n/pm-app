@@ -44,9 +44,18 @@ export type TeamClientRequest = {
 // the sidebar's "Client requests" badge. Mirrors
 // `getOpenApprovalsForWorkspace`'s "count only the still-open state, fail
 // open to 0 rather than break the layout" convention (lib/queries/approvals.ts).
+//
+// F054 (FU-M4-7, SB-054): mirrors getNotificationsForWorkspace's own typed
+// `{ count, error }` return shape (lib/queries/notifications.ts) instead
+// of collapsing a real `client_requests` count failure to a bare `0` —
+// `error` is set only when that count query itself fails, so a caller
+// (InboxBadgeFigure) can distinguish "genuinely zero open requests" from
+// "we couldn't find out." The upstream `projects` lookup returning zero
+// ids stays `{ count: 0 }` with no `error` — that is this function's
+// legitimate "nothing to show" path, not a reconcile failure.
 export async function getOpenClientRequestCountForWorkspace(
   workspaceId: string,
-): Promise<number> {
+): Promise<{ count: number; error?: string }> {
   const supabase = await createClient();
 
   const { data: projects } = await supabase
@@ -56,7 +65,7 @@ export async function getOpenClientRequestCountForWorkspace(
     .is("deleted_at", null);
 
   const projectIds = (projects ?? []).map((p) => p.id as string);
-  if (projectIds.length === 0) return 0;
+  if (projectIds.length === 0) return { count: 0 };
 
   const { count, error } = await supabase
     .from("client_requests")
@@ -66,10 +75,10 @@ export async function getOpenClientRequestCountForWorkspace(
 
   if (error) {
     logger.error("getOpenClientRequestCountForWorkspace failed", { error });
-    return 0;
+    return { count: 0, error: "Couldn't load client request count." };
   }
 
-  return count ?? 0;
+  return { count: count ?? 0 };
 }
 
 // F050 (FU-M4-3): "list" plus an optional typed `error`, mirroring

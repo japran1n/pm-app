@@ -472,10 +472,19 @@ export async function getOpenApprovalsForWorkspace(
 // workspace -> projects -> pending approval_requests filter, but a
 // `{ count: 'exact', head: true }` query instead of a row fetch — no
 // row payload, no follow-up batched queries for task/doc/phase names.
-// Fails open to 0 (same "non-fatal, un-badged nav item" convention the
-// layout's own comment on getOpenApprovalsForWorkspace documents), never
-// throws for the caller.
-export async function getOpenApprovalCountForWorkspace(workspaceId: string): Promise<number> {
+//
+// F054 (FU-M4-7, SB-054): mirrors getNotificationsForWorkspace's own
+// typed `{ count, error }` return shape (lib/queries/notifications.ts)
+// instead of silently collapsing every failure to `0` — a real DB/network
+// error on the `approval_requests` count query itself sets `error`, so a
+// caller (InboxBadgeFigure) can tell "count is 0" apart from "we don't
+// actually know the count." The upstream `projects` lookup failing still
+// degrades to `{ count: 0 }` with no `error` — an empty project list is
+// this function's legitimate "nothing to show" path (same convention as
+// getOpenApprovalsForWorkspace), not a reconcile failure.
+export async function getOpenApprovalCountForWorkspace(
+  workspaceId: string,
+): Promise<{ count: number; error?: string }> {
   const supabase = await createClient();
 
   const { data: projects, error: projectsError } = await supabase
@@ -488,10 +497,10 @@ export async function getOpenApprovalCountForWorkspace(workspaceId: string): Pro
     logger.error("getOpenApprovalCountForWorkspace: failed to load projects", {
       error: projectsError,
     });
-    return 0;
+    return { count: 0 };
   }
   const projectIds = (projects ?? []).map((p) => p.id);
-  if (projectIds.length === 0) return 0;
+  if (projectIds.length === 0) return { count: 0 };
 
   const { count, error } = await supabase
     .from("approval_requests")
@@ -501,9 +510,9 @@ export async function getOpenApprovalCountForWorkspace(workspaceId: string): Pro
 
   if (error) {
     logger.error("getOpenApprovalCountForWorkspace: failed to load approval count", { error });
-    return 0;
+    return { count: 0, error: "Couldn't load approval count." };
   }
-  return count ?? 0;
+  return { count: count ?? 0 };
 }
 
 // --- Client member picker for F008's "Who approves what" settings UI --
