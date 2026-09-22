@@ -35,6 +35,7 @@ const SLUGS = ["acme", "globex"] as const;
 let currentPath = "/w/acme";
 vi.mock("next/navigation", () => ({
   usePathname: () => currentPath,
+  useSearchParams: () => new URLSearchParams(),
   useRouter: () => ({
     push: () => {},
     replace: () => {},

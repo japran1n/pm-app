@@ -24,7 +24,7 @@ let css = "";
 let js = "";
 
 const STUBS: Record<string, string> = {
-  "next/navigation": `export const usePathname=()=>window.__path||"/w/acme"; export const useRouter=()=>({push(u){(window.__pushes=window.__pushes||[]).push(u)},replace(){},refresh(){},prefetch(){},back(){},forward(){}});`,
+  "next/navigation": `export const usePathname=()=>window.__path||"/w/acme"; export const useRouter=()=>({push(u){(window.__pushes=window.__pushes||[]).push(u)},replace(){},refresh(){},prefetch(){},back(){},forward(){}}); export const useSearchParams=()=>new URLSearchParams();`,
   "@/lib/actions/palette-search": `export async function searchPalette(){return {projects:[],tasks:[],members:[]}} export async function resolveRecentItems(){return {projects:[],tasks:[]}}`,
   "@/lib/hooks/use-palette-search-realtime": `export function usePaletteSearchRealtime(){}`,
   "next/link": `import React from "react"; export default function Link({href,prefetch,scroll,replace,children,...r}){return React.createElement("a",{href:typeof href==="string"?href:String(href),...r},children)}`,

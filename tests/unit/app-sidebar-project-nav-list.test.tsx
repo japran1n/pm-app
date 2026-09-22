@@ -21,6 +21,7 @@ import "@testing-library/jest-dom/vitest";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/w/acme/projects/p2/board",
+  useSearchParams: () => new URLSearchParams(),
   // NotificationBell (rendered by AppSidebar) calls useRouter — a stable
   // no-op router keeps this render-shape test focused on the sidebar.
   useRouter: () => ({

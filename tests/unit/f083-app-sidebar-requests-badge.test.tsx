@@ -10,6 +10,7 @@ import { createElement } from "react";
 // items ("Client requests"/"Approvals") actually render.
 vi.mock("next/navigation", () => ({
   usePathname: () => "/w/acme",
+  useSearchParams: () => new URLSearchParams(),
   useRouter: () => ({ push: () => {}, refresh: () => {} }),
 }));
 

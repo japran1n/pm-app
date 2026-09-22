@@ -20,6 +20,7 @@ import { createElement } from "react";
 // mocked alongside usePathname now, or that mount throws.
 vi.mock("next/navigation", () => ({
   usePathname: () => "/w/acme/calendar",
+  useSearchParams: () => new URLSearchParams(),
   useRouter: () => ({ push: () => {}, refresh: () => {} }),
 }));
 

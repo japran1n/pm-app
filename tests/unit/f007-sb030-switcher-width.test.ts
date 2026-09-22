@@ -26,7 +26,7 @@ let css = "";
 let js = "";
 
 const STUBS: Record<string, string> = {
-  "next/navigation": `export const usePathname=()=>"/w/acme"; export const useRouter=()=>({push(){},replace(){},refresh(){},prefetch(){},back(){},forward(){}});`,
+  "next/navigation": `export const usePathname=()=>"/w/acme"; export const useRouter=()=>({push(){},replace(){},refresh(){},prefetch(){},back(){},forward(){}}); export const useSearchParams=()=>new URLSearchParams();`,
   "next/link": `import React from "react"; export default function Link({href,prefetch,scroll,replace,children,...r}){return React.createElement("a",{href:typeof href==="string"?href:String(href),...r},children)}`,
   "next-themes": `export const useTheme=()=>({theme:"light",resolvedTheme:"light",setTheme(){}});`,
   "sonner": `export const toast={error(){},success(){}};`,

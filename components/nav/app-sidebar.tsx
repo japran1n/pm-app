@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useId, useRef, useState, useTransition } from "react";
 import {
   LayoutDashboard,
@@ -337,6 +337,8 @@ function SidebarContent({
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const currentTab = searchParams?.get("tab") ?? null;
   const router = useRouter();
   // F008 (SB-031): platform-aware shortcut hint. Resolved after mount so
   // server and first client render agree (Ctrl K), then upgraded to the
@@ -536,9 +538,26 @@ function SidebarContent({
                 )
               )}
               {group.items.map(({ href, label, icon: Icon, exact, badge }, itemIndex) => {
-                const isActive = exact
-                  ? pathname === href
-                  : pathname === href || pathname.startsWith(`${href}/`);
+                // FU-M4-5 (M4 scrutiny): some nav items now carry a
+                // `?tab=` search param in their href (e.g. "Approvals" ->
+                // `/w/<slug>/inbox?tab=approvals`, "Client requests" ->
+                // `/w/<slug>/inbox?tab=requests`) rather than a distinct
+                // route. A plain `pathname === href` comparison never
+                // matches those (pathname never contains the query
+                // string), so they could never highlight or receive
+                // aria-current. Split the href's own pathname portion from
+                // its `tab` param (if any) and require both the pathname
+                // AND the current `?tab=` search param to match.
+                const [hrefPath, hrefQuery] = href.split("?");
+                const hrefTab = hrefQuery
+                  ? new URLSearchParams(hrefQuery).get("tab")
+                  : null;
+                const pathMatches = exact
+                  ? pathname === hrefPath
+                  : pathname === hrefPath || pathname.startsWith(`${hrefPath}/`);
+                const isActive = hrefTab
+                  ? pathMatches && currentTab === hrefTab
+                  : pathMatches;
 
                 return (
                   <Link

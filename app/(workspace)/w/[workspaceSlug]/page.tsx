@@ -265,7 +265,7 @@ export default async function WorkspacePage({
         title: request.title,
         subtitle: `${request.projectName} · ${request.requesterName ?? "A client"}`,
         actionLabel: "Triage",
-        actionHref: `/w/${workspaceSlug}/client-requests`,
+        actionHref: `/w/${workspaceSlug}/inbox?tab=requests`,
         _date: request.createdAt,
       } as AttentionItem & { _date: string });
     }

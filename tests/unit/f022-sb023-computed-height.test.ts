@@ -23,6 +23,7 @@ import { chromium, type Browser } from "@playwright/test";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/w/acme",
+  useSearchParams: () => new URLSearchParams(),
   useRouter: () => ({ push() {}, replace() {}, refresh() {}, prefetch() {}, back() {}, forward() {} }),
 }));
 vi.mock("@/components/notifications/notification-bell", () => ({

@@ -22,6 +22,7 @@ import "@testing-library/jest-dom/vitest";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/w/acme",
+  useSearchParams: () => new URLSearchParams(),
   useRouter: () => ({
     push: () => {},
     replace: () => {},

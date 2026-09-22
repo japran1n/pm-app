@@ -7,6 +7,7 @@ import { readFileSync } from "node:fs";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/w/acme",
+  useSearchParams: () => new URLSearchParams(),
   useRouter: () => ({ push() {}, replace() {}, refresh() {}, prefetch() {}, back() {}, forward() {} }),
 }));
 vi.mock("@/components/notifications/notification-bell", () => ({

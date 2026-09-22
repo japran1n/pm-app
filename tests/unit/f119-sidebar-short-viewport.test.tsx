@@ -13,6 +13,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/w/acme/projects/p1/board",
+  useSearchParams: () => new URLSearchParams(),
   useRouter: () => ({ push: () => {}, refresh: () => {} }),
 }));
 

@@ -28,6 +28,7 @@ vi.mock("@/components/notifications/notification-bell", () => ({
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/w/acme",
+  useSearchParams: () => new URLSearchParams(),
   useRouter: () => ({ push: () => {}, refresh: () => {} }),
 }));
 
