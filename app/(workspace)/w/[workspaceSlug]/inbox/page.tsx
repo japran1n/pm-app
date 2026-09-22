@@ -74,13 +74,23 @@ export default async function InboxPage({
   // defensive re-check keeps the Inbox's own gate keyed to the same rule
   // rather than trusting the layout alone, and — unlike the F013 version —
   // no longer excludes guests, who the old pages never blocked.
-  const { data: membership } = await supabase
+  const { data: membership, error: membershipError } = await supabase
     .from("workspace_members")
     .select("role")
     .eq("workspace_id", workspace.id)
     .eq("user_id", user.id)
     .eq("status", "active")
     .maybeSingle();
+
+  // F050 (FU-M4-3): a transient DB error here used to fall through the
+  // `?? "guest"` default below, silently hiding Approvals/Requests from an
+  // owner/member as if they were a guest, with no signal anything went
+  // wrong. Fail loudly instead — same "typed error surfaces, never
+  // demoted to a lesser role" rule this fix applies to the tab content
+  // below.
+  if (membershipError) {
+    throw new Error("Couldn't resolve your workspace role.");
+  }
 
   const isClient = membership?.role === "client";
   const canSeeApprovals = !isClient;

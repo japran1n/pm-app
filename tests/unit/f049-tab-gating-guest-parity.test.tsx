@@ -92,14 +92,16 @@ vi.mock("@/lib/queries/approvals", () => ({
 }));
 
 vi.mock("@/lib/queries/client-requests", () => ({
-  getWorkspaceClientRequests: vi.fn(async () => [
-    {
-      id: "r1",
-      title: "Guest-visible request",
-      projectName: "Apollo",
-      createdAt: "2026-06-02T09:00:00.000Z",
-    },
-  ]),
+  getWorkspaceClientRequests: vi.fn(async () => ({
+    list: [
+      {
+        id: "r1",
+        title: "Guest-visible request",
+        projectName: "Apollo",
+        createdAt: "2026-06-02T09:00:00.000Z",
+      },
+    ],
+  })),
 }));
 
 vi.mock("@/lib/queries/watching", () => ({
@@ -148,6 +150,7 @@ vi.mock("@/components/watching/watching-tab-content", () => ({
   WatchingTabContent: () => createElement("div", null, "watching-tab"),
 }));
 let pageMembershipRole: string | null;
+let pageMembershipError: { message: string } | null = null;
 
 vi.mock("@/lib/auth/current-user", () => ({
   getCurrentUser: vi.fn(async () => ({
@@ -170,7 +173,7 @@ vi.mock("@/lib/auth/current-user", () => ({
                 eq: vi.fn(() => ({
                   maybeSingle: vi.fn(async () => ({
                     data: pageMembershipRole ? { role: pageMembershipRole } : null,
-                    error: null,
+                    error: pageMembershipError,
                   })),
                 })),
               })),
@@ -210,5 +213,27 @@ describe("SB-052 (page-level regression): InboxPage grants a guest the Approvals
 
     expect(html).not.toContain('href="/w/acme/inbox?tab=approvals"');
     expect(html).not.toContain('href="/w/acme/inbox?tab=requests"');
+  });
+});
+
+// F050 (FU-M4-3): a membership-lookup failure must fail loudly, not fall
+// through the `?? "guest"` default and silently demote an owner/member to
+// guest (hiding Approvals/Requests with no signal). This test would fail
+// if that throw were removed and the page instead defaulted the role.
+describe("FU-M4-3: InboxPage fails loudly on a membership-lookup error", () => {
+  it("test_FU_M4_3_inbox_page_throws_when_membership_lookup_errors", async () => {
+    const InboxPage = (await import("@/app/(workspace)/w/[workspaceSlug]/inbox/page")).default;
+
+    pageMembershipRole = null;
+    pageMembershipError = { message: "connection reset" };
+
+    await expect(
+      InboxPage({
+        params: Promise.resolve({ workspaceSlug: "acme" }),
+        searchParams: Promise.resolve({}),
+      }),
+    ).rejects.toThrow();
+
+    pageMembershipError = null;
   });
 });

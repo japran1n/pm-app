@@ -11,7 +11,15 @@ export async function RequestsTabContent({
   workspaceSlug: string;
   workspaceId: string;
 }) {
-  const requests = await getWorkspaceClientRequests(workspaceId);
+  const { list: requests, error } = await getWorkspaceClientRequests(workspaceId);
+
+  // F050 (FU-M4-3): a real fetch failure must never render the same
+  // "no requests" empty state a legitimate zero-row result would — throw
+  // so app/(workspace)/w/[workspaceSlug]/inbox/error.tsx (and this route's
+  // own error.tsx) renders an error affordance instead.
+  if (error) {
+    throw new Error(error);
+  }
 
   return <TeamRequestInbox requests={requests} workspaceSlug={workspaceSlug} />;
 }

@@ -72,9 +72,19 @@ export async function getOpenClientRequestCountForWorkspace(
   return count ?? 0;
 }
 
+// F050 (FU-M4-3): "list" plus an optional typed `error`, mirroring
+// getNotificationsForWorkspace's own "typed error, caller decides how to
+// surface it" convention (lib/queries/notifications.ts) — a real DB/network
+// failure here used to collapse to an empty array indistinguishable from
+// "no requests exist", which made the Inbox's "Requests"/"All" tabs render
+// "Your inbox is empty" on a total backend failure. `error` is set only
+// for the `client_requests` query itself; the upstream `projects` lookup
+// failing produces zero project ids, which is already this function's
+// legitimate "nothing to show" path (same convention as
+// getOpenApprovalsForWorkspace).
 export async function getWorkspaceClientRequests(
   workspaceId: string,
-): Promise<TeamClientRequest[]> {
+): Promise<{ list: TeamClientRequest[]; error?: string }> {
   const supabase = await createClient();
 
   const { data: projects } = await supabase
@@ -86,7 +96,7 @@ export async function getWorkspaceClientRequests(
   const projectNames = new Map(
     (projects ?? []).map((p) => [p.id as string, p.name as string]),
   );
-  if (projectNames.size === 0) return [];
+  if (projectNames.size === 0) return { list: [] };
 
   const { data, error } = await supabase
     .from("client_requests")
@@ -102,7 +112,7 @@ export async function getWorkspaceClientRequests(
 
   if (error) {
     logger.error("getWorkspaceClientRequests failed", { error: error });
-    return [];
+    return { list: [], error: "Couldn't load client requests." };
   }
 
   const rows = data ?? [];
@@ -120,7 +130,7 @@ export async function getWorkspaceClientRequests(
     accepted: 3,
   };
 
-  return rows
+  const list = rows
     .map((row) => {
       const person = people.get(row.created_by);
       return {
@@ -154,4 +164,6 @@ export async function getWorkspaceClientRequests(
         STATUS_ORDER[a.status] - STATUS_ORDER[b.status] ||
         b.createdAt.localeCompare(a.createdAt),
     );
+
+  return { list };
 }

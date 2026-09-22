@@ -37,12 +37,31 @@ export async function AllTabContent({
   canSeeApprovals: boolean;
   canSeeRequests: boolean;
 }) {
-  const [notificationsResult, approvals, requests, watchedTasks] = await Promise.all([
+  const [notificationsResult, approvals, requestsResult, watchedTasks] = await Promise.all([
     getNotificationsForWorkspace(workspaceId, 50),
     canSeeApprovals ? getOpenApprovalsForWorkspace(workspaceId) : Promise.resolve([]),
-    canSeeRequests ? getWorkspaceClientRequests(workspaceId) : Promise.resolve([]),
+    canSeeRequests
+      ? getWorkspaceClientRequests(workspaceId)
+      : Promise.resolve<Awaited<ReturnType<typeof getWorkspaceClientRequests>>>({
+          list: [],
+        }),
     getWatchedTasksForUser(userId),
   ]);
+
+  // F050 (FU-M4-3): a real fetch failure on either source that feeds the
+  // merged "All" tab must never render "Your inbox is empty" — that's
+  // indistinguishable from "you have nothing waiting on you". Throw so
+  // inbox/error.tsx renders an error affordance instead. Approvals/watching
+  // already fail open to [] on their own read errors (pre-existing
+  // convention in those queries) and are out of scope for this fix — see
+  // handoff "Out-of-scope work needed".
+  if (notificationsResult.error) {
+    throw new Error(notificationsResult.error);
+  }
+  if (requestsResult.error) {
+    throw new Error(requestsResult.error);
+  }
+  const requests = requestsResult.list;
 
   const items: MergedItem[] = [
     ...notificationsResult.list.map((n) => ({

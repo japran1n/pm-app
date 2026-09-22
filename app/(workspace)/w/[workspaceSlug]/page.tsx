@@ -144,7 +144,7 @@ export default async function WorkspacePage({
     getOpenApprovalsForWorkspace(workspaceId),
     resolvedRole !== "member"
       ? getWorkspaceClientRequests(workspaceId)
-      : Promise.resolve<TeamClientRequest[]>([]),
+      : Promise.resolve<{ list: TeamClientRequest[] }>({ list: [] }),
     getNotificationsForWorkspace(workspaceId, 20),
     getQaReturns(workspaceId, userId),
     getActiveTimer(),
@@ -176,11 +176,11 @@ export default async function WorkspacePage({
     [],
     "getOpenApprovalsForWorkspace",
   );
-  const clientRequests = unwrap<TeamClientRequest[]>(
+  const clientRequests = unwrap<{ list: TeamClientRequest[]; error?: string }>(
     clientRequestsResult,
-    [],
+    { list: [] },
     "getWorkspaceClientRequests",
-  );
+  ).list;
   const notifications = unwrap(
     notificationsResult,
     { list: [] as NotificationListItem[], unreadCount: 0 },
