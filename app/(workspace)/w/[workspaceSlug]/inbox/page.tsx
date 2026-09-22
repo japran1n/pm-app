@@ -56,7 +56,7 @@ export default async function InboxPage({
 
   const { data: workspace } = await supabase
     .from("workspaces")
-    .select("id")
+    .select("id, slug")
     .eq("slug", workspaceSlug)
     .maybeSingle();
 
@@ -126,7 +126,7 @@ export default async function InboxPage({
           <ApprovalsTabContent workspaceSlug={workspaceSlug} workspaceId={workspace.id} />
         )}
         {activeTab === "requests" && canSeeRequests && (
-          <RequestsTabContent workspaceSlug={workspaceSlug} workspaceId={workspace.id} />
+          <RequestsTabContent workspaceSlug={workspace.slug} workspaceId={workspace.id} />
         )}
         {activeTab === "watching" && (
           <WatchingTabContent workspaceSlug={workspaceSlug} userId={user.id} />

@@ -21,5 +21,13 @@ export async function RequestsTabContent({
     throw new Error(error);
   }
 
-  return <TeamRequestInbox requests={requests} workspaceSlug={workspaceSlug} />;
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-sm text-muted-foreground">
+        What your clients have asked for. Accepting one creates a task and
+        shares it back with them.
+      </p>
+      <TeamRequestInbox requests={requests} workspaceSlug={workspaceSlug} />
+    </div>
+  );
 }

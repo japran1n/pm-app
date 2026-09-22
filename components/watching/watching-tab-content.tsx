@@ -13,5 +13,12 @@ export async function WatchingTabContent({
 }) {
   const watchedTasks = await getWatchedTasksForUser(userId);
 
-  return <WatchingTaskList workspaceSlug={workspaceSlug} watchedTasks={watchedTasks} />;
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-sm text-muted-foreground">
+        Tasks you&apos;re watching, sorted by the most recent activity.
+      </p>
+      <WatchingTaskList workspaceSlug={workspaceSlug} watchedTasks={watchedTasks} />
+    </div>
+  );
 }
