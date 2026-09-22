@@ -57,7 +57,20 @@ function renderHtml(projects: { id: string; name: string; key: string }[]) {
 }
 
 describe("AppSidebar on a short viewport (F119, AS-069)", () => {
-  it("AS-069: every seeded project is present in the DOM even with a full primary nav", () => {
+  // F040 (M3 scrutiny FU-2): AS-069's own text is "every project must
+  // remain reachable -- not visually compressed/cut off with no scroll
+  // affordance", not "every project's name is literally in the initial
+  // DOM". Since F040 wired SB-042's "cap the no-favourites case at 5
+  // recently-visited projects" into this render path, a zero-favourites,
+  // zero-recent-history workspace with 20 projects no longer prints all 20
+  // names directly in this section -- it renders this section's own empty
+  // state instead (see project-nav-list.tsx's `isTrueEmptyRecents`) and
+  // every project stays reachable one click away via the SB-044 "All
+  // projects" link, which is what this test now asserts instead. This
+  // keeps faith with AS-069's actual assertion (reachable, not cut off
+  // with no way out) without reintroducing the "print all 20 names" shape
+  // that SB-042 explicitly caps.
+  it("AS-069: every seeded project remains reachable via the 'All projects' link even when the capped section doesn't list all of them", () => {
     const doc = renderHtml(manyProjects);
     const text = doc.body.textContent ?? "";
 
@@ -72,11 +85,16 @@ describe("AppSidebar on a short viewport (F119, AS-069)", () => {
     // the still-in-sidebar item this assertion checks for (SB-018).
     expect(text).toContain("Watching");
 
-    // Every one of the 20 seeded projects is reachable in the DOM -- not
-    // silently dropped/cut off past the first couple of rows.
-    for (const project of manyProjects) {
-      expect(text).toContain(project.name);
-    }
+    // Every project remains reachable via the always-present "All
+    // projects" link (SB-044), not necessarily printed directly in this
+    // section's own (now-capped, per SB-042) list.
+    const allProjectsLinks = Array.from(
+      doc.querySelectorAll(`a[href="/w/acme/projects"]`),
+    );
+    const allProjectsLink = allProjectsLinks.find((link) =>
+      link.textContent?.includes("All projects"),
+    );
+    expect(allProjectsLink).toBeTruthy();
   });
 
   it("AS-069: the Projects section has its own bounded, independently-scrolling container, distinct from the primary nav", () => {

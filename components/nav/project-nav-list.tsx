@@ -179,31 +179,43 @@ export function ProjectNavList({
     [],
     allFavoriteProjects,
   );
-  // F011 (SB-042): deliberately NOT capping `otherProjects` at 5 here --
-  // see AUTONOMOUS_DECISION in this feature's handoff. AS-069
-  // (tests/unit/f119-sidebar-short-viewport.test.tsx, an existing,
-  // regression-protected assertion from an earlier feature) requires
-  // every visible project to stay reachable in the DOM via this section's
-  // own scroll container, even with dozens of projects and zero
-  // favourites -- truncating this list to 5 would directly regress that
-  // assertion. `recentIds` still nudges recently-visited projects to the
-  // FRONT of this (still-complete, still-scrollable) list when there are
-  // no favourites, which is as much of "prefer recent" as can be honoured
-  // without dropping projects from the DOM; SB-042's literal "capped at
-  // 5" wording is verified independently via
-  // lib/nav/select-sidebar-projects.ts's own dedicated unit tests
-  // (tests/unit/select-sidebar-projects.test.ts).
-  const otherProjects =
-    favoriteProjects.length > 0 || recentIds.length === 0
-      ? allOtherProjects
-      : [...allOtherProjects].sort((a, b) => {
-          const aIndex = recentIds.indexOf(a.id);
-          const bIndex = recentIds.indexOf(b.id);
-          if (aIndex === -1 && bIndex === -1) return 0;
-          if (aIndex === -1) return 1;
-          if (bIndex === -1) return -1;
-          return aIndex - bIndex;
-        });
+  // F040 (M3 scrutiny FU-2, SB-042): the no-favourites case now actually
+  // wires `selectSidebarProjects` into the render path -- the section
+  // shows at most 5 recently-visited projects (still reachable, in full,
+  // via the "All projects" link (SB-044) below), rather than the earlier
+  // "sort the complete list by recency but never truncate it" compromise.
+  // `hasRecentMatch` is computed independently of `selectSidebarProjects`'s
+  // own "degrade to `visible.slice(0, 5)`" fallback (that fallback is a
+  // property of the pure helper, still correct and still covered by its
+  // own unit tests in tests/unit/select-sidebar-projects.test.ts) so this
+  // render path can tell "0 favourites, >=1 matching recent" apart from
+  // "0 favourites, 0 recognised recent visits" and render the latter as
+  // this section's own empty state instead of an unrelated slice of the
+  // full project list.
+  const SIDEBAR_PROJECTS_LIMIT = 5;
+  const otherProjectsById = new Map(allOtherProjects.map((p) => [p.id, p]));
+  const hasRecentMatch = recentIds.some((id) => otherProjectsById.has(id));
+  const noFavourites = favoriteProjects.length === 0;
+  // "True empty" only kicks in once there's actually something to
+  // truncate: with no favourites, no matched recents, and MORE projects
+  // than the cap, showing an arbitrary (non-recent, non-favourite) slice
+  // of the full list is exactly the misleading fallback FU-2 flags --
+  // this section's own empty state (every project still one click away
+  // via the "All projects" link, SB-044) is more honest than that. When
+  // the caller has `limit` or fewer projects there's no truncation
+  // happening at all, so showing them plainly (same as before this
+  // feature) isn't misleading and stays unchanged.
+  const isTrueEmptyRecents =
+    noFavourites &&
+    !hasRecentMatch &&
+    allOtherProjects.length > SIDEBAR_PROJECTS_LIMIT;
+  const otherProjects = noFavourites
+    ? hasRecentMatch
+      ? selectSidebarProjects([], recentIds, allOtherProjects, SIDEBAR_PROJECTS_LIMIT)
+      : isTrueEmptyRecents
+        ? []
+        : allOtherProjects
+    : allOtherProjects;
 
   // dnd-kit setup, same PointerSensor+KeyboardSensor pairing as the board
   // (components/board/board.tsx) for consistency — see that file's own
@@ -479,29 +491,40 @@ export function ProjectNavList({
                 alphabetically sorted (manual ordering explicitly out of
                 scope for that group per AS-510's own clarification,
                 above). */}
-            <DndContext
-              // F272 (part 3): explicit, stable id -- see
-              // components/board/board.tsx's `DndContext` for the full
-              // rationale (dnd-kit's counter-based auto-id otherwise
-              // drifts between the server's per-request-fresh counter and
-              // the client's already-incremented one whenever more than
-              // one `DndContext` mounts across the app in a given
-              // session, producing a hydration `aria-describedby`
-              // mismatch on every page that renders this sidebar).
-              id="sidebar-project-reorder"
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragEnd={handleDragEnd}
-            >
-              <SortableContext
-                items={otherProjects.map((p) => p.id)}
-                strategy={verticalListSortingStrategy}
+            {isTrueEmptyRecents ? (
+              // F040 (M3 scrutiny FU-2, SB-042): 0 favourites AND 0
+              // recognised recent visits -- render this section's own
+              // empty state (every other project is still reachable via
+              // the "All projects" link below, SB-044) rather than an
+              // arbitrary slice of the full, unrelated project list.
+              <p className="px-2 py-1.5 text-sm text-sidebar-foreground/60">
+                No recent projects. Browse all projects below.
+              </p>
+            ) : (
+              <DndContext
+                // F272 (part 3): explicit, stable id -- see
+                // components/board/board.tsx's `DndContext` for the full
+                // rationale (dnd-kit's counter-based auto-id otherwise
+                // drifts between the server's per-request-fresh counter and
+                // the client's already-incremented one whenever more than
+                // one `DndContext` mounts across the app in a given
+                // session, producing a hydration `aria-describedby`
+                // mismatch on every page that renders this sidebar).
+                id="sidebar-project-reorder"
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
               >
-                {otherProjects.map((project) => (
-                  <SortableProjectRow key={project.id} project={project} />
-                ))}
-              </SortableContext>
-            </DndContext>
+                <SortableContext
+                  items={otherProjects.map((p) => p.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  {otherProjects.map((project) => (
+                    <SortableProjectRow key={project.id} project={project} />
+                  ))}
+                </SortableContext>
+              </DndContext>
+            )}
           </nav>
         )}
         {/* F011 (SB-044): the section always ends with a link to the
