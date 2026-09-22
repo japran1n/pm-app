@@ -42,11 +42,6 @@ import { toast } from "sonner";
 
 import { signOut } from "@/lib/actions/auth";
 import type { UserAvatarPerson } from "@/components/user-avatar";
-// F208 (AS-379): the notification bell — mounted here since this app has
-// no real top bar yet (per this feature's own Notes; a future F267 header
-// may relocate it), so the sidebar's workspace-switcher row is the only
-// reachable, always-visible chrome to put it in today.
-import { NotificationBell } from "@/components/notifications/notification-bell";
 import { AccountMenu } from "@/components/nav/account-menu";
 import type { NotificationListItem } from "@/lib/queries/notifications";
 // F262 (AS-509, AS-511, AS-512, AS-513): the sidebar's own "Projects"
@@ -132,6 +127,9 @@ function navGroups(
   approvalsBadge?: React.ReactNode,
   requestsBadge?: React.ReactNode,
   chatUnreadBadge?: React.ReactNode,
+  // F014 (SB-053, SB-054, SB-055): the Inbox nav item's own aggregate
+  // badge -- see inboxBadge's own prop doc comment on SidebarContent.
+  inboxBadge?: React.ReactNode,
 ): { label: string | null; items: NavItem[] }[] {
   const countBadge = (count: number) =>
     typeof count === "number" && count > 0 ? (
@@ -159,9 +157,12 @@ function navGroups(
     { href: `/w/${workspaceSlug}/chat`, label: "Chat", icon: MessageCircle, badge: chatUnreadBadge ?? countBadge(chatUnreadCount) },
     // F013 (SB-057): "Watching" is no longer its own sidebar item -- it is
     // now one of the Inbox tabs (`/w/<slug>/inbox?tab=watching`,
-    // components/inbox/inbox-tab-nav.tsx). F014 adds the "Inbox" item
-    // itself to this band; nothing here reintroduces a standalone
-    // "Watching" link.
+    // components/inbox/inbox-tab-nav.tsx).
+    // F014 (SB-053, SB-054, SB-055): "Inbox" itself -- one badge summing
+    // unread notifications + pending approvals + open client requests
+    // (lib/inbox/inbox-badge-count.ts), replacing the removed notification
+    // bell's own unread badge.
+    { href: `/w/${workspaceSlug}/inbox`, label: "Inbox", icon: Inbox, badge: inboxBadge },
   ];
 
   // F010 (TH-001, TH-002, TH-003, TH-005, TH-007, TH-012): dedicated "Tools"
@@ -268,8 +269,11 @@ function SidebarContent({
   currentUser,
   isGuest,
   canManageWorkspace,
-  initialNotifications,
-  initialUnreadCount,
+  // F014: kept as a back-compat prop (never read here any more, see this
+  // destructure's own doc comment below) -- the bell that used to consume
+  // these is gone.
+  initialNotifications: _initialNotifications,
+  initialUnreadCount: _initialUnreadCount,
   projects,
   approvalsCount = 0,
   requestsCount = 0,
@@ -277,7 +281,7 @@ function SidebarContent({
   approvalsBadge,
   requestsBadge,
   chatUnreadBadge,
-  notificationBellSlot,
+  inboxBadge,
   workspaceSwitcherSlot,
   onNavigate,
 }: {
@@ -312,12 +316,13 @@ function SidebarContent({
   approvalsBadge?: React.ReactNode;
   requestsBadge?: React.ReactNode;
   chatUnreadBadge?: React.ReactNode;
-  /** F016 (AS-017): the notification bell, streamed in by the layout via
-   * `components/nav/figures/notification-bell-figure.tsx` inside its own
-   * `<Suspense fallback={null}>`. When omitted, falls back to rendering
-   * `<NotificationBell>` directly from `initialNotifications`/
-   * `initialUnreadCount` (unchanged back-compat path for existing tests). */
-  notificationBellSlot?: React.ReactNode;
+  /** F014 (SB-053, SB-054, SB-055): the "Inbox" nav item's own aggregate
+   * badge (unread notifications + pending approvals + open client
+   * requests), streamed in by the layout via
+   * `components/nav/figures/inbox-badge-figure.tsx` inside its own
+   * `<Suspense fallback={null}>`. This REPLACES the removed notification
+   * bell's own unread badge -- see that figure's own header comment. */
+  inboxBadge?: React.ReactNode;
   /** F016 (AS-017): the workspace switcher, streamed in by the layout via
    * `components/nav/figures/workspace-switcher-figure.tsx` inside its own
    * `<Suspense fallback={null}>`. When omitted, falls back to rendering
@@ -390,6 +395,7 @@ function SidebarContent({
     approvalsBadge,
     requestsBadge,
     chatUnreadBadge,
+    inboxBadge,
   );
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -436,28 +442,22 @@ function SidebarContent({
           isGuest={isGuest}
           onNavigate={onNavigate}
         />
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={openSearch}
-            className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md border bg-transparent px-2 text-sm font-medium text-muted-foreground transition-colors duration-200 hover:border-[var(--border-control-hover)] hover:bg-muted/50 hover:text-foreground"
-          >
-            <Search className="size-4 shrink-0" aria-hidden="true" />
-            <span className="flex-1 text-left">Search</span>
-            <kbd className="font-mono text-xs text-muted-foreground">
-              {isMac ? "⌘K" : "Ctrl K"}
-            </kbd>
-          </button>
-          {notificationBellSlot ?? (
-            <NotificationBell
-              workspaceSlug={workspaceSlug}
-              workspaceId={currentWorkspaceId}
-              currentUserId={currentUser.id}
-              initialNotifications={initialNotifications}
-              initialUnreadCount={initialUnreadCount}
-            />
-          )}
-        </div>
+        {/* F014: the notification bell that used to sit here is gone --
+            its unread count is now the "Inbox" nav item's own badge below,
+            and its realtime side effects moved to
+            components/notifications/notifications-realtime-effects.tsx
+            (mounted once by the workspace layout, not here). */}
+        <button
+          type="button"
+          onClick={openSearch}
+          className="flex h-8 w-full min-w-0 items-center gap-2 rounded-md border bg-transparent px-2 text-sm font-medium text-muted-foreground transition-colors duration-200 hover:border-[var(--border-control-hover)] hover:bg-muted/50 hover:text-foreground"
+        >
+          <Search className="size-4 shrink-0" aria-hidden="true" />
+          <span className="flex-1 text-left">Search</span>
+          <kbd className="font-mono text-xs text-muted-foreground">
+            {isMac ? "⌘K" : "Ctrl K"}
+          </kbd>
+        </button>
       </div>
 
       {/* F253 (AS-491): anchor target for the onboarding tour's "sidebar"
@@ -653,7 +653,7 @@ export function AppSidebar({
   approvalsBadge,
   requestsBadge,
   chatUnreadBadge,
-  notificationBellSlot,
+  inboxBadge,
   workspaceSwitcherSlot,
 }: {
   workspaceSlug: string;
@@ -695,7 +695,12 @@ export function AppSidebar({
   approvalsBadge?: React.ReactNode;
   requestsBadge?: React.ReactNode;
   chatUnreadBadge?: React.ReactNode;
-  notificationBellSlot?: React.ReactNode;
+  /** F014 (SB-053, SB-054, SB-055): the "Inbox" nav item's own aggregate
+   * badge — see SidebarContent's own doc comment for this prop. Replaces
+   * the removed `notificationBellSlot`/`<NotificationBell>` (both desktop
+   * and mobile) entirely; there is no more standalone bell anywhere in
+   * this component. */
+  inboxBadge?: React.ReactNode;
   workspaceSwitcherSlot?: React.ReactNode;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -728,7 +733,7 @@ export function AppSidebar({
           approvalsBadge={approvalsBadge}
           requestsBadge={requestsBadge}
           chatUnreadBadge={chatUnreadBadge}
-          notificationBellSlot={notificationBellSlot}
+          inboxBadge={inboxBadge}
           workspaceSwitcherSlot={workspaceSwitcherSlot}
         />
       </aside>
@@ -776,28 +781,23 @@ export function AppSidebar({
               approvalsBadge={approvalsBadge}
               requestsBadge={requestsBadge}
               chatUnreadBadge={chatUnreadBadge}
-              notificationBellSlot={notificationBellSlot}
+              inboxBadge={inboxBadge}
               workspaceSwitcherSlot={workspaceSwitcherSlot}
               onNavigate={() => setMobileOpen(false)}
             />
           </SheetContent>
         </Sheet>
-        {/* F208: the bell also needs to be reachable on mobile, where the
-            desktop sidebar (and its own bell) is hidden entirely. F002
+        {/* F014: the bell that used to sit here (F208) is gone -- its
+            unread count is folded into the "Inbox" nav item's own badge
+            inside the Sheet above (reachable on mobile the same way every
+            other nav item is), and its realtime side effects moved to
+            NotificationsRealtimeEffects (mounted once by the workspace
+            layout, not duplicated per responsive breakpoint here). F002
             (SB-013): the standalone <ThemeToggle/> that used to sit here
             is removed -- theme is now reachable on mobile via the
             AccountMenu inside the Sheet's own SidebarContent footer
             (SB-009: same nav tree, including the account menu trigger,
             renders in the mobile Sheet as on desktop). */}
-        {notificationBellSlot ?? (
-          <NotificationBell
-            workspaceSlug={workspaceSlug}
-            workspaceId={currentWorkspaceId}
-            currentUserId={currentUser.id}
-            initialNotifications={initialNotifications}
-            initialUnreadCount={initialUnreadCount}
-          />
-        )}
       </div>
     </>
   );

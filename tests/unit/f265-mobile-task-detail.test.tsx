@@ -396,7 +396,13 @@ describe("Mobile navigation tap targets are at least 44px (F265, AS-518)", () =>
     { id: "p1", name: "Acme Website", key: "AW", isFavorite: true },
   ];
 
-  it("test_AS_518_mobile_notification_bell_trigger_is_44px", () => {
+  // F014 (SB-053, SB-054, SB-055): the standalone notification bell this
+  // test used to assert on (both desktop header bar + mobile top bar) is
+  // gone -- its unread count is now the "Inbox" nav item's own badge, a
+  // plain Link like every other nav item (already covered by this file's
+  // "every primary nav Link... 44px" assertions above), not a distinct
+  // touch target needing its own AS-518 check.
+  it("test_AS_518_mobile_search_trigger_is_at_least_44px_tall", () => {
     render(
       createElement(AppSidebar, {
         workspaceSlug: "acme",
@@ -407,13 +413,11 @@ describe("Mobile navigation tap targets are at least 44px (F265, AS-518)", () =>
       }),
     );
 
-    // Two copies exist (desktop header bar + mobile top bar) -- assert
-    // every one of them, not just the first.
-    const bellTriggers = screen.getAllByRole("button", { name: /Notifications/i });
-    expect(bellTriggers.length).toBeGreaterThan(0);
-    for (const trigger of bellTriggers) {
-      expect(trigger.className).toMatch(/max-md:size-11/);
-    }
+    // The hamburger trigger that opens the mobile Sheet is the one
+    // standalone (non-Link) touch target left in the mobile top bar now
+    // that the bell is gone -- still held to the same 44px minimum.
+    const menuTrigger = screen.getByRole("button", { name: /Open navigation/i });
+    expect(menuTrigger.className).toMatch(/max-md:size-11/);
   });
 
   it("test_AS_518_project_row_has_a_44px_minimum_tap_height", () => {

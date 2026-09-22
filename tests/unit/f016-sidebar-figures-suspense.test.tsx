@@ -55,16 +55,19 @@ describe("AS-017: sidebar figures stream in via slot props", () => {
     expect(html).not.toMatch(/>999</);
   });
 
-  it("renders notificationBellSlot/workspaceSwitcherSlot verbatim in place of the default bell/switcher", () => {
+  it("renders inboxBadge/workspaceSwitcherSlot verbatim in place of the default badge/switcher", () => {
+    // F014 (SB-053, SB-054, SB-055): notificationBellSlot no longer
+    // exists -- the bell was removed, replaced by the "Inbox" nav item's
+    // own inboxBadge slot (same F016 streamed-slot shape).
     const html = renderToStaticMarkup(
       createElement(AppSidebar, {
         ...baseProps,
-        notificationBellSlot: createElement("div", { "data-testid": "bell-slot" }),
+        inboxBadge: createElement("div", { "data-testid": "inbox-badge-slot" }),
         workspaceSwitcherSlot: createElement("div", { "data-testid": "switcher-slot" }),
       }),
     );
 
-    expect(html).toContain("data-testid=\"bell-slot\"");
+    expect(html).toContain("data-testid=\"inbox-badge-slot\"");
     expect(html).toContain("data-testid=\"switcher-slot\"");
   });
 
@@ -79,12 +82,19 @@ describe("AS-017: sidebar figures stream in via slot props", () => {
 });
 
 describe("AS-017: each sidebar figure is its own async server component", () => {
-  it("NotificationBellFigure, TourFigure, ApprovalsBadgeFigure, RequestsBadgeFigure, ChatUnreadBadgeFigure, and WorkspaceSwitcherFigure all return a Promise (require a Suspense boundary to resolve)", async () => {
+  it("InboxBadgeFigure, NotificationsRealtimeFigure, TourFigure, ApprovalsBadgeFigure, RequestsBadgeFigure, ChatUnreadBadgeFigure, and WorkspaceSwitcherFigure all return a Promise (require a Suspense boundary to resolve)", async () => {
     // This test only imports each figure and inspects its function shape
     // (`AsyncFunction`) -- it does not invoke or render any of them, so no
     // data-layer mocking is needed.
-    const { NotificationBellFigure } = await import(
-      "@/components/nav/figures/notification-bell-figure"
+    // F014: NotificationBellFigure was replaced by InboxBadgeFigure (the
+    // Inbox nav item's own aggregate badge) and NotificationsRealtimeFigure
+    // (the bell's relocated realtime side effects) -- see those files' own
+    // header comments.
+    const { InboxBadgeFigure } = await import(
+      "@/components/nav/figures/inbox-badge-figure"
+    );
+    const { NotificationsRealtimeFigure } = await import(
+      "@/components/nav/figures/notifications-realtime-figure"
     );
     const { TourFigure } = await import("@/components/nav/figures/tour-figure");
     const { ApprovalsBadgeFigure } = await import(
@@ -101,7 +111,8 @@ describe("AS-017: each sidebar figure is its own async server component", () => 
     );
 
     for (const Figure of [
-      NotificationBellFigure,
+      InboxBadgeFigure,
+      NotificationsRealtimeFigure,
       TourFigure,
       ApprovalsBadgeFigure,
       RequestsBadgeFigure,

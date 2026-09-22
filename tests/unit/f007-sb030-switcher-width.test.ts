@@ -5,10 +5,12 @@
 // page (so the base-ui Sheet really opens), and compiles the app's real
 // globals.css, so the `md:` breakpoint gating is evaluated by the browser.
 //
-// Stubbed (not under test): next/navigation, next/link, the notification bell,
-// server actions (lib/actions/*), the membership provider, project DnD/dialog
-// leaves. Everything in components/nav/app-sidebar.tsx, account-menu.tsx and
-// components/ui/* is real. Not verified: a live authenticated Next page.
+// Stubbed (not under test): next/navigation, next/link, server actions
+// (lib/actions/*), the membership provider, project DnD/dialog leaves.
+// F014: the notification bell is gone from the sidebar entirely (no stub
+// needed for it any more). Everything in components/nav/app-sidebar.tsx,
+// account-menu.tsx and components/ui/* is real. Not verified: a live
+// authenticated Next page.
 // @vitest-environment node
 import { readFileSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -28,7 +30,6 @@ const STUBS: Record<string, string> = {
   "next/link": `import React from "react"; export default function Link({href,prefetch,scroll,replace,children,...r}){return React.createElement("a",{href:typeof href==="string"?href:String(href),...r},children)}`,
   "next-themes": `export const useTheme=()=>({theme:"light",resolvedTheme:"light",setTheme(){}});`,
   "sonner": `export const toast={error(){},success(){}};`,
-  "@/components/notifications/notification-bell": `import React from "react"; export const NotificationBell=()=>React.createElement("button",{type:"button","aria-label":"Notifications",className:"inline-flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-md border border-border max-md:size-11"});`,
   "@/components/auth/membership-provider": `export const useMembership=()=>({role:"admin",hasClient:true,projectRoles:{}});`,
   "@/lib/actions/auth": `export async function signOut(){}`,
   "@/lib/actions/templates": `export async function listProjectTemplateOptions(){return []} export async function createProjectFromTemplate(){return {ok:true,data:{name:"x",taskCount:0}}}`,
@@ -145,10 +146,6 @@ function measure(scope: Locator, NAME: string) {
       parseFloat(acs.borderLeftWidth) - parseFloat(acs.borderRightWidth);
     const rowEl = btn.parentElement!.parentElement!;
     const rcs = getComputedStyle(rowEl);
-    const bellEl = aside.querySelector<HTMLElement>('button[aria-label="Notifications"]')!;
-    const bell = bellEl.getBoundingClientRect();
-    const bellInHeaderRow = rowEl.contains(bellEl);
-    const bellVisible = bell.width > 0 && bell.left >= aside.getBoundingClientRect().left && bell.right <= aside.getBoundingClientRect().right + 0.5;
     const asideW = aside.getBoundingClientRect().width;
     const rowPadX = parseFloat(rcs.paddingLeft) + parseFloat(rcs.paddingRight);
     const rowGap = parseFloat(rcs.columnGap);
@@ -166,9 +163,6 @@ function measure(scope: Locator, NAME: string) {
       // Real (non-tautological) clamp check: with a line-clamp, hidden lines
       // make scrollHeight exceed clientHeight.
       labelHidden: span.scrollHeight > span.clientHeight + 1,
-      bellWidth: bell.width,
-      bellInHeaderRow,
-      bellVisible,
       asideW,
       rowPadX,
       rowGap,
@@ -193,12 +187,9 @@ function expectContained(m: Awaited<ReturnType<typeof measure>>) {
   expect(m.labelInViewport).toBe(true);
   expect(m.overlapsNext).toBe(false);
   expect(m.labelHidden, "40-char name must be fully visible (SB-030)").toBe(false);
-  // F038: the bell no longer shares the header row, so the trigger spans the
-  // FULL sidebar inner width: aside - border - row padding. It must not be
-  // reduced by a bell or gap. The bell stays reachable elsewhere in the aside.
-  expect(m.bellInHeaderRow, "bell must not steal width from the switcher row").toBe(false);
-  expect(m.bellVisible, "bell must remain reachable inside the sidebar").toBe(true);
-  expect(m.bellWidth).toBeGreaterThanOrEqual(38);
+  // F038/F014: the switcher row never shared space with the bell (removed
+  // entirely in F014, see components/nav/app-sidebar.tsx), so the trigger
+  // spans the FULL sidebar inner width: aside - border - row padding.
   const expected = m.asideInner - m.rowBorderX - m.rowPadX;
   expect(Math.abs(m.btnWidth - expected), `btn ${m.btnWidth} vs expected ${expected}`).toBeLessThanOrEqual(1);
   // ...and that is the sidebar's inner width less only the 12px row padding each side.
@@ -245,14 +236,18 @@ describe("F007/F038 SB-030 workspace switcher full width, 40-char name", () => {
     }, 60_000);
   }
 
-  it("test_SB_030_search_and_new_controls_still_fit_at_240px", async () => {
+  it("test_SB_030_search_control_still_fits_at_240px", async () => {
+    // F014: the notification bell that used to share this row with Search
+    // is gone -- Search now spans the row alone (see AppSidebar's own
+    // header-row markup), so this only asserts on the one remaining
+    // control.
     await withPage(1280, NAME, async (p) => {
       const r = await p.locator("aside").evaluate((a) => {
         const aw = a.getBoundingClientRect();
-        const btns = Array.from(a.querySelectorAll<HTMLElement>("button")).filter((b) => /Search|Notifications/.test((b.textContent ?? "") + (b.getAttribute("aria-label") ?? "")));
+        const btns = Array.from(a.querySelectorAll<HTMLElement>("button")).filter((b) => /Search/.test((b.textContent ?? "") + (b.getAttribute("aria-label") ?? "")));
         return btns.map((b) => { const x = b.getBoundingClientRect(); return { w: x.width, l: x.left - aw.left, r: aw.right - x.right, sh: b.scrollWidth - b.clientWidth }; });
       });
-      expect(r.length).toBe(2);
+      expect(r.length).toBe(1);
       for (const c of r) { expect(c.w).toBeGreaterThan(30); expect(c.l).toBeGreaterThanOrEqual(0); expect(c.r).toBeGreaterThanOrEqual(0); expect(c.sh).toBeLessThanOrEqual(1); }
     });
   }, 60_000);

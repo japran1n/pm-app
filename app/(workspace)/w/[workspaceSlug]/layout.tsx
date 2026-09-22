@@ -26,7 +26,14 @@ import { canManageProject, type ProjectRole } from "@/lib/auth/permissions";
 // from `components/nav/figures/*` that fetches its own value -- none of
 // them is awaited by this layout body anymore (see each figure's own
 // file-header comment for what it replaces).
-import { NotificationBellFigure } from "@/components/nav/figures/notification-bell-figure";
+// F014 (SB-053, SB-054, SB-055): the notification bell was removed from
+// the sidebar -- its unread count is now folded into the "Inbox" nav
+// item's own aggregate badge (InboxBadgeFigure), and its realtime side
+// effects (chat toast/sound, desktop notifications, title/favicon badge)
+// moved into NotificationsRealtimeFigure, a headless figure mounted
+// alongside the others below. See that figure's own header comment.
+import { NotificationsRealtimeFigure } from "@/components/nav/figures/notifications-realtime-figure";
+import { InboxBadgeFigure } from "@/components/nav/figures/inbox-badge-figure";
 import { TourFigure } from "@/components/nav/figures/tour-figure";
 import { ApprovalsBadgeFigure } from "@/components/nav/figures/approvals-badge-figure";
 import { RequestsBadgeFigure } from "@/components/nav/figures/requests-badge-figure";
@@ -34,7 +41,6 @@ import { ChatUnreadBadgeFigure } from "@/components/nav/figures/chat-unread-badg
 import { WorkspaceSwitcherFigure } from "@/components/nav/figures/workspace-switcher-figure";
 import {
   NavBadgeSkeleton,
-  NotificationBellSkeleton,
   WorkspaceSwitcherSkeleton,
 } from "@/components/nav/figures/skeletons";
 // F241 (AS-459, AS-463, AS-464): mounted once here, alongside the other
@@ -388,6 +394,18 @@ export default async function WorkspaceLayout({
       <Suspense fallback={null}>
         <TourFigure />
       </Suspense>
+      {/* F014: headless -- see NotificationsRealtimeFigure's own header
+          comment for why this replaces the bell's realtime effects,
+          mounted here (not inside AppSidebar) since it renders no UI of
+          its own and needs to keep running regardless of which page is
+          open. */}
+      <Suspense fallback={null}>
+        <NotificationsRealtimeFigure
+          workspaceSlug={workspaceSlug}
+          workspaceId={activeWorkspace.id}
+          currentUserId={user.id}
+        />
+      </Suspense>
       <BreadcrumbProvider>
       {
         // F120 (AS-073): `h-svh` (a fixed height, not a minimum) caps this
@@ -455,13 +473,9 @@ export default async function WorkspaceLayout({
           // `<Suspense fallback={null}>` so a slow one never blocks any
           // other figure or the rest of the page -- see each figure's own
           // file-header comment for exactly what it replaces.
-          notificationBellSlot={
-            <Suspense fallback={<NotificationBellSkeleton />}>
-              <NotificationBellFigure
-                workspaceSlug={workspaceSlug}
-                workspaceId={activeWorkspace.id}
-                currentUserId={user.id}
-              />
+          inboxBadge={
+            <Suspense fallback={<NavBadgeSkeleton />}>
+              <InboxBadgeFigure workspaceId={activeWorkspace.id} isGuest={isGuest} />
             </Suspense>
           }
           workspaceSwitcherSlot={

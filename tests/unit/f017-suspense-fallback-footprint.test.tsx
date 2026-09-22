@@ -2,10 +2,7 @@ import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createElement } from "react";
 
-import {
-  NavBadgeSkeleton,
-  NotificationBellSkeleton,
-} from "@/components/nav/figures/skeletons";
+import { NavBadgeSkeleton } from "@/components/nav/figures/skeletons";
 
 // F017 (AS-017, AS-020): the F016 figures' `<Suspense fallback={null}>`
 // wrappers are replaced with skeletons that reserve each figure's
@@ -24,12 +21,11 @@ describe("AS-017/AS-020: Suspense fallbacks hold each figure's exact footprint",
     expect(html).toMatch(/bg-muted/);
   });
 
-  it("NotificationBellSkeleton reserves the icon-button's own box (h-[38px] w-[38px], max-md:size-11), independent of badge state", () => {
-    const html = renderToStaticMarkup(createElement(NotificationBellSkeleton));
-    expect(html).toMatch(/h-\[38px\]/);
-    expect(html).toMatch(/w-\[38px\]/);
-    expect(html).toMatch(/max-md:size-11/);
-  });
+  // F014 (SB-053, SB-054, SB-055): NotificationBellSkeleton's own test was
+  // removed -- the bell (and its Suspense fallback) is gone from the
+  // layout. The skeleton component itself is left in place, unused (per
+  // this feature's own "leave the figure component file unless unused"
+  // convention), so it is not asserted on here either.
 
   // WorkspaceSwitcherSkeleton footprint is asserted by real-Chromium
   // measurement in f036-switcher-skeleton-footprint.test.ts (F036).
@@ -49,20 +45,26 @@ describe("AS-017/AS-020: Suspense fallbacks hold each figure's exact footprint",
     const nullFallbacks = codeLines.filter((line) =>
       line.includes("<Suspense fallback={null}>"),
     );
-    // Two figures legitimately keep fallback={null}:
+    // Three figures legitimately keep fallback={null}:
     // - TourFigure: renders `null` until active and, once active, only
     //   `position: fixed` overlay elements that never participate in
     //   document flow, so there is no footprint to reserve.
-    // - ClientPresentationBannerFigure (added after this test): renders
-    //   nothing at all for most users (non-client sessions), so reserving
-    //   a footprint would show a permanent empty gap instead.
-    expect(nullFallbacks).toHaveLength(2);
+    // - ClientPresentationBannerFigure: renders nothing at all for most
+    //   users (non-client sessions), so reserving a footprint would show a
+    //   permanent empty gap instead.
+    // - NotificationsRealtimeFigure (F014): headless -- always renders
+    //   null, never any in-flow markup, so there is nothing to reserve
+    //   (see that figure's own header comment).
+    expect(nullFallbacks).toHaveLength(3);
 
-    expect(source).toMatch(/fallback=\{<NotificationBellSkeleton \/>\}/);
+    // F014: the notification bell (and its own NotificationBellSkeleton
+    // fallback) is gone -- its unread count is now one more
+    // NavBadgeSkeleton-fallbacked figure (InboxBadgeFigure).
+    expect(source).not.toMatch(/NotificationBellSkeleton/);
     expect(source).toMatch(/fallback=\{<WorkspaceSwitcherSkeleton \/>\}/);
     const badgeSkeletonFallbacks = source.match(
       /fallback=\{<NavBadgeSkeleton \/>\}/g,
     ) ?? [];
-    expect(badgeSkeletonFallbacks).toHaveLength(3);
+    expect(badgeSkeletonFallbacks).toHaveLength(4);
   });
 });
