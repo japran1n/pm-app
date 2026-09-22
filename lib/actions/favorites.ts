@@ -79,11 +79,20 @@ export async function favoriteProject(
     return visible;
   }
 
+  // NOTE (SB-040 fix): project_favorites deliberately has no UPDATE policy
+  // (own-row SELECT/INSERT/DELETE only -- see this table's migration header
+  // comment: it is a membership fact, never updated). A plain
+  // `.upsert(..., { onConflict })` resolves to `INSERT ... ON CONFLICT DO
+  // UPDATE`, and Postgres evaluates the UPDATE branch against the missing
+  // UPDATE policy, so RLS denies re-favouriting an already-favourited
+  // project. `ignoreDuplicates: true` resolves to `DO NOTHING` instead,
+  // which needs no UPDATE policy and preserves the intended idempotent
+  // no-op semantics documented above.
   const { error } = await supabase
     .from("project_favorites")
     .upsert(
       { user_id: user.id, project_id: parsed.data.projectId },
-      { onConflict: "user_id,project_id" },
+      { onConflict: "user_id,project_id", ignoreDuplicates: true },
     );
 
   if (error) {

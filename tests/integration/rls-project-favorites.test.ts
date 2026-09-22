@@ -203,6 +203,48 @@ describe.skipIf(!haveAdminCreds)(
       expect(error?.code).toBe("23505");
     });
 
+    // SB-040: reproduces the exact write shape lib/actions/favorites.ts's
+    // favoriteProject uses (upsert with onConflict + ignoreDuplicates)
+    // against the LIVE database, as one real signed-in user, favouriting
+    // the same project twice. project_favorites has no UPDATE policy, so a
+    // plain `.upsert(..., { onConflict })` (DO UPDATE) would be denied by
+    // RLS on the second call -- this proves `ignoreDuplicates: true` (DO
+    // NOTHING) avoids that and both calls succeed.
+    it("test_SB_040_favouriting_the_same_project_twice_via_upsert_with_onConflict_and_ignoreDuplicates_succeeds_both_times_under_real_RLS", async () => {
+      const clientA = await signInAs(userAEmail, password);
+
+      const first = await clientA
+        .from("project_favorites")
+        .upsert(
+          { user_id: userAId, project_id: projectBId },
+          { onConflict: "user_id,project_id", ignoreDuplicates: true },
+        );
+      expect(first.error).toBeNull();
+
+      const second = await clientA
+        .from("project_favorites")
+        .upsert(
+          { user_id: userAId, project_id: projectBId },
+          { onConflict: "user_id,project_id", ignoreDuplicates: true },
+        );
+      expect(second.error).toBeNull();
+
+      const { data: row } = await clientA
+        .from("project_favorites")
+        .select("project_id")
+        .eq("user_id", userAId)
+        .eq("project_id", projectBId);
+      expect(row ?? []).toHaveLength(1);
+
+      // Clean up (this pair is separate from projectAId, which the other
+      // tests in this file continue to rely on).
+      await adminClient
+        .from("project_favorites")
+        .delete()
+        .eq("user_id", userAId)
+        .eq("project_id", projectBId);
+    });
+
     it("test_AS_510_a_user_can_unfavourite_remove_their_own_favourite", async () => {
       const clientA = await signInAs(userAEmail, password);
       const { error: deleteErr } = await clientA

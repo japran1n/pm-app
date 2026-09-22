@@ -16,6 +16,13 @@ function makeSupabaseMock(opts: {
   projectVisible: boolean;
   upsertError?: { message: string } | null;
   deleteError?: { message: string } | null;
+  // SB-040: simulates real Postgres/RLS behaviour -- a plain upsert (no
+  // ignoreDuplicates) resolves to `ON CONFLICT DO UPDATE`, which is denied
+  // by RLS on a table with no UPDATE policy on the *second* call for the
+  // same (user_id, project_id) row. Only relevant when `upsertError` is not
+  // already forced.
+  simulateRlsOnConflictDoUpdate?: boolean;
+  upsertCalls?: Array<{ row: unknown; options: unknown }>;
 }) {
   const projectsChain = {
     select: () => projectsChain,
@@ -27,9 +34,7 @@ function makeSupabaseMock(opts: {
     }),
   };
 
-  const favoritesEqChain: { eq: () => Promise<{ error: unknown }> } = {
-    eq: () => favoritesEqChain as unknown as Promise<{ error: unknown }>,
-  };
+  const favoritedRows = new Set<string>();
 
   return {
     auth: {
@@ -39,7 +44,33 @@ function makeSupabaseMock(opts: {
       if (table === "projects") return projectsChain;
       if (table === "project_favorites") {
         return {
-          upsert: async () => ({ error: opts.upsertError ?? null }),
+          upsert: async (row: { user_id: string; project_id: string }, options: {
+            onConflict?: string;
+            ignoreDuplicates?: boolean;
+          }) => {
+            opts.upsertCalls?.push({ row, options });
+
+            if (opts.upsertError) {
+              return { error: opts.upsertError };
+            }
+
+            const key = `${row.user_id}:${row.project_id}`;
+            const isConflict = favoritedRows.has(key);
+
+            if (
+              opts.simulateRlsOnConflictDoUpdate &&
+              isConflict &&
+              !options?.ignoreDuplicates
+            ) {
+              // Mirrors real RLS: DO UPDATE branch has no policy to allow it.
+              return {
+                error: { message: "new row violates row-level security policy" },
+              };
+            }
+
+            favoritedRows.add(key);
+            return { error: null };
+          },
           delete: () => ({
             eq: () => ({
               eq: async () => ({ error: opts.deleteError ?? null }),
@@ -121,5 +152,80 @@ describe("favoriteProject / unfavoriteProject actions (F263, AS-510)", () => {
 
     const result = await unfavoriteProject("11111111-1111-4111-8111-111111111111");
     expect(result.ok).toBe(false);
+  });
+
+  // SB-040: favoriteProject must be safely re-callable for an
+  // already-favourited project. project_favorites has no UPDATE policy, so
+  // this only holds if the write resolves to `ON CONFLICT DO NOTHING`
+  // (ignoreDuplicates: true), not `DO UPDATE`. The mock's
+  // `simulateRlsOnConflictDoUpdate` reproduces the real RLS denial a plain
+  // upsert would hit on the second call, so this test fails if the
+  // `ignoreDuplicates` fix is removed.
+  it("test_SB_040_favoriteProject_can_be_called_twice_for_the_same_project_and_both_calls_succeed", async () => {
+    mockSupabase = makeSupabaseMock({
+      user: { id: "u1" },
+      projectVisible: true,
+      simulateRlsOnConflictDoUpdate: true,
+    });
+    const { favoriteProject } = await import("@/lib/actions/favorites");
+
+    const first = await favoriteProject("11111111-1111-4111-8111-111111111111");
+    const second = await favoriteProject("11111111-1111-4111-8111-111111111111");
+
+    expect(first.ok).toBe(true);
+    expect(second.ok).toBe(true);
+  });
+
+  // SB-040: pins down the exact upsert options used, so a regression back
+  // to a plain onConflict-only upsert (no ignoreDuplicates) is caught even
+  // if the mock's RLS simulation were ever loosened.
+  it("test_SB_040_favoriteProject_upserts_with_onConflict_and_ignoreDuplicates", async () => {
+    const upsertCalls: Array<{ row: unknown; options: unknown }> = [];
+    mockSupabase = makeSupabaseMock({
+      user: { id: "u1" },
+      projectVisible: true,
+      upsertCalls,
+    });
+    const { favoriteProject } = await import("@/lib/actions/favorites");
+
+    await favoriteProject("11111111-1111-4111-8111-111111111111");
+
+    expect(upsertCalls).toHaveLength(1);
+    expect(upsertCalls[0].options).toMatchObject({
+      onConflict: "user_id,project_id",
+      ignoreDuplicates: true,
+    });
+  });
+
+  // D3: the upsertError/deleteError mock options were declared but never
+  // exercised, leaving the ok:false write-failure branches untested.
+  it("test_AS_510_favoriteProject_returns_ok_false_when_the_upsert_fails", async () => {
+    mockSupabase = makeSupabaseMock({
+      user: { id: "u1" },
+      projectVisible: true,
+      upsertError: { message: "boom" },
+    });
+    const { favoriteProject } = await import("@/lib/actions/favorites");
+
+    const result = await favoriteProject("11111111-1111-4111-8111-111111111111");
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toMatch(/could not favourite/i);
+    }
+  });
+
+  it("test_AS_510_unfavoriteProject_returns_ok_false_when_the_delete_fails", async () => {
+    mockSupabase = makeSupabaseMock({
+      user: { id: "u1" },
+      projectVisible: true,
+      deleteError: { message: "boom" },
+    });
+    const { unfavoriteProject } = await import("@/lib/actions/favorites");
+
+    const result = await unfavoriteProject("11111111-1111-4111-8111-111111111111");
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toMatch(/could not remove/i);
+    }
   });
 });
