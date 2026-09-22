@@ -68,9 +68,12 @@ describe("test_SB_017_templates_archive_trash_help_in_account_menu", () => {
       "href",
       "/w/acme/templates",
     );
+    // F012 (SB-046): Archive now points at the canonical `?filter=archived`
+    // view on the Projects page rather than the standalone /archive route
+    // (which now just redirects there).
     expect(within(menu).getByText("Archive").closest("a")).toHaveAttribute(
       "href",
-      "/w/acme/archive",
+      "/w/acme/projects?filter=archived",
     );
     expect(within(menu).getByText("Trash").closest("a")).toHaveAttribute(
       "href",

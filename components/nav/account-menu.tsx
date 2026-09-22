@@ -157,7 +157,7 @@ export function AccountMenu({
         )}
         {!isGuest && (
           <DropdownMenuItem
-            render={<Link href={`/w/${workspaceSlug}/archive`} onClick={onNavigate} />}
+            render={<Link href={`/w/${workspaceSlug}/projects?filter=archived`} onClick={onNavigate} />}
           >
             <Archive className="size-4" aria-hidden="true" />
             Archive

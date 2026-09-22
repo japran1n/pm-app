@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Suspense } from "react";
-import { FolderKanban } from "lucide-react";
+import { Archive, FolderKanban } from "lucide-react";
 
 import { EmptyState } from "@/components/empty-state";
 
@@ -10,6 +10,7 @@ import {
   getWorkspaceProjects,
   getFavoriteProjectIds,
   getProjectHealthInputs,
+  getArchivedWorkspaceProjects,
   type ProjectHealthQueryInput,
 } from "@/lib/queries/projects";
 import { computeProjectHealth } from "@/lib/projects/compute-health";
@@ -18,6 +19,7 @@ import { ProjectCardActions } from "@/components/projects/project-card-actions";
 import { getWorkspaceProjectTemplateOptions } from "@/lib/queries/templates";
 import { NewProjectDialog } from "@/components/new-project-dialog";
 import { ProjectFavoriteButton } from "@/components/project-favorite-button";
+import { RestoreProjectButton } from "@/components/project/restore-project-button";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -49,10 +51,16 @@ import { logger } from "@/lib/observability/logger";
 // that could go stale across a switch.
 export default async function ProjectsPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ workspaceSlug: string }>;
+  searchParams: Promise<{ filter?: string | string[] }>;
 }) {
   const { workspaceSlug } = await params;
+  const resolvedSearchParams = await searchParams;
+  const filterParam = Array.isArray(resolvedSearchParams.filter)
+    ? resolvedSearchParams.filter[0]
+    : resolvedSearchParams.filter;
 
   // ARCH-001: caller identity, the workspace-by-slug lookup, and the
   // caller's own membership role all come from the shared cached helper
@@ -72,6 +80,18 @@ export default async function ProjectsPage({
 
   const { workspace, role } = ctx;
 
+  // F012 (SB-045, SB-046): `?filter=archived` shows every archived
+  // (soft-deleted) project in this workspace instead of the default
+  // active list — same view the standalone /archive route used to own
+  // (F142), now folded into this page so there's a single "Projects"
+  // surface with a filter rather than two separate pages. A guest never
+  // gets the archived view — same page-level gate the old /archive page
+  // enforced (workspace-wide history is not part of a guest's
+  // project-scoped access) — falling back to the default active list
+  // instead of a hard redirect, since this is just a query-param switch
+  // on a page guests are otherwise allowed to view.
+  const isArchivedView = filterParam === "archived" && role !== "guest";
+
   // Perf (W9): caller membership and template options each depend only on
   // `workspace.id`/`user.id` (both already known) — none depends on
   // another's result — so both run as one parallel batch. The heavier
@@ -80,8 +100,11 @@ export default async function ProjectsPage({
   // F184: project-template options for the "Start from template" option
   // in the New Project dialog, server-fetched here and passed down as a
   // typed prop (clarified data-shape answer) rather than the dialog
-  // querying Supabase directly.
-  const projectTemplateOptions = await getWorkspaceProjectTemplateOptions(workspace.id);
+  // querying Supabase directly. Skipped entirely for the archived view —
+  // "New Project" isn't offered there.
+  const projectTemplateOptions = isArchivedView
+    ? []
+    : await getWorkspaceProjectTemplateOptions(workspace.id);
 
   // F029 (AS-030, AS-033): the caller's own role in this workspace
   // decides whether the Archive control is even mounted for them — a
@@ -95,20 +118,57 @@ export default async function ProjectsPage({
   // re-checks membership + canWrite itself.
   const canSaveTemplate = role !== "viewer";
 
+  // F143 (AS-252, AS-253): restore control on the archived view, admin/
+  // owner only — same gate the old /archive page used.
+  const canRestore = role === "owner" || role === "admin";
+
   return (
     <div className="flex flex-col gap-8 p-6 pt-4 lg:p-8 lg:pt-8">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex flex-col gap-1">
           <h1 className="text-xl font-semibold">Projects</h1>
           <p className="text-sm text-muted-foreground">
-            All projects in {workspace.name}.
+            {isArchivedView
+              ? `Projects archived from ${workspace.name}. Archiving hides a project from the active list without deleting its data.`
+              : `All projects in ${workspace.name}.`}
           </p>
         </div>
-        <NewProjectDialog
-          workspaceId={workspace.id}
-          templateOptions={projectTemplateOptions}
-        />
+        {!isArchivedView && (
+          <NewProjectDialog
+            workspaceId={workspace.id}
+            templateOptions={projectTemplateOptions}
+          />
+        )}
       </div>
+
+      {/* F012 (SB-045): filter control — Active is the default (no query
+          param, matching this page's pre-existing bookmarked/linked URL),
+          Archived is only offered to non-guests (see `isArchivedView`
+          above). */}
+      {role !== "guest" && (
+        <div className="flex items-center gap-1 border-b">
+          <Link
+            href={`/w/${workspaceSlug}/projects`}
+            className={`border-b-2 px-1 pb-2 text-sm font-medium ${
+              isArchivedView
+                ? "border-transparent text-muted-foreground hover:text-foreground"
+                : "border-primary text-foreground"
+            }`}
+          >
+            Active
+          </Link>
+          <Link
+            href={`/w/${workspaceSlug}/projects?filter=archived`}
+            className={`border-b-2 px-1 pb-2 text-sm font-medium ${
+              isArchivedView
+                ? "border-primary text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Archived
+          </Link>
+        </div>
+      )}
 
       {/* Perf (W9b): the project list + favourite ids fetch (and its
           per-project open-task-count batching in getWorkspaceProjects) is
@@ -127,14 +187,129 @@ export default async function ProjectsPage({
           </div>
         }
       >
-        <ProjectsGridSection
-          workspaceId={workspace.id}
-          workspaceSlug={workspaceSlug}
-          canArchive={canArchive}
-          canSaveTemplate={canSaveTemplate}
-        />
+        {isArchivedView ? (
+          <ArchivedProjectsSection
+            workspaceId={workspace.id}
+            workspaceSlug={workspaceSlug}
+            canRestore={canRestore}
+          />
+        ) : (
+          <ProjectsGridSection
+            workspaceId={workspace.id}
+            workspaceSlug={workspaceSlug}
+            canArchive={canArchive}
+            canSaveTemplate={canSaveTemplate}
+          />
+        )}
       </Suspense>
     </div>
+  );
+}
+
+// F012 (SB-045, SB-046): the archived-projects view, folded in from the
+// old standalone /archive page (F142/F143) — same query
+// (`getArchivedWorkspaceProjects`), same empty state, and same
+// admin/owner-only restore control, now rendered when `?filter=archived`
+// is present instead of on its own route.
+export async function ArchivedProjectsSection({
+  workspaceId,
+  workspaceSlug,
+  canRestore,
+}: {
+  workspaceId: string;
+  workspaceSlug: string;
+  canRestore: boolean;
+}) {
+  let archivedProjects: Awaited<
+    ReturnType<typeof getArchivedWorkspaceProjects>
+  > | null = null;
+  let loadError = false;
+
+  try {
+    archivedProjects = await getArchivedWorkspaceProjects(workspaceId);
+  } catch (error) {
+    logger.error("ProjectsPage (archived filter): failed to load archived projects", {
+      error,
+    });
+    loadError = true;
+  }
+
+  const dateFormatter = new Intl.DateTimeFormat("en-US", {
+    dateStyle: "medium",
+  });
+
+  return (
+    <>
+      {loadError && (
+        <div
+          role="alert"
+          className="flex flex-col gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive"
+        >
+          <p>Something went wrong loading the archive. Please try again.</p>
+          <a
+            href={`/w/${workspaceSlug}/projects?filter=archived`}
+            className="underline"
+          >
+            Retry
+          </a>
+        </div>
+      )}
+
+      {archivedProjects && archivedProjects.length === 0 && (
+        <div className="flex flex-col items-center justify-center gap-4 rounded-lg border border-dashed py-16 text-center">
+          <div
+            aria-hidden="true"
+            className="flex size-12 items-center justify-center rounded-full bg-muted"
+          >
+            <Archive className="size-6 text-muted-foreground" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <p className="text-sm font-medium">No archived projects</p>
+            <p className="text-sm text-muted-foreground">
+              Projects you archive from the project list will show up here,
+              along with when they were archived and by whom.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {archivedProjects && archivedProjects.length > 0 && (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {archivedProjects.map((project) => (
+            <Card key={project.id} className="hover-lift">
+              <CardHeader>
+                <CardTitle className="line-clamp-1">{project.name}</CardTitle>
+                <CardDescription className="line-clamp-2">
+                  {project.description || "No description."}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-2">
+                <Badge variant="secondary">
+                  {project.taskCount} task{project.taskCount === 1 ? "" : "s"}
+                </Badge>
+                <p className="text-xs text-muted-foreground">
+                  Archived{" "}
+                  <span className="font-mono">
+                    {dateFormatter.format(new Date(project.archivedAt))}
+                  </span>
+                  {project.archivedByName
+                    ? ` by ${project.archivedByName}`
+                    : ""}
+                </p>
+                {canRestore && (
+                  <div className="pt-1">
+                    <RestoreProjectButton
+                      workspaceId={workspaceId}
+                      project={{ id: project.id, name: project.name }}
+                    />
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+    </>
   );
 }
 

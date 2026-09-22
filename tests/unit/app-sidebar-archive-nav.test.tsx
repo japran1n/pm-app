@@ -38,14 +38,17 @@ const baseProps = {
 };
 
 describe("AppSidebar archive nav item (F142, relocated by F003)", () => {
-  it("renders an 'Archive' link to /w/acme/archive in the account menu for a non-guest member", async () => {
+  // F012 (SB-046): the account-menu "Archive" item now points at the
+  // canonical `?filter=archived` URL on the Projects page instead of the
+  // old standalone /archive route (which now just redirects there).
+  it("renders an 'Archive' link to /w/acme/projects?filter=archived in the account menu for a non-guest member", async () => {
     render(createElement(AppSidebar, { ...baseProps, isGuest: false }));
 
     fireEvent.click(screen.getAllByRole("button", { name: /account menu/i })[0]);
     const menu = await screen.findByRole("menu");
 
     const link = within(menu).getByText("Archive").closest("a");
-    expect(link).toHaveAttribute("href", "/w/acme/archive");
+    expect(link).toHaveAttribute("href", "/w/acme/projects?filter=archived");
   });
 
   it("does not render an 'Archive' link for a guest", async () => {
