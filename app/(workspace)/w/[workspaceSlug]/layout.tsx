@@ -443,6 +443,10 @@ export default async function WorkspaceLayout({
             key: project.key,
             icon: project.icon,
             isFavorite: favoriteProjectIds.has(project.id),
+            // F011 (SB-043): open-task count, already batched in a single
+            // grouped query by getWorkspaceProjects (see that function's
+            // own header comment) -- never a second per-project fetch.
+            openTaskCount: project.openTaskCount,
           }))}
           // F016 (AS-017): every value below used to be awaited by this
           // layout body as part of the big `Promise.all` above. Each is

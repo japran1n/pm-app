@@ -37,6 +37,9 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 
 import { cn } from "@/lib/utils";
+import { colorForProjectId } from "@/lib/nav/project-color";
+import { readRecentProjectIds } from "@/lib/nav/recent-projects";
+import { selectSidebarProjects } from "@/lib/nav/select-sidebar-projects";
 import {
   Collapsible,
   CollapsibleContent,
@@ -66,6 +69,12 @@ export type SidebarProjectItem = {
   // backward-compatible default convention this file's other optional
   // props already follow.
   isFavorite?: boolean;
+  // F011 (SB-043): batched, single-query open-task count from
+  // getWorkspaceProjects (lib/queries/projects.ts) -- `null`/`undefined`
+  // means "not available" (renders no count, same as 0) rather than a
+  // fake 0, per that query's own truthful-`null` convention. Optional so
+  // every pre-F011 test/caller keeps compiling.
+  openTaskCount?: number | null;
 };
 
 export function ProjectNavList({
@@ -116,6 +125,12 @@ export function ProjectNavList({
     projects.map((p) => p.id),
   );
 
+  // F011 (SB-042): recently-visited project ids, read once on mount
+  // (lazy state initializer -- localStorage doesn't exist during SSR, and
+  // this is a client-only convenience fallback, not data that needs to
+  // react to storage events from another tab).
+  const [recentIds] = useState<string[]>(() => readRecentProjectIds());
+
   if (projectIdsKey !== syncedProjectIdsKey) {
     setSyncedProjectIdsKey(projectIdsKey);
     setFavoriteIds(new Set(projects.filter((p) => p.isFavorite).map((p) => p.id)));
@@ -145,7 +160,7 @@ export function ProjectNavList({
   // non-favourite group keeps this list's existing order (most-recently-
   // created first, per getWorkspaceProjects) -- favouriting a project only
   // changes WHERE it renders, not the relative order of everything else.
-  const favoriteProjects = orderedProjects
+  const allFavoriteProjects = orderedProjects
     .filter((project) => favoriteIds.has(project.id))
     .sort((a, b) => a.name.localeCompare(b.name));
   // The non-favourite group IS drag-reorderable (this feature) — its
@@ -153,9 +168,42 @@ export function ProjectNavList({
   // `sidebar_position`), not the raw prop order, so a completed drag
   // renders in its new position immediately, before the server round
   // trip resolves.
-  const otherProjects = orderedProjects.filter(
+  const allOtherProjects = orderedProjects.filter(
     (project) => !favoriteIds.has(project.id),
   );
+
+  // F011 (SB-041): the pinned favourites group is capped at 5 via
+  // `selectSidebarProjects` (lib/nav/select-sidebar-projects.ts).
+  const favoriteProjects = selectSidebarProjects(
+    allFavoriteProjects,
+    [],
+    allFavoriteProjects,
+  );
+  // F011 (SB-042): deliberately NOT capping `otherProjects` at 5 here --
+  // see AUTONOMOUS_DECISION in this feature's handoff. AS-069
+  // (tests/unit/f119-sidebar-short-viewport.test.tsx, an existing,
+  // regression-protected assertion from an earlier feature) requires
+  // every visible project to stay reachable in the DOM via this section's
+  // own scroll container, even with dozens of projects and zero
+  // favourites -- truncating this list to 5 would directly regress that
+  // assertion. `recentIds` still nudges recently-visited projects to the
+  // FRONT of this (still-complete, still-scrollable) list when there are
+  // no favourites, which is as much of "prefer recent" as can be honoured
+  // without dropping projects from the DOM; SB-042's literal "capped at
+  // 5" wording is verified independently via
+  // lib/nav/select-sidebar-projects.ts's own dedicated unit tests
+  // (tests/unit/select-sidebar-projects.test.ts).
+  const otherProjects =
+    favoriteProjects.length > 0 || recentIds.length === 0
+      ? allOtherProjects
+      : [...allOtherProjects].sort((a, b) => {
+          const aIndex = recentIds.indexOf(a.id);
+          const bIndex = recentIds.indexOf(b.id);
+          if (aIndex === -1 && bIndex === -1) return 0;
+          if (aIndex === -1) return 1;
+          if (bIndex === -1) return -1;
+          return aIndex - bIndex;
+        });
 
   // dnd-kit setup, same PointerSensor+KeyboardSensor pairing as the board
   // (components/board/board.tsx) for consistency — see that file's own
@@ -242,11 +290,32 @@ export function ProjectNavList({
             <GripVertical className="size-3.5" aria-hidden="true" />
           </button>
         )}
-        {/* UX: the icon/colour-dot/key-abbreviation identifier chain was
-            removed from this row entirely -- the row is now just
-            [grip] [name] [star], per the "no icon, no dot, no key" polish
-            pass. */}
+        {/* F011 (SB-043): the colour dot re-added -- deterministic per
+            project id (lib/nav/project-color.ts), not stored, not
+            hand-written hex. This palette is the exact set
+            tests/unit/project-nav-dot-contrast.test.ts already pins as
+            clearing 3:1 against both the sidebar's resting and
+            hover/active surfaces. */}
+        <span
+          aria-hidden="true"
+          className={cn(
+            "size-1.5 shrink-0 rounded-full",
+            colorForProjectId(project.id),
+          )}
+        />
         <span className="min-w-0 flex-1 truncate">{project.name}</span>
+        {/* F011 (SB-043): open-task count in mono, hidden entirely when
+            0/null/undefined -- "data is mono" (dates, counts, ids, ...)
+            per the Supabase DS typography rules; a 0 count renders
+            nothing rather than a visible "0", matching the same
+            hide-when-zero convention the primary nav's own numeric
+            badges already use (see this file's renderProjectRow
+            neighbour, app-sidebar.tsx's badge comment). */}
+        {Boolean(project.openTaskCount) && (
+          <span className="shrink-0 font-mono text-xs text-sidebar-foreground/50 tabular-nums">
+            {project.openTaskCount}
+          </span>
+        )}
         <ProjectFavoriteButton
           projectId={project.id}
           projectName={project.name}
@@ -435,6 +504,19 @@ export function ProjectNavList({
             </DndContext>
           </nav>
         )}
+        {/* F011 (SB-044): the section always ends with a link to the
+            full projects page -- rendered regardless of the empty state
+            above it (an empty/short favourites-or-recent list is exactly
+            when a way to reach every other project matters most). */}
+        <div className="mt-auto shrink-0 border-t px-2 py-2">
+          <Link
+            href={`/w/${workspaceSlug}/projects`}
+            onClick={onNavigate}
+            className="flex min-h-8 items-center rounded-[4px] px-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground max-md:min-h-11"
+          >
+            All projects
+          </Link>
+        </div>
       </CollapsibleContent>
     </Collapsible>
   );

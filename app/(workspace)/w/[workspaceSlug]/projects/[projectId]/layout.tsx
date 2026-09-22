@@ -14,6 +14,7 @@ import { PersonEstimateRollup } from "@/components/project/person-estimate-rollu
 import { ProjectTabs } from "@/components/project-tabs";
 import { ProjectBreadcrumb } from "@/components/project/project-breadcrumb";
 import { ProjectLinkStrip } from "@/components/project/project-link-strip";
+import { RecordRecentProjectVisit } from "@/components/nav/record-recent-project-visit";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { formatHours } from "@/lib/format";
@@ -81,6 +82,9 @@ export default async function ProjectDetailLayout({
 
   return (
     <div className="flex flex-col gap-6 p-6 pt-4 lg:p-8 lg:pt-8">
+      {/* F011 (SB-042): records this visit for the sidebar's
+          recently-visited fallback. Renders nothing. */}
+      <RecordRecentProjectVisit projectId={project.id} />
       <ProjectBreadcrumb
         workspaceSlug={workspaceSlug}
         projectId={project.id}
