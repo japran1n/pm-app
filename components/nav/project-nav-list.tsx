@@ -15,7 +15,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronDown, GripVertical } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -125,11 +125,23 @@ export function ProjectNavList({
     projects.map((p) => p.id),
   );
 
-  // F011 (SB-042): recently-visited project ids, read once on mount
-  // (lazy state initializer -- localStorage doesn't exist during SSR, and
-  // this is a client-only convenience fallback, not data that needs to
-  // react to storage events from another tab).
-  const [recentIds] = useState<string[]>(() => readRecentProjectIds());
+  // F011/F042 (SB-042, M3 scrutiny FU-4): recently-visited project ids.
+  // MUST start as `[]` (not read via a `useState` lazy initializer) so the
+  // server render and the FIRST client render agree -- localStorage isn't
+  // available during SSR, so a lazy initializer that reads it produces
+  // markup that only ever matches the client, and reading it during the
+  // client's first render (before hydration reconciles) is exactly the
+  // "server and client render disagree" hydration mismatch React warns
+  // about. Reading it in a post-mount effect instead means the FIRST
+  // client render still matches the server's `[]`-recents markup one-for-
+  // one; the (correct) recency-based content then appears in a second,
+  // post-hydration render, which is fine -- this is a client-only
+  // convenience fallback, not data that needs to be correct before paint.
+  const [recentIds, setRecentIds] = useState<string[]>([]);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- post-hydration read of persisted UI state
+    setRecentIds(readRecentProjectIds());
+  }, []);
 
   if (projectIdsKey !== syncedProjectIdsKey) {
     setSyncedProjectIdsKey(projectIdsKey);
@@ -239,7 +251,19 @@ export function ProjectNavList({
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
-    const otherIds = otherProjects.map((p) => p.id);
+    // F042 (M3 scrutiny FU-4): computed from `allOtherProjects` (the full
+    // `sidebar_position`-ordered non-favourite group), NOT `otherProjects`
+    // (which may be a recency-sorted/truncated VIEW of that group in the
+    // no-favourites-yet state -- see `otherProjects`'s own comment above).
+    // Dragging is only ever rendered against the sortable list actually on
+    // screen (`otherProjects`), but persisting against that view's own
+    // index order would compute a `newPosition` relative to a recency
+    // ordering the server has never heard of, landing the project
+    // somewhere other than the position the user visually dropped it into
+    // once `allOtherProjects`'s real order re-asserts itself. Using
+    // `allOtherProjects` here means `newPosition` is always relative to the
+    // same order the server persists and the next render will show.
+    const otherIds = allOtherProjects.map((p) => p.id);
     const oldIndex = otherIds.indexOf(String(active.id));
     const newIndex = otherIds.indexOf(String(over.id));
     if (oldIndex === -1 || newIndex === -1) return;
