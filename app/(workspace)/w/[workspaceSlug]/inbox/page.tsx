@@ -66,11 +66,14 @@ export default async function InboxPage({
     redirect("/onboarding");
   }
 
-  // SB-052: Approvals/Requests tabs hidden for roles denied those pages —
-  // same "guest" gate the sidebar's own `guestExcluded` set already applies
-  // to the "Client requests"/"Approvals" nav items (components/nav/
-  // app-sidebar.tsx). A `client` role never reaches this far (workspace
-  // layout redirect above).
+  // F049 (FU-M4-2, SB-052): Approvals/Requests tabs hidden only for the
+  // role the old standalone pages actually excluded — `client` (see
+  // lib/inbox/visible-tabs.ts's own header comment for the git-history
+  // evidence). A `client` role never reaches this far in practice (the
+  // workspace layout above already redirects it to `/portal/*`); this
+  // defensive re-check keeps the Inbox's own gate keyed to the same rule
+  // rather than trusting the layout alone, and — unlike the F013 version —
+  // no longer excludes guests, who the old pages never blocked.
   const { data: membership } = await supabase
     .from("workspace_members")
     .select("role")
@@ -79,11 +82,11 @@ export default async function InboxPage({
     .eq("status", "active")
     .maybeSingle();
 
-  const isGuest = (membership?.role ?? "guest") === "guest";
-  const canSeeApprovals = !isGuest;
-  const canSeeRequests = !isGuest;
+  const isClient = membership?.role === "client";
+  const canSeeApprovals = !isClient;
+  const canSeeRequests = !isClient;
 
-  const visibleTabs: InboxTabKey[] = getVisibleInboxTabs(isGuest);
+  const visibleTabs: InboxTabKey[] = getVisibleInboxTabs(isClient);
 
   const requestedTab = parseTab(rawTab);
   const activeTab = visibleTabs.includes(requestedTab) ? requestedTab : "all";

@@ -1,19 +1,28 @@
 import type { InboxTabKey } from "@/components/inbox/inbox-tab-nav";
 
-// F013 (SB-052): pure, unit-testable tab-visibility rule for the Inbox —
-// Approvals/Requests are hidden for any role that could not reach those
-// standalone pages either. Matches the sidebar's own `guestExcluded` gate
-// (components/nav/app-sidebar.tsx) for "Approvals"/"Client requests": a
-// guest never sees an entry point to either, same rule applied here to the
-// Inbox tabs instead of two separate nav items. A `client` role never
-// reaches this far — the workspace layout redirects it to `/portal/*`
-// before any Inbox render.
-export function getVisibleInboxTabs(isGuest: boolean): InboxTabKey[] {
+// F049 (FU-M4-2, SB-052): pure, unit-testable tab-visibility rule for the
+// Inbox, keyed off the ACTUAL server-side access rule the old standalone
+// `/approvals` and `/requests` pages enforced (see their own pre-F013
+// history and file-header comments, e.g. commit 52322272 / 4cab6033):
+// neither page performed any role check of its own beyond the workspace
+// layout's redirect of `role === "client"` to `/portal/*`. A guest was
+// never blocked from either page — that exclusion existed only in the
+// sidebar's cosmetic `guestExcluded` set (components/nav/app-sidebar.tsx),
+// which gates nav *entries*, not page access, and was wrongly copied here
+// by F013.
+//
+// So the real predicate is "is this caller a client", not "is this caller
+// a guest". A `client` role never reaches this function in practice —
+// the workspace layout already redirects it away before the Inbox page
+// renders — but the parameter is named for the real rule so a future
+// caller (or a defensive check here) can't silently reintroduce the guest
+// exclusion.
+export function getVisibleInboxTabs(isClient: boolean): InboxTabKey[] {
   return [
     "all",
     "notifications",
-    ...(isGuest ? [] : (["approvals"] as const)),
-    ...(isGuest ? [] : (["requests"] as const)),
+    ...(isClient ? [] : (["approvals"] as const)),
+    ...(isClient ? [] : (["requests"] as const)),
     "watching",
   ];
 }
