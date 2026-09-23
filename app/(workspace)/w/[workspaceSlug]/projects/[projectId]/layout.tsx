@@ -15,7 +15,7 @@ import { ProjectTabs } from "@/components/project-tabs";
 import { ProjectBreadcrumb } from "@/components/project/project-breadcrumb";
 import { ProjectLinkStrip } from "@/components/project/project-link-strip";
 import { RecordRecentProjectVisit } from "@/components/nav/record-recent-project-visit";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { Separator } from "@/components/ui/separator";
 import { formatHours } from "@/lib/format";
 
@@ -97,7 +97,32 @@ export default async function ProjectDetailLayout({
               <h1 className="text-2xl font-semibold tracking-tight">
                 {project.name}
               </h1>
-              {isArchived && <Badge variant="outline">Archived</Badge>}
+            </div>
+            {/* F013 (TT-030): project key + status + billing-model badges,
+                below the name rather than inline with the h1 — the h1 stays
+                a plain heading, and the row below carries every "at a
+                glance" metadata chip (key, status, billing model). Uses
+                `StatusBadge` (components/ui/status-badge.tsx), the shared
+                outlined-pill treatment, rather than the plain shadcn
+                `Badge` the old inline "Archived" indicator used, so this
+                row's chips render with the same visual language as every
+                other static status/priority display in the app. */}
+            <div className="flex flex-wrap items-center gap-2">
+              {project.key && (
+                <span className="font-mono text-sm text-muted-foreground">
+                  {project.key}
+                </span>
+              )}
+              <StatusBadge
+                label={isArchived ? "Archived" : "Active"}
+                color={isArchived ? "var(--destructive)" : "var(--primary)"}
+              />
+              <StatusBadge
+                label={
+                  project.billingModel === "hourly" ? "Hourly" : "Fixed price"
+                }
+                color="var(--muted-foreground)"
+              />
             </div>
             <p className="text-sm text-muted-foreground">
               {project.description || "No description."}

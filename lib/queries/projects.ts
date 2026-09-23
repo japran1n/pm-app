@@ -236,6 +236,10 @@ export type ProjectDetail = {
   endDate: string | null;
   createdAt: string;
   deletedAt: string | null;
+  // F013 (TT-030): project key + billing model for the layout header
+  // badges. Same query as the rest of this row, no second round trip.
+  key: string | null;
+  billingModel: "hourly" | "fixed_price";
 };
 
 // F030 (AS-038): fetches a single project by id, scoped to the current
@@ -263,7 +267,7 @@ export const getProjectById = cache(async function getProjectById(
   const { data, error } = await admin
     .from("projects")
     .select(
-      "id, workspace_id, name, description, start_date, end_date, created_at, deleted_at",
+      "id, workspace_id, name, description, start_date, end_date, created_at, deleted_at, key, billing_model",
     )
     .eq("id", projectId)
     .eq("workspace_id", workspaceId)
@@ -282,6 +286,10 @@ export const getProjectById = cache(async function getProjectById(
     endDate: data.end_date,
     createdAt: data.created_at,
     deletedAt: data.deleted_at,
+    key: data.key ?? null,
+    billingModel:
+      (data.billing_model as "hourly" | "fixed_price" | null) ??
+      "fixed_price",
   };
 });
 
