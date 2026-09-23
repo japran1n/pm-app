@@ -92,6 +92,23 @@ export default async function ProjectHoursPage({
 
   const entries = await getProjectHoursTeam(project.id, from, to);
 
+  // F015 (TT-032): the "Total time worked" card's % delta badge compares
+  // against the immediately preceding period of the SAME length (e.g. a
+  // 30-day window compares to the 30 days before it) -- the same
+  // previous-period convention this feature's clarification settled on.
+  // Reuses getProjectHoursTeam (already RLS-scoped, already the source of
+  // truth for `entries` above) rather than a new query, so the previous
+  // total can never disagree with how `entries` itself is computed.
+  const periodLengthMs = new Date(to).getTime() - new Date(from).getTime();
+  const previousTo = new Date(new Date(from).getTime() - 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
+  const previousFrom = new Date(new Date(from).getTime() - periodLengthMs - 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
+  const previousEntries = await getProjectHoursTeam(project.id, previousFrom, previousTo);
+  const previousPeriodMinutes = previousEntries.reduce((sum, e) => sum + e.minutes, 0);
+
   const userIds = Array.from(new Set(entries.map((entry) => entry.userId)));
   const people = await resolvePeople(userIds);
 
@@ -126,6 +143,8 @@ export default async function ProjectHoursPage({
         )}
         budget={currentBudget}
         canManage={canManage}
+        periodStart={from}
+        previousPeriodMinutes={previousEntries.length > 0 ? previousPeriodMinutes : null}
       />
     </div>
   );

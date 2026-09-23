@@ -44,7 +44,14 @@ import type { WorkCategory } from "@/lib/validation/time-entries";
 import type { TeamHoursEntry } from "@/lib/queries/hours";
 import type { ProjectBudget } from "@/lib/queries/project-budgets";
 import { formatDuration } from "@/lib/time/format-duration";
+import { formatTaskDate } from "@/lib/time/format-task-date";
+import {
+  computeAreaChartLayout,
+  computePercentDelta,
+  type DailyPoint,
+} from "@/lib/hours/area-chart-layout";
 import { cn } from "@/lib/utils";
+import { UserAvatar } from "@/components/user-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress, ProgressTrack, ProgressIndicator } from "@/components/ui/progress";
@@ -132,6 +139,60 @@ function CategoryCell({
   );
 }
 
+// F016 (TT-034): "By person" rows gain a visual bar sized relative to the
+// person with the most logged time in this period, so a PM can eyeball
+// who's carrying the hours without reading every number. Pure flex + a
+// fixed-width div (no chart library, per this feature's spec) --
+// same pattern as components/portal/hours-tiles.tsx's own plain-div
+// primitives. Totals themselves are unchanged from the pre-existing
+// BucketRow (still `formatDuration`, still billable badge), so TT-034's
+// "totals unchanged" holds by construction.
+function PersonBarRow({
+  userId,
+  name,
+  total,
+  billable,
+  maxTotal,
+}: {
+  userId: string;
+  name: string;
+  total: number;
+  billable: number;
+  maxTotal: number;
+}) {
+  const barPercent = maxTotal > 0 ? Math.round((total / maxTotal) * 100) : 0;
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5">
+      <div className="flex min-w-0 flex-1 items-center gap-3">
+        <UserAvatar person={{ id: userId, name }} size="sm" />
+        <span className="truncate text-sm font-medium">{name}</span>
+        <div
+          className="h-1.5 w-[140px] shrink-0 rounded-full bg-secondary"
+          role="progressbar"
+          aria-label={`${name} share of logged hours`}
+          aria-valuenow={barPercent}
+          aria-valuemin={0}
+          aria-valuemax={100}
+        >
+          <div
+            className="h-1.5 rounded-full bg-primary"
+            style={{ width: `${barPercent}%` }}
+          />
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="font-mono text-sm text-muted-foreground tabular-nums">
+          {formatDuration(total)} total
+        </span>
+        <Badge variant="secondary" className="text-xs">
+          <span className="font-mono">{formatDuration(billable)}</span> client sees this
+        </Badge>
+      </div>
+    </div>
+  );
+}
+
 function BucketRow({
   label,
   total,
@@ -156,16 +217,141 @@ function BucketRow({
   );
 }
 
+// F015 (TT-032, TT-033): the "Total time worked" card -- a hand-rolled SVG
+// area chart (no chart library, per TT-063) of daily logged minutes over
+// the period, a % delta badge vs the immediately preceding period of the
+// same length (omitted, not "0%", when there is no previous-period data --
+// see computePercentDelta's own header), and a footer with the period
+// start (formatTaskDate) and grand total (mono). Pure layout math lives in
+// lib/hours/area-chart-layout.ts, same "layout function separate from
+// rendering" convention hours-burndown-chart.tsx (F019) established, so
+// the empty-state / no-NaN guarantee (TT-033) is testable independent of
+// rendered SVG pixels.
+function TotalTimeWorkedCard({
+  dailyMinutes,
+  totalMinutes,
+  periodStart,
+  previousPeriodMinutes,
+}: {
+  dailyMinutes: DailyPoint[];
+  totalMinutes: number;
+  periodStart: string;
+  previousPeriodMinutes: number | null;
+}) {
+  const layout = computeAreaChartLayout(dailyMinutes);
+  const delta = computePercentDelta(totalMinutes, previousPeriodMinutes);
+  const hasData = dailyMinutes.some((d) => d.minutes > 0);
+
+  return (
+    <Card className="shadow-xs" data-testid="hours-total-time-worked">
+      <CardHeader>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <CardTitle>Total time worked</CardTitle>
+          {delta !== null && (
+            <Badge
+              variant="secondary"
+              className={cn(
+                "font-mono text-xs",
+                delta >= 0 ? "text-[oklch(0.65_0.15_159)]" : "text-destructive",
+              )}
+              data-testid="hours-total-time-delta"
+            >
+              {delta >= 0 ? "+" : ""}
+              {delta}%
+            </Badge>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <div className="font-mono text-3xl font-semibold tracking-tight tabular-nums">
+          {formatDuration(totalMinutes)}
+        </div>
+
+        {!hasData ? (
+          <p className="text-sm text-muted-foreground" data-testid="hours-total-time-empty">
+            No time logged in this period.
+          </p>
+        ) : (
+          <svg
+            viewBox={`0 0 ${layout.width} ${layout.height}`}
+            width="100%"
+            height={layout.height}
+            role="presentation"
+            className="block"
+            data-testid="hours-total-time-chart"
+          >
+            <defs>
+              <linearGradient id="total-time-worked-fill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="var(--primary)" stopOpacity={0.3} />
+                <stop offset="100%" stopColor="var(--primary)" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+
+            {layout.areaPath && <path d={layout.areaPath} fill="url(#total-time-worked-fill)" />}
+            {layout.linePath && (
+              <path
+                d={layout.linePath}
+                fill="none"
+                stroke="var(--primary)"
+                strokeWidth={2}
+                strokeLinecap="round"
+              />
+            )}
+
+            {layout.lastPoint && (
+              <g data-testid="hours-total-time-marker">
+                <line
+                  x1={layout.lastPoint.x}
+                  x2={layout.lastPoint.x}
+                  y1={layout.lastPoint.y}
+                  y2={layout.height - 10}
+                  stroke="var(--border)"
+                  strokeWidth={1}
+                  strokeDasharray="3 3"
+                />
+                <circle
+                  cx={layout.lastPoint.x}
+                  cy={layout.lastPoint.y}
+                  r={3.5}
+                  fill="var(--primary)"
+                  stroke="var(--background)"
+                  strokeWidth={1.5}
+                />
+              </g>
+            )}
+          </svg>
+        )}
+
+        <div className="flex items-center justify-between border-t border-border/60 pt-3 text-xs text-muted-foreground">
+          <span>{formatTaskDate(periodStart)}</span>
+          <span className="font-mono tabular-nums">{formatDuration(totalMinutes)} total</span>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export function TeamHoursView({
   entries,
   people,
   budget,
   canManage,
+  periodStart,
+  previousPeriodMinutes = null,
 }: {
   entries: TeamHoursEntry[];
   people: Record<string, string>;
   budget: ProjectBudget | null;
   canManage: boolean;
+  /** "YYYY-MM-DD" start of the reporting period, for the Total time worked
+   * card's footer (F015). Optional so existing callers/tests that predate
+   * this feature don't need updating; falls back to the earliest entry
+   * date, or today when there are no entries at all. */
+  periodStart?: string;
+  /** Same-length previous period's total minutes, for the % delta badge
+   * (F015, TT-032). `null` (the default) omits the badge entirely --
+   * never rendered as a fabricated "0%". */
+  previousPeriodMinutes?: number | null;
 }) {
   const [localEntries, setLocalEntries] = useState(entries);
 
@@ -195,6 +381,21 @@ export function TeamHoursView({
     if (entry.billable) categoryBucket.billable += entry.minutes;
     byCategory.set(categoryKey, categoryBucket);
   }
+
+  const maxPersonTotal = Math.max(0, ...Array.from(byPerson.values(), (b) => b.total));
+
+  // F015 (TT-032): daily totals for the area chart, derived from the same
+  // `localEntries` every other bucket above uses -- `entryDate` is already
+  // on `TeamHoursEntry`, so no extra query/prop is needed for this and the
+  // chart can never disagree with the card's own totalMinutes.
+  const byDay = new Map<string, number>();
+  for (const entry of localEntries) {
+    byDay.set(entry.entryDate, (byDay.get(entry.entryDate) ?? 0) + entry.minutes);
+  }
+  const dailyMinutes = Array.from(byDay.entries())
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([date, minutes]) => ({ date, minutes }));
+  const resolvedPeriodStart = periodStart ?? dailyMinutes[0]?.date ?? new Date().toISOString().slice(0, 10);
 
   const rawUsagePercent = budget
     ? Math.round((billableMinutes / budget.soldMinutes) * 100)
@@ -269,6 +470,13 @@ export function TeamHoursView({
         </Card>
       </div>
 
+      <TotalTimeWorkedCard
+        dailyMinutes={dailyMinutes}
+        totalMinutes={totalMinutes}
+        periodStart={resolvedPeriodStart}
+        previousPeriodMinutes={previousPeriodMinutes}
+      />
+
       {budget && (
         <Card data-testid="hours-budget-summary">
           <CardHeader>
@@ -309,11 +517,13 @@ export function TeamHoursView({
           ) : (
             <div className="flex flex-col divide-y divide-border/60 border-t border-border/60">
               {Array.from(byPerson.entries()).map(([userId, bucket]) => (
-                <BucketRow
+                <PersonBarRow
                   key={userId}
-                  label={people[userId] ?? userId}
+                  userId={userId}
+                  name={people[userId] ?? userId}
                   total={bucket.total}
                   billable={bucket.billable}
+                  maxTotal={maxPersonTotal}
                 />
               ))}
             </div>
