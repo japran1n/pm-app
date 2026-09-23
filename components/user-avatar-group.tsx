@@ -54,7 +54,8 @@ const SIZE_PX: Record<"sm" | "default" | "lg", number> = {
  */
 export function UserAvatarGroup({
   people,
-  max = AVATAR_GROUP_LIMIT,
+  max: maxProp,
+  limit,
   size = "sm",
   className,
   // F165: reused for the task detail header's watcher avatar group, where
@@ -85,6 +86,8 @@ export function UserAvatarGroup({
   people: UserAvatarPerson[];
   /** Display limit before the rest collapse into a "+K" chip. */
   max?: number;
+  /** Alias of `max`; wins when both given. */
+  limit?: number;
   size?: "sm" | "default" | "lg";
   className?: string;
   /** Prefix for this group's accessible name, e.g. "Assigned" or
@@ -94,6 +97,7 @@ export function UserAvatarGroup({
    * above. */
   interactive?: boolean;
 }) {
+  const max = limit ?? maxProp ?? AVATAR_GROUP_LIMIT;
   if (people.length === 0) return null;
 
   const visible = people.slice(0, max);
