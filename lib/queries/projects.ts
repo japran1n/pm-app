@@ -438,6 +438,7 @@ export type ProjectHealthQueryInput = {
   // `totalTaskCount` above because both come from the same rows.
   doneTaskCount: number;
   currentPhase: {
+    name: string | null;
     state: "not_started" | "active" | "blocked" | "done";
     plannedStart: string | null;
     plannedEnd: string | null;
@@ -491,7 +492,7 @@ export async function getProjectHealthInputs(
   // as "nothing to be at risk of from a phase".
   const { data: phaseRows, error: phaseError } = await supabase
     .from("project_phases")
-    .select("project_id, state, planned_start, planned_end, position")
+    .select("project_id, name, state, planned_start, planned_end, position")
     .in("project_id", projectIds)
     .eq("state", "active")
     .order("position", { ascending: true });
@@ -502,11 +503,12 @@ export async function getProjectHealthInputs(
 
   const currentPhaseByProject = new Map<
     string,
-    { state: "not_started" | "active" | "blocked" | "done"; plannedStart: string | null; plannedEnd: string | null }
+    { name: string | null; state: "not_started" | "active" | "blocked" | "done"; plannedStart: string | null; plannedEnd: string | null }
   >();
   for (const phase of phaseRows ?? []) {
     if (currentPhaseByProject.has(phase.project_id)) continue;
     currentPhaseByProject.set(phase.project_id, {
+      name: phase.name ?? null,
       state: phase.state as "not_started" | "active" | "blocked" | "done",
       plannedStart: phase.planned_start,
       plannedEnd: phase.planned_end,
