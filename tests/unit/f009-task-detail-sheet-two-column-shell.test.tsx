@@ -16,7 +16,7 @@
 // link still opens the sheet with this new shell in place.
 
 import { createElement } from "react";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 
@@ -146,9 +146,11 @@ describe("TaskDetailSheet two-column shell (F009, TT-020/TT-022/TT-026)", () => 
     // left, right rail ~1fr).
     expect(grid?.className).toMatch(/lg:grid-cols-\[1\.6fr_1fr\]/);
 
-    // The right column placeholder is currently empty — F010 populates
-    // it — but it must already exist as a sibling of the left column so
-    // F010 has somewhere to render into.
-    expect(rightColumn).toBeEmptyDOMElement();
+    // F010 (TT-021): the right column is now populated (status/
+    // assignees/priority/dates/tags/time-tracked, portaled in from
+    // TaskDetailFields/TaskDetailSections) — no longer the empty
+    // placeholder this test originally asserted pre-F010.
+    await waitFor(() => expect(rightColumn).not.toBeEmptyDOMElement());
+    expect(within(rightColumn).getByText("Status")).toBeInTheDocument();
   });
 });
