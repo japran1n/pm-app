@@ -190,7 +190,11 @@ export function ProjectCard({
           <div className="flex items-center justify-between gap-2">
             <div data-testid="card-team">
               {teamPreview && teamPreview.people.length > 0 ? (
-                <UserAvatarGroup people={teamPreview.people} limit={4} />
+                <UserAvatarGroup
+                  people={teamPreview.people}
+                  limit={4}
+                  overflowCount={Math.max(0, teamPreview.total - teamPreview.people.length)}
+                />
               ) : null}
             </div>
             <Badge

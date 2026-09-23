@@ -82,6 +82,7 @@ export function UserAvatarGroup({
   // every assignee, so the collapsed view's hover-tooltip is redundant,
   // not a lost capability.
   interactive = true,
+  overflowCount,
 }: {
   people: UserAvatarPerson[];
   /** Display limit before the rest collapse into a "+K" chip. */
@@ -96,12 +97,17 @@ export function UserAvatarGroup({
   /** False when nesting inside another native <button> — see doc comment
    * above. */
   interactive?: boolean;
+  /** Extra overflow count beyond what `people` contains — used when the
+   * caller has already pre-sliced `people` to the display limit but knows
+   * the total count from a separate query (e.g. getProjectTeamPreview). */
+  overflowCount?: number;
 }) {
   const max = limit ?? maxProp ?? AVATAR_GROUP_LIMIT;
   if (people.length === 0) return null;
 
   const visible = people.slice(0, max);
   const hidden = people.slice(max);
+  const extraOverflow = overflowCount ?? 0;
   const overlapPx = -Math.round(SIZE_PX[size] * 0.35);
 
   return (
@@ -137,7 +143,7 @@ export function UserAvatarGroup({
             </span>
           ),
         )}
-        {hidden.length > 0 &&
+        {(hidden.length > 0 || extraOverflow > 0) &&
           (interactive ? (
             <Tooltip>
               <TooltipTrigger
@@ -150,14 +156,14 @@ export function UserAvatarGroup({
                   height: SIZE_PX[size],
                   fontSize: size === "sm" ? 10 : 11,
                 }}
-                aria-label={`${hidden.length} more ${ariaLabelPrefix.toLowerCase()}: ${hidden
-                  .map((person) => personLabel(person))
-                  .join(", ")}`}
+                aria-label={`${hidden.length + extraOverflow} more ${ariaLabelPrefix.toLowerCase()}${hidden.length > 0 ? `: ${hidden.map((person) => personLabel(person)).join(", ")}` : ""}`}
               >
-                +{hidden.length}
+                +{hidden.length + extraOverflow}
               </TooltipTrigger>
               <TooltipContent>
-                {hidden.map((person) => personLabel(person)).join(", ")}
+                {hidden.length > 0
+                  ? hidden.map((person) => personLabel(person)).join(", ")
+                  : `${extraOverflow} more`}
               </TooltipContent>
             </Tooltip>
           ) : (
@@ -171,7 +177,7 @@ export function UserAvatarGroup({
                 fontSize: size === "sm" ? 10 : 11,
               }}
             >
-              +{hidden.length}
+              +{hidden.length + extraOverflow}
             </span>
           ))}
       </div>
