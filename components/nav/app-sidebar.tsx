@@ -19,7 +19,7 @@ import {
   Code2,
   Network,
   FileCode2,
-  ChevronRight,
+  ChevronDown,
   Search,
 } from "lucide-react";
 
@@ -531,8 +531,8 @@ function SidebarContent({
                     aria-controls={group.items.map((_, i) => `${toolsPanelId}-${i}`).join(" ")}
                     className="flex w-full items-center gap-1 text-left uppercase tracking-wide hover:text-foreground"
                   >
-                    <ChevronRight
-                      className={cn("size-3 shrink-0 transition-transform", toolsOpen && "rotate-90")}
+                    <ChevronDown
+                      className={cn("size-3 shrink-0 transition-transform", toolsOpen ? "rotate-0" : "-rotate-90")}
                       aria-hidden="true"
                     />
                     {group.label}

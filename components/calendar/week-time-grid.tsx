@@ -44,7 +44,9 @@ import {
   PX_PER_HOUR,
   PX_PER_MINUTE,
   applyResize,
+  blockColumnSplit,
   blockLayoutForDay,
+  computeConflictRanges,
   dragRangeToTimes,
   pixelOffsetToTime,
 } from "@/lib/calendar/time-grid-layout";
@@ -134,6 +136,7 @@ export function WeekTimeGrid({
   workspaceSlug: _workspaceSlug,
   workspaceId,
   currentUserId,
+  overlayBlocksByDate = [],
 }: {
   days: CalendarWeekDay[];
   blocksByDate: Record<string, CalendarBlock[]>;
@@ -143,6 +146,16 @@ export function WeekTimeGrid({
    * gate drag/resize/edit affordances to the block's owner. F021 is the
    * first consumer (resize handles); F022-F024 follow the same pattern. */
   currentUserId: string;
+  /** Overlay mode: one per-date block map for each ADDITIONAL person
+   * overlaid on top of `blocksByDate`'s own person (so `blocksByDate` is
+   * always "person 0" of the split, and this array holds people 1..N).
+   * Every day column's width is split evenly among 1 + this array's length
+   * people, and overlapping time ranges across DISTINCT people get a
+   * subtle conflict stripe (see `computeConflictRanges`). Defaults to `[]`,
+   * which keeps every existing single-person caller byte-identical to
+   * before this prop existed -- `blockColumnSplit` returns `null` (no
+   * inline left/right override) whenever the total person count is 1. */
+  overlayBlocksByDate?: Record<string, CalendarBlock[]>[];
 }) {
   // F135/F225/F234 pattern reused verbatim (see calendar-day-grid.tsx's
   // identical `canDrag` line): `null` (no provider in the tree) is
@@ -182,6 +195,10 @@ export function WeekTimeGrid({
   const gridHeight = MINUTES_PER_DAY * PX_PER_MINUTE;
   const defaultScrollTop = DEFAULT_VISIBLE_START_HOUR * PX_PER_HOUR;
 
+  // Overlay mode: `blocksState` (this component's own, editable person) is
+  // always person 0; `overlayBlocksByDate` supplies the rest, read-only.
+  const totalOverlayPeople = 1 + overlayBlocksByDate.length;
+
   // Set initial scroll position once on mount only. Inline ref callbacks
   // re-run on every render (new function identity each time) and would
   // reset the scroll position whenever any state changes.
@@ -210,6 +227,14 @@ export function WeekTimeGrid({
   // could (this hover overlay simply never appears for them).
   function handleColumnMouseMove(date: string, event: React.MouseEvent) {
     if (!canDrag || !workspaceId || dragCreate || resize) return;
+    // Don't show the "add" slot indicator when the pointer is over an existing
+    // block chip or its children (resize handles, time label, etc.) -- the
+    // mousemove event bubbles up from those children to the column div, so
+    // without this guard the "+" overlays on top of blocks the user is hovering.
+    if ((event.target as HTMLElement).closest('[data-testid^="calendar-week-block-chip"]')) {
+      setHoveredSlot(null);
+      return;
+    }
     const offset = offsetForEvent(date, event.clientY);
     const snappedTop = Math.floor(offset / HALF_HOUR_PX) * HALF_HOUR_PX;
     setHoveredSlot((current) =>
@@ -576,6 +601,32 @@ export function WeekTimeGrid({
                 </button>
               )}
 
+            {/* Overlay mode: a subtle red diagonal-stripe band behind the
+                blocks themselves, painted only across time ranges where 2+
+                DISTINCT people (this column's own person plus any
+                overlaid ones) have overlapping blocks -- see
+                `computeConflictRanges`'s own doc comment. No-op (empty
+                array) whenever only one person is shown, i.e. every
+                caller that doesn't pass `overlayBlocksByDate`. */}
+            {totalOverlayPeople > 1 &&
+              computeConflictRanges(
+                [blocksState[day.date] ?? [], ...overlayBlocksByDate.map((m) => m[day.date] ?? [])],
+                day.date,
+              ).map((range, index) => (
+                <div
+                  key={`conflict-${day.date}-${index}`}
+                  aria-hidden="true"
+                  data-testid={`calendar-week-conflict-stripe-${day.date}`}
+                  className="pointer-events-none absolute left-0 right-0 z-[5]"
+                  style={{
+                    top: range.top,
+                    height: range.height,
+                    backgroundImage:
+                      "repeating-linear-gradient(-45deg, rgba(239,68,68,.04) 0px, rgba(239,68,68,.04) 4px, transparent 4px, transparent 10px)",
+                  }}
+                />
+              ))}
+
             {(blocksState[day.date] ?? []).map((block) => {
               const layout = blockLayoutForDay(block.startsAt, block.endsAt, day.date);
               if (!layout) return null;
@@ -588,6 +639,7 @@ export function WeekTimeGrid({
                   date={day.date}
                   top={isResizingThis ? liveResize!.top : layout.top}
                   height={isResizingThis ? liveResize!.height : layout.height}
+                  columnSplit={blockColumnSplit(0, totalOverlayPeople)}
                   liveTimeLabel={isResizingThis ? liveResize!.label : null}
                   isResizing={isResizingThis}
                   canResize={canDrag && isOwnBlock(block, currentUserId)}
@@ -600,6 +652,33 @@ export function WeekTimeGrid({
                 />
               );
             })}
+
+            {/* Overlay mode: additional people's blocks, read-only (never
+                the signed-in member's own -- `isOwn={false}` disables every
+                edit/resize/delete affordance via the same
+                `CalendarBlockPopoverForm` gate F023 already relies on for
+                a teammate's block in the single-person view). */}
+            {overlayBlocksByDate.map((overlayBlocks, overlayIndex) =>
+              (overlayBlocks[day.date] ?? []).map((block) => {
+                const layout = blockLayoutForDay(block.startsAt, block.endsAt, day.date);
+                if (!layout) return null;
+                return (
+                  <WeekBlockChip
+                    key={`overlay-${overlayIndex}-${block.id}`}
+                    block={block}
+                    date={day.date}
+                    top={layout.top}
+                    height={layout.height}
+                    columnSplit={blockColumnSplit(overlayIndex + 1, totalOverlayPeople)}
+                    canResize={false}
+                    isOwn={false}
+                    onStartResize={() => {}}
+                    onUpdate={() => {}}
+                    onDelete={() => {}}
+                  />
+                );
+              }),
+            )}
 
             {dragPreview && dragPreview.date === day.date && (
               <div
@@ -696,6 +775,7 @@ function WeekBlockChip({
   date,
   top,
   height,
+  columnSplit = null,
   liveTimeLabel = null,
   isResizing = false,
   canResize,
@@ -708,6 +788,12 @@ function WeekBlockChip({
   date: string;
   top: number;
   height: number;
+  /** Overlay mode: this person's own `left`/`right` inset within the day
+   * column, splitting it side-by-side with other overlaid people's chips.
+   * `null` (the default, and always the value passed for the single-person
+   * case) means "no override" -- the chip keeps its existing
+   * `left-0.5 right-0.5` Tailwind classes below, unchanged. */
+  columnSplit?: { left: string; right: string } | null;
   /** Live-synced "HH:MM - HH:MM" label shown WHILE a resize handle is
    * being dragged (before mouseup commits it) -- null the rest of the
    * time, when the chip's own static time range (below) is shown instead. */
@@ -783,6 +869,10 @@ function WeekBlockChip({
               borderColor: displayColor,
               borderStyle: "solid",
               borderLeftWidth: "3px",
+              // Overlay mode only -- `columnSplit` is `null` for every
+              // single-person caller, leaving the `left-0.5 right-0.5`
+              // classes above in full control, unchanged.
+              ...(columnSplit ? { left: columnSplit.left, right: columnSplit.right } : {}),
             }}
             onPointerDown={(event) => event.stopPropagation()}
             title={block.title}

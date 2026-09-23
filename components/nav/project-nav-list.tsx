@@ -173,131 +173,22 @@ export function ProjectNavList({
     });
   }
 
-  // AS-510: favourited projects render pinned in their own group ABOVE the
-  // rest of the list, ordered alphabetically within that group (manual
-  // ordering explicitly out of scope per the clarification). The
-  // non-favourite group keeps this list's existing order (most-recently-
-  // created first, per getWorkspaceProjects) -- favouriting a project only
-  // changes WHERE it renders, not the relative order of everything else.
-  const allFavoriteProjects = orderedProjects
-    .filter((project) => favoriteIds.has(project.id))
-    .sort((a, b) => a.name.localeCompare(b.name));
-
-  // F011 (SB-041): the pinned favourites group is capped at 5 via
-  // `selectSidebarProjects` (lib/nav/select-sidebar-projects.ts).
-  const favoriteProjects = selectSidebarProjects(
-    allFavoriteProjects,
-    [],
-    allFavoriteProjects,
-  );
-  // F041 (M3 scrutiny FU-3, SB-041): only the first 5 (alphabetically)
-  // favourites get the pinned/favourite visual treatment above -- anything
-  // past that cap must NOT be discarded from the sidebar entirely. Those
-  // overflow favourites fall back into the ordinary non-favourite group
-  // below (still reachable, still draggable, just without the pinned
-  // styling), rather than `allOtherProjects`'s previous "filter out every
-  // favourite id" which silently dropped them once there were more than 5.
-  const pinnedFavoriteIds = new Set(favoriteProjects.map((p) => p.id));
-  // The non-favourite (+ overflow-favourite) group IS drag-reorderable
-  // (this feature) — its order is `orderedIds` (the local, optimistic
-  // mirror of `sidebar_position`), not the raw prop order, so a completed
-  // drag renders in its new position immediately, before the server round
-  // trip resolves.
-  const allOtherProjects = orderedProjects.filter(
-    (project) => !pinnedFavoriteIds.has(project.id),
-  );
-  // F040 (M3 scrutiny FU-2, SB-042): the no-favourites case now actually
-  // wires `selectSidebarProjects` into the render path -- the section
-  // shows at most 5 recently-visited projects (still reachable, in full,
-  // via the "All projects" link (SB-044) below), rather than the earlier
-  // "sort the complete list by recency but never truncate it" compromise.
-  // `hasRecentMatch` is computed independently of `selectSidebarProjects`'s
-  // own "degrade to `visible.slice(0, 5)`" fallback (that fallback is a
-  // property of the pure helper, still correct and still covered by its
-  // own unit tests in tests/unit/select-sidebar-projects.test.ts) so this
-  // render path can tell "0 favourites, >=1 matching recent" apart from
-  // "0 favourites, 0 recognised recent visits" and render the latter as
-  // this section's own empty state instead of an unrelated slice of the
-  // full project list.
   const SIDEBAR_PROJECTS_LIMIT = 5;
-  const otherProjectsById = new Map(allOtherProjects.map((p) => [p.id, p]));
-  const hasRecentMatch = recentIds.some((id) => otherProjectsById.has(id));
-  const noFavourites = favoriteProjects.length === 0;
-  // "True empty" only kicks in once there's actually something to
-  // truncate: with no favourites, no matched recents, and MORE projects
-  // than the cap, showing an arbitrary (non-recent, non-favourite) slice
-  // of the full list is exactly the misleading fallback FU-2 flags --
-  // this section's own empty state (every project still one click away
-  // via the "All projects" link, SB-044) is more honest than that. When
-  // the caller has `limit` or fewer projects there's no truncation
-  // happening at all, so showing them plainly (same as before this
-  // feature) isn't misleading and stays unchanged.
-  // F045 (M3 scrutiny attempt 2, FU-18): the previous
-  // `allOtherProjects.length > SIDEBAR_PROJECTS_LIMIT` conjunct here was an
-  // untested threshold that appears nowhere in SB-042's own text ("with 0
-  // favorites, up to 5 recently visited; with none, an empty state") -- it
-  // gated the empty state on how many OTHER projects existed, so a
-  // workspace with 0 favourites, 0 recognised recents, and (say) 3
-  // projects rendered those 3 projects plainly instead of the empty state
-  // SB-042 describes. Showing the existing (<=5) projects was never the
-  // intended fallback: the empty state exists precisely so recency (not
-  // incidental list order) decides what appears here. Dropped so 0
-  // favourites + 0 recents always yields the empty state, at every
-  // project count (0/3/5/6+, all pinned by tests below).
+  const noFavourites = favoriteIds.size === 0;
+  const hasRecentMatch = recentIds.some((id) => projectsById.has(id));
+  // With no favourites and no recognised recent visits, show the empty state
+  // rather than an arbitrary slice of the full project list (SB-042).
   const isTrueEmptyRecents = noFavourites && !hasRecentMatch;
-  // F044 (M3 scrutiny attempt 2, FU-17): the section's TOTAL row count
-  // (pinned favourites + everything below) must never exceed
-  // `SIDEBAR_PROJECTS_LIMIT`, not just the pinned favourites group on its
-  // own. Before this fix, whenever >=1 favourite existed the branch below
-  // fell through to the unbounded `allOtherProjects`, so the "<=5 digest
-  // plus an All projects link" design only ever applied to brand-new
-  // accounts with 0 favourites. `favoriteProjects` above is already capped
-  // to `SIDEBAR_PROJECTS_LIMIT` by `selectSidebarProjects`, so the budget
-  // left for the rest of the section is simply the remainder.
-  //
-  // Read against SB-041's actual text ("the sidebar Projects section lists
-  // up to 5 favorited projects") -- it says nothing about the OTHER rows
-  // in the section, so capping the section's total at the same limit is a
-  // reading the existing assertion already permits; this does not require
-  // (and must not add) a superseding assertion. This does supersede F041's
-  // "6th+ favourite spills into the non-pinned group and is guaranteed
-  // visible" behaviour: a favourite beyond the pinned cap is no longer
-  // guaranteed a row once the section's total budget is exhausted -- it's
-  // still one click away via the "All projects" link (SB-044), same as any
-  // other overflow project.
-  const remainingSlots = Math.max(
-    0,
-    SIDEBAR_PROJECTS_LIMIT - favoriteProjects.length,
-  );
-  // Within that remaining budget: recently-visited projects first (still
-  // useful context even when favourites exist), then the rest of
-  // `allOtherProjects` in its existing (sidebar_position) order, per FU-17's
-  // "pinned favourites first, then recents, then remaining projects,
-  // truncating the combined list" ordering.
-  function selectRemainingOthers(
-    pool: SidebarProjectItem[],
-    limit: number,
-  ): SidebarProjectItem[] {
-    if (limit <= 0) return [];
-    const byId = new Map(pool.map((p) => [p.id, p]));
-    const recentMatches = recentIds
-      .map((id) => byId.get(id))
-      .filter((p): p is SidebarProjectItem => Boolean(p));
-    const recentIdSet = new Set(recentMatches.map((p) => p.id));
-    const rest = pool.filter((p) => !recentIdSet.has(p.id));
-    return [...recentMatches, ...rest].slice(0, limit);
-  }
-  // F045: `isTrueEmptyRecents` is now exactly `noFavourites &&
-  // !hasRecentMatch` (see its own comment above), so the branch below is
-  // simply "0 favourites, >=1 matching recent -> recency-ranked slice" vs.
-  // "0 favourites, 0 matching recents -> nothing" (rendered as the empty
-  // state, not this list, further down) -- no separate length-gated
-  // fallback slice of `allOtherProjects` remains.
-  const otherProjects = noFavourites
-    ? hasRecentMatch
-      ? selectSidebarProjects([], recentIds, allOtherProjects, SIDEBAR_PROJECTS_LIMIT)
-      : []
-    : selectRemainingOthers(allOtherProjects, remainingSlots);
+
+  // Flat list of projects to display: when no favourites, pick up to 5 by
+  // recency; when there are favourites, show the first 5 in sidebar_position
+  // order (which the user can reorder by dragging — all rows are now
+  // draggable, no separate pinned group).
+  const displayedProjects = isTrueEmptyRecents
+    ? []
+    : noFavourites
+      ? selectSidebarProjects([], recentIds, orderedProjects, SIDEBAR_PROJECTS_LIMIT)
+      : orderedProjects.slice(0, SIDEBAR_PROJECTS_LIMIT);
 
   // dnd-kit setup, same PointerSensor+KeyboardSensor pairing as the board
   // (components/board/board.tsx) for consistency — see that file's own
@@ -313,43 +204,14 @@ export function ProjectNavList({
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
-    // F042 (M3 scrutiny FU-4): computed from `allOtherProjects` (the full
-    // `sidebar_position`-ordered non-favourite group), NOT `otherProjects`
-    // (which may be a recency-sorted/truncated VIEW of that group in the
-    // no-favourites-yet state -- see `otherProjects`'s own comment above).
-    // Dragging is only ever rendered against the sortable list actually on
-    // screen (`otherProjects`), but persisting against that view's own
-    // index order would compute a `newPosition` relative to a recency
-    // ordering the server has never heard of, landing the project
-    // somewhere other than the position the user visually dropped it into
-    // once `allOtherProjects`'s real order re-asserts itself. Using
-    // `allOtherProjects` here means `newPosition` is always relative to the
-    // same order the server persists and the next render will show.
-    const otherIds = allOtherProjects.map((p) => p.id);
-    const oldIndex = otherIds.indexOf(String(active.id));
-    const newIndex = otherIds.indexOf(String(over.id));
+    const oldIndex = orderedIds.indexOf(String(active.id));
+    const newIndex = orderedIds.indexOf(String(over.id));
     if (oldIndex === -1 || newIndex === -1) return;
 
-    const nextOtherIds = arrayMove(otherIds, oldIndex, newIndex);
-
-    // Rebuild the full workspace order: favourites keep their existing
-    // slot in `orderedIds` (dragging only ever happens within the
-    // non-favourite group), the non-favourite slots are replaced in
-    // place with the freshly reordered sequence above.
-    let cursor = 0;
-    const nextOrderedIds = orderedIds.map((id) =>
-      favoriteIds.has(id) ? id : nextOtherIds[cursor++],
-    );
-
+    const nextOrderedIds = arrayMove(orderedIds, oldIndex, newIndex);
     const previousOrderedIds = orderedIds;
     setOrderedIds(nextOrderedIds);
 
-    // The dragged project's index in the REBUILT full order is exactly
-    // the `newPosition` `reorderProject` expects — see that action's own
-    // comment for why (removing the target then reinserting it at index
-    // `i` into the remaining n-1 siblings puts it at index `i` in the
-    // resulting n-length order, which is precisely
-    // `nextOrderedIds.indexOf(...)` here).
     const newPosition = nextOrderedIds.indexOf(String(active.id));
 
     reorderProject(String(active.id), newPosition)
@@ -360,14 +222,6 @@ export function ProjectNavList({
         }
       })
       .catch(() => {
-        // F046 (M3 scrutiny attempt 2, FU-19): the Server Action itself
-        // rejecting (network error, thrown exception rather than a
-        // returned `{ ok: false }`) previously had no `.catch` at all --
-        // an unhandled promise rejection that ALSO left `orderedIds`
-        // permanently pointing at the optimistic (never-persisted) order,
-        // silently out of sync with the server forever. Same rollback +
-        // generic toast fallback as account-menu.tsx's F021/F024b
-        // sign-out `catch` block.
         toast.error("Couldn't reorder this project. Please try again.");
         setOrderedIds(previousOrderedIds);
       });
@@ -536,7 +390,7 @@ export function ProjectNavList({
             // F332 (M17 scrutiny BLOCKER-1 / AS-518): `max-md:min-h-11` --
             // same breakpoint convention as the other mobile-Sheet nav
             // controls in this file/app-sidebar.tsx.
-            className="flex min-h-10 shrink-0 items-center justify-between px-2 mt-2 mb-1 py-2.5 text-xs text-muted-foreground uppercase tracking-wide hover:text-foreground max-md:min-h-11"
+            className="flex min-h-10 shrink-0 items-center justify-between px-4 mt-2 mb-1 py-2.5 text-xs text-muted-foreground uppercase tracking-wide hover:text-foreground max-md:min-h-11"
           >
             <span>Projects</span>
             <ChevronDown
@@ -578,55 +432,22 @@ export function ProjectNavList({
             aria-label="Projects"
             className="flex flex-col gap-0.5 px-2 pb-2"
           >
-            {favoriteProjects.length > 0 && (
-              // AS-510: the pinned favourites group, rendered first (above
-              // the rest of the list) with its own small label so it reads
-              // as a distinct group rather than just "some projects out of
-              // order".
-              <div
-                aria-label="Favourite projects"
-                className="flex flex-col gap-0.5 pb-1"
-              >
-                <p className="px-2 mb-1 mt-3 text-xs text-muted-foreground uppercase tracking-wide">
-                  Favourites
-                </p>
-                {favoriteProjects.map((project) => renderProjectRow(project))}
-              </div>
-            )}
-            {/* Sidebar drag-and-drop reorder: only the non-favourite
-                group is a dnd-kit sortable list -- favourites stay
-                alphabetically sorted (manual ordering explicitly out of
-                scope for that group per AS-510's own clarification,
-                above). */}
             {isTrueEmptyRecents ? (
-              // F040 (M3 scrutiny FU-2, SB-042): 0 favourites AND 0
-              // recognised recent visits -- render this section's own
-              // empty state (every other project is still reachable via
-              // the "All projects" link below, SB-044) rather than an
-              // arbitrary slice of the full, unrelated project list.
               <p className="px-2 py-1.5 text-sm text-sidebar-foreground/60">
                 No recent projects. Browse all projects below.
               </p>
             ) : (
               <DndContext
-                // F272 (part 3): explicit, stable id -- see
-                // components/board/board.tsx's `DndContext` for the full
-                // rationale (dnd-kit's counter-based auto-id otherwise
-                // drifts between the server's per-request-fresh counter and
-                // the client's already-incremented one whenever more than
-                // one `DndContext` mounts across the app in a given
-                // session, producing a hydration `aria-describedby`
-                // mismatch on every page that renders this sidebar).
                 id="sidebar-project-reorder"
                 sensors={sensors}
                 collisionDetection={closestCenter}
                 onDragEnd={handleDragEnd}
               >
                 <SortableContext
-                  items={otherProjects.map((p) => p.id)}
+                  items={displayedProjects.map((p) => p.id)}
                   strategy={verticalListSortingStrategy}
                 >
-                  {otherProjects.map((project) => (
+                  {displayedProjects.map((project) => (
                     <SortableProjectRow key={project.id} project={project} />
                   ))}
                 </SortableContext>

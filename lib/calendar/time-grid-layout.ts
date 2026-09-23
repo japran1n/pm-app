@@ -73,6 +73,95 @@ export function blockLayoutForDay(
   };
 }
 
+/**
+ * Overlay mode (multiple people sharing the SAME time-grid columns, split
+ * side-by-side within a day column rather than each getting their own full
+ * row like the stacked layout does): given a person's own index within the
+ * selected set and the total number of overlaid people, returns the CSS
+ * `left`/`right` inset for that person's block chips within the day column.
+ *
+ * `null` means "no split" -- the single-person case keeps whatever
+ * left/right the caller's own default styling already uses (unchanged), so
+ * this function is only ever consulted when more than one person is
+ * overlaid.
+ */
+export function blockColumnSplit(
+  personIndex: number,
+  totalPeople: number,
+): { left: string; right: string } | null {
+  if (totalPeople <= 1) return null;
+
+  const boundaryPct = 100 / totalPeople;
+  const rightBoundaryPct = (personIndex + 1) * boundaryPct;
+
+  const left = personIndex === 0 ? "4px" : `${personIndex * boundaryPct}%`;
+  const right =
+    personIndex === totalPeople - 1
+      ? "4px"
+      : `${100 - rightBoundaryPct + 2}%`;
+
+  return { left, right };
+}
+
+/**
+ * A time range (in the same top/height px units `blockLayoutForDay`
+ * returns) during which two or more DISTINCT people (identified by their
+ * index into `blockGroups`, not by block count) have at least one block
+ * each overlapping on the given day -- used to paint the overlay mode's
+ * conflict stripe. Two overlapping blocks belonging to the SAME person
+ * never produce a conflict range on their own.
+ *
+ * Pure -- reuses `blockLayoutForDay`'s own clamping so a conflict range
+ * never extends past the day's own [0, MINUTES_PER_DAY) bounds.
+ */
+export function computeConflictRanges(
+  blockGroups: Array<Array<{ startsAt: string; endsAt: string }>>,
+  dayDateOnly: string,
+): Array<{ top: number; height: number }> {
+  type Event = { time: number; delta: 1 | -1; person: number };
+  const events: Event[] = [];
+
+  blockGroups.forEach((blocks, personIndex) => {
+    for (const block of blocks) {
+      const layout = blockLayoutForDay(block.startsAt, block.endsAt, dayDateOnly);
+      if (!layout) continue;
+      events.push({ time: layout.top, delta: 1, person: personIndex });
+      events.push({ time: layout.top + layout.height, delta: -1, person: personIndex });
+    }
+  });
+
+  // Ends sort before starts at the same instant so a block that ends
+  // exactly when another starts is never counted as an overlap.
+  events.sort((a, b) => a.time - b.time || a.delta - b.delta);
+
+  const personActiveCount = new Map<number, number>();
+  const distinctActive = () => {
+    let count = 0;
+    for (const value of personActiveCount.values()) {
+      if (value > 0) count += 1;
+    }
+    return count;
+  };
+
+  const ranges: Array<{ top: number; height: number }> = [];
+  let rangeStart: number | null = null;
+
+  for (const event of events) {
+    const before = distinctActive();
+    personActiveCount.set(event.person, (personActiveCount.get(event.person) ?? 0) + event.delta);
+    const after = distinctActive();
+
+    if (before < 2 && after >= 2) {
+      rangeStart = event.time;
+    } else if (before >= 2 && after < 2 && rangeStart !== null) {
+      ranges.push({ top: rangeStart, height: event.time - rangeStart });
+      rangeStart = null;
+    }
+  }
+
+  return ranges;
+}
+
 function localDateOnlyToMidnight(dateOnly: string): Date {
   const [year, month, day] = dateOnly.split("-").map((part) => Number.parseInt(part, 10));
   return new Date(year, (month ?? 1) - 1, day ?? 1, 0, 0, 0, 0);

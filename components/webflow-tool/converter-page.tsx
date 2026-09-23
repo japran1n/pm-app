@@ -13,7 +13,10 @@
 
 import * as React from "react"
 
+import { Maximize2, Minimize2 } from "lucide-react"
+
 import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 import {
   convertHtmlToWebflow,
   type ConvertActionResult,
@@ -21,10 +24,8 @@ import {
 import { writeToClipboard } from "@/lib/webflow-converter-client/clipboard"
 
 import { ConverterEditor, useEditorPersistence } from "./converter-editor"
-import { ConverterHelp } from "./converter-help"
 import { ConverterPreview } from "./converter-preview"
 import { ConverterResults } from "./converter-results"
-import { ConverterVerify } from "./converter-verify"
 
 export function ConverterPage() {
   const [html, setHtml] = React.useState("")
@@ -35,6 +36,7 @@ export function ConverterPage() {
   const [copyStatus, setCopyStatus] = React.useState<
     "idle" | "success" | "error"
   >("idle")
+  const [previewFullscreen, setPreviewFullscreen] = React.useState(false)
 
   useEditorPersistence(html, css, js, setHtml, setCss, setJs)
 
@@ -117,6 +119,10 @@ export function ConverterPage() {
 
   React.useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape" && previewFullscreen) {
+        setPreviewFullscreen(false)
+        return
+      }
       if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
         event.preventDefault()
         if (inFlight.current) return
@@ -125,7 +131,7 @@ export function ConverterPage() {
     }
     window.addEventListener("keydown", onKeyDown)
     return () => window.removeEventListener("keydown", onKeyDown)
-  }, [handleConvert])
+  }, [handleConvert, previewFullscreen])
 
   return (
     <div className="flex h-full flex-col gap-4 p-6 pt-4 lg:p-8 lg:pt-8">
@@ -147,7 +153,32 @@ export function ConverterPage() {
             onJsChange={setJs}
           />
         </div>
-        <div className="min-h-[250px] min-w-0 flex-1 overflow-hidden">
+        <div
+          className={cn(
+            "min-w-0 flex-1 overflow-hidden",
+            previewFullscreen
+              ? "fixed inset-0 z-50 flex flex-col bg-background"
+              : "flex min-h-[250px] flex-col",
+          )}
+        >
+          <div className="flex shrink-0 items-center justify-between border-b px-3 py-1.5">
+            <span className="text-xs font-medium text-muted-foreground">
+              Preview
+            </span>
+            <button
+              type="button"
+              onClick={() => setPreviewFullscreen((v) => !v)}
+              className="flex size-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              aria-label={previewFullscreen ? "Exit fullscreen" : "Fullscreen preview"}
+              title={previewFullscreen ? "Exit fullscreen (Esc)" : "Fullscreen preview"}
+            >
+              {previewFullscreen ? (
+                <Minimize2 className="size-3.5" />
+              ) : (
+                <Maximize2 className="size-3.5" />
+              )}
+            </button>
+          </div>
           <ConverterPreview html={html} css={css} js={js} />
         </div>
       </div>
@@ -228,10 +259,7 @@ export function ConverterPage() {
           <div data-testid="conversion-result" data-ok={result.ok} />
         )}
 
-        <ConverterVerify />
       </div>
-
-      <ConverterHelp />
     </div>
   )
 }
