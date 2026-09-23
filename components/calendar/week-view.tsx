@@ -31,6 +31,7 @@ export function WeekView({
   workspaceSlug,
   workspaceId,
   currentUserId,
+  overlayBlocks = [],
 }: {
   week: CalendarWeek;
   blocks: CalendarBlock[];
@@ -45,6 +46,12 @@ export function WeekView({
    * through to WeekTimeGrid/WeekAgenda so the single `isOwnBlock`
    * predicate (lib/calendar/ownership.ts) has what it needs. */
   currentUserId: string;
+  /** Overlay mode: one flat block list per ADDITIONAL person to overlay on
+   * top of `blocks`' own person, bucketed by date here the same way
+   * `blocks` already is, then handed straight to WeekTimeGrid's own
+   * `overlayBlocksByDate`. Defaults to `[]`, which keeps this component
+   * byte-identical to before this prop existed for every existing caller. */
+  overlayBlocks?: CalendarBlock[][];
 }) {
   const blocksByDate: Record<string, CalendarBlock[]> = {};
   for (const block of blocks) {
@@ -91,6 +98,14 @@ export function WeekView({
           workspaceSlug={workspaceSlug}
           workspaceId={workspaceId}
           currentUserId={currentUserId}
+          overlayBlocksByDate={overlayBlocks.map((personBlocks) => {
+            const byDate: Record<string, CalendarBlock[]> = {};
+            for (const block of personBlocks) {
+              const date = isoToLocalDateOnly(block.startsAt);
+              byDate[date] = [...(byDate[date] ?? []), block];
+            }
+            return byDate;
+          })}
         />
       </div>
       <WeekAgenda

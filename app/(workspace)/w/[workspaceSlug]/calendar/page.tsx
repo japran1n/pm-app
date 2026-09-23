@@ -62,10 +62,11 @@ export default async function CalendarPage({
   searchParams: Promise<{
     week?: string;
     people?: string;
+    overlay?: string;
   }>;
 }) {
   const { workspaceSlug } = await params;
-  const { week: weekParam, people: peopleParam } = await searchParams;
+  const { week: weekParam, people: peopleParam, overlay: overlayParam } = await searchParams;
 
   const supabase = await getRequestClient();
 
@@ -144,6 +145,31 @@ export default async function CalendarPage({
   // getCalendarBlocks(...) can't silently desync from this prop again.
   const blockUserIds = buildBlockUserIds(selectedUserIds);
 
+  // Planner overlay mode: `?overlay=<userId>` names ONE additional active
+  // member whose blocks should be split side-by-side with the primary
+  // person's own week-grid columns (see WeekTimeGrid's
+  // `overlayBlocksByDate`). Only meaningful in the single-person
+  // "week-grid" layout -- 2+ selected people already routes to the
+  // stacked, one-row-per-person layout, which has its own way of showing
+  // multiple people and no use for this. An `?overlay=` value that isn't
+  // an active member, or that names someone already in the main
+  // selection, is silently ignored rather than erroring the whole page.
+  const isSinglePersonLayout = layout !== "stacked";
+  const overlayUserId =
+    isSinglePersonLayout &&
+    overlayParam &&
+    activeMemberIds.includes(overlayParam) &&
+    !selectedUserIds.includes(overlayParam)
+      ? overlayParam
+      : null;
+
+  // Candidates the overlay picker can offer: every active member minus
+  // whoever the main switcher already selected (overlaying someone on top
+  // of their own view is meaningless).
+  const overlayCandidates = switcherMembers.filter(
+    (member) => !selectedUserIds.includes(member.userId),
+  );
+
   return (
     <div className="flex flex-col gap-3 p-6 pt-4 lg:p-8 lg:pt-8">
       {/* F088: rendered ONCE, above the layout branch, so the switcher
@@ -166,6 +192,13 @@ export default async function CalendarPage({
           selfId: user.id,
           weekParam,
         }}
+        // Overlay mode: only offered in the single-person "week-grid"
+        // layout (see `overlayUserId`'s own comment above for why).
+        overlayPicker={
+          isSinglePersonLayout
+            ? { members: overlayCandidates, selectedOverlayUserId: overlayUserId }
+            : undefined
+        }
       />
       <Suspense fallback={<div className="animate-pulse h-32 rounded-lg bg-muted" />}>
         <WeekGridSection
@@ -185,6 +218,10 @@ export default async function CalendarPage({
           // it needs at every call site -- no component re-derives "is
           // this mine" independently.
           currentUserId={user.id}
+          // Overlay mode: the one additional member (if any) whose blocks
+          // should be fetched and split alongside the primary person's own
+          // columns -- resolved above from `?overlay=`.
+          overlayUserId={overlayUserId}
           // F032 (AS-062): the same switcher member list, reused so the
           // stacked layout's row labels and the switcher can never desync.
           peopleSwitcherMembers={switcherMembers}
@@ -217,6 +254,7 @@ async function WeekGridSection({
   layout,
   weekKey,
   weekParam,
+  overlayUserId,
 }: {
   workspaceId: string;
   workspaceSlug: string;
@@ -230,6 +268,10 @@ async function WeekGridSection({
   layout: "week-grid" | "stacked";
   weekKey: string;
   weekParam?: string;
+  /** Overlay mode: the one additional active member (if any) to fetch
+   * blocks for and overlay on top of the primary person's own week-grid
+   * columns -- `null` means no overlay, the ordinary single-person view. */
+  overlayUserId?: string | null;
 }) {
   const rangeEndExclusive = new Date(`${end}T00:00:00.000Z`);
   rangeEndExclusive.setUTCDate(rangeEndExclusive.getUTCDate() + 1);
@@ -238,7 +280,14 @@ async function WeekGridSection({
 
   // F016 (AS-034): the Planner no longer fetches tasks at all -- the
   // week grid renders blocks/time-off only.
-  const [blocks, timeOffEntries] = await Promise.all([
+  //
+  // Overlay mode: the overlaid person's blocks are fetched with the SAME
+  // `getCalendarBlocks` query, just scoped to their own single user id --
+  // mirrors how `blockUserIds` already scopes the primary fetch above,
+  // never widened to every workspace member. Only fetched at all when
+  // there actually is an overlay person (`overlayUserId` truthy), so the
+  // ordinary single-person view never pays for an extra query.
+  const [blocks, timeOffEntries, overlayBlocks] = await Promise.all([
     getCalendarBlocks(
       workspaceId,
       `${start}T00:00:00.000Z`,
@@ -246,6 +295,14 @@ async function WeekGridSection({
       blockUserIds,
     ),
     getTimeOffEntries(workspaceId, start, rangeEndExclusiveDateOnly),
+    overlayUserId
+      ? getCalendarBlocks(
+          workspaceId,
+          `${start}T00:00:00.000Z`,
+          rangeEndExclusive.toISOString(),
+          [overlayUserId],
+        )
+      : Promise.resolve<CalendarBlock[]>([]),
   ]);
 
   if (layout === "stacked") {
@@ -297,6 +354,11 @@ async function WeekGridSection({
       workspaceSlug={workspaceSlug}
       workspaceId={workspaceId}
       currentUserId={currentUserId}
+      // Overlay mode: `overlayBlocks` is one flat block list PER additional
+      // overlaid person -- today that's always at most one (`overlayUserId`
+      // names a single member), so an empty overlay yields `[]` and a
+      // present one yields `[overlayBlocks]`.
+      overlayBlocks={overlayUserId ? [overlayBlocks] : []}
     />
   );
 }

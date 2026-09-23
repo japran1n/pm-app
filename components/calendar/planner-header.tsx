@@ -13,6 +13,7 @@ import {
   PeopleSwitcherUrlBound,
   type PeopleSwitcherMember,
 } from "@/components/calendar/people-switcher";
+import { OverlayPersonSelect } from "@/components/calendar/overlay-person-select";
 import { AddTimeOffDialog } from "@/components/calendar/add-time-off-dialog";
 import { Button } from "@/components/ui/button";
 
@@ -24,6 +25,7 @@ export function PlannerHeader({
   nextHref,
   todayHref,
   peopleSwitcher,
+  overlayPicker,
 }: {
   rangeLabel: string;
   workspaceSlug: string;
@@ -40,6 +42,16 @@ export function PlannerHeader({
     selectedUserIds: string[];
     selfId: string;
     weekParam?: string;
+  };
+  /** Overlay mode: props for the `?overlay=` picker -- only passed by the
+   * page when the main switcher has exactly one person selected (the
+   * "week-grid" layout), since 2+ people already routes to the stacked,
+   * one-row-per-person layout that has no use for a second overlaid
+   * person's blocks split within the same columns. Optional/omitted
+   * renders no picker at all. */
+  overlayPicker?: {
+    members: PeopleSwitcherMember[];
+    selectedOverlayUserId: string | null;
   };
 }) {
   // F037 (AS-070): when the selected set of planner members differs from
@@ -92,6 +104,13 @@ export function PlannerHeader({
             selfId={peopleSwitcher.selfId}
             workspaceSlug={workspaceSlug}
             weekParam={peopleSwitcher.weekParam}
+          />
+        ) : null}
+        {overlayPicker ? (
+          <OverlayPersonSelect
+            members={overlayPicker.members}
+            selectedOverlayUserId={overlayPicker.selectedOverlayUserId}
+            workspaceSlug={workspaceSlug}
           />
         ) : null}
         {workspaceId ? <AddTimeOffDialog workspaceId={workspaceId} /> : null}

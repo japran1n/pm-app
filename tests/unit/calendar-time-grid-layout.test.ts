@@ -10,7 +10,9 @@ import {
   PX_PER_HOUR,
   PX_PER_MINUTE,
   applyResize,
+  blockColumnSplit,
   blockLayoutForDay,
+  computeConflictRanges,
   dragRangeToTimes,
   minutesSinceMidnight,
   pixelOffsetToTime,
@@ -125,5 +127,83 @@ describe("applyResize", () => {
     const newOffsetPx = 7 * PX_PER_HOUR;
     const result = applyResize("end", starts, ends, dayDateOnly, newOffsetPx);
     expect(new Date(result.endsAt).getTime()).toBeGreaterThan(new Date(result.startsAt).getTime());
+  });
+});
+
+describe("blockColumnSplit", () => {
+  it("test_column_split_returns_null_for_a_single_person_leaving_default_styling_untouched", () => {
+    expect(blockColumnSplit(0, 1)).toBeNull();
+  });
+
+  it("test_column_split_divides_two_people_left_and_right", () => {
+    expect(blockColumnSplit(0, 2)).toEqual({ left: "4px", right: "52%" });
+    expect(blockColumnSplit(1, 2)).toEqual({ left: "50%", right: "4px" });
+  });
+
+  it("test_column_split_divides_three_people_into_thirds", () => {
+    const first = blockColumnSplit(0, 3);
+    const middle = blockColumnSplit(1, 3);
+    const last = blockColumnSplit(2, 3);
+    expect(first?.left).toBe("4px");
+    expect(last?.right).toBe("4px");
+    // The middle column's own left/right insets should be strictly between
+    // the outer two, i.e. it occupies the visual center third.
+    expect(middle?.left).not.toBe("4px");
+    expect(middle?.right).not.toBe("4px");
+  });
+});
+
+describe("computeConflictRanges", () => {
+  const dayDateOnly = "2026-08-03";
+
+  it("test_conflict_range_appears_when_two_distinct_people_blocks_overlap_in_time", () => {
+    const personA = [
+      {
+        startsAt: new Date(2026, 7, 3, 9, 0, 0, 0).toISOString(),
+        endsAt: new Date(2026, 7, 3, 10, 0, 0, 0).toISOString(),
+      },
+    ];
+    const personB = [
+      {
+        startsAt: new Date(2026, 7, 3, 9, 30, 0, 0).toISOString(),
+        endsAt: new Date(2026, 7, 3, 10, 30, 0, 0).toISOString(),
+      },
+    ];
+    const ranges = computeConflictRanges([personA, personB], dayDateOnly);
+    expect(ranges).toHaveLength(1);
+    expect(ranges[0].top).toBeCloseTo(9.5 * PX_PER_HOUR, 5);
+    expect(ranges[0].height).toBeCloseTo(30 * PX_PER_MINUTE, 5);
+  });
+
+  it("test_no_conflict_range_when_the_same_persons_own_blocks_overlap", () => {
+    const personA = [
+      {
+        startsAt: new Date(2026, 7, 3, 9, 0, 0, 0).toISOString(),
+        endsAt: new Date(2026, 7, 3, 10, 0, 0, 0).toISOString(),
+      },
+      {
+        startsAt: new Date(2026, 7, 3, 9, 30, 0, 0).toISOString(),
+        endsAt: new Date(2026, 7, 3, 10, 30, 0, 0).toISOString(),
+      },
+    ];
+    const ranges = computeConflictRanges([personA], dayDateOnly);
+    expect(ranges).toHaveLength(0);
+  });
+
+  it("test_no_conflict_range_when_two_peoples_blocks_do_not_overlap_in_time", () => {
+    const personA = [
+      {
+        startsAt: new Date(2026, 7, 3, 9, 0, 0, 0).toISOString(),
+        endsAt: new Date(2026, 7, 3, 10, 0, 0, 0).toISOString(),
+      },
+    ];
+    const personB = [
+      {
+        startsAt: new Date(2026, 7, 3, 11, 0, 0, 0).toISOString(),
+        endsAt: new Date(2026, 7, 3, 12, 0, 0, 0).toISOString(),
+      },
+    ];
+    const ranges = computeConflictRanges([personA, personB], dayDateOnly);
+    expect(ranges).toHaveLength(0);
   });
 });
