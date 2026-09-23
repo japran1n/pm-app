@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/components/project-favorite-button", () => ({
   ProjectFavoriteButton: () => <button aria-label="fav" />,
@@ -24,6 +24,7 @@ const render1 = () =>
   );
 
 describe("F004", () => {
+  afterEach(cleanup);
   it("test_PL_007_open_task_count_shown", () => {
     render1();
     expect(screen.getByText(/open task/).textContent).toBe("5 open tasks");
