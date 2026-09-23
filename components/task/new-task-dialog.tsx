@@ -20,8 +20,23 @@ import { useRouter } from "next/navigation";
 import { Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
 
-import { createTask, setTaskAssignees } from "@/lib/actions/tasks";
+import {
+  createTask,
+  setTaskAssignees,
+  editTask,
+  updateTaskTags,
+} from "@/lib/actions/tasks";
 import { PRIORITY_LABELS } from "@/lib/task-colors";
+import { PriorityFlag } from "@/components/task/priority-flag";
+// F019 (TT-050): same "human duration string" -> minutes parser used by
+// the task detail sheet's own estimate input (F011) — this dialog accepts
+// the identical "2h"/"90m" formats rather than inventing a second parser.
+import { parseEstimate } from "@/lib/time/parse-estimate";
+// F019 (TT-050): reuses TaskDetailFields' tags-input pattern would pull in
+// far more than this dialog needs — a plain comma-separated text field,
+// parsed on submit, matches the simplicity of every other optional field
+// already in this form (dueDate, phase, type).
+import { Switch } from "@/components/ui/switch";
 // F002 (missions/20260903-portal, AS-013): phase options + write path,
 // same "Server Action called from useEffect, then applied after
 // createTask" two-step shape this dialog already uses for
@@ -145,7 +160,25 @@ export function NewTaskDialog({
   // `assigneeId` string state. Empty array means "unassigned", same
   // meaning `NO_ASSIGNEE_VALUE` used to carry.
   const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
+  const [startDate, setStartDate] = useState("");
   const [dueDate, setDueDate] = useState("");
+  // F019 (TT-050): raw text as typed ("2h", "90m", ...) — parsed on submit
+  // via parseEstimate, same "parse only when it matters" convention as
+  // this dialog's own title-trim-on-submit. `estimateError` mirrors the
+  // dialog's existing single `error` state's "surface next to the field,
+  // block submit" behaviour without conflating an estimate-format mistake
+  // with the required-title error.
+  const [estimateText, setEstimateText] = useState("");
+  const [estimateError, setEstimateError] = useState<string | null>(null);
+  // F019 (TT-050): comma-separated free text, split/trimmed on submit —
+  // matches this dialog's existing "plain input, no chip picker" fields
+  // rather than pulling in TaskDetailFields' own tag-chip component.
+  const [tagsText, setTagsText] = useState("");
+  // F017/F018 (TT-041): defaults to true, mirroring `tasks.billable`'s own
+  // DB default (supabase/migrations/20261129000000_tasks_billable.sql) —
+  // only written through editTask after creation when the user actually
+  // flips it away from that default (see handleSubmit below).
+  const [billable, setBillable] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   // F002 (AS-013): this project's phase options, fetched while the dialog
@@ -186,7 +219,12 @@ export function NewTaskDialog({
     setDescription("");
     setPriority(NO_PRIORITY_VALUE);
     setAssigneeIds([]);
+    setStartDate("");
     setDueDate("");
+    setEstimateText("");
+    setEstimateError(null);
+    setTagsText("");
+    setBillable(true);
     setPhaseId(NO_PHASE_VALUE);
     setTaskTypeId(NO_TASK_TYPE_VALUE);
     setError(null);
@@ -270,12 +308,31 @@ export function NewTaskDialog({
   function handleSubmit(formEvent: React.FormEvent<HTMLFormElement>) {
     formEvent.preventDefault();
     setError(null);
+    setEstimateError(null);
 
     const trimmedTitle = title.trim();
     if (!trimmedTitle) {
       setError("Task title is required.");
       return;
     }
+
+    // F019 (TT-050): mirrors editTask's own estimate validation (F166) —
+    // empty input means "no estimate" (parsed to `null`, never blocks
+    // submit); non-empty, unparseable input blocks submit with a
+    // field-level error, same "invalid input is distinguishable from no
+    // input" rule parseEstimate's own doc comment requires.
+    const trimmedEstimate = estimateText.trim();
+    const estimateMinutes =
+      trimmedEstimate === "" ? null : parseEstimate(trimmedEstimate);
+    if (trimmedEstimate !== "" && estimateMinutes === null) {
+      setEstimateError('Enter an estimate like "2h" or "90m".');
+      return;
+    }
+
+    const trimmedTags = tagsText
+      .split(",")
+      .map((tag) => tag.trim())
+      .filter((tag) => tag.length > 0);
 
     startTransition(async () => {
       const result = await createTask(
@@ -342,6 +399,51 @@ export function NewTaskDialog({
             return;
           }
         }
+        // F019 (TT-050): same "createTask, then a second write for
+        // anything its own signature doesn't cover" shape as the
+        // multi-assignee/phase calls above — createTask has no
+        // startDate/estimateMinutes/billable parameters (out of this
+        // feature's Files scope to add them), so those are written via
+        // editTask right after creation, only when the user actually
+        // supplied/changed them away from "no value"/the DB default.
+        // Never a redundant write for a task where none of these three
+        // fields were touched.
+        const editUpdates: {
+          startDate?: string;
+          estimateMinutes?: number | null;
+          billable?: boolean;
+        } = {};
+        if (startDate) editUpdates.startDate = startDate;
+        if (estimateMinutes !== null) editUpdates.estimateMinutes = estimateMinutes;
+        if (!billable) editUpdates.billable = billable;
+        if (Object.keys(editUpdates).length > 0) {
+          const editResult = await editTask(result.data.id, editUpdates);
+          if (!editResult.ok) {
+            toast.error(
+              `${result.data.title} created, but some fields couldn't be saved: ${editResult.error}`,
+            );
+            setOpen(false);
+            resetForm();
+            router.refresh();
+            return;
+          }
+        }
+        // F019 (TT-050): tags have no createTask parameter either — same
+        // "second write, only when non-empty" rationale as editUpdates
+        // above, using the same updateTaskTags Server Action the task
+        // detail sheet's own tags field (F041) already writes through.
+        if (trimmedTags.length > 0) {
+          const tagsResult = await updateTaskTags(result.data.id, trimmedTags);
+          if (!tagsResult.ok) {
+            toast.error(
+              `${result.data.title} created, but tags couldn't be saved: ${tagsResult.error}`,
+            );
+            setOpen(false);
+            resetForm();
+            router.refresh();
+            return;
+          }
+        }
         toast.success(`${result.data.title} created.`);
         setOpen(false);
         resetForm();
@@ -369,66 +471,156 @@ export function NewTaskDialog({
           </Button>
         }
       />
-      <DialogContent>
+      <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>New Task</DialogTitle>
           <DialogDescription>
             Give your task a title. You can fill in the rest now or later.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="task-title">Title</Label>
-            <Input
-              id="task-title"
-              name="title"
-              required
-              disabled={isPending}
-              value={title}
-              onChange={(changeEvent) => setTitle(changeEvent.target.value)}
-              aria-invalid={error ? true : undefined}
-              aria-describedby={error ? "task-title-error" : undefined}
-            />
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="task-description">Description (optional)</Label>
-            <Textarea
-              id="task-description"
-              name="description"
-              disabled={isPending}
-              value={description}
-              onChange={(changeEvent) =>
-                setDescription(changeEvent.target.value)
-              }
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
+        {/* F019 (TT-050): two-column shell at lg+, mirroring
+            task-detail-sheet.tsx's own `grid-cols-1 ... lg:grid-cols-
+            [1.6fr_1fr]` shell (F009/F010) — main editing surface (title/
+            description/type) on the left, metadata (project/phase,
+            assignees, priority, dates, estimate, tags, billing) on the
+            right. Below lg it collapses to a single stacked column, same
+            no-horizontal-scroll guarantee that shell already has. */}
+        <form
+          onSubmit={handleSubmit}
+          className="grid grid-cols-1 gap-6 lg:grid-cols-[1.6fr_1fr]"
+        >
+          <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-2">
-              <Label htmlFor="task-priority">Priority (optional)</Label>
-              <Select
-                value={priority}
-                onValueChange={(value) => setPriority(value ?? NO_PRIORITY_VALUE)}
+              <Label htmlFor="task-title">Title</Label>
+              <Input
+                id="task-title"
+                name="title"
+                required
                 disabled={isPending}
-              >
-                <SelectTrigger id="task-priority" className="w-full">
-                  <SelectValue>
-                    {(value: string) => PRIORITY_SELECT_LABELS[value] ?? value}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NO_PRIORITY_VALUE}>No priority</SelectItem>
-                  {Object.entries(PRIORITY_LABELS)
-                    .filter(([value]) => value !== "none")
-                    .map(([value, label]) => (
-                      <SelectItem key={value} value={value}>
-                        {label}
+                value={title}
+                onChange={(changeEvent) => setTitle(changeEvent.target.value)}
+                aria-invalid={error ? true : undefined}
+                aria-describedby={error ? "task-title-error" : undefined}
+              />
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="task-description">Description (optional)</Label>
+              <Textarea
+                id="task-description"
+                name="description"
+                disabled={isPending}
+                value={description}
+                onChange={(changeEvent) =>
+                  setDescription(changeEvent.target.value)
+                }
+              />
+            </div>
+
+            {/* F118 (AS-064): task type picker — reuses the same
+                TASK_TYPE_DEFINITIONS tooltip-per-system-key convention
+                list-task-type-select.tsx already established. Rendered
+                only once taskTypeOptions has resolved to a non-empty
+                list, same "don't show a Select with nothing real to
+                pick" convention the phase Select below uses. Leaving it
+                at NO_TASK_TYPE_VALUE means the database's own `delivery`
+                default still applies (F116). */}
+            {taskTypeOptions && taskTypeOptions.length > 0 && (
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="task-type">Type (optional)</Label>
+                <Select
+                  value={taskTypeId}
+                  onValueChange={(value) =>
+                    setTaskTypeId(value ?? NO_TASK_TYPE_VALUE)
+                  }
+                  disabled={isPending}
+                >
+                  <SelectTrigger id="task-type" className="w-full">
+                    <SelectValue>
+                      {(value: string) =>
+                        value === NO_TASK_TYPE_VALUE
+                          ? "Delivery (default)"
+                          : (taskTypeOptions.find(
+                              (option) => option.id === value,
+                            )?.name ?? value)
+                      }
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_TASK_TYPE_VALUE}>
+                      Delivery (default)
+                    </SelectItem>
+                    {taskTypeOptions.map((option) => (
+                      <SelectItem
+                        key={option.id}
+                        value={option.id}
+                        title={
+                          option.systemKey
+                            ? TASK_TYPE_DEFINITIONS[option.systemKey]
+                            : undefined
+                        }
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <span
+                            aria-hidden="true"
+                            className="size-2 shrink-0 rounded-full"
+                            style={{ backgroundColor: option.color }}
+                          />
+                          {option.name}
+                        </span>
                       </SelectItem>
                     ))}
-                </SelectContent>
-              </Select>
-            </div>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {error && (
+              <p
+                id="task-title-error"
+                role="alert"
+                className="text-sm text-destructive"
+              >
+                {error}
+              </p>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-4">
+            {/* F002 (missions/20260903-portal, AS-013): only rendered
+                once phaseOptions has resolved to a non-empty list — a
+                project with no phases yet shows no phase control at all,
+                rather than a Select whose only real option is "No
+                phase". */}
+            {phaseOptions && phaseOptions.length > 0 && (
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="task-phase">Phase (optional)</Label>
+                <Select
+                  value={phaseId}
+                  onValueChange={(value) => setPhaseId(value ?? NO_PHASE_VALUE)}
+                  disabled={isPending}
+                >
+                  <SelectTrigger id="task-phase" className="w-full">
+                    <SelectValue>
+                      {(value: string) =>
+                        value === NO_PHASE_VALUE
+                          ? "No phase"
+                          : (phaseOptions.find((option) => option.id === value)
+                              ?.name ?? value)
+                      }
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_PHASE_VALUE}>No phase</SelectItem>
+                    {phaseOptions.map((option) => (
+                      <SelectItem key={option.id} value={option.id}>
+                        {option.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             <div className="flex flex-col gap-2">
               <Label id="task-assignees-label">Assignees (optional)</Label>
@@ -522,124 +714,134 @@ export function NewTaskDialog({
                 );
               })()}
             </div>
-          </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            {/* F118 (AS-064): task type picker — reuses the same
-                TASK_TYPE_DEFINITIONS tooltip-per-system-key convention
-                list-task-type-select.tsx already established. Rendered
-                only once taskTypeOptions has resolved to a non-empty
-                list, same "don't show a Select with nothing real to
-                pick" convention the phase Select above uses. Leaving it
-                at NO_TASK_TYPE_VALUE means the database's own `delivery`
-                default still applies (F116). */}
-            {taskTypeOptions && taskTypeOptions.length > 0 && (
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="task-type">Type (optional)</Label>
-                <Select
-                  value={taskTypeId}
-                  onValueChange={(value) =>
-                    setTaskTypeId(value ?? NO_TASK_TYPE_VALUE)
-                  }
-                  disabled={isPending}
-                >
-                  <SelectTrigger id="task-type" className="w-full">
-                    <SelectValue>
-                      {(value: string) =>
-                        value === NO_TASK_TYPE_VALUE
-                          ? "Delivery (default)"
-                          : (taskTypeOptions.find(
-                              (option) => option.id === value,
-                            )?.name ?? value)
-                      }
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NO_TASK_TYPE_VALUE}>
-                      Delivery (default)
-                    </SelectItem>
-                    {taskTypeOptions.map((option) => (
-                      <SelectItem
-                        key={option.id}
-                        value={option.id}
-                        title={
-                          option.systemKey
-                            ? TASK_TYPE_DEFINITIONS[option.systemKey]
-                            : undefined
-                        }
-                      >
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="task-priority">Priority (optional)</Label>
+              <Select
+                value={priority}
+                onValueChange={(value) => setPriority(value ?? NO_PRIORITY_VALUE)}
+                disabled={isPending}
+              >
+                <SelectTrigger id="task-priority" className="w-full">
+                  <SelectValue>
+                    {(value: string) => (
+                      <span className="flex items-center gap-1.5">
+                        {value !== NO_PRIORITY_VALUE && (
+                          <PriorityFlag priority={value as Priority} />
+                        )}
+                        {PRIORITY_SELECT_LABELS[value] ?? value}
+                      </span>
+                    )}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_PRIORITY_VALUE}>No priority</SelectItem>
+                  {Object.entries(PRIORITY_LABELS)
+                    .filter(([value]) => value !== "none")
+                    .map(([value, label]) => (
+                      <SelectItem key={value} value={value}>
                         <span className="flex items-center gap-1.5">
-                          <span
-                            aria-hidden="true"
-                            className="size-2 shrink-0 rounded-full"
-                            style={{ backgroundColor: option.color }}
-                          />
-                          {option.name}
+                          <PriorityFlag priority={value as Priority} />
+                          {label}
                         </span>
                       </SelectItem>
                     ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+                </SelectContent>
+              </Select>
+            </div>
 
+            <div className="grid grid-cols-2 gap-4">
+              {/* F236 (AS-453): start date, sibling to the due-date field
+                  — same DatePicker control, same optional convention. */}
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="task-start-date">Start date (optional)</Label>
+                <DatePicker
+                  value={startDate || undefined}
+                  onChange={(next) => setStartDate(next ?? "")}
+                  disabled={isPending}
+                  aria-label="Start date"
+                />
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="task-due-date">Due date (optional)</Label>
+                <DatePicker
+                  value={dueDate || undefined}
+                  onChange={(next) => setDueDate(next ?? "")}
+                  disabled={isPending}
+                  aria-label="Due date"
+                />
+              </div>
+            </div>
+
+            {/* F166/F019 (TT-050): plain text estimate input, parsed via
+                parseEstimate on submit — same "2h"/"90m" formats as the
+                task detail sheet's own estimate field (F011). */}
             <div className="flex flex-col gap-2">
-              <Label htmlFor="task-due-date">Due date (optional)</Label>
-              <DatePicker
-                value={dueDate || undefined}
-                onChange={(next) => setDueDate(next ?? "")}
+              <Label htmlFor="task-estimate">Estimate (optional)</Label>
+              <Input
+                id="task-estimate"
+                name="estimate"
+                placeholder='e.g. "2h" or "90m"'
                 disabled={isPending}
-                aria-label="Due date"
+                value={estimateText}
+                onChange={(changeEvent) => {
+                  setEstimateText(changeEvent.target.value);
+                  setEstimateError(null);
+                }}
+                aria-invalid={estimateError ? true : undefined}
+                aria-describedby={
+                  estimateError ? "task-estimate-error" : undefined
+                }
+              />
+              {estimateError && (
+                <p
+                  id="task-estimate-error"
+                  role="alert"
+                  className="text-sm text-destructive"
+                >
+                  {estimateError}
+                </p>
+              )}
+            </div>
+
+            {/* F019 (TT-050): comma-separated tags, split/trimmed on
+                submit — see tagsText's own doc comment above. */}
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="task-tags">Tags (optional)</Label>
+              <Input
+                id="task-tags"
+                name="tags"
+                placeholder="design, urgent"
+                disabled={isPending}
+                value={tagsText}
+                onChange={(changeEvent) => setTagsText(changeEvent.target.value)}
               />
             </div>
 
-            {/* F002 (missions/20260903-portal, AS-013): only rendered
-                once phaseOptions has resolved to a non-empty list — a
-                project with no phases yet shows no phase control at all,
-                rather than a Select whose only real option is "No
-                phase". */}
-            {phaseOptions && phaseOptions.length > 0 && (
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="task-phase">Phase (optional)</Label>
-                <Select
-                  value={phaseId}
-                  onValueChange={(value) => setPhaseId(value ?? NO_PHASE_VALUE)}
+            {/* F017/F018 (TT-041): billing toggle — defaults to true,
+                mirroring `tasks.billable`'s own DB default, same Switch
+                control task-detail-fields.tsx's own Billing row uses. */}
+            <div className="flex flex-col">
+              <Label htmlFor="task-billable" className="text-sm text-muted-foreground mb-1">
+                Billing
+              </Label>
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="task-billable"
+                  checked={billable}
+                  onCheckedChange={(next) => setBillable(next)}
                   disabled={isPending}
-                >
-                  <SelectTrigger id="task-phase" className="w-full">
-                    <SelectValue>
-                      {(value: string) =>
-                        value === NO_PHASE_VALUE
-                          ? "No phase"
-                          : (phaseOptions.find((option) => option.id === value)
-                              ?.name ?? value)
-                      }
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NO_PHASE_VALUE}>No phase</SelectItem>
-                    {phaseOptions.map((option) => (
-                      <SelectItem key={option.id} value={option.id}>
-                        {option.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  aria-label="Billable"
+                />
+                <span className="text-sm text-foreground">
+                  {billable ? "Billable" : "Non-billable"}
+                </span>
               </div>
-            )}
+            </div>
           </div>
 
-          {error && (
-            <p
-              id="task-title-error"
-              role="alert"
-              className="text-sm text-destructive"
-            >
-              {error}
-            </p>
-          )}
-
-          <DialogFooter>
+          <DialogFooter className="lg:col-span-2">
             <DialogClose
               render={
                 <Button type="button" variant="ghost" disabled={isPending}>

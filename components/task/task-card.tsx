@@ -41,11 +41,11 @@ import { formatTaskKey } from "@/lib/tasks/task-key";
 // Intl.DateTimeFormat" naively.
 import { formatTaskDate } from "@/lib/time/format-task-date";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { StatusBadge } from "@/components/ui/status-badge";
 // F073 (AS-135): PRIORITY_LABELS/colors now live in lib/task-colors.ts as
 // the single shared color-coding source, reused here and by the dashboard
 // charts, instead of this component defining its own local copy.
-import { PRIORITY_COLORS, PRIORITY_LABELS } from "@/lib/task-colors";
+import { PRIORITY_LABELS } from "@/lib/task-colors";
+import { PriorityFlag } from "@/components/task/priority-flag";
 // F122 (AS-214): the card never rendered its assignee at all before this
 // feature — the board's TaskCard was the one named surface in AS-214 with
 // no existing person-rendering to replace. `assignee` is resolved
@@ -325,11 +325,13 @@ export function TaskCard({
       </CardHeader>
       <CardContent className="flex flex-wrap items-center gap-2">
         {task.priority && (
-          <StatusBadge
-            label={PRIORITY_LABELS[task.priority]}
-            color={PRIORITY_COLORS[task.priority]}
+          <span
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground"
             data-testid="task-card-priority-badge"
-          />
+          >
+            <PriorityFlag priority={task.priority} />
+            {PRIORITY_LABELS[task.priority]}
+          </span>
         )}
         {task.dueDate && (
           <span

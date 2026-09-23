@@ -48,8 +48,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { PRIORITY_COLORS, PRIORITY_LABELS } from "@/lib/task-colors";
-import { StatusBadge } from "@/components/ui/status-badge";
+import { PRIORITY_LABELS } from "@/lib/task-colors";
+import { PriorityFlag } from "@/components/task/priority-flag";
 
 const NO_PRIORITY_VALUE = "__none__";
 
@@ -109,9 +109,12 @@ export function ListPrioritySelect({
   // the real boundary either way; this is UX only.
   if (!canEdit) {
     return (
-      <span className="flex items-center px-2">
+      <span className="flex items-center gap-1.5 px-2">
         {localValue ? (
-          <StatusBadge label={PRIORITY_LABELS[localValue]} color={PRIORITY_COLORS[localValue]} />
+          <>
+            <PriorityFlag priority={localValue} />
+            <span className="text-sm">{PRIORITY_LABELS[localValue]}</span>
+          </>
         ) : (
           <span className="text-sm text-muted-foreground">No priority</span>
         )}
@@ -137,11 +140,7 @@ export function ListPrioritySelect({
       >
         <span className="flex items-center gap-1.5 overflow-hidden">
           {localValue && (
-            <span
-              aria-hidden="true"
-              className="size-2 shrink-0 rounded-full"
-              style={{ backgroundColor: PRIORITY_COLORS[localValue] }}
-            />
+            <PriorityFlag priority={localValue} size={12} />
           )}
           <SelectValue>
             {() => (localValue ? PRIORITY_LABELS[localValue] : "No priority")}
@@ -153,11 +152,7 @@ export function ListPrioritySelect({
         {ALL_PRIORITIES.map((value) => (
           <SelectItem key={value} value={value}>
             <span className="flex items-center gap-1.5">
-              <span
-                aria-hidden="true"
-                className="size-2 shrink-0 rounded-full"
-                style={{ backgroundColor: PRIORITY_COLORS[value] }}
-              />
+              <PriorityFlag priority={value} size={12} />
               {PRIORITY_LABELS[value]}
             </span>
           </SelectItem>
