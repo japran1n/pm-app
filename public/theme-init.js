@@ -7,12 +7,12 @@
   try {
     var t = localStorage.getItem("theme");
     var d = document.documentElement;
-    if (t === "light") {
-      d.classList.remove("dark");
-      d.removeAttribute("data-theme");
-    } else {
+    if (t === "dark") {
       d.classList.add("dark");
       d.setAttribute("data-theme", "dark");
+    } else {
+      d.classList.remove("dark");
+      d.removeAttribute("data-theme");
     }
   } catch (e) {}
 })();
