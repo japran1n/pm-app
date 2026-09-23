@@ -202,8 +202,73 @@ export function TeamHoursView({
   const usagePercent = rawUsagePercent !== null ? Math.min(100, rawUsagePercent) : null;
   const isOverBudget = budget !== null && billableMinutes > budget.soldMinutes;
 
+  const nonBillableMinutes = totalMinutes - billableMinutes;
+  const billablePercent = totalMinutes > 0 ? Math.round((billableMinutes / totalMinutes) * 100) : 0;
+  const nonBillablePercent = totalMinutes > 0 ? Math.round((nonBillableMinutes / totalMinutes) * 100) : 0;
+
   return (
     <div className="flex flex-col gap-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <Card className="shadow-xs" data-testid="hours-stat-total">
+          <CardHeader>
+            <CardTitle className="text-sm text-muted-foreground">Total hours</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="font-mono text-2xl font-semibold tabular-nums">
+              {formatDuration(totalMinutes)}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-xs" data-testid="hours-stat-billable">
+          <CardHeader>
+            <CardTitle className="text-sm text-muted-foreground">Billable</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="font-mono text-2xl font-semibold tabular-nums">
+              {formatDuration(billableMinutes)}
+            </div>
+            <div className="font-mono text-xs text-muted-foreground mt-1">
+              {billablePercent}% of logged
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-xs" data-testid="hours-stat-non-billable">
+          <CardHeader>
+            <CardTitle className="text-sm text-muted-foreground">Non-billable</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="font-mono text-2xl font-semibold tabular-nums">
+              {formatDuration(nonBillableMinutes)}
+            </div>
+            <div className="font-mono text-xs text-muted-foreground mt-1">
+              {nonBillablePercent}% of logged
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-xs" data-testid="hours-stat-budget">
+          <CardHeader>
+            <CardTitle className="text-sm text-muted-foreground">Budget used</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {budget ? (
+              <>
+                <div className="font-mono text-2xl font-semibold tabular-nums">
+                  {rawUsagePercent}%
+                </div>
+                <div className="font-mono text-xs text-muted-foreground mt-1">
+                  {minutesToHoursLabel(billableMinutes)} of {minutesToHoursLabel(budget.soldMinutes)} sold hours used
+                </div>
+              </>
+            ) : (
+              <div className="text-sm text-muted-foreground">No budget set</div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
       {budget && (
         <Card data-testid="hours-budget-summary">
           <CardHeader>
