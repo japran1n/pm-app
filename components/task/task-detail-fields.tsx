@@ -19,6 +19,7 @@ import type { JSONContent } from "@/components/editor/rich-text-editor";
 
 import { editTask, moveTaskStatus } from "@/lib/actions/tasks";
 import { isOverdue } from "@/lib/tasks/is-overdue";
+import { PRIORITY_LABELS } from "@/lib/task-colors";
 import { cn } from "@/lib/utils";
 import type { EditTaskUpdates } from "@/lib/validation/tasks";
 import { useBlockedDoneGuard } from "@/components/task/blocked-done-guard";
@@ -70,6 +71,7 @@ import { formatTaskDate } from "@/lib/time/format-task-date";
 import { Input } from "@/components/ui/input";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -113,16 +115,7 @@ const STATUS_LABELS: Record<TaskDetailSheetTask["status"], string> = {
   done: "Done",
 };
 
-const PRIORITY_LABELS: Record<
-  NonNullable<TaskDetailSheetTask["priority"]>,
-  string
-> = {
-  urgent: "Urgent",
-  high: "High",
-  medium: "Medium",
-  low: "Low",
-  backlog: "Backlog",
-};
+// F004 (TT-008): PRIORITY_LABELS now lives solely in lib/task-colors.ts.
 
 const NO_PRIORITY_VALUE = "__none__";
 
@@ -359,6 +352,12 @@ export function TaskDetailFields({
   const [confirmedPriority, setConfirmedPriority] = useState<
     TaskDetailSheetTask["priority"] | undefined
   >(undefined);
+  // F018 (TT-041): the Billing toggle's own confirmed mirror, same
+  // "undefined baseline means no override yet" convention as
+  // confirmedPriority above.
+  const [confirmedBillable, setConfirmedBillable] = useState<
+    boolean | undefined
+  >(undefined);
   // F002 (missions/20260903-portal, AS-013): the Phase Select's own
   // optimistic + confirmed mirror, same shape as Priority's above
   // (undefined baseline meaning "no override yet"; `null` is a real,
@@ -427,6 +426,9 @@ export function TaskDetailFields({
     setConfirmedPriority(undefined);
     // F002 (AS-013): same reasoning for the phase mirror.
     setConfirmedPhaseId(undefined);
+    // F018 (TT-041): same reasoning — a freshly opened task must never
+    // show a stale confirmed billable value from the previously open one.
+    setConfirmedBillable(undefined);
   } else if (!open && syncedTaskId !== null) {
     // Sheet closed — clear the sync marker so reopening the same task
     // (e.g. after an external update) re-syncs from the latest props.
@@ -937,6 +939,27 @@ export function TaskDetailFields({
     saveField({ estimateMinutes: minutes }, "Estimate updated.");
   }
 
+  // F018 (TT-041): the Billing toggle's own save path — plain `saveField`/
+  // `editTask` (billable is part of editTaskSchema, F017), same shape as
+  // handleDueDateChange/handleStartDateChange above. Sets the confirmed
+  // mirror on success so the toggle reflects the new value immediately,
+  // without waiting on the caller's own refetch/realtime path.
+  function handleBillableChange(next: boolean) {
+    if (!task) return;
+    const current = confirmedBillable ?? task.billable ?? true;
+    if (next === current) return;
+    setConfirmedBillable(next);
+    startSaveTransition(async () => {
+      const result = await editTask(task.id, { billable: next });
+      if (result.ok) {
+        toast.success(next ? "Marked as billable." : "Marked as non-billable.");
+      } else {
+        setConfirmedBillable(undefined);
+        toast.error(result.error);
+      }
+    });
+  }
+
   function handleBlockedReasonBlur() {
     if (!task) return;
     const trimmed = blockedReason.trim();
@@ -1052,12 +1075,13 @@ export function TaskDetailFields({
         </div>
       </div>
 
-      {/* F010 (TT-021): the right column's label+control stack — see
-          this const's own doc comment on `sidebarContainer` above for
-          why this is a plain JSX value portaled below rather than a
-          second copy of this component's state. Each row's label uses
-          `text-sm text-muted-foreground mb-1` and a full-width control,
-          per this feature's clarified spacing. */}
+      {/* F010 (TT-021): the right column's label+control stack, portaled
+          into the Sheet's right column DOM node when it's available (a
+          caller/test that hasn't been updated to pass `sidebarContainer`
+          falls back to rendering it right here, in its original
+          position, rather than losing these controls entirely). Each
+          row's label uses `text-sm text-muted-foreground mb-1` and a
+          full-width control, per this feature's clarified spacing. */}
       {(() => {
         const sidebarRows = (
           <div className="flex flex-col gap-4">
@@ -1068,286 +1092,319 @@ export function TaskDetailFields({
               >
                 Status
               </Label>
-          {/* F158 (AS-280, AS-281): status editing ships with this
-              feature via moveTaskStatus (see handleStatusChange
-              above) — the SAME action the board's drag-and-drop
-              and the list view's inline select already call.
-              Moving to "done" while this task still has open
-              blockers routes through the shared
-              confirmIfMovingToDone guard first. No local
-              optimistic override, matching the Priority Select
-              immediately below: `value` stays bound directly to
-              `task.status`. */}
-          <Select
-            value={confirmedStatus ?? optimisticStatus ?? task.status}
-            onValueChange={handleStatusChange}
-            disabled={isSavingField || !canEdit}
-          >
-            <SelectTrigger
-              id={`task-status-${task.id}`}
-              className="w-full"
-            >
-              <SelectValue>
-                {(value: string) =>
-                  statusOptionByValue.get(value)?.label ??
-                  STATUS_LABELS[value as keyof typeof STATUS_LABELS] ??
-                  value
-                }
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {/* F1 (status-sitemap-audit mission, AS-4): the real
-                  per-project statuses (or the current default set —
-                  resolvedStatusOptions's own fallback), never the dead
-                  legacy 4-value STATUS_LABELS map. */}
-              {resolvedStatusOptions.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  <span className="flex items-center gap-1.5">
-                    <span
-                      aria-hidden="true"
-                      className="size-2 shrink-0 rounded-full"
-                      style={{ backgroundColor: option.color }}
-                    />
-                    {option.label}
-                  </span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <Label htmlFor={`task-priority-${task.id}`}>Priority</Label>
-          <Select
-            value={
-              (confirmedPriority !== undefined
-                ? confirmedPriority
-                : optimisticPriority !== undefined
-                  ? optimisticPriority
-                  : task.priority) ?? NO_PRIORITY_VALUE
-            }
-            onValueChange={handlePriorityChange}
-            disabled={isSavingField || !canEdit}
-          >
-            <SelectTrigger
-              id={`task-priority-${task.id}`}
-              className="w-full"
-            >
-              <SelectValue placeholder="No priority">
-                {(value: string) =>
-                  value === NO_PRIORITY_VALUE
-                    ? "No priority"
-                    : (PRIORITY_LABELS[
-                        value as keyof typeof PRIORITY_LABELS
-                      ] ?? value)
-                }
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={NO_PRIORITY_VALUE}>
-                No priority
-              </SelectItem>
-              {Object.entries(PRIORITY_LABELS).map(([value, label]) => (
-                <SelectItem key={value} value={value}>
-                  {label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="flex flex-col gap-2">
-          {/* F002 (missions/20260903-portal, AS-013): a task can
-              be assigned to (or cleared from) one of its project's
-              phases from here — mirrors the Priority Select's own
-              shape immediately above, one field over. Disabled
-              until phaseOptions has resolved (see the
-              getProjectPhaseOptions effect above) so a caller
-              never sees an empty "no options" flash before the
-              real list arrives. */}
-          <Label htmlFor={`task-phase-${task.id}`}>Phase</Label>
-          <Select
-            value={
-              (confirmedPhaseId !== undefined
-                ? confirmedPhaseId
-                : optimisticPhaseId !== undefined
-                  ? optimisticPhaseId
-                  : (task.phaseId ?? null)) ?? NO_PHASE_VALUE
-            }
-            onValueChange={handlePhaseChange}
-            disabled={isSavingField || !canEdit || phaseOptions === null}
-          >
-            <SelectTrigger
-              id={`task-phase-${task.id}`}
-              className="w-full"
-            >
-              <SelectValue placeholder="No phase">
-                {(value: string) =>
-                  value === NO_PHASE_VALUE
-                    ? "No phase"
-                    : (phaseOptions?.find((option) => option.id === value)
-                        ?.name ?? value)
-                }
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={NO_PHASE_VALUE}>No phase</SelectItem>
-              {(phaseOptions ?? []).map((option) => (
-                <SelectItem key={option.id} value={option.id}>
-                  {option.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* F118 (AS-066): task type editor — same Select shape
-            as Priority/Phase above. Rendered only once
-            taskTypeOptions has resolved to a non-empty list AND
-            this task's own current type id is known, so it
-            never flashes an empty/wrong Select before real data
-            arrives. */}
-        {taskTypeOptions && taskTypeOptions.length > 0 && (
-          <div className="flex flex-col gap-2">
-            <Label htmlFor={`task-type-${task.id}`}>Type</Label>
-            <Select
-              value={
-                confirmedTaskTypeId !== undefined
-                  ? confirmedTaskTypeId
-                  : optimisticTaskTypeId !== undefined
-                    ? optimisticTaskTypeId
-                    : (task.taskTypeId ?? undefined)
-              }
-              onValueChange={handleTaskTypeChange}
-              disabled={isSavingField || !canEdit}
-            >
-              <SelectTrigger
-                id={`task-type-${task.id}`}
-                className="w-full"
+              {/* F158 (AS-280, AS-281): status editing ships with this
+                  feature via moveTaskStatus (see handleStatusChange
+                  above) — the SAME action the board's drag-and-drop
+                  and the list view's inline select already call.
+                  Moving to "done" while this task still has open
+                  blockers routes through the shared
+                  confirmIfMovingToDone guard first. No local
+                  optimistic override, matching the Priority Select
+                  immediately below: `value` stays bound directly to
+                  `task.status`. */}
+              <Select
+                value={confirmedStatus ?? optimisticStatus ?? task.status}
+                onValueChange={handleStatusChange}
+                disabled={isSavingField || !canEdit}
               >
-                <SelectValue>
-                  {/* UX audit (Nalaz 4): a bare "—" with nothing
-                      else on the line reads as a rendering
-                      glitch, not an intentional empty state --
-                      even though the "Type" Label sits above this
-                      Select, the fallback text itself should
-                      stand on its own and say what's missing. */}
-                  {(value: string) =>
-                    taskTypeOptions.find((option) => option.id === value)
-                      ?.name ?? task.taskTypeName ?? "No type set"
-                  }
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {taskTypeOptions.map((option) => (
-                  <SelectItem
-                    key={option.id}
-                    value={option.id}
-                    title={
-                      option.systemKey
-                        ? TASK_TYPE_DEFINITIONS[option.systemKey]
-                        : undefined
+                <SelectTrigger
+                  id={`task-status-${task.id}`}
+                  className="w-full"
+                >
+                  <SelectValue>
+                    {(value: string) =>
+                      statusOptionByValue.get(value)?.label ??
+                      STATUS_LABELS[value as keyof typeof STATUS_LABELS] ??
+                      value
                     }
-                  >
-                    <span className="flex items-center gap-1.5">
-                      <span
-                        aria-hidden="true"
-                        className="size-2 shrink-0 rounded-full"
-                        style={{ backgroundColor: option.color }}
-                      />
-                      {option.name}
-                    </span>
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {/* F1 (status-sitemap-audit mission, AS-4): the real
+                      per-project statuses (or the current default set —
+                      resolvedStatusOptions's own fallback), never the dead
+                      legacy 4-value STATUS_LABELS map. */}
+                  {resolvedStatusOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      <span className="flex items-center gap-1.5">
+                        <span
+                          aria-hidden="true"
+                          className="size-2 shrink-0 rounded-full"
+                          style={{ backgroundColor: option.color }}
+                        />
+                        {option.label}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* F161 (AS-287, AS-288) / F122 (AS-214): the multi-select
+                assignee picker — rendered by TaskDetailSheet itself (see
+                that file's `assigneeField` JSX) and slotted in here.
+                It shares no state with the other fields (own
+                transition, reads only `task`/`members`/`canEdit`), so
+                keeping it in this sidebar stack costs nothing
+                semantically. */}
+            {assigneeField}
+
+            <div className="flex flex-col">
+              <Label
+                htmlFor={`task-priority-${task.id}`}
+                className="text-sm text-muted-foreground mb-1"
+              >
+                Priority
+              </Label>
+              <Select
+                value={
+                  (confirmedPriority !== undefined
+                    ? confirmedPriority
+                    : optimisticPriority !== undefined
+                      ? optimisticPriority
+                      : task.priority) ?? NO_PRIORITY_VALUE
+                }
+                onValueChange={handlePriorityChange}
+                disabled={isSavingField || !canEdit}
+              >
+                <SelectTrigger
+                  id={`task-priority-${task.id}`}
+                  className="w-full"
+                >
+                  <SelectValue placeholder="No priority">
+                    {(value: string) =>
+                      value === NO_PRIORITY_VALUE
+                        ? "No priority"
+                        : (PRIORITY_LABELS[
+                            value as keyof typeof PRIORITY_LABELS
+                          ] ?? value)
+                    }
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_PRIORITY_VALUE}>
+                    No priority
                   </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+                  {Object.entries(PRIORITY_LABELS)
+                    .filter(([value]) => value !== "none")
+                    .map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex flex-col">
+              {/* F002 (missions/20260903-portal, AS-013): a task can
+                  be assigned to (or cleared from) one of its project's
+                  phases from here — mirrors the Priority Select's own
+                  shape immediately above. Disabled until phaseOptions
+                  has resolved (see the getProjectPhaseOptions effect
+                  above) so a caller never sees an empty "no options"
+                  flash before the real list arrives. */}
+              <Label
+                htmlFor={`task-phase-${task.id}`}
+                className="text-sm text-muted-foreground mb-1"
+              >
+                Phase
+              </Label>
+              <Select
+                value={
+                  (confirmedPhaseId !== undefined
+                    ? confirmedPhaseId
+                    : optimisticPhaseId !== undefined
+                      ? optimisticPhaseId
+                      : (task.phaseId ?? null)) ?? NO_PHASE_VALUE
+                }
+                onValueChange={handlePhaseChange}
+                disabled={isSavingField || !canEdit || phaseOptions === null}
+              >
+                <SelectTrigger
+                  id={`task-phase-${task.id}`}
+                  className="w-full"
+                >
+                  <SelectValue placeholder="No phase">
+                    {(value: string) =>
+                      value === NO_PHASE_VALUE
+                        ? "No phase"
+                        : (phaseOptions?.find((option) => option.id === value)
+                            ?.name ?? value)
+                    }
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_PHASE_VALUE}>No phase</SelectItem>
+                  {(phaseOptions ?? []).map((option) => (
+                    <SelectItem key={option.id} value={option.id}>
+                      {option.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* F118 (AS-066): task type editor — same Select shape
+                as Priority/Phase above. Rendered only once
+                taskTypeOptions has resolved to a non-empty list AND
+                this task's own current type id is known, so it
+                never flashes an empty/wrong Select before real data
+                arrives. */}
+            {taskTypeOptions && taskTypeOptions.length > 0 && (
+              <div className="flex flex-col">
+                <Label
+                  htmlFor={`task-type-${task.id}`}
+                  className="text-sm text-muted-foreground mb-1"
+                >
+                  Type
+                </Label>
+                <Select
+                  value={
+                    confirmedTaskTypeId !== undefined
+                      ? confirmedTaskTypeId
+                      : optimisticTaskTypeId !== undefined
+                        ? optimisticTaskTypeId
+                        : (task.taskTypeId ?? undefined)
+                  }
+                  onValueChange={handleTaskTypeChange}
+                  disabled={isSavingField || !canEdit}
+                >
+                  <SelectTrigger
+                    id={`task-type-${task.id}`}
+                    className="w-full"
+                  >
+                    <SelectValue>
+                      {/* UX audit (Nalaz 4): a bare "—" with nothing
+                          else on the line reads as a rendering
+                          glitch, not an intentional empty state --
+                          even though the "Type" Label sits above this
+                          Select, the fallback text itself should
+                          stand on its own and say what's missing. */}
+                      {(value: string) =>
+                        taskTypeOptions.find((option) => option.id === value)
+                          ?.name ?? task.taskTypeName ?? "No type set"
+                      }
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {taskTypeOptions.map((option) => (
+                      <SelectItem
+                        key={option.id}
+                        value={option.id}
+                        title={
+                          option.systemKey
+                            ? TASK_TYPE_DEFINITIONS[option.systemKey]
+                            : undefined
+                        }
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <span
+                            aria-hidden="true"
+                            className="size-2 shrink-0 rounded-full"
+                            style={{ backgroundColor: option.color }}
+                          />
+                          {option.name}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            <div className="flex flex-col">
+              <Label
+                htmlFor={`task-start-date-${task.id}`}
+                className="text-sm text-muted-foreground mb-1"
+              >
+                Start date
+              </Label>
+              <DatePicker
+                value={startDate ?? undefined}
+                onChange={(next) => handleStartDateChange(next ?? "")}
+                disabled={isSavingField || !canEdit}
+                className="w-full font-mono"
+                aria-label="Start date"
+              />
+            </div>
+
+            <div className="flex flex-col">
+              <Label
+                htmlFor={`task-due-date-${task.id}`}
+                className={cn(
+                  "text-sm text-muted-foreground mb-1",
+                  isOverdue(task.dueDate, task.status, timezone, task.statusCategory) &&
+                    "inline-flex items-center gap-1 text-destructive",
+                )}
+              >
+                {isOverdue(task.dueDate, task.status, timezone, task.statusCategory) && (
+                  <TriangleAlert className="size-3" aria-hidden="true" />
+                )}
+                Due date
+                {isOverdue(task.dueDate, task.status, timezone, task.statusCategory) && (
+                  <span className="sr-only">(overdue)</span>
+                )}
+              </Label>
+              <DatePicker
+                value={dueDate ?? undefined}
+                onChange={(next) => handleDueDateChange(next ?? "")}
+                disabled={isSavingField || !canEdit}
+                className={cn(
+                  "w-full font-mono",
+                  isOverdue(task.dueDate, task.status, timezone, task.statusCategory) &&
+                    "border-destructive text-destructive",
+                )}
+                aria-label="Due date"
+              />
+            </div>
+
+            {/* F018 (TT-041): Billing toggle — same right-column row
+                shape (label + full-width control) as every field above.
+                Reads `task.billable` (F017, not null, default true)
+                through the confirmed-mirror convention Priority/Phase
+                use, and writes through the same `editTask` Server
+                Action every other field here calls. */}
+            <div className="flex flex-col">
+              <Label
+                htmlFor={`task-billable-${task.id}`}
+                className="text-sm text-muted-foreground mb-1"
+              >
+                Billing
+              </Label>
+              <div className="flex items-center gap-2">
+                <Switch
+                  id={`task-billable-${task.id}`}
+                  checked={confirmedBillable ?? task.billable ?? true}
+                  onCheckedChange={handleBillableChange}
+                  disabled={isSavingField || !canEdit}
+                  aria-label="Billable"
+                />
+                <span
+                  className={cn(
+                    "text-sm",
+                    (confirmedBillable ?? task.billable ?? true)
+                      ? "text-foreground"
+                      : "text-muted-foreground",
+                  )}
+                >
+                  {(confirmedBillable ?? task.billable ?? true)
+                    ? "Billable"
+                    : "Non-billable"}
+                </span>
+              </div>
+            </div>
           </div>
-        )}
+        );
 
-        {/* F161 (AS-287, AS-288) / F122 (AS-214): the multi-select
-            assignee picker — rendered by TaskDetailSheet itself (see
-            that file's `assigneeField` JSX) and slotted in here at its
-            original grid position, so tests/unit/user-avatar-call-sites
-            .test.ts's source-level "the sheet imports and renders
-            <UserAvatar>" check keeps holding after the ARCH-005
-            extraction. It shares no state with the other fields (own
-            transition, reads only `task`/`members`/`canEdit`), so
-            keeping it upstairs costs nothing semantically. */}
-        {assigneeField}
-
-        <div className="flex flex-col gap-2">
-        <Label htmlFor={`task-start-date-${task.id}`}>
-          Start date
-        </Label>
-        <DatePicker
-          value={startDate ?? undefined}
-          onChange={(next) => handleStartDateChange(next ?? "")}
-          disabled={isSavingField || !canEdit}
-          className="font-mono"
-          aria-label="Start date"
-        />
-        </div>
-
-        <div className="flex flex-col gap-2">
-        <Label
-          htmlFor={`task-due-date-${task.id}`}
-          className={cn(
-            isOverdue(task.dueDate, task.status, timezone, task.statusCategory) &&
-              "inline-flex items-center gap-1 text-destructive",
-          )}
-        >
-          {isOverdue(task.dueDate, task.status, timezone, task.statusCategory) && (
-            <TriangleAlert className="size-3" aria-hidden="true" />
-          )}
-          Due date
-          {isOverdue(task.dueDate, task.status, timezone, task.statusCategory) && (
-            <span className="sr-only">(overdue)</span>
-          )}
-        </Label>
-        <DatePicker
-          value={dueDate ?? undefined}
-          onChange={(next) => handleDueDateChange(next ?? "")}
-          disabled={isSavingField || !canEdit}
-          className={cn(
-            "font-mono",
-            isOverdue(task.dueDate, task.status, timezone, task.statusCategory) &&
-              "border-destructive text-destructive",
-          )}
-          aria-label="Due date"
-        />
-        </div>
-
-        {/* F011 (TT-023): free-typed estimate, human strings in ("2h",
-            "90m", "1h 30m"), parsed via lib/time/parse-estimate.ts and
-            persisted as `estimate_minutes` through the shared
-            saveField/editTask path every other field in this grid uses.
-            Commits on blur, same convention as Page slug/Page order
-            above; an unparseable value reverts to the last known-good
-            display rather than silently saving 0/NaN (see
-            handleEstimateBlur's own doc comment). Displayed/edited in
-            the same human format TimeTracking's estimate row (right
-            column) renders, via the shared formatDuration helper, so
-            the two surfaces never disagree on what "2h" looks like. */}
-        <div className="flex flex-col gap-2">
-          <Label
-            htmlFor={`task-estimate-${task.id}`}
-            className="text-muted-foreground"
-          >
-            Estimate
-          </Label>
-          <Input
-            id={`task-estimate-${task.id}`}
-            value={estimateInput}
-            disabled={isSavingField || !canEdit}
-            title={editDisabledTitle}
-            placeholder="e.g. 2h, 90m, 1h 30m"
-            className="font-mono text-sm"
-            data-testid="task-estimate-input"
-            onChange={(changeEvent) => setEstimateInput(changeEvent.target.value)}
-            onBlur={handleEstimateBlur}
-          />
-        </div>
-      </div>
+        // F010 (TT-021): portal these rows into the Sheet's right
+        // column when it's mounted; fall back to rendering inline
+        // (original position) for a caller/test that hasn't been
+        // updated to pass `sidebarContainer` yet.
+        return sidebarContainer
+          ? createPortal(sidebarRows, sidebarContainer)
+          : sidebarRows;
+      })()}
 
       {/* Blocked reason: free text, shown only while this task's
           own status name case-insensitively equals "blocked" —

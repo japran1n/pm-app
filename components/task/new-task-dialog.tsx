@@ -21,6 +21,7 @@ import { Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import { createTask, setTaskAssignees } from "@/lib/actions/tasks";
+import { PRIORITY_LABELS } from "@/lib/task-colors";
 // F002 (missions/20260903-portal, AS-013): phase options + write path,
 // same "Server Action called from useEffect, then applied after
 // createTask" two-step shape this dialog already uses for
@@ -89,13 +90,7 @@ export type NewTaskDialogAssigneeOption = {
 
 type Priority = "urgent" | "high" | "medium" | "low" | "backlog";
 
-const PRIORITY_LABELS: Record<Priority, string> = {
-  urgent: "Urgent",
-  high: "High",
-  medium: "Medium",
-  low: "Low",
-  backlog: "Backlog",
-};
+// F004 (TT-008): PRIORITY_LABELS now lives solely in lib/task-colors.ts.
 
 // Same "reserved sentinel value for the no-op choice" convention already
 // used by list-filters.tsx (ALL_VALUE) and task-detail-sheet.tsx
@@ -424,11 +419,13 @@ export function NewTaskDialog({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={NO_PRIORITY_VALUE}>No priority</SelectItem>
-                  {Object.entries(PRIORITY_LABELS).map(([value, label]) => (
-                    <SelectItem key={value} value={value}>
-                      {label}
-                    </SelectItem>
-                  ))}
+                  {Object.entries(PRIORITY_LABELS)
+                    .filter(([value]) => value !== "none")
+                    .map(([value, label]) => (
+                      <SelectItem key={value} value={value}>
+                        {label}
+                      </SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
             </div>
