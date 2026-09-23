@@ -691,7 +691,7 @@ export function TaskDetailSheet({
         // full height, `rounded-none`/`border-0` remove the "floating
         // sheet" look at that width so it reads as a full page, not a
         // sheet with a visible seam.
-        className="w-full sm:max-w-2xl data-[side=right]:sm:max-w-2xl data-[side=left]:sm:max-w-2xl max-sm:data-[side=right]:w-full max-sm:data-[side=right]:max-w-none max-sm:data-[side=left]:w-full max-sm:data-[side=left]:max-w-none max-sm:h-svh max-sm:max-h-svh max-sm:rounded-none max-sm:border-0"
+        className="w-full sm:max-w-[1100px] data-[side=right]:sm:max-w-[1100px] data-[side=left]:sm:max-w-[1100px] max-sm:data-[side=right]:w-full max-sm:data-[side=right]:max-w-none max-sm:data-[side=left]:w-full max-sm:data-[side=left]:max-w-none max-sm:h-svh max-sm:max-h-svh max-sm:rounded-none max-sm:border-0"
       >
         {loading ? (
           <div className="flex flex-col gap-4 p-4">
@@ -946,7 +946,17 @@ export function TaskDetailSheet({
                 themselves) already uses `p-4`; scrollable content deserves
                 at least as much, and slightly more since it's the dominant
                 area. */}
-            <div className="flex flex-col gap-6 overflow-y-auto p-6 pt-4 lg:p-8 lg:pt-8">
+            {/* F009 (TT-020, TT-022): two-column shell at lg+ — main
+                editing surface (title/fields/sections) on the left,
+                a placeholder right column (populated by F010) on the
+                right. Below lg it collapses to a single stacked column
+                (grid-cols-1 default, lg:grid-cols-[...] only applies at
+                the lg breakpoint) with no horizontal scroll — the grid
+                itself never sets a min-width wider than its container,
+                so narrow viewports simply stack the two "columns"
+                vertically instead of clipping/scrolling. */}
+            <div className="grid grid-cols-1 gap-4 overflow-y-auto p-6 pt-4 lg:grid-cols-[1.6fr_1fr] lg:gap-4 lg:p-8 lg:pt-8">
+              <div className="flex flex-col gap-6">
               <TaskDetailFields
                 task={task}
                 members={members}
@@ -1108,6 +1118,14 @@ export function TaskDetailSheet({
                 timezone={timezone}
                 onOpenTask={onOpenTask}
                 attachmentListRef={attachmentListRef}
+              />
+              </div>
+              {/* F010 will populate this column (right-rail fields).
+                  Empty placeholder for now — the shell's job (F009) is
+                  only to reserve the layout position. */}
+              <div
+                data-testid="detail-right-column"
+                className="flex flex-col gap-6"
               />
             </div>
 
