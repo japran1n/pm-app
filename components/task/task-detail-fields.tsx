@@ -20,6 +20,7 @@ import type { JSONContent } from "@/components/editor/rich-text-editor";
 import { editTask, moveTaskStatus } from "@/lib/actions/tasks";
 import { isOverdue } from "@/lib/tasks/is-overdue";
 import { PRIORITY_LABELS } from "@/lib/task-colors";
+import { PriorityFlag } from "@/components/task/priority-flag";
 import { cn } from "@/lib/utils";
 import type { EditTaskUpdates } from "@/lib/validation/tasks";
 import { useBlockedDoneGuard } from "@/components/task/blocked-done-guard";
@@ -1172,13 +1173,20 @@ export function TaskDetailFields({
                   className="w-full"
                 >
                   <SelectValue placeholder="No priority">
-                    {(value: string) =>
-                      value === NO_PRIORITY_VALUE
-                        ? "No priority"
-                        : (PRIORITY_LABELS[
-                            value as keyof typeof PRIORITY_LABELS
-                          ] ?? value)
-                    }
+                    {(value: string) => (
+                      <span className="flex items-center gap-1.5">
+                        {value !== NO_PRIORITY_VALUE && (
+                          <PriorityFlag
+                            priority={value as keyof typeof PRIORITY_LABELS}
+                          />
+                        )}
+                        {value === NO_PRIORITY_VALUE
+                          ? "No priority"
+                          : (PRIORITY_LABELS[
+                              value as keyof typeof PRIORITY_LABELS
+                            ] ?? value)}
+                      </span>
+                    )}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
@@ -1189,7 +1197,12 @@ export function TaskDetailFields({
                     .filter(([value]) => value !== "none")
                     .map(([value, label]) => (
                     <SelectItem key={value} value={value}>
-                      {label}
+                      <span className="flex items-center gap-1.5">
+                        <PriorityFlag
+                          priority={value as keyof typeof PRIORITY_LABELS}
+                        />
+                        {label}
+                      </span>
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -1375,12 +1388,14 @@ export function TaskDetailFields({
               <div className="flex items-center gap-2">
                 <Switch
                   id={`task-billable-${task.id}`}
+                  data-testid="task-billable-toggle"
                   checked={confirmedBillable ?? task.billable ?? true}
                   onCheckedChange={handleBillableChange}
                   disabled={isSavingField || !canEdit}
                   aria-label="Billable"
                 />
                 <span
+                  data-testid="task-billable-label"
                   className={cn(
                     "text-sm",
                     (confirmedBillable ?? task.billable ?? true)

@@ -289,7 +289,7 @@ export async function getTaskDetail(
       // editor has a real value to hand to setTaskType — task_types(...)
       // below already carries the display name/system_key but not the
       // id itself.
-      "id, title, description, description_json, status, status_id, priority, assignee_id, due_date, start_date, tags, number, project_id, parent_task_id, deleted_at, estimate_minutes, recurrence, recurrence_parent_id, client_visible, pending_client_approval, page_slug, page_order, phase_id, task_type_id, blocked_reason, task_types(name, system_key), projects!inner(key, workspace_id, visibility), project_statuses(category)",
+      "id, title, description, description_json, status, status_id, priority, assignee_id, due_date, start_date, tags, number, project_id, parent_task_id, deleted_at, estimate_minutes, recurrence, recurrence_parent_id, client_visible, pending_client_approval, page_slug, page_order, phase_id, task_type_id, blocked_reason, billable, task_types(name, system_key), projects!inner(key, workspace_id, visibility), project_statuses(category)",
     )
     .eq("id", parsed.data.taskId)
     .is("deleted_at", null)
@@ -754,6 +754,12 @@ export async function getTaskDetail(
         // Free-text "why is this blocked" reason — see this function's
         // task select above.
         blockedReason: taskRow.blocked_reason ?? null,
+        // F018 (TT-041): mirrors `tasks.billable` (F017, not null default
+        // true) so the detail sheet's Billing toggle and the time-tracking
+        // draft default both read the task's real current value, not a
+        // hardcoded fallback. `?? true` only guards a caller/fixture whose
+        // select predates F017.
+        billable: taskRow.billable ?? true,
         // F118 (AS-066): the raw id, so the detail sheet's type editor
         // can call setTaskType with it directly — taskTypeName/
         // taskTypeSystemKey below remain display/gating-only, unchanged.

@@ -44,7 +44,7 @@
 // the attachment dropzone wrapper, and the footer's template/duplicate/
 // delete actions.
 
-import { useRef, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { usePathname } from "next/navigation";
 import {
   Copy,
@@ -342,6 +342,19 @@ export type TaskDetailSheetTask = {
    * "safe default" convention as every other optional field on this
    * type. */
   blockedReason?: string | null;
+  /** F012 (TT-024): this task's creator (`tasks.author_id`) and its raw
+   * creation timestamp (`tasks.created_at`) — restored here after a
+   * concurrent-edit race dropped it from this type mid-session; kept only
+   * so TaskDetailFields' existing "Created by" row (out of this feature's
+   * own scope) keeps compiling. Not otherwise touched by F018. */
+  authorId?: string | null;
+  createdAt?: string | null;
+  /** F017/F018 (TT-041): mirrors `tasks.billable` (not null, default true).
+   * Optional so a caller/fixture that predates F017 still renders — the
+   * Billing field below and TimeTracking's own new-entry default both
+   * treat undefined the same as true, same "safe default" convention as
+   * every other optional field on this type. */
+  billable?: boolean;
 };
 
 function memberLabel(member: TaskDetailSheetMember): string {
@@ -479,6 +492,17 @@ export function TaskDetailSheet({
   // funnels through the exact same Server Action + local-state path the
   // file-picker input already uses — no parallel upload implementation.
   const attachmentListRef = useRef<AttachmentListHandle>(null);
+  // F010 (TT-021): the right column's real DOM node — TaskDetailFields
+  // and TaskDetailSections portal their sidebar-bound controls (status/
+  // assignees/priority/phase/type/dates/tags/time-tracked summary) into
+  // it via `createPortal`, rather than this Sheet needing to lift all of
+  // their state up. A plain `useState` (not `useRef`) because a ref
+  // callback firing during commit needs to trigger a re-render so the
+  // portal target is defined by the time those children next render —
+  // an actual ref object's `.current` mutation alone would not do that.
+  const [rightColumnEl, setRightColumnEl] = useState<HTMLDivElement | null>(
+    null,
+  );
   // F247 (AS-478): registered for as long as the Sheet is open — see the
   // import comment above.
   useEscapeLayer(open, () => onOpenChange(false));
@@ -965,16 +989,21 @@ export function TaskDetailSheet({
                 editDisabledTitle={editDisabledTitle}
                 timezone={timezone}
                 statusOptions={statusOptions}
+                sidebarContainer={rightColumnEl}
                 assigneeField={
-                  /* UX audit (Nalaz 2): Assignees shared the same
-                     1-column width as every other field in the metadata
-                     5-column grid, so a full name (e.g. a long
-                     first+last name) truncated aggressively even though
-                     the Sheet itself (`sm:max-w-2xl`) has plenty of
-                     spare width. col-span-2 gives it roughly double the
-                     room without touching any other field's width. */
-                  <div className="flex flex-col gap-2 sm:col-span-2">
-                    <Label id={`task-assignee-label-${task.id}`}>Assignees</Label>
+                  /* F010 (TT-021): this row now renders in the right
+                     column (see TaskDetailFields' own portal below), a
+                     single-column vertical stack rather than the old
+                     5-column metadata grid — no col-span override
+                     needed here any more, the row is already full
+                     width. */
+                  <div className="flex flex-col gap-1">
+                    <Label
+                      id={`task-assignee-label-${task.id}`}
+                      className="text-sm text-muted-foreground mb-1"
+                    >
+                      Assignees
+                    </Label>
                     {/* F161 (AS-287, AS-288): multi-select assignee picker —
                         replaces the old single-value Select. Current set is
                         `task.assigneeIds` (falls back to the single legacy
@@ -1118,12 +1147,23 @@ export function TaskDetailSheet({
                 timezone={timezone}
                 onOpenTask={onOpenTask}
                 attachmentListRef={attachmentListRef}
+                sidebarContainer={rightColumnEl}
               />
               </div>
-              {/* F010 will populate this column (right-rail fields).
-                  Empty placeholder for now — the shell's job (F009) is
-                  only to reserve the layout position. */}
+              {/* F010 (TT-021): the right column itself. TaskDetailFields
+                  and TaskDetailSections above portal their sidebar rows
+                  (status/assignees/priority/phase/type/dates/tags/
+                  time-tracked summary) straight into this DOM node via
+                  `createPortal`, keyed off `rightColumnEl` — this Sheet
+                  never has to lift any of their local/optimistic state
+                  up to itself just to relocate their markup. The ref
+                  callback (not a plain useRef) is what makes
+                  `rightColumnEl` go from null -> the real node exactly
+                  once this div first mounts, triggering the one extra
+                  render those two children need to find a portal target
+                  — see `rightColumnEl`'s own doc comment above. */}
               <div
+                ref={setRightColumnEl}
                 data-testid="detail-right-column"
                 className="flex flex-col gap-6"
               />
