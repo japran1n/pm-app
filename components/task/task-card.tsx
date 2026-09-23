@@ -35,11 +35,11 @@ import { formatDuration } from "@/lib/time/format-duration";
 // comment for why every task-identity surface goes through it instead of
 // re-concatenating projectKey/number locally.
 import { formatTaskKey } from "@/lib/tasks/task-key";
-// F275 (AS-207): the shared due-date formatter (lib/time/user-timezone.ts)
-// replaces this file's own local `formatDueDate` copy — see that
+// F003 (TT-003): the shared task-date formatter (lib/time/format-task-date.ts)
+// replaces this file's own local `formatDueDate` call — see that
 // function's doc comment for why the fix isn't "just add timeZone to
 // Intl.DateTimeFormat" naively.
-import { formatDueDate } from "@/lib/time/user-timezone";
+import { formatTaskDate } from "@/lib/time/format-task-date";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/status-badge";
 // F073 (AS-135): PRIORITY_LABELS/colors now live in lib/task-colors.ts as
@@ -342,10 +342,7 @@ export function TaskCard({
           >
             {overdue && <TriangleAlert className="size-3" aria-hidden="true" />}
             <span className={overdue ? "sr-only" : "hidden"}>Overdue:</span>
-            {formatDueDate(task.dueDate, timezone, {
-              month: "short",
-              day: "numeric",
-            })}
+            {formatTaskDate(task.dueDate, timezone)}
           </span>
         )}
         {/* F083: "the client can see this" is icon + text, never colour

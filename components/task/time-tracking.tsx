@@ -65,6 +65,9 @@ import {
 } from "@/lib/actions/time-entries";
 import { workCategorySchema, type WorkCategory } from "@/lib/validation/time-entries";
 import { formatDuration } from "@/lib/time/format-duration";
+// F003 (TT-003): the shared task-date formatter (lib/time/format-task-date.ts)
+// replaces this file's own local en-US `formatEntryDate` helper.
+import { formatTaskDate } from "@/lib/time/format-task-date";
 import {
   Select,
   SelectContent,
@@ -154,17 +157,6 @@ function todayDateString(): string {
   return new Date(now.getTime() - offsetMs).toISOString().slice(0, 10);
 }
 
-function formatEntryDate(entryDate: string): string {
-  const date = new Date(`${entryDate}T00:00:00.000Z`);
-  if (Number.isNaN(date.getTime())) return entryDate;
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    timeZone: "UTC",
-  }).format(date);
-}
-
 function formatElapsed(startedAt: string, now: number): string {
   const startMs = new Date(startedAt).getTime();
   const elapsedSeconds = Math.max(
@@ -192,6 +184,7 @@ function sortedNewestFirst(entries: TimeEntry[]): TimeEntry[] {
 export function TimeTracking({
   taskId,
   taskTags,
+  taskBillable,
   timeEntries,
   members,
   estimateMinutes = null,
@@ -207,6 +200,14 @@ export function TimeTracking({
    * category select unset, same "safe default" convention as
    * estimateMinutes/activeTimer below. */
   taskTags?: string[];
+  /** F018 (TT-041): this task's own `tasks.billable` (F017, not null,
+   * default true) — the manual log-time form's billable draft defaults
+   * from THIS, not a hardcoded `true`, so a task marked non-billable logs
+   * non-billable time by default. Optional/undefined (caller hasn't been
+   * updated) falls back to the same `true` this component always
+   * defaulted to, same "safe default" convention as every other optional
+   * prop here. */
+  taskBillable?: boolean;
   /** This task's time entries. Defaults handled by caller — an empty array
    * is a valid state (no time logged yet). */
   timeEntries: TimeEntry[];
@@ -245,7 +246,9 @@ export function TimeTracking({
   const [syncedTaskId, setSyncedTaskId] = useState(taskId);
 
   const [minutesDraft, setMinutesDraft] = useState("");
-  const [billableDraft, setBillableDraft] = useState(true);
+  // F018 (TT-041): defaults from the task's own billable flag, not a
+  // hardcoded `true` — see `taskBillable`'s doc comment above.
+  const [billableDraft, setBillableDraft] = useState(taskBillable ?? true);
   const [dateDraft, setDateDraft] = useState(todayDateString());
   const [noteDraft, setNoteDraft] = useState("");
   const [categoryDraft, setCategoryDraft] = useState<WorkCategory | null>(() =>
@@ -277,6 +280,10 @@ export function TimeTracking({
     setDateDraft(todayDateString());
     setNoteDraft("");
     setCategoryDraft(defaultCategoryFromTags(taskTags));
+    // F018 (TT-041): same re-sync convention as the drafts above — a
+    // newly opened task's billable draft must reflect ITS OWN billable
+    // flag, not whatever the previously open task's draft happened to be.
+    setBillableDraft(taskBillable ?? true);
     setEditingEntryId(null);
   }
 
@@ -817,7 +824,7 @@ export function TimeTracking({
                     {entry.workCategory ? CATEGORY_LABELS[entry.workCategory] : "Uncategorised"}
                   </Badge>
                   <span className="font-mono text-xs text-muted-foreground">
-                    {formatEntryDate(entry.entryDate)}
+                    {formatTaskDate(entry.entryDate)}
                   </span>
                   <div className="ml-auto flex items-center gap-1">
                     {canEdit(entry) && (
