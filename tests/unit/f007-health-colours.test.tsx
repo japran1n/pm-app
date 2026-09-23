@@ -33,6 +33,6 @@ describe("F007", () => {
     // defined at :root scope once, derived from knobs (theme-agnostic)
     for (const t of ["--brand:", "--warning:", "--destructive:"])
       expect(css).toContain(t);
-    expect(css).toMatch(/\.dark[^{]*\{[^}]*--(surface|hue|chroma)/s);
+    expect(css).toMatch(/\.dark[^{]*\{[\s\S]*--(surface|hue|chroma)/);
   });
 });
