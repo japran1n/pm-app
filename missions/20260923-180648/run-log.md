@@ -43,3 +43,10 @@ mig exit 0
 - tsc --noEmit: only pre-existing unrelated errors remain (app/(workspace)/w/[workspaceSlug]/projects/page.tsx, lib/queries/projects.ts, components/projects/projects-toolbar.tsx) — none touched by F001.
 - eslint on touched files: clean.
 - migrations:check: no drift (unaffected by this feature).
+
+## F021 final integrity pass
+- TT-060: `git diff main -- components/portal/status-label.ts` empty; `resolveClientBucket` present and unchanged. PASS.
+- TT-061: No hand-written hex in components/task/priority-flag.tsx or components/project/team-hours-view.tsx. Hex values in lib/task-colors.ts are all inside PRIORITY_COLORS / STATUS_COLORS explicit palette maps, which the contract allows. No new CSS vars introduced needing theme coverage. PASS.
+- TT-062: `npx tsc --noEmit` — 0 errors (clean; the baseline errors recorded in F001 — projects/page.tsx, lib/queries/projects.ts — were resolved by later features in this mission, out of scope for F021 to re-verify but confirmed fixed). `npx vitest run tests/unit` — 141 failed | 3978 passed | 3 skipped (4122 total), vs pre-mission baseline of 141 failed | 3816 passed (3960 total). Same failure count, no new failing test files — all growth is new passing tests added by mission features. PASS.
+- TT-063: `git log --oneline -- package.json` shows no commits from this mission's 21 features touched it; `git diff main -- package.json` is empty. PASS.
+- No violations found; no code changes required. Committed integrity-pass confirmation only (handoff + run-log).
