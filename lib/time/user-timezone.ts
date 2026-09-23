@@ -327,6 +327,18 @@ export function isOverdueInTimeZone(
  * unrecognized timezone — same "never throws" convention as the rest of
  * this module.
  */
+/**
+ * @deprecated en-US only, with caller-supplied `options` for call sites
+ * that need a shorter/longer form than TT-002/TT-003's fixed "11 Sep
+ * 2026" shape. F002 adds `lib/time/format-task-date.ts`'s
+ * `formatTaskDate` as the en-GB replacement for every due-date display
+ * surface; F003 migrates the call sites (task-card, my-task-row,
+ * activity-feed, print-summary, my-work-card, month-grid) one at a time.
+ * Kept as-is here (options/locale unchanged) rather than delegating, so
+ * this module's own AS-207 regression tests — which pin the exact
+ * "Aug 20, 2026" / caller-options / raw-string-fallback behaviour — stay
+ * green until those call sites are actually migrated.
+ */
 export function formatDueDate(
   dueDate: DateOnly,
   timeZone: string,

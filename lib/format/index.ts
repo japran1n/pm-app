@@ -23,6 +23,8 @@
 //   ("1h 30m").
 
 export { formatDuration } from "@/lib/time/format-duration";
+/** "11 Sep 2026" (en-GB, full year) / "No due date" for null — TT-002. */
+export { formatTaskDate } from "@/lib/time/format-task-date";
 
 /** Date-only anchor: a bare "YYYY-MM-DD" gets a UTC-midnight time part. */
 function anchorUtc(iso: string): Date {
