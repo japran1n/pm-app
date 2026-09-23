@@ -176,7 +176,7 @@ export function ProjectCard({
                 aria-valuenow={progressPercent}
                 aria-valuemin={0}
                 aria-valuemax={100}
-                className="h-1.5 w-full overflow-hidden rounded-full bg-secondary"
+                className="h-1.5 w-full overflow-hidden rounded-full bg-border/60"
               >
                 <div
                   className={`h-full rounded-full ${PROJECT_HEALTH_BAR_CLASS[health]} transition-[width] duration-200`}
