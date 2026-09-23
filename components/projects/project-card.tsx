@@ -11,11 +11,18 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { resolveDueDate } from "@/lib/projects/time-left";
-import { computeProjectHealth } from "@/lib/projects/compute-health";
+import { UserAvatarGroup } from "@/components/user-avatar-group";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { computeTimeLeft, resolveDueDate } from "@/lib/projects/time-left";
+import {
+  computeProjectHealth,
+  PROJECT_HEALTH_COLORS,
+  PROJECT_HEALTH_LABELS,
+} from "@/lib/projects/compute-health";
 import type {
   ProjectHealthQueryInput,
   ProjectListItem,
+  ProjectTeamPreview,
 } from "@/lib/queries/projects";
 
 // F004: extracted verbatim from the projects page; rendered output is unchanged.
@@ -27,6 +34,7 @@ export function ProjectCard({
   canSaveTemplate,
   isFavorite,
   healthInput,
+  teamPreview,
 }: {
   project: ProjectListItem;
   workspaceId: string;
@@ -35,7 +43,17 @@ export function ProjectCard({
   canSaveTemplate: boolean;
   isFavorite: boolean;
   healthInput: ProjectHealthQueryInput;
+  teamPreview?: ProjectTeamPreview;
 }) {
+  const health = computeProjectHealth(healthInput);
+  const healthLabel = PROJECT_HEALTH_LABELS[health];
+  const reasons: string[] = [];
+  if (healthInput.overdueTaskCount > 0)
+    reasons.push(`${healthInput.overdueTaskCount} overdue task${healthInput.overdueTaskCount === 1 ? "" : "s"}`);
+  if (healthInput.currentPhase?.name) reasons.push(`current phase: ${healthInput.currentPhase.name}`);
+  const healthTitle = reasons.length
+    ? `${healthLabel} - ${reasons.join(", ")}`
+    : `${healthLabel} - no overdue tasks or phase risk detected`;
   const totalTasks = Math.max(0, healthInput.totalTaskCount);
   const doneTasks = Math.min(
     totalTasks,
@@ -129,7 +147,10 @@ export function ProjectCard({
           <p className="text-sm text-muted-foreground">
             {dueDate ? (
               <span data-testid="due-date" className="font-mono">
-                {dueDate}
+                {new Intl.DateTimeFormat("en-US", {
+                  dateStyle: "medium",
+                  timeZone: "UTC",
+                }).format(new Date(`${dueDate.slice(0, 10)}T00:00:00Z`))}
               </span>
             ) : (
               "No due date"
@@ -158,6 +179,23 @@ export function ProjectCard({
               </div>
             </div>
           )}
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <div data-testid="card-team">
+            {teamPreview && teamPreview.people.length > 0 ? (
+              <UserAvatarGroup people={teamPreview.people} limit={4} />
+            ) : null}
+          </div>
+          <span
+            title={healthTitle}
+            data-testid="time-pill"
+            className="font-mono"
+          >
+            <StatusBadge
+              label={computeTimeLeft(dueDate, new Date()) ?? healthLabel}
+              color={PROJECT_HEALTH_COLORS[health]}
+            />
+          </span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {/* AS-034: open (not "done"-category) task count,

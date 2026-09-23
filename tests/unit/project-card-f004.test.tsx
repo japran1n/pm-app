@@ -57,7 +57,7 @@ describe("F005", () => {
   it("test_PL_020_anatomy_due_date_progress_label_in_panel", () => {
     r({ endDate: "2026-12-01" }, {});
     expect(screen.getByText("Progress")).toBeTruthy();
-    expect(screen.getByTestId("due-date").textContent).toBe("2026-12-01");
+    expect(screen.getByTestId("due-date").textContent).toBe("Dec 1, 2026");
   });
   it("test_PL_021_subtitle_phase_then_description_line_then_none", () => {
     const { unmount } = r({ description: "\nfirst\nsecond" }, { currentPhase: { name: "Build", state: "active", plannedStart: null, plannedEnd: null } });
@@ -84,5 +84,33 @@ describe("F005", () => {
     r({ endDate: "2026-12-01" }, {});
     expect(screen.getByTestId("due-date").className).toContain("font-mono");
     expect(screen.getByText("50%").className).toContain("font-mono");
+  });
+});
+
+describe("F006", () => {
+  afterEach(cleanup);
+  const people = Array.from({ length: 6 }, (_, i) => ({ id: `u${i}`, full_name: `P${i}`, email: `p${i}@x.io` })) as never[];
+  const r = (p: object, tp?: object) =>
+    render(
+      <ProjectCard project={{ ...(project as object), ...p } as never} workspaceId="w" workspaceSlug="acme"
+        canArchive canSaveTemplate isFavorite={false} healthInput={hi}
+        teamPreview={tp as never} />,
+    );
+  it("test_PL_024_pill_shows_time_left_or_health_label", () => {
+    const a = r({ endDate: "2000-01-01" });
+    expect(screen.getByTestId("time-pill").textContent).toMatch(/overdue/);
+    a.unmount();
+    r({});
+    expect(screen.getByTestId("time-pill").textContent).toBe("On track");
+  });
+  it("test_PL_025_pill_title_has_label_and_reason", () => {
+    r({});
+    const t = screen.getByTestId("time-pill").getAttribute("title") ?? "";
+    expect(t).toContain("On track");
+    expect(t).toContain(" - ");
+  });
+  it("test_PL_026_footer_avatars_limit_4", () => {
+    r({}, { people, total: 6 });
+    expect(screen.getByTestId("avatar-group-overflow").textContent).toBe("+2");
   });
 });

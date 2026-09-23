@@ -380,7 +380,6 @@ export async function ProjectsGridSection({
         return new Map<string, Awaited<ReturnType<typeof getProjectTeamPreview>> extends Map<string, infer V> ? V : never>();
       })
     : new Map();
-  void teamPreviewByProject; // rendered in a later feature
 
   return (
     <>
@@ -425,6 +424,7 @@ export async function ProjectsGridSection({
                 canSaveTemplate={canSaveTemplate}
                 isFavorite={isFavorite}
                 healthInput={healthInput}
+                teamPreview={teamPreviewByProject.get(project.id)}
               />
             );
           })}
