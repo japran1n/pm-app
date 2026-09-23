@@ -11,6 +11,7 @@
 // — see each block's original doc comments below.
 
 import { useEffect, useOptimistic, useRef, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
 import { ChevronDown, Loader2, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
@@ -34,6 +35,12 @@ import { DEFAULT_STATUS_OPTIONS } from "@/components/task/list-status-select";
 // a second, near-identical action for descriptions. See this feature's
 // handoff, Decisions made.
 import { getMentionCandidates } from "@/lib/actions/comments";
+// F011 (TT-023): the estimate input's own parse/format helpers — same
+// "human string in, minutes out" contract lib/time/parse-estimate.ts's own
+// doc comment describes, and the inverse formatDuration already reused by
+// TimeTracking (right column) so both surfaces agree on display format.
+import { parseEstimate } from "@/lib/time/parse-estimate";
+import { formatDuration } from "@/lib/time/format-duration";
 // F002 (missions/20260903-portal, AS-013): the phase Select's option
 // source — same "Server Action called directly from a Client Component
 // useEffect" pattern as getMentionCandidates immediately above, and the
@@ -52,6 +59,14 @@ import { toPlainJson } from "@/lib/comments/rich-text";
 import { setTaskBlockedReason } from "@/lib/actions/tasks";
 import { PageLinksEditor } from "@/components/task/page-links-editor";
 import { CustomFieldsSection } from "@/components/task/custom-fields-section";
+// F012 (TT-024): the "Created by" row's avatar — same component every
+// other person-display surface in this Sheet already uses (assignee
+// picker, Watchers).
+import { UserAvatar } from "@/components/user-avatar";
+// F002 (TT-002, TT-024): the single "11 Sep 2026" date formatter — see
+// that module's doc comment for why every date-display surface goes
+// through it instead of re-formatting locally.
+import { formatTaskDate } from "@/lib/time/format-task-date";
 import { Input } from "@/components/ui/input";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
@@ -194,6 +209,7 @@ export function TaskDetailFields({
   timezone,
   assigneeField,
   statusOptions,
+  sidebarContainer,
 }: {
   /** The task whose fields are being edited — non-null by construction:
    * TaskDetailSheet only renders this component once it has a task. */
@@ -228,6 +244,18 @@ export function TaskDetailFields({
     category?: string | null;
     displayGroup?: string | null;
   }[];
+  /** F010 (TT-021): the Sheet's right-column DOM node. When present, the
+   * status/assignees/priority/phase/type/start-date/due-date rows below
+   * are portaled straight into it (via `createPortal`) instead of
+   * rendering in this component's own return position — see
+   * task-detail-sheet.tsx's `rightColumnEl` doc comment for why a portal
+   * (rather than lifting all of this file's optimistic state up to the
+   * Sheet) is how the split is done. `null`/undefined (a caller that
+   * hasn't been updated yet, e.g. an existing test rendering this
+   * component in isolation) falls back to rendering those rows inline,
+   * in their original position, so nothing crashes or silently
+   * disappears. */
+  sidebarContainer?: HTMLElement | null;
 }) {
   // F1 (status-sitemap-audit mission, AS-4): real per-project statuses
   // when the caller supplied them, else the current default set — never
@@ -255,6 +283,15 @@ export function TaskDetailFields({
   // handling, which nothing here needs (see handlePageSlugBlur's own doc
   // comment).
   const [blockedReason, setBlockedReason] = useState(task?.blockedReason ?? "");
+  // F011 (TT-023): local mirror of `task.estimateMinutes`, same
+  // "re-synced on task change, commit on blur" convention as
+  // pageSlug/blockedReason above — displayed/edited as a human string
+  // ("2h", "90m", "1h 30m") via parseEstimate/formatDuration rather than
+  // a raw minutes count, matching TimeTracking's own display format for
+  // the same column.
+  const [estimateInput, setEstimateInput] = useState(
+    task?.estimateMinutes != null ? formatDuration(task.estimateMinutes) : "",
+  );
   const [pageSlug, setPageSlug] = useState(task?.pageSlug ?? "");
   const [pageOrder, setPageOrder] = useState(
     task?.pageOrder != null ? String(task.pageOrder) : "",
@@ -377,6 +414,12 @@ export function TaskDetailFields({
     setPageSlug(task.pageSlug ?? "");
     setPageOrder(task.pageOrder != null ? String(task.pageOrder) : "");
     setBlockedReason(task.blockedReason ?? "");
+    // F011 (TT-023): same re-sync convention as pageSlug/blockedReason
+    // above — a freshly opened task must show its own estimate, not a
+    // stale one left over from whatever task was previously open.
+    setEstimateInput(
+      task.estimateMinutes != null ? formatDuration(task.estimateMinutes) : "",
+    );
     setDescriptionJson(task.descriptionJson);
     // F023: a newly opened task must never show a confirmed value carried
     // over from whatever task was previously open in this same Sheet.
@@ -861,6 +904,39 @@ export function TaskDetailFields({
   // editTaskSchema's editable-fields set (this is a single, narrowly-
   // scoped column, not a general task edit). Same commit-on-blur, shared
   // `isSavingField` transition convention as pageSlug/pageOrder above.
+  // F011 (TT-023): commits on blur, same shape as handlePageSlugBlur/
+  // handleBlockedReasonBlur below — parses the free-typed human string
+  // ("2h", "90m", "1h 30m") via parseEstimate (lib/time/parse-estimate.ts)
+  // rather than storing it raw; an empty field clears the estimate
+  // (`estimateMinutes: null`) rather than being rejected as invalid, and
+  // unparseable garbage is left uncommitted (input reverts to the last
+  // known-good display) instead of silently coercing to some fallback
+  // number — same "no silent fallback" contract parseEstimate's own doc
+  // comment describes.
+  function handleEstimateBlur() {
+    if (!task) return;
+    const trimmed = estimateInput.trim();
+    if (trimmed === "") {
+      if ((task.estimateMinutes ?? null) === null) return;
+      saveField({ estimateMinutes: null }, "Estimate cleared.");
+      return;
+    }
+    const minutes = parseEstimate(trimmed);
+    if (minutes === null) {
+      toast.error('Enter an estimate like "2h", "90m", or "1h 30m".');
+      setEstimateInput(
+        task.estimateMinutes != null ? formatDuration(task.estimateMinutes) : "",
+      );
+      return;
+    }
+    if (minutes === task.estimateMinutes) {
+      setEstimateInput(formatDuration(minutes));
+      return;
+    }
+    setEstimateInput(formatDuration(minutes));
+    saveField({ estimateMinutes: minutes }, "Estimate updated.");
+  }
+
   function handleBlockedReasonBlur() {
     if (!task) return;
     const trimmed = blockedReason.trim();
@@ -939,13 +1015,59 @@ export function TaskDetailFields({
         />
       </div>
 
-      {/* Metadata block: status/priority/assignee/due date grouped
-          together in a dense grid so a reader can scan the
-          important fields before scrolling past the description or
-          any of the list-heavy sections below. */}
-      <div className="grid grid-cols-2 gap-x-4 gap-y-4 rounded-lg border bg-muted/30 p-4 sm:grid-cols-5">
+      {/* F010 (TT-021): status/assignees/priority/phase/type/dates used
+          to live together in a dense metadata grid right here. They now
+          render as a vertical label+control stack in the Sheet's right
+          column (`sidebarRows` below, portaled via `sidebarContainer`)
+          — Estimate is the one field from that old grid that stays in
+          this main column (out of this feature's assigned scope; see
+          this feature's handoff). */}
+      <div className="rounded-lg border bg-muted/30 p-4">
+        {/* F011 (TT-023): free-typed estimate, human strings in ("2h",
+            "90m", "1h 30m"), parsed via lib/time/parse-estimate.ts and
+            persisted as `estimate_minutes` through the shared
+            saveField/editTask path every other field in this file uses.
+            Commits on blur, same convention as Page slug/Page order
+            below; an unparseable value reverts to the last known-good
+            display rather than silently saving 0/NaN (see
+            handleEstimateBlur's own doc comment). */}
         <div className="flex flex-col gap-2">
-          <Label htmlFor={`task-status-${task.id}`}>Status</Label>
+          <Label
+            htmlFor={`task-estimate-${task.id}`}
+            className="text-muted-foreground"
+          >
+            Estimate
+          </Label>
+          <Input
+            id={`task-estimate-${task.id}`}
+            value={estimateInput}
+            disabled={isSavingField || !canEdit}
+            title={editDisabledTitle}
+            placeholder="e.g. 2h, 90m, 1h 30m"
+            className="font-mono text-sm"
+            data-testid="task-estimate-input"
+            onChange={(changeEvent) => setEstimateInput(changeEvent.target.value)}
+            onBlur={handleEstimateBlur}
+          />
+        </div>
+      </div>
+
+      {/* F010 (TT-021): the right column's label+control stack — see
+          this const's own doc comment on `sidebarContainer` above for
+          why this is a plain JSX value portaled below rather than a
+          second copy of this component's state. Each row's label uses
+          `text-sm text-muted-foreground mb-1` and a full-width control,
+          per this feature's clarified spacing. */}
+      {(() => {
+        const sidebarRows = (
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col">
+              <Label
+                htmlFor={`task-status-${task.id}`}
+                className="text-sm text-muted-foreground mb-1"
+              >
+                Status
+              </Label>
           {/* F158 (AS-280, AS-281): status editing ships with this
               feature via moveTaskStatus (see handleStatusChange
               above) — the SAME action the board's drag-and-drop
@@ -1194,6 +1316,37 @@ export function TaskDetailFields({
           aria-label="Due date"
         />
         </div>
+
+        {/* F011 (TT-023): free-typed estimate, human strings in ("2h",
+            "90m", "1h 30m"), parsed via lib/time/parse-estimate.ts and
+            persisted as `estimate_minutes` through the shared
+            saveField/editTask path every other field in this grid uses.
+            Commits on blur, same convention as Page slug/Page order
+            above; an unparseable value reverts to the last known-good
+            display rather than silently saving 0/NaN (see
+            handleEstimateBlur's own doc comment). Displayed/edited in
+            the same human format TimeTracking's estimate row (right
+            column) renders, via the shared formatDuration helper, so
+            the two surfaces never disagree on what "2h" looks like. */}
+        <div className="flex flex-col gap-2">
+          <Label
+            htmlFor={`task-estimate-${task.id}`}
+            className="text-muted-foreground"
+          >
+            Estimate
+          </Label>
+          <Input
+            id={`task-estimate-${task.id}`}
+            value={estimateInput}
+            disabled={isSavingField || !canEdit}
+            title={editDisabledTitle}
+            placeholder="e.g. 2h, 90m, 1h 30m"
+            className="font-mono text-sm"
+            data-testid="task-estimate-input"
+            onChange={(changeEvent) => setEstimateInput(changeEvent.target.value)}
+            onBlur={handleEstimateBlur}
+          />
+        </div>
       </div>
 
       {/* Blocked reason: free text, shown only while this task's
@@ -1339,6 +1492,55 @@ export function TaskDetailFields({
           placement (moved here with the status handler in the ARCH-005
           extraction) has no effect on where it visually renders. */}
       {blockedDoneDialog}
+
+      {/* F012 (TT-024): read-only "Created by" row — author avatar +
+          name + creation date (mono, formatTaskDate's "11 Sep 2026"
+          shape). Placed at the very bottom of this field-editing
+          surface (Clarified implementation): it's the one field here
+          nothing ever edits, so it reads last, after every editable
+          field/section above. The author is looked up against the
+          `members` prop this Sheet already has loaded (no second
+          fetch) — a task whose author has since left the workspace (not
+          in `members`) or whose `authorId` is null/undefined (legacy
+          row predating F012, or a system-generated task) renders
+          nothing at all, per this feature's clarified "if author_id is
+          null, show nothing" answer. */}
+      {task.authorId &&
+        (() => {
+          const author = members.find((m) => m.userId === task.authorId);
+          if (!author) return null;
+          return (
+            <div
+              data-testid="task-created-by"
+              className="flex items-center gap-2 border-t pt-4 text-sm text-muted-foreground"
+            >
+              <span>Created by</span>
+              <UserAvatar
+                person={{
+                  id: author.userId,
+                  name: author.name,
+                  email: author.email,
+                  avatarUrl: author.avatarUrl,
+                }}
+                size="sm"
+              />
+              <span className="text-foreground">{memberLabelFor(author)}</span>
+              {task.createdAt && (
+                <span className="font-mono text-xs">
+                  {formatTaskDate(task.createdAt.slice(0, 10))}
+                </span>
+              )}
+            </div>
+          );
+        })()}
     </>
   );
+}
+
+// F012 (TT-024): same "name, else email, else raw id" fallback chain as
+// task-detail-sheet.tsx's own (unexported) `memberLabel` — duplicated
+// here rather than imported, since that helper isn't exported and this
+// component already has its own separate module boundary (ARCH-005).
+function memberLabelFor(member: TaskDetailSheetMember): string {
+  return member.name || member.email || member.userId;
 }
