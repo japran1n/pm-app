@@ -16,6 +16,41 @@ import ProjectsLoading from "@/app/(workspace)/w/[workspaceSlug]/projects/loadin
 describe("F009", () => {
   afterEach(cleanup);
 
+  it("test_PL_031_skeleton_inner_panel_matches_card_inner_panel_surface", () => {
+    // F016 changed the loaded ProjectCard's inner panel (data-testid
+    // "card-inner-panel") to bg-secondary. The skeleton's inner panel must
+    // use the same surface class so there is no hydration/repaint jump
+    // when the real card mounts over the skeleton.
+    const cardSource = readFileSync(
+      join(process.cwd(), "components/projects/project-card.tsx"),
+      "utf8",
+    );
+    const skeletonSource = readFileSync(
+      join(
+        process.cwd(),
+        "app/(workspace)/w/[workspaceSlug]/projects/loading.tsx",
+      ),
+      "utf8",
+    );
+
+    const cardInnerPanelLine = cardSource
+      .split("\n")
+      .find((line) => line.includes('data-testid="card-inner-panel"'));
+    expect(cardInnerPanelLine).toBeDefined();
+
+    // The className is on the following line in project-card.tsx.
+    const cardInnerPanelIndex = cardSource.indexOf('data-testid="card-inner-panel"');
+    const cardSnippet = cardSource.slice(cardInnerPanelIndex, cardInnerPanelIndex + 200);
+    expect(cardSnippet).toContain("bg-secondary");
+
+    const { container } = render(<ProjectsLoading />);
+    const skeletonInnerPanel = container.querySelector(".rounded-lg.bg-secondary");
+    expect(skeletonInnerPanel).not.toBeNull();
+
+    expect(skeletonSource).toContain("rounded-lg bg-secondary");
+    expect(cardSnippet).toContain("rounded-lg bg-secondary");
+  });
+
   it("test_PL_031_grid_has_four_responsive_breakpoints", () => {
     const { container } = render(<ProjectsLoading />);
     const grid = container.querySelector(".grid");
