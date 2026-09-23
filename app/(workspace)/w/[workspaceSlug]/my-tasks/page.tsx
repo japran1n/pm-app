@@ -263,6 +263,7 @@ export default async function MyTasksPage({
                   <TableRow className="hover:bg-transparent">
                     <TableHead>Key</TableHead>
                     <TableHead>Title</TableHead>
+                    <TableHead>Project</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Priority</TableHead>
                     {/* Portal-parity fix: Type/Estimate/Logged added to

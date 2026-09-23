@@ -89,23 +89,16 @@ export function MyTaskRowItem({
           clientVisible={row.clientVisible}
           pendingClientApproval={row.pendingClientApproval}
           trailing={
-            <>
-              {/* AS-439: which project this task belongs to. */}
-              <Badge variant="outline" className="shrink-0">
-                {row.projectName}
+            row.isWatched && !row.isAssigned ? (
+              <Badge variant="secondary" className="shrink-0">
+                Watching
               </Badge>
-              {/* F231 (AS-441): visually distinguish a watched-only row
-                  (not assigned) from an assigned one — a task that is
-                  both assigned and watched shows only the assigned
-                  styling. */}
-              {row.isWatched && !row.isAssigned && (
-                <Badge variant="secondary" className="shrink-0">
-                  Watching
-                </Badge>
-              )}
-            </>
+            ) : undefined
           }
         />
+      </TableCell>
+      <TableCell className="text-sm text-muted-foreground">
+        {row.projectName}
       </TableCell>
       {/* stopPropagation: same convention as TaskListTable's Status
           cell — interacting with the dropdown changes status, it doesn't

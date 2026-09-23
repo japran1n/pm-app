@@ -49,13 +49,20 @@ export function TaskTitleCell({
           shown — see TaskListTable's original comment for the pairing
           rationale (icon + sr-only text, never color alone). */}
       {clientVisible && (
-        <span
-          className="inline-flex shrink-0 items-center text-muted-foreground"
-          data-testid="client-visible-indicator"
-        >
-          <Eye className="size-3.5" aria-hidden="true" />
-          <span className="sr-only">Client can see this task</span>
-        </span>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <span
+                className="inline-flex shrink-0 items-center text-emerald-500"
+                data-testid="client-visible-indicator"
+              >
+                <Eye className="size-3.5" aria-hidden="true" />
+                <span className="sr-only">Client can see this task</span>
+              </span>
+            }
+          />
+          <TooltipContent>Client can see this task</TooltipContent>
+        </Tooltip>
       )}
       {pendingClientApproval && (
         <span
