@@ -450,30 +450,6 @@ function SidebarContent({
         </div>
       </div>
 
-      <div className="flex flex-col gap-2 px-3 pt-3">
-        <NewMenu
-          workspaceSlug={workspaceSlug}
-          workspaceId={currentWorkspaceId}
-          isGuest={isGuest}
-          onNavigate={onNavigate}
-        />
-        {/* F014: the notification bell that used to sit here is gone --
-            its unread count is now the "Inbox" nav item's own badge below,
-            and its realtime side effects moved to
-            components/notifications/notifications-realtime-effects.tsx
-            (mounted once by the workspace layout, not here). */}
-        <button
-          type="button"
-          onClick={openSearch}
-          className="flex h-8 w-full min-w-0 items-center gap-2 rounded-md border bg-transparent px-2 text-sm font-medium text-muted-foreground transition-colors duration-200 hover:border-[var(--border-control-hover)] hover:bg-muted/50 hover:text-foreground"
-        >
-          <Search className="size-4 shrink-0" aria-hidden="true" />
-          <span className="flex-1 text-left">Search</span>
-          <kbd className="font-mono text-xs text-muted-foreground">
-            {isMac ? "⌘K" : "Ctrl K"}
-          </kbd>
-        </button>
-      </div>
 
       {/* F253 (AS-491): anchor target for the onboarding tour's "sidebar"
           step. Always rendered regardless of role — the skip rule in
