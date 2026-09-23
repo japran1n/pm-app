@@ -56,6 +56,9 @@ export type EditTaskResult = ActionResult<{
         // F006c (missions/20260903-portal, AS-013): mirrors pageSlug's
         // own always-present convention above.
         phaseId: string | null;
+        // F017 (TT-040, TT-042): mirrors phaseId's own always-present
+        // convention above. Never null — `tasks.billable` is `not null`.
+        billable: boolean;
       }>;
 
 // Edits a task's title/description/priority/due date (F037: AS-054,
@@ -296,6 +299,10 @@ export async function editTask(
     // assignment. `null` clears it; a validated (see the cross-project
     // check above) uuid sets it.
     phase_id?: string | null;
+    // F017 (TT-040, TT-042): mirrors `tasks.billable` (not null, default
+    // true). Not nullable — see editableFields.billable's own comment in
+    // lib/validation/tasks.ts.
+    billable?: boolean;
   } = {};
   if ("title" in parsed.data.updates) {
     updatePayload.title = parsed.data.updates.title;
@@ -327,6 +334,9 @@ export async function editTask(
   if ("phaseId" in parsed.data.updates) {
     updatePayload.phase_id = parsed.data.updates.phaseId;
   }
+  if ("billable" in parsed.data.updates) {
+    updatePayload.billable = parsed.data.updates.billable;
+  }
   if (sanitisedDescriptionJson !== undefined) {
     updatePayload.description_json = sanitisedDescriptionJson as Json;
   }
@@ -336,7 +346,7 @@ export async function editTask(
     .update(updatePayload)
     .eq("id", parsed.data.taskId)
     .select(
-      "id, title, description, description_json, priority, due_date, start_date, estimate_minutes, recurrence, page_slug, page_order, phase_id",
+      "id, title, description, description_json, priority, due_date, start_date, estimate_minutes, recurrence, page_slug, page_order, phase_id, billable",
     )
     .single();
 
@@ -546,6 +556,7 @@ export async function editTask(
       // F006c (missions/20260903-portal, AS-013): mirrors pageSlug/
       // pageOrder's own always-present convention above.
       phaseId: updated.phase_id,
+      billable: updated.billable,
     },
   };
 }

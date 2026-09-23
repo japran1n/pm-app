@@ -87,6 +87,12 @@ export const createTaskSchema = z.object({
   // one (e.g. a future picker, or `duplicateTask` preserving the
   // source's type), it must be a real, non-empty id — never "no type".
   taskTypeId: z.string().uuid("Invalid task type.").optional(),
+  // F017 (TT-040, TT-042): mirrors `tasks.billable` (default true) added by
+  // supabase/migrations/20261129000000_tasks_billable.sql. Optional —
+  // when omitted, the DB column's own `not null default true` applies, so
+  // every existing/new task stays billable unless a caller explicitly
+  // opts out.
+  billable: z.boolean().optional(),
 });
 
 export type CreateTaskInput = z.infer<typeof createTaskSchema>;
@@ -287,6 +293,12 @@ const editableFields = z.object({
   // mirroring lib/actions/phases.ts's own `resolveWorkspace` shape, see
   // this schema's use below.
   phaseId: z.string().uuid("Invalid phase.").nullable(),
+  // F017 (TT-040, TT-042): mirrors `tasks.billable` (not null, default
+  // true) added by supabase/migrations/20261129000000_tasks_billable.sql.
+  // Not nullable — unlike the clearable fields above, "billable" is
+  // always a concrete true/false on the row, so there is no "clear it
+  // back to unset" state to represent here.
+  billable: z.boolean(),
 });
 
 const partialEditableFields = editableFields.partial();

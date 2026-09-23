@@ -3457,6 +3457,7 @@ export type Database = {
         Row: {
           assignee_id: string | null
           author_id: string
+          billable: boolean
           blocked_reason: string | null
           client_visible: boolean
           component_id: string | null
@@ -3497,6 +3498,7 @@ export type Database = {
         Insert: {
           assignee_id?: string | null
           author_id: string
+          billable?: boolean
           blocked_reason?: string | null
           client_visible?: boolean
           component_id?: string | null
@@ -3537,6 +3539,7 @@ export type Database = {
         Update: {
           assignee_id?: string | null
           author_id?: string
+          billable?: boolean
           blocked_reason?: string | null
           client_visible?: boolean
           component_id?: string | null
@@ -4730,6 +4733,7 @@ export type Database = {
         Returns: {
           assignee_id: string | null
           author_id: string
+          billable: boolean
           blocked_reason: string | null
           client_visible: boolean
           component_id: string | null
@@ -4779,6 +4783,7 @@ export type Database = {
         Returns: {
           assignee_id: string | null
           author_id: string
+          billable: boolean
           blocked_reason: string | null
           client_visible: boolean
           component_id: string | null
