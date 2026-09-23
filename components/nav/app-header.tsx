@@ -20,7 +20,6 @@
 import { HeaderSearch } from "@/components/nav/header-search";
 import { AppBreadcrumb } from "@/components/nav/app-breadcrumb";
 import { GlobalTimeTracker } from "@/components/time/global-time-tracker";
-import { WhatsNewPanel } from "@/components/whats-new/whats-new-panel";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { getActiveTimer, getMyRecentTimeEntries } from "@/lib/queries/time-entries";
 
@@ -58,10 +57,6 @@ export async function AppHeader({
         />
       </div>
       <HeaderSearch workspaceId={workspaceId} workspaceSlug={workspaceSlug} />
-      {/* Feature request: static in-app "what's new" panel -- placed next
-          to search/time-tracker in this always-visible header, same
-          reachability convention as those two. */}
-      <WhatsNewPanel />
       <GlobalTimeTracker
         workspaceId={workspaceId}
         workspaceSlug={workspaceSlug}

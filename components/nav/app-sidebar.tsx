@@ -127,9 +127,6 @@ function navGroups(
   approvalsBadge?: React.ReactNode,
   requestsBadge?: React.ReactNode,
   chatUnreadBadge?: React.ReactNode,
-  // F014 (SB-053, SB-054, SB-055): the Inbox nav item's own aggregate
-  // badge -- see inboxBadge's own prop doc comment on SidebarContent.
-  inboxBadge?: React.ReactNode,
 ): { label: string | null; items: NavItem[] }[] {
   const countBadge = (count: number) =>
     typeof count === "number" && count > 0 ? (
@@ -145,13 +142,7 @@ function navGroups(
     // unread notifications + pending approvals + open client requests
     // (lib/inbox/inbox-badge-count.ts), replacing the removed notification
     // bell's own unread badge.
-    // F048 (SB-053, scrutiny FU-M4-1): moved to the front of the primary
-    // nav group -- the assertion requires Inbox be the *first* item, not
-    // merely present, since it's now the single daily entry point for
-    // everything that used to be scattered across the removed bell,
-    // Approvals, Client requests and Watching links.
-    { href: `/w/${workspaceSlug}/inbox`, label: "Inbox", icon: Inbox, badge: inboxBadge },
-    { href: `/w/${workspaceSlug}`, label: "Dashboard", icon: LayoutDashboard, exact: true },
+      { href: `/w/${workspaceSlug}`, label: "Dashboard", icon: LayoutDashboard, exact: true },
     // F230 (AS-435): "My Tasks" placed above "Projects" -- per the
     // feature spec's own "since this is the daily-driver screen" note.
     { href: `/w/${workspaceSlug}/my-tasks`, label: "My Tasks", icon: ListChecks },
@@ -402,7 +393,6 @@ function SidebarContent({
     approvalsBadge,
     requestsBadge,
     chatUnreadBadge,
-    inboxBadge,
   );
 
   // F060 (SB-056): every `?tab=` value a sibling item on the same path
