@@ -22,10 +22,16 @@ import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
+  TableFooter,
   TableHead,
   TableHeader,
   TableRow,
+  TableCell,
 } from "@/components/ui/table";
+// F008 (TT-011, TT-012): same pure minutes -> "X hr Y min" helper the row
+// cells already use (MyTaskRowItem) -- the footer sums must render through
+// the identical formatter, never a bespoke one.
+import { formatDuration } from "@/lib/time/format-duration";
 // Portal-parity fix: the row itself now lives in its own Client Component
 // so this page can stay a Server Component — same "row is the only
 // interactive part" boundary <TaskListTable> uses for its own rows.
@@ -229,6 +235,17 @@ export default async function MyTasksPage({
       {BUCKET_ORDER.map(({ key, label }) => {
         const rows = realBuckets[key];
         if (rows.length === 0) return null;
+        // TT-011/TT-012: sums must equal the sum of the VISIBLE rows in
+        // this section only (respecting the includeWatched filter already
+        // applied upstream by getMyTasks) -- never a workspace-wide total.
+        // getMyTasks never returns subtasks alongside their parent in this
+        // query (see lib/queries/my-tasks.ts), so summing `rows` directly
+        // cannot double count a subtask against its parent.
+        const estimateSum = rows.reduce(
+          (sum, row) => sum + (row.estimateMinutes ?? 0),
+          0,
+        );
+        const loggedSum = rows.reduce((sum, row) => sum + row.totalMinutes, 0);
         return (
           <section key={key} className="flex flex-col gap-2">
             <h2 className="text-sm font-medium text-muted-foreground">
@@ -273,6 +290,24 @@ export default async function MyTasksPage({
                     />
                   ))}
                 </TableBody>
+                {/* TT-011: every bucket section carries the same footer
+                    sums, matching the header's own column widths (colSpan
+                    across Key/Title/Status/Priority/Type, then Due date
+                    left blank, Estimate/Logged carrying the totals). */}
+                <TableFooter>
+                  <TableRow className="hover:bg-transparent">
+                    <TableCell colSpan={5} className="font-mono text-xs text-muted-foreground">
+                      {rows.length} {rows.length === 1 ? "task" : "tasks"}
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-xs text-muted-foreground" />
+                    <TableCell className="text-right font-mono text-xs text-muted-foreground">
+                      {formatDuration(estimateSum)}
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-xs text-muted-foreground">
+                      {formatDuration(loggedSum)}
+                    </TableCell>
+                  </TableRow>
+                </TableFooter>
               </Table>
             </div>
           </section>
