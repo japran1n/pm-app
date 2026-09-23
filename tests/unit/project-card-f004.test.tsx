@@ -45,3 +45,44 @@ describe("F004", () => {
     expect(b.getByTestId("avatar-group-overflow").textContent).toBe("+3");
   });
 });
+
+describe("F005", () => {
+  afterEach(cleanup);
+  const r = (p: object, h: object) =>
+    render(
+      <ProjectCard project={{ ...(project as object), ...p } as never} workspaceId="w" workspaceSlug="acme"
+        canArchive canSaveTemplate isFavorite={false}
+        healthInput={{ ...(hi as object), ...h } as never} />,
+    );
+  it("test_PL_020_anatomy_due_date_progress_label_in_panel", () => {
+    r({ endDate: "2026-12-01" }, {});
+    expect(screen.getByText("Progress")).toBeTruthy();
+    expect(screen.getByTestId("due-date").textContent).toBe("2026-12-01");
+  });
+  it("test_PL_021_subtitle_phase_then_description_line_then_none", () => {
+    const { unmount } = r({ description: "\nfirst\nsecond" }, { currentPhase: { name: "Build", state: "active", plannedStart: null, plannedEnd: null } });
+    expect(screen.getByText("Build")).toBeTruthy();
+    expect(screen.queryByText("first")).toBeNull();
+    unmount();
+    const u2 = r({ description: "\nfirst\nsecond" }, {});
+    expect(screen.getByText("first")).toBeTruthy();
+    expect(screen.queryByText(/second/)).toBeNull();
+    u2.unmount();
+    r({ description: null }, {});
+    expect(screen.queryByText("No description.")).toBeNull();
+  });
+  it("test_PL_022_progress_percent_and_zero_tasks", () => {
+    const u = r({}, { totalTaskCount: 3, doneTaskCount: 1 });
+    expect(screen.getByText("33%")).toBeTruthy();
+    expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("33");
+    u.unmount();
+    r({}, { totalTaskCount: 0, doneTaskCount: 0 });
+    expect(screen.getByText("No tasks yet")).toBeTruthy();
+    expect(screen.queryByRole("progressbar")).toBeNull();
+  });
+  it("test_PL_027_data_is_mono", () => {
+    r({ endDate: "2026-12-01" }, {});
+    expect(screen.getByTestId("due-date").className).toContain("font-mono");
+    expect(screen.getByText("50%").className).toContain("font-mono");
+  });
+});

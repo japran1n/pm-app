@@ -37,6 +37,7 @@ export type ProjectListItem = {
   description: string | null;
   startDate: string | null;
   endDate: string | null;
+  targetLaunchDate?: string | null;
   createdAt: string;
   // F145 (AS-257): the short project key (e.g. "PM") assigned at creation
   // time by a BEFORE INSERT trigger — nullable only for defensiveness
@@ -84,7 +85,7 @@ export async function getWorkspaceProjects(
     // typed column reference — see the same not-yet-regenerated
     // `Database` type note in lib/actions/projects.ts's
     // `ProjectsRowWithSidebarPosition`.
-    .select("id, name, description, start_date, end_date, created_at, key, icon, sidebar_position")
+    .select("id, name, description, start_date, end_date, target_launch_date, created_at, key, icon, sidebar_position")
     .eq("workspace_id", workspaceId)
     .is("deleted_at", null)
     .order("sidebar_position", { ascending: true, nullsFirst: false })
@@ -96,6 +97,7 @@ export async function getWorkspaceProjects(
         description: string | null;
         start_date: string | null;
         end_date: string | null;
+        target_launch_date?: string | null;
         created_at: string;
         key: string | null;
         icon: string | null;
@@ -119,6 +121,7 @@ export async function getWorkspaceProjects(
     description: project.description,
     startDate: project.start_date,
     endDate: project.end_date,
+    targetLaunchDate: project.target_launch_date ?? null,
     createdAt: project.created_at,
     key: project.key ?? null,
     icon: project.icon ?? null,

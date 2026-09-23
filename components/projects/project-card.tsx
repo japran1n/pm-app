@@ -11,6 +11,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { resolveDueDate } from "@/lib/projects/time-left";
 import { computeProjectHealth } from "@/lib/projects/compute-health";
 import type {
   ProjectHealthQueryInput,
@@ -45,12 +46,21 @@ export function ProjectCard({
       ? 0
       : Math.min(100, Math.max(0, Math.round((doneTasks / totalTasks) * 100)));
 
+  const subtitle =
+    healthInput.currentPhase?.name?.trim() ||
+    (project.description ?? "").split("\n").map((l) => l.trim()).find(Boolean) ||
+    null;
+  const dueDate = resolveDueDate({
+    end_date: project.endDate,
+    target_launch_date: project.targetLaunchDate ?? null,
+  });
+
   return (
     <Card
       key={project.id}
       className="group/card hover-lift flex h-full flex-col"
     >
-      <CardHeader className="flex flex-row items-start justify-between gap-2">
+      <CardHeader className="flex flex-row items-start justify-between gap-2 bg-muted/30">
         <Link
           href={`/w/${workspaceSlug}/projects/${project.id}/list`}
           className="flex flex-1 items-start gap-3"
@@ -74,9 +84,11 @@ export function ProjectCard({
           </span>
           <span className="flex min-w-0 flex-1 flex-col gap-1.5">
             <CardTitle className="line-clamp-1">{project.name}</CardTitle>
-            <CardDescription className="line-clamp-2 flex-1">
-              {project.description || "No description."}
-            </CardDescription>
+            {subtitle ? (
+              <CardDescription className="line-clamp-1">
+                {subtitle}
+              </CardDescription>
+            ) : null}
           </span>
         </Link>
         <div className="flex shrink-0 items-center gap-1">
@@ -113,36 +125,40 @@ export function ProjectCard({
         </div>
       </CardHeader>
       <CardContent className="flex flex-1 flex-col justify-end gap-3">
-        {/* Ad-hoc "Projects page card redesign": the one new
-              metric — a done/total progress bar, derived from
-              `getProjectHealthInputs`'s own `taskRows` (single
-              consistent definition of "done", never mixed with
-              `openTaskCount`'s RPC-based definition below). */}
-        {totalTasks === 0 ? (
-          <p className="text-sm text-muted-foreground">No tasks yet</p>
-        ) : (
-          <div className="flex flex-col gap-1.5">
-            <div
-              role="progressbar"
-              aria-label={`${project.name} task completion`}
-              aria-valuenow={progressPercent}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              className="h-1.5 w-full overflow-hidden rounded-full bg-secondary"
-            >
+        <div className="flex flex-col gap-3 rounded-lg bg-card p-3">
+          <p className="text-sm text-muted-foreground">
+            {dueDate ? (
+              <span data-testid="due-date" className="font-mono">
+                {dueDate}
+              </span>
+            ) : (
+              "No due date"
+            )}
+          </p>
+          {totalTasks === 0 ? (
+            <p className="text-sm text-muted-foreground">No tasks yet</p>
+          ) : (
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Progress</span>
+                <span className="font-mono">{progressPercent}%</span>
+              </div>
               <div
-                className="h-full rounded-full bg-primary transition-[width] duration-200"
-                style={{ width: `${progressPercent}%` }}
-              />
+                role="progressbar"
+                aria-label={`${project.name} task completion`}
+                aria-valuenow={progressPercent}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                className="h-1.5 w-full overflow-hidden rounded-full bg-secondary"
+              >
+                <div
+                  className="h-full rounded-full bg-primary transition-[width] duration-200"
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
             </div>
-            <p className="text-sm text-muted-foreground">
-              <span className="font-mono">
-                {doneTasks}/{totalTasks}
-              </span>{" "}
-              done
-            </p>
-          </div>
-        )}
+          )}
+        </div>
         <div className="flex flex-wrap items-center gap-2">
           {/* AS-034: open (not "done"-category) task count,
                 batched in getWorkspaceProjects. `null` only if
