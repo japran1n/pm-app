@@ -38,6 +38,7 @@ vi.mock("@/lib/queries/projects", () => ({
   getWorkspaceProjects: (...args: unknown[]) => getWorkspaceProjectsMock(...args),
   getFavoriteProjectIds: (...args: unknown[]) => getFavoriteProjectIdsMock(...args),
   getProjectHealthInputs: (...args: unknown[]) => getProjectHealthInputsMock(...args),
+  getProjectTeamPreview: async () => new Map(),
   getArchivedWorkspaceProjects: (...args: unknown[]) =>
     getArchivedWorkspaceProjectsMock(...args),
 }));

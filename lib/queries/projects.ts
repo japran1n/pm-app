@@ -1,5 +1,6 @@
 import { cache } from "react";
 import { logger } from "@/lib/observability/logger";
+import type { UserAvatarPerson } from "@/components/user-avatar";
 
 // Data-fetching for the project list page (F027, AS-027, AS-034, AS-042).
 //
@@ -663,4 +664,57 @@ export async function getMyProjectsProgress(
       if (b.overdueCount !== a.overdueCount) return b.overdueCount - a.overdueCount;
       return a.projectName.localeCompare(b.projectName);
     });
+}
+
+export type ProjectTeamPreview = {
+  people: UserAvatarPerson[];
+  total: number;
+};
+
+// PL-011..PL-013: one batched task_assignees query (inner-joined to open,
+// non-deleted tasks) plus one batched profile lookup, regardless of project
+// count. Up to 4 distinct assignees per project, plus the distinct total.
+export async function getProjectTeamPreview(
+  projectIds: string[],
+): Promise<Map<string, ProjectTeamPreview>> {
+  const result = new Map<string, ProjectTeamPreview>();
+  if (projectIds.length === 0) return result;
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("task_assignees")
+    .select("user_id, tasks!inner(project_id, status, deleted_at)")
+    .in("tasks.project_id", projectIds)
+    .is("tasks.deleted_at", null)
+    .neq("tasks.status", "done");
+  if (error) throw error;
+
+  const byProject = new Map<string, string[]>();
+  for (const row of (data ?? []) as unknown as Array<{
+    user_id: string;
+    tasks: { project_id: string } | { project_id: string }[];
+  }>) {
+    const t = Array.isArray(row.tasks) ? row.tasks[0] : row.tasks;
+    if (!t) continue;
+    const list = byProject.get(t.project_id) ?? [];
+    if (!list.includes(row.user_id)) list.push(row.user_id);
+    byProject.set(t.project_id, list);
+  }
+
+  const shown = new Set<string>();
+  for (const ids of byProject.values()) for (const id of ids.slice(0, 4)) shown.add(id);
+  const profiles = await resolvePeople([...shown]);
+
+  for (const [projectId, ids] of byProject) {
+    result.set(projectId, {
+      total: ids.length,
+      people: ids.slice(0, 4).map((id) => ({
+        id,
+        name: profiles.get(id)?.name ?? null,
+        email: profiles.get(id)?.email ?? null,
+        avatarUrl: profiles.get(id)?.avatarUrl ?? null,
+      })),
+    });
+  }
+  return result;
 }

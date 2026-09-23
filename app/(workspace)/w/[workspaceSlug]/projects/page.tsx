@@ -10,6 +10,7 @@ import {
   getWorkspaceProjects,
   getFavoriteProjectIds,
   getProjectHealthInputs,
+  getProjectTeamPreview,
   getArchivedWorkspaceProjects,
   type ProjectHealthQueryInput,
 } from "@/lib/queries/projects";
@@ -374,6 +375,15 @@ export async function ProjectsGridSection({
         return new Map<string, ProjectHealthQueryInput>();
       })
     : new Map<string, ProjectHealthQueryInput>();
+
+  // PL-012: fails open -- an error yields an empty team preview.
+  const teamPreviewByProject = projects
+    ? await getProjectTeamPreview(projects.map((project) => project.id)).catch((error) => {
+        logger.error("ProjectsPage: failed to load project team preview", { error });
+        return new Map<string, Awaited<ReturnType<typeof getProjectTeamPreview>> extends Map<string, infer V> ? V : never>();
+      })
+    : new Map();
+  void teamPreviewByProject; // rendered in a later feature
 
   return (
     <>
