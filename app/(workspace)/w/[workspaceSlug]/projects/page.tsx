@@ -15,17 +15,9 @@ import {
   type ProjectHealthQueryInput,
 } from "@/lib/queries/projects";
 import { ProjectCard } from "@/components/projects/project-card";
+import { ArchivedProjectCard } from "@/components/projects/archived-project-card";
 import { getWorkspaceProjectTemplateOptions } from "@/lib/queries/templates";
 import { NewProjectDialog } from "@/components/new-project-dialog";
-import { RestoreProjectButton } from "@/components/project/restore-project-button";
-import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { logger } from "@/lib/observability/logger";
 
 // F027 (AS-027, AS-034, AS-042): lists every non-deleted project in the
@@ -232,10 +224,6 @@ export async function ArchivedProjectsSection({
     loadError = true;
   }
 
-  const dateFormatter = new Intl.DateTimeFormat("en-US", {
-    dateStyle: "medium",
-  });
-
   return (
     <>
       {loadError && (
@@ -272,38 +260,14 @@ export async function ArchivedProjectsSection({
       )}
 
       {archivedProjects && archivedProjects.length > 0 && (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {archivedProjects.map((project) => (
-            <Card key={project.id} className="hover-lift">
-              <CardHeader>
-                <CardTitle className="line-clamp-1">{project.name}</CardTitle>
-                <CardDescription className="line-clamp-2">
-                  {project.description || "No description."}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="flex flex-col gap-2">
-                <Badge variant="secondary">
-                  {project.taskCount} task{project.taskCount === 1 ? "" : "s"}
-                </Badge>
-                <p className="text-xs text-muted-foreground">
-                  Archived{" "}
-                  <span className="font-mono">
-                    {dateFormatter.format(new Date(project.archivedAt))}
-                  </span>
-                  {project.archivedByName
-                    ? ` by ${project.archivedByName}`
-                    : ""}
-                </p>
-                {canRestore && (
-                  <div className="pt-1">
-                    <RestoreProjectButton
-                      workspaceId={workspaceId}
-                      project={{ id: project.id, name: project.name }}
-                    />
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+            <ArchivedProjectCard
+              key={project.id}
+              project={project}
+              workspaceId={workspaceId}
+              canRestore={canRestore}
+            />
           ))}
         </div>
       )}
