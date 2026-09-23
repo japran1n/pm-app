@@ -23,6 +23,7 @@
 // parity, not just a lookalike.
 
 import { useRouter } from "next/navigation";
+import { CirclePlay } from "lucide-react";
 
 import { formatTaskKey } from "@/lib/tasks/task-key";
 import { formatDuration } from "@/lib/time/format-duration";
@@ -146,6 +147,11 @@ export function MyTaskRowItem({
       <TableCell className="text-right font-mono text-xs tabular-nums text-muted-foreground">
         {row.estimateMinutes ? formatDuration(row.estimateMinutes) : "—"}
       </TableCell>
+      {/* F006 (TT-013, TT-014): same play icon / "Add time" / destructive-
+          when-over-estimate treatment TaskListTable's own Logged cell
+          uses (see that component's own comment) — clicking anywhere in
+          the cell falls through to the row's own onClick, which already
+          navigates to the task's project board. */}
       <TableCell
         className={
           row.estimateMinutes && row.totalMinutes > row.estimateMinutes
@@ -153,7 +159,10 @@ export function MyTaskRowItem({
             : "text-right font-mono text-xs tabular-nums text-muted-foreground"
         }
       >
-        {row.totalMinutes ? formatDuration(row.totalMinutes) : "—"}
+        <span className="inline-flex items-center justify-end gap-1">
+          <CirclePlay className="size-3 shrink-0" aria-hidden="true" />
+          {row.totalMinutes ? formatDuration(row.totalMinutes) : "Add time"}
+        </span>
       </TableCell>
     </TableRow>
   );
