@@ -93,6 +93,10 @@ describe("AS-480 focus remains in the input after a successful create", () => {
         createdAt: "2026-08-24T00:00:00Z",
         parentTaskId: null,
         number: 1,
+        startDate: null,
+        estimateMinutes: null,
+        tags: [],
+        billable: true,
       },
     });
     const { onCreated } = renderQuickAdd({ status: "todo" });

@@ -92,6 +92,10 @@ function realtimeInsertEvent(row: {
       deleted_at: null,
       updated_at: "2026-08-24T00:00:00Z",
       number: 5,
+      startDate: null,
+      estimateMinutes: null,
+      tags: [],
+      billable: true,
       ...row,
     },
     old: {},
@@ -165,6 +169,10 @@ describe("F249 AS-481: quick-add card appears immediately and reconciles with th
         createdAt: "2026-08-24T00:00:00Z",
         parentTaskId: null,
         number: 5,
+        startDate: null,
+        estimateMinutes: null,
+        tags: [],
+        billable: true,
       },
     });
     await flush();
@@ -231,6 +239,10 @@ describe("F249 AS-481: quick-add card appears immediately and reconciles with th
         createdAt: "2026-08-24T00:00:00Z",
         parentTaskId: null,
         number: 5,
+        startDate: null,
+        estimateMinutes: null,
+        tags: [],
+        billable: true,
       },
     });
     await flush();
@@ -305,6 +317,10 @@ describe("F249 AS-481: quick-add card appears immediately and reconciles with th
         createdAt: "2026-08-24T00:00:00Z",
         parentTaskId: null,
         number: 5,
+        startDate: null,
+        estimateMinutes: null,
+        tags: [],
+        billable: true,
       },
     });
     pending[1]({
@@ -323,6 +339,10 @@ describe("F249 AS-481: quick-add card appears immediately and reconciles with th
         createdAt: "2026-08-24T00:00:00Z",
         parentTaskId: null,
         number: 6,
+        startDate: null,
+        estimateMinutes: null,
+        tags: [],
+        billable: true,
       },
     });
     await flush();

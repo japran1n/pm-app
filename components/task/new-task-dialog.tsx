@@ -20,12 +20,7 @@ import { useRouter } from "next/navigation";
 import { Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
 
-import {
-  createTask,
-  setTaskAssignees,
-  editTask,
-  updateTaskTags,
-} from "@/lib/actions/tasks";
+import { createTask, setTaskAssignees } from "@/lib/actions/tasks";
 import { PRIORITY_LABELS } from "@/lib/task-colors";
 import { PriorityFlag } from "@/components/task/priority-flag";
 // F019 (TT-050): same "human duration string" -> minutes parser used by
@@ -175,9 +170,9 @@ export function NewTaskDialog({
   // rather than pulling in TaskDetailFields' own tag-chip component.
   const [tagsText, setTagsText] = useState("");
   // F017/F018 (TT-041): defaults to true, mirroring `tasks.billable`'s own
-  // DB default (supabase/migrations/20261129000000_tasks_billable.sql) —
-  // only written through editTask after creation when the user actually
-  // flips it away from that default (see handleSubmit below).
+  // DB default (supabase/migrations/20261129000000_tasks_billable.sql).
+  // F020 (TT-051): passed directly on the createTask call (see
+  // handleSubmit below) rather than a follow-up editTask write.
   const [billable, setBillable] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -355,6 +350,15 @@ export function NewTaskDialog({
         // type — leaving it at NO_TASK_TYPE_VALUE keeps the database's
         // own delivery default, unchanged from pre-F118 behaviour.
         taskTypeId !== NO_TASK_TYPE_VALUE ? taskTypeId : undefined,
+        // F020 (TT-051): startDate/estimateMinutes/tags/billable are now
+        // written directly on the same createTask insert, rather than via
+        // a follow-up editTask/updateTaskTags call (F019's original
+        // "createTask has no parameter for these" limitation — see this
+        // feature's own handoff).
+        startDate || null,
+        estimateMinutes,
+        trimmedTags.length > 0 ? trimmedTags : undefined,
+        billable,
       );
 
       if (result.ok) {
@@ -399,51 +403,11 @@ export function NewTaskDialog({
             return;
           }
         }
-        // F019 (TT-050): same "createTask, then a second write for
-        // anything its own signature doesn't cover" shape as the
-        // multi-assignee/phase calls above — createTask has no
-        // startDate/estimateMinutes/billable parameters (out of this
-        // feature's Files scope to add them), so those are written via
-        // editTask right after creation, only when the user actually
-        // supplied/changed them away from "no value"/the DB default.
-        // Never a redundant write for a task where none of these three
-        // fields were touched.
-        const editUpdates: {
-          startDate?: string;
-          estimateMinutes?: number | null;
-          billable?: boolean;
-        } = {};
-        if (startDate) editUpdates.startDate = startDate;
-        if (estimateMinutes !== null) editUpdates.estimateMinutes = estimateMinutes;
-        if (!billable) editUpdates.billable = billable;
-        if (Object.keys(editUpdates).length > 0) {
-          const editResult = await editTask(result.data.id, editUpdates);
-          if (!editResult.ok) {
-            toast.error(
-              `${result.data.title} created, but some fields couldn't be saved: ${editResult.error}`,
-            );
-            setOpen(false);
-            resetForm();
-            router.refresh();
-            return;
-          }
-        }
-        // F019 (TT-050): tags have no createTask parameter either — same
-        // "second write, only when non-empty" rationale as editUpdates
-        // above, using the same updateTaskTags Server Action the task
-        // detail sheet's own tags field (F041) already writes through.
-        if (trimmedTags.length > 0) {
-          const tagsResult = await updateTaskTags(result.data.id, trimmedTags);
-          if (!tagsResult.ok) {
-            toast.error(
-              `${result.data.title} created, but tags couldn't be saved: ${tagsResult.error}`,
-            );
-            setOpen(false);
-            resetForm();
-            router.refresh();
-            return;
-          }
-        }
+        // F020 (TT-051): startDate/estimateMinutes/tags/billable are now
+        // persisted directly by the createTask call above — no follow-up
+        // editTask/updateTaskTags write is needed for them any more (see
+        // F019's original handoff for why that two-step shape existed,
+        // and this feature's handoff for why it was closed).
         toast.success(`${result.data.title} created.`);
         setOpen(false);
         resetForm();

@@ -27,6 +27,13 @@ export type CreateTaskResult = ActionResult<{
         // already destructures only the specific fields it needs, so this
         // additive field is backward compatible.
         number: number;
+        // F020 (TT-051): the same "additive, backward compatible" fields
+        // as `number` above — every existing caller destructures only what
+        // it needs.
+        startDate: string | null;
+        estimateMinutes: number | null;
+        tags: string[];
+        billable: boolean;
       }>;
 
 // Creates a task within a project (AS-043, AS-044, AS-045, AS-046). Pattern
@@ -100,6 +107,13 @@ export async function createTask(
   // pre-F118 caller (quick-add, templates, recurrence, the extension
   // route) already relies on. Only the New Task dialog supplies this.
   taskTypeId?: string | null,
+  // F020 (TT-051): new trailing optional params — appended after
+  // taskTypeId so every existing positional caller (quick-add, subtask
+  // list, seed script, tests) keeps compiling unchanged.
+  startDate?: string | null,
+  estimateMinutes?: number | null,
+  tags?: string[],
+  billable?: boolean,
 ): Promise<CreateTaskResult> {
   const { supabase, user } = await getCurrentUser();
 
@@ -119,6 +133,10 @@ export async function createTask(
       dueDate,
       parentTaskId,
       taskTypeId,
+      startDate,
+      estimateMinutes,
+      tags,
+      billable,
     },
     // F306 (D9/FU-3 scrutiny fix, AS-380): the caller's own authenticated
     // session, so a task created with an initial assignee can notify that

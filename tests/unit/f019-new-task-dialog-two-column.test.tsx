@@ -111,7 +111,11 @@ describe("NewTaskDialog two-column layout (F019, TT-050)", () => {
     expect(screen.getByLabelText("Billable")).toBeInTheDocument();
   });
 
-  it("test_TT_050_estimate_text_like_2h_is_parsed_and_saved_via_editTask_after_create", async () => {
+  // F020 (TT-051): createTask now accepts estimateMinutes/tags/billable/
+  // startDate directly on the same insert — this dialog no longer issues a
+  // follow-up editTask/updateTaskTags call for them (see this feature's
+  // handoff for why F019's original two-step shape was closed).
+  it("test_TT_050_TT_051_estimate_text_like_2h_is_parsed_and_passed_directly_to_createTask", async () => {
     render(
       createElement(NewTaskDialog, {
         projectId: "11111111-1111-1111-1111-111111111111",
@@ -131,15 +135,15 @@ describe("NewTaskDialog two-column layout (F019, TT-050)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create Task" }));
 
     await waitFor(() => expect(createTask).toHaveBeenCalled());
-    await waitFor(() =>
-      expect(editTask).toHaveBeenCalledWith(
-        "t1",
-        expect.objectContaining({ estimateMinutes: 120 }),
-      ),
-    );
+    const call = createTask.mock.calls[0]! as unknown[];
+    // positional args: projectId, title, description, status, priority,
+    // assigneeId, dueDate, parentTaskId, taskTypeId, startDate,
+    // estimateMinutes, tags, billable
+    expect(call[10]).toBe(120);
+    expect(editTask).not.toHaveBeenCalled();
   });
 
-  it("test_TT_050_tags_are_split_trimmed_and_saved_via_updateTaskTags_after_create", async () => {
+  it("test_TT_050_TT_051_tags_are_split_trimmed_and_passed_directly_to_createTask", async () => {
     render(
       createElement(NewTaskDialog, {
         projectId: "11111111-1111-1111-1111-111111111111",
@@ -159,9 +163,9 @@ describe("NewTaskDialog two-column layout (F019, TT-050)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create Task" }));
 
     await waitFor(() => expect(createTask).toHaveBeenCalled());
-    await waitFor(() =>
-      expect(updateTaskTags).toHaveBeenCalledWith("t1", ["design", "urgent"]),
-    );
+    const call = createTask.mock.calls[0]! as unknown[];
+    expect(call[11]).toEqual(["design", "urgent"]);
+    expect(updateTaskTags).not.toHaveBeenCalled();
   });
 
   it("test_TT_052_empty_title_blocks_submit_and_never_calls_createTask", async () => {

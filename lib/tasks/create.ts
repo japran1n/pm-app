@@ -80,6 +80,15 @@ export async function createTaskForUser(
     // `delivery` type", exactly as every other insert path that doesn't
     // (yet) offer a picker already relies on.
     taskTypeId?: string | null;
+    // F020 (TT-051): a task's initial start date, estimate, tags, and
+    // billable flag — all written on the SAME insert as every other field
+    // above, rather than through a follow-up editTask/updateTaskTags call.
+    // Optional/nullable/omittable, same conventions as their sibling
+    // fields in createTaskSchema.
+    startDate?: string | null;
+    estimateMinutes?: number | null;
+    tags?: string[];
+    billable?: boolean;
   },
   // F306 (D9/FU-3 scrutiny fix, AS-380): optional caller-session client,
   // used ONLY to fan out a `task_assigned` notification when this call
@@ -102,6 +111,10 @@ export async function createTaskForUser(
     dueDate: input.dueDate ?? null,
     parentTaskId: input.parentTaskId ?? null,
     taskTypeId: input.taskTypeId ?? undefined,
+    startDate: input.startDate ?? null,
+    estimateMinutes: input.estimateMinutes ?? null,
+    tags: input.tags ?? undefined,
+    billable: input.billable ?? undefined,
   });
 
   if (!parsed.success) {
@@ -354,9 +367,25 @@ export async function createTaskForUser(
       // column default (false), same as every pre-F116 insert already
       // did.
       ...(defaultClientVisible !== null ? { client_visible: defaultClientVisible } : {}),
+      // F020 (TT-051): start date, estimate, tags, and billable are all
+      // written directly on this insert now, rather than requiring a
+      // follow-up editTask/updateTaskTags call. Each stays omitted from
+      // the insert payload when not supplied, so the column's own DB
+      // default (billable/tags) or NULL (start_date/estimate_minutes)
+      // applies exactly as before this feature.
+      ...(parsed.data.startDate !== undefined
+        ? { start_date: parsed.data.startDate }
+        : {}),
+      ...(parsed.data.estimateMinutes !== undefined
+        ? { estimate_minutes: parsed.data.estimateMinutes }
+        : {}),
+      ...(parsed.data.tags !== undefined ? { tags: parsed.data.tags } : {}),
+      ...(parsed.data.billable !== undefined
+        ? { billable: parsed.data.billable }
+        : {}),
     })
     .select(
-      "id, project_id, title, description, status, priority, assignee_id, due_date, author_id, position, created_at, parent_task_id, number",
+      "id, project_id, title, description, status, priority, assignee_id, due_date, author_id, position, created_at, parent_task_id, number, start_date, estimate_minutes, tags, billable",
     )
     .single();
 
@@ -462,6 +491,10 @@ export async function createTaskForUser(
       createdAt: inserted.created_at,
       parentTaskId: inserted.parent_task_id,
       number: inserted.number,
+      startDate: inserted.start_date,
+      estimateMinutes: inserted.estimate_minutes,
+      tags: inserted.tags,
+      billable: inserted.billable,
     },
   };
 }

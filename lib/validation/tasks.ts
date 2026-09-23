@@ -93,6 +93,64 @@ export const createTaskSchema = z.object({
   // every existing/new task stays billable unless a caller explicitly
   // opts out.
   billable: z.boolean().optional(),
+  // F020 (TT-051): a task's start date, collected by the New Task dialog's
+  // own start-date field (F019). Same "plain YYYY-MM-DD string, format-only
+  // here" convention as dueDate above and editTaskSchema's startDate field
+  // — the real "start date must not be after due date" invariant is the
+  // `tasks_start_date_not_after_due_date` DB CHECK
+  // (supabase/migrations/20260828010000_tasks_start_date.sql), mirrored
+  // below via the cross-field `.superRefine` (AS-146: the client check
+  // never stands alone). Optional/nullable, same as every other
+  // create-time date field in this schema.
+  startDate: z
+    .string()
+    .trim()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Enter a valid start date (YYYY-MM-DD).")
+    .optional()
+    .nullable(),
+  // F020 (TT-051): normalized minute count, already parsed from human
+  // input (e.g. "2h", "90m") via lib/time/parse-estimate.ts before reaching
+  // this schema — mirrors editTaskSchema's own estimateMinutes field and
+  // `tasks_estimate_minutes_positive`
+  // (supabase/migrations/20260822030000_tasks_estimate_minutes.sql).
+  // Optional/nullable — omitted or null both mean "no estimate set".
+  estimateMinutes: z
+    .number()
+    .int("Estimate must be a whole number of minutes.")
+    .positive("Estimate must be greater than zero.")
+    .optional()
+    .nullable(),
+  // F020 (TT-051): mirrors updateTaskTagsSchema's own `tags` field exactly
+  // (same per-tag length limit and array cap) — a task can be created with
+  // its full initial tag set in one write, rather than requiring a second
+  // updateTaskTags call. Optional — omitted means "no tags", the same as
+  // the `tags text[] not null default '{}'` column's own default.
+  tags: z
+    .array(
+      z
+        .string()
+        .trim()
+        .min(1, "Tags cannot be empty.")
+        .max(50, "Tags must be 50 characters or fewer."),
+    )
+    .max(50, "A task can have at most 50 tags.")
+    .optional(),
+}).superRefine((data, ctx) => {
+  // F020 (TT-051): same cross-field check as
+  // partialEditableFieldsWithDateOrder below — only enforced when both
+  // dates are actually present on this create call (mirrors that schema's
+  // own "only when BOTH are present" rule).
+  if (
+    data.startDate != null &&
+    data.dueDate != null &&
+    data.startDate > data.dueDate
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Start date must not be after the due date.",
+      path: ["startDate"],
+    });
+  }
 });
 
 export type CreateTaskInput = z.infer<typeof createTaskSchema>;
