@@ -35,7 +35,7 @@ import {
   useTransition,
   type MouseEvent as ReactMouseEvent,
 } from "react";
-import { ChevronRight, Plus, TriangleAlert } from "lucide-react";
+import { ChevronRight, CirclePlay, Plus, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 
 import { isOverdue } from "@/lib/tasks/is-overdue";
@@ -78,6 +78,7 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableFooter,
   TableHead,
   TableHeader,
   TableRow,
@@ -352,6 +353,21 @@ export function TaskListTable({
 
     return { orderedRows: rows, childCountByParentId: counts };
   }, [tasks, collapsedParentIds]);
+
+  // F007 (TT-010, TT-012): footer sums over exactly the VISIBLE rows —
+  // `orderedRows` already is the collapsed-aware, flattened parent+child
+  // list this table renders (see above), so summing it directly can never
+  // double-count a child whose parent row also appears in the array
+  // (each task appears in `orderedRows` exactly once, parent or child).
+  const footerSums = useMemo(() => {
+    let estimateMinutes = 0;
+    let loggedMinutes = 0;
+    for (const { task } of orderedRows) {
+      estimateMinutes += task.estimateMinutes ?? 0;
+      loggedMinutes += task.totalMinutes ?? 0;
+    }
+    return { count: orderedRows.length, estimateMinutes, loggedMinutes };
+  }, [orderedRows]);
 
   function toggleParentCollapsed(taskId: string) {
     setCollapsedParentIds((current) => {
@@ -966,6 +982,15 @@ export function TaskListTable({
                     ? formatDuration(task.estimateMinutes)
                     : "—"}
                 </TableCell>
+                {/* F006 (TT-013, TT-014): play icon before the duration;
+                    "Add time" (muted) when nothing's been logged yet;
+                    destructive colour when logged minutes exceed the
+                    estimate. Clicking anywhere in the cell falls through to
+                    the row's own onClick (TT-014), which already opens
+                    TaskDetailSheet — no separate stopPropagation here,
+                    unlike the editable cells above, since there is no
+                    inline editor underneath to protect from a double
+                    action. */}
                 <TableCell
                   className={
                     task.estimateMinutes &&
@@ -974,12 +999,32 @@ export function TaskListTable({
                       : "text-right font-mono text-xs tabular-nums text-muted-foreground"
                   }
                 >
-                  {task.totalMinutes ? formatDuration(task.totalMinutes) : "—"}
+                  <span className="inline-flex items-center justify-end gap-1">
+                    <CirclePlay className="size-3 shrink-0" aria-hidden="true" />
+                    {task.totalMinutes ? formatDuration(task.totalMinutes) : "Add time"}
+                  </span>
                 </TableCell>
               </TableRow>
             );
           })}
         </TableBody>
+        {/* F007 (TT-010, TT-012): sums over exactly the visible
+            (already-filtered, collapsed-aware) rows above — see
+            `footerSums`'s own comment for why this can never double-count
+            a subtask whose parent is also shown. */}
+        <TableFooter>
+          <TableRow className="hover:bg-transparent">
+            <TableCell colSpan={8} className="text-xs text-muted-foreground">
+              {footerSums.count} {footerSums.count === 1 ? "task" : "tasks"}
+            </TableCell>
+            <TableCell className="text-right font-mono text-xs tabular-nums text-muted-foreground">
+              {footerSums.estimateMinutes ? formatDuration(footerSums.estimateMinutes) : "—"}
+            </TableCell>
+            <TableCell className="text-right font-mono text-xs tabular-nums text-muted-foreground">
+              {footerSums.loggedMinutes ? formatDuration(footerSums.loggedMinutes) : "—"}
+            </TableCell>
+          </TableRow>
+        </TableFooter>
       </Table>
     </div>
 

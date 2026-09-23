@@ -149,10 +149,15 @@ describe("Portal-parity: My Tasks row uses the shared table row primitives", () 
     expect(screen.getByText("1 hr")).toBeInTheDocument();
   });
 
-  it("test_my_task_row_renders_dash_when_no_estimate_or_logged_time", () => {
+  it("test_my_task_row_renders_dash_for_estimate_and_add_time_for_no_logged_time", () => {
+    // F006 (TT-013): an empty Logged cell reads "Add time" (muted), not
+    // "—" — distinguishing "nobody has logged anything yet" from "sized
+    // at zero", same rationale the Estimate cell's own "—" comment gives
+    // for the estimate side.
     renderRow(makeRow({ estimateMinutes: null, totalMinutes: 0 }));
 
-    expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Add time")).toBeInTheDocument();
   });
 
   it("test_my_task_row_does_not_render_an_assignee_column", () => {

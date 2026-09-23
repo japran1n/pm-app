@@ -26,7 +26,10 @@ import { useRouter } from "next/navigation";
 
 import { formatTaskKey } from "@/lib/tasks/task-key";
 import { formatDuration } from "@/lib/time/format-duration";
-import { formatDueDate } from "@/lib/time/user-timezone";
+// F003 (TT-003): the shared task-date formatter (lib/time/format-task-date.ts)
+// replaces the deprecated `formatDueDate` here.
+import { formatTaskDate } from "@/lib/time/format-task-date";
+import { isOverdue } from "@/lib/tasks/is-overdue";
 import { Badge } from "@/components/ui/badge";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { ListPrioritySelect } from "@/components/task/list-priority-select";
@@ -60,6 +63,7 @@ export function MyTaskRowItem({
   const router = useRouter();
   const key = formatTaskKey(row.projectKey, row.number);
   const href = `/w/${workspaceSlug}/projects/${row.projectId}/board?taskId=${row.id}`;
+  const overdue = isOverdue(row.dueDate, row.status, timezone, row.statusCategory);
 
   return (
     <TableRow
@@ -127,8 +131,14 @@ export function MyTaskRowItem({
           options={taskTypeOptions}
         />
       </TableCell>
-      <TableCell className="text-right font-mono text-xs text-muted-foreground">
-        {row.dueDate ? formatDueDate(row.dueDate, timezone) : "—"}
+      <TableCell
+        className={
+          overdue
+            ? "text-right font-mono text-xs text-destructive"
+            : "text-right font-mono text-xs text-muted-foreground"
+        }
+      >
+        {row.dueDate ? formatTaskDate(row.dueDate, timezone) : "—"}
       </TableCell>
       {/* Portal-parity fix (Estimate/Logged columns): identical "—" for
           no estimate / plain formatDuration rendering TaskListTable's own
