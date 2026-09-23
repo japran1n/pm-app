@@ -289,7 +289,11 @@ export async function getTaskDetail(
       // editor has a real value to hand to setTaskType — task_types(...)
       // below already carries the display name/system_key but not the
       // id itself.
-      "id, title, description, description_json, status, status_id, priority, assignee_id, due_date, start_date, tags, number, project_id, parent_task_id, deleted_at, estimate_minutes, recurrence, recurrence_parent_id, client_visible, pending_client_approval, page_slug, page_order, phase_id, task_type_id, blocked_reason, billable, task_types(name, system_key), projects!inner(key, workspace_id, visibility), project_statuses(category)",
+      // F012 (TT-024): `author_id`/`created_at` added so the detail
+      // sheet's read-only "Created by" row (task-detail-fields.tsx) has
+      // real data — same "one query, no second round trip" convention
+      // as every other field on this select.
+      "id, title, description, description_json, status, status_id, priority, assignee_id, due_date, start_date, tags, number, project_id, parent_task_id, deleted_at, estimate_minutes, recurrence, recurrence_parent_id, client_visible, pending_client_approval, page_slug, page_order, phase_id, task_type_id, blocked_reason, billable, author_id, created_at, task_types(name, system_key), projects!inner(key, workspace_id, visibility), project_statuses(category)",
     )
     .eq("id", parsed.data.taskId)
     .is("deleted_at", null)
@@ -760,6 +764,15 @@ export async function getTaskDetail(
         // hardcoded fallback. `?? true` only guards a caller/fixture whose
         // select predates F017.
         billable: taskRow.billable ?? true,
+        // F012 (TT-024): the task's creator + creation date — see this
+        // function's task select above. `author_id` is null for a
+        // handful of pre-F012 legacy rows/system-generated tasks (e.g.
+        // recurrence occurrences created before author_id was backfilled
+        // everywhere) — TaskDetailFields' own "Created by" row renders
+        // nothing at all in that case, same "safe default" convention as
+        // every other optional field on this type.
+        authorId: taskRow.author_id ?? null,
+        createdAt: taskRow.created_at,
         // F118 (AS-066): the raw id, so the detail sheet's type editor
         // can call setTaskType with it directly — taskTypeName/
         // taskTypeSystemKey below remain display/gating-only, unchanged.
