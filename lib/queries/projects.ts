@@ -692,21 +692,43 @@ export async function getProjectTeamPreview(
   if (projectIds.length === 0) return result;
 
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("task_assignees")
-    .select("user_id, tasks!inner(project_id, status, deleted_at)")
-    .in("tasks.project_id", projectIds)
-    .is("tasks.deleted_at", null)
-    .neq("tasks.status", "done");
+  const [{ data, error }, { data: statusRows, error: statusError }] = await Promise.all([
+    supabase
+      .from("task_assignees")
+      .select("user_id, tasks!inner(project_id, status, status_id, deleted_at)")
+      .in("tasks.project_id", projectIds)
+      .is("tasks.deleted_at", null),
+    supabase
+      .from("project_statuses")
+      .select("id, project_id, name, category, client_bucket")
+      .in("project_id", projectIds),
+  ]);
   if (error) throw error;
+  if (statusError) throw statusError;
+
+  // PL-013: "done" must mean the task's board-column CATEGORY
+  // (project_statuses.category), not the literal status text — a project
+  // can rename/replace its columns (F218+). Same category resolution (with
+  // the same "status_id not yet backfilled" name-match fallback) as
+  // getMyProjectsProgress above and getPortalProjects.
+  const { categoryByStatusId, categoryByProjectAndName } = buildStatusBucketMaps(
+    (statusRows ?? []) as StatusRowWithBucket[],
+  );
 
   const byProject = new Map<string, string[]>();
   for (const row of (data ?? []) as unknown as Array<{
     user_id: string;
-    tasks: { project_id: string } | { project_id: string }[];
+    tasks:
+      | { project_id: string; status: string; status_id: string | null }
+      | { project_id: string; status: string; status_id: string | null }[];
   }>) {
     const t = Array.isArray(row.tasks) ? row.tasks[0] : row.tasks;
     if (!t) continue;
+    const category =
+      (t.status_id ? categoryByStatusId.get(t.status_id) : undefined) ??
+      categoryByProjectAndName.get(`${t.project_id}:${t.status}`) ??
+      "not_started";
+    if (category === "done") continue;
     const list = byProject.get(t.project_id) ?? [];
     if (!list.includes(row.user_id)) list.push(row.user_id);
     byProject.set(t.project_id, list);

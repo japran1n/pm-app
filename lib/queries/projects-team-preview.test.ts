@@ -4,10 +4,22 @@ vi.mock("server-only", () => ({}));
 
 const calls: string[] = [];
 let mode: "ok" | "err" = "ok";
+// PL-013: "done" is resolved via project_statuses.category, never the
+// literal `tasks.status` text — u7 is assigned only to a task whose
+// status_id resolves (via statusRows below) to category "done" and must
+// never appear in the result.
 const rows = [
-  { user_id: "u1", tasks: { project_id: "p1" } },
-  { user_id: "u1", tasks: { project_id: "p1" } },
-  ...["u2", "u3", "u4", "u5", "u6"].map((u) => ({ user_id: u, tasks: { project_id: "p1" } })),
+  { user_id: "u1", tasks: { project_id: "p1", status: "open", status_id: "s-open" } },
+  { user_id: "u1", tasks: { project_id: "p1", status: "open", status_id: "s-open" } },
+  ...["u2", "u3", "u4", "u5", "u6"].map((u) => ({
+    user_id: u,
+    tasks: { project_id: "p1", status: "open", status_id: "s-open" },
+  })),
+  { user_id: "u7", tasks: { project_id: "p1", status: "done", status_id: "s-done" } },
+];
+const statusRows = [
+  { id: "s-open", project_id: "p1", name: "In Progress", category: "in_progress", client_bucket: null },
+  { id: "s-done", project_id: "p1", name: "Done", category: "done", client_bucket: null },
 ];
 const filters: string[] = [];
 
@@ -19,10 +31,13 @@ vi.mock("@/lib/supabase/server", () => ({
       b.select = () => b;
       b.in = () => b;
       b.is = (c: string, v: unknown) => (filters.push(`is:${c}:${v}`), b);
-      b.neq = (c: string, v: unknown) => (filters.push(`neq:${c}:${v}`), b);
       b.then = (res: (v: unknown) => unknown) =>
         Promise.resolve(
-          mode === "err" ? { data: null, error: new Error("x") } : { data: rows, error: null },
+          mode === "err"
+            ? { data: null, error: new Error("x") }
+            : t === "task_assignees"
+              ? { data: rows, error: null }
+              : { data: statusRows, error: null },
         ).then(res);
       return b;
     },
@@ -45,7 +60,12 @@ describe("getProjectTeamPreview", () => {
     filters.length = 0;
     const m = await getProjectTeamPreview(["p1", "p2"]);
     expect(filters).toContain("is:tasks.deleted_at:null");
-    expect(filters).toContain("neq:tasks.status:done");
+    // "done" is resolved via project_statuses.category, not the literal
+    // tasks.status text: u7 (assigned only to the "s-done" status, whose
+    // category is "done") never appears even though the DB-level filter no
+    // longer does a `.neq("tasks.status", "done")`.
+    expect(m.get("p1")?.people.map((p) => p.id)).not.toContain("u7");
+    expect(m.get("p1")?.total).toBe(6);
     expect(m.has("p2")).toBe(false);
   });
   it("test_PL_012_rejects_so_page_catch_can_fail_open", async () => {
