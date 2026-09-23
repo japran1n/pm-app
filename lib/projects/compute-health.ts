@@ -121,7 +121,19 @@ export const PROJECT_HEALTH_LABELS: Record<ProjectHealth, string> = {
  * task-colors.ts's PRIORITY_COLORS) — passed straight into
  * `StatusBadge`'s `color` prop. */
 export const PROJECT_HEALTH_COLORS: Record<ProjectHealth, string> = {
-  on_track: "var(--color-emerald-600, #059669)",
-  at_risk: "var(--color-amber-600, #d97706)",
-  overdue: "var(--color-rose-600, #e11d48)",
+  on_track: "var(--brand)",
+  at_risk: "var(--warning)",
+  overdue: "var(--destructive)",
+};
+
+/** Static Tailwind classes (must be literal strings for the scanner). */
+export const PROJECT_HEALTH_TEXT_CLASS: Record<ProjectHealth, string> = {
+  on_track: "text-brand",
+  at_risk: "text-warning",
+  overdue: "text-destructive",
+};
+export const PROJECT_HEALTH_BAR_CLASS: Record<ProjectHealth, string> = {
+  on_track: "bg-brand",
+  at_risk: "bg-warning",
+  overdue: "bg-destructive",
 };

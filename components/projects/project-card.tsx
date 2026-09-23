@@ -12,11 +12,11 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { UserAvatarGroup } from "@/components/user-avatar-group";
-import { StatusBadge } from "@/components/ui/status-badge";
 import { computeTimeLeft, resolveDueDate } from "@/lib/projects/time-left";
 import {
   computeProjectHealth,
-  PROJECT_HEALTH_COLORS,
+  PROJECT_HEALTH_BAR_CLASS,
+  PROJECT_HEALTH_TEXT_CLASS,
   PROJECT_HEALTH_LABELS,
 } from "@/lib/projects/compute-health";
 import type {
@@ -76,7 +76,7 @@ export function ProjectCard({
   return (
     <Card
       key={project.id}
-      className="group/card hover-lift flex h-full flex-col"
+      className="group/card hover:border-border-control-hover flex h-full flex-col"
     >
       <CardHeader className="flex flex-row items-start justify-between gap-2 bg-muted/30">
         <Link
@@ -173,7 +173,7 @@ export function ProjectCard({
                 className="h-1.5 w-full overflow-hidden rounded-full bg-secondary"
               >
                 <div
-                  className="h-full rounded-full bg-primary transition-[width] duration-200"
+                  className={`h-full rounded-full ${PROJECT_HEALTH_BAR_CLASS[health]} transition-[width] duration-200`}
                   style={{ width: `${progressPercent}%` }}
                 />
               </div>
@@ -186,16 +186,13 @@ export function ProjectCard({
               <UserAvatarGroup people={teamPreview.people} limit={4} />
             ) : null}
           </div>
-          <span
+          <Badge
             title={healthTitle}
             data-testid="time-pill"
-            className="font-mono"
+            className={`font-mono ${PROJECT_HEALTH_TEXT_CLASS[health]}`}
           >
-            <StatusBadge
-              label={computeTimeLeft(dueDate, new Date()) ?? healthLabel}
-              color={PROJECT_HEALTH_COLORS[health]}
-            />
-          </span>
+            {computeTimeLeft(dueDate, new Date()) ?? healthLabel}
+          </Badge>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {/* AS-034: open (not "done"-category) task count,
