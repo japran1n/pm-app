@@ -145,8 +145,8 @@ describe("Portal-parity: My Tasks row uses the shared table row primitives", () 
   it("test_my_task_row_renders_estimate_and_logged_columns", () => {
     renderRow(makeRow({ estimateMinutes: 120, totalMinutes: 60 }));
 
-    expect(screen.getByText("2h")).toBeInTheDocument();
-    expect(screen.getByText("1h")).toBeInTheDocument();
+    expect(screen.getByText("2 hr")).toBeInTheDocument();
+    expect(screen.getByText("1 hr")).toBeInTheDocument();
   });
 
   it("test_my_task_row_renders_dash_when_no_estimate_or_logged_time", () => {

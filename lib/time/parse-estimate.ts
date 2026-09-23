@@ -32,7 +32,7 @@ export function parseEstimate(input: string): number | null {
   }
 
   // "<hours>h" optionally followed by whitespace and "<minutes>m".
-  const match = /^(?:(\d+)h)?\s*(?:(\d+)m)?$/.exec(trimmed);
+  const match = /^(?:(\d+)\s*(?:hr|h))?\s*(?:(\d+)\s*(?:min|m))?$/.exec(trimmed);
   if (!match) return null;
 
   const [, hoursPart, minutesPart] = match;

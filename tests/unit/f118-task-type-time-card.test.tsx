@@ -47,10 +47,10 @@ describe("TaskTypeTimeCard (F118, AS-068)", () => {
     expect(screen.getByText("QA issue")).toBeInTheDocument();
     // 125 minutes -> "2h 5m", 180 minutes -> "3h", per
     // lib/time/format-duration.ts's own formatting rules.
-    expect(screen.getByText(/2h 5m tracked/)).toBeInTheDocument();
-    expect(screen.getByText(/3h estimated/)).toBeInTheDocument();
-    expect(screen.getByText(/30m tracked/)).toBeInTheDocument();
-    expect(screen.getByText(/0m estimated/)).toBeInTheDocument();
+    expect(screen.getByText(/2 hr 5 min tracked/)).toBeInTheDocument();
+    expect(screen.getByText(/3 hr estimated/)).toBeInTheDocument();
+    expect(screen.getByText(/30 min tracked/)).toBeInTheDocument();
+    expect(screen.getByText(/0 min estimated/)).toBeInTheDocument();
   });
 
   it("test_AS_068_renders_nothing_for_a_project_with_no_time_totals_yet", () => {

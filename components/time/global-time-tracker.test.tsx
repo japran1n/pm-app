@@ -101,7 +101,7 @@ describe("GlobalTimeTracker", () => {
     );
 
     await openPanel();
-    expect(screen.getByTestId("daily-progress-label")).toHaveTextContent("0m / 8h");
+    expect(screen.getByTestId("daily-progress-label")).toHaveTextContent("0 min / 8 hr");
   });
 
   it("test_track_time_opening_the_popover_lists_recent_entries_grouped_by_day", async () => {
@@ -116,7 +116,7 @@ describe("GlobalTimeTracker", () => {
 
     await openPanel();
     expect(screen.getByText("Fix the header bug")).toBeInTheDocument();
-    expect(screen.getAllByText("1h 30m").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("1 hr 30 min").length).toBeGreaterThan(0);
   });
 
   it("test_track_time_footer_links_to_my_timesheet_and_dashboard", async () => {

@@ -34,7 +34,7 @@ describe("TimeTracking renders estimate vs. logged time (F167)", () => {
 
     expect(html).toContain("estimate-progress");
     expect(html).toContain("estimated");
-    expect(html).toContain("1h 30m");
+    expect(html).toContain("1 hr 30 min");
   });
 
   it("test_AS_301_shows_an_over_estimate_badge_when_logged_exceeds_the_estimate", () => {
@@ -78,7 +78,7 @@ describe("TimeTracking renders estimate vs. logged time (F167)", () => {
     expect(html).not.toContain("Over estimate");
     expect(html).not.toContain("estimated");
     // The already-existing logged-time total still renders.
-    expect(html).toContain("1h 30m");
+    expect(html).toContain("1 hr 30 min");
   });
 
   it("test_AS_302_shows_no_progress_bar_or_flag_when_estimateMinutes_prop_is_omitted", () => {

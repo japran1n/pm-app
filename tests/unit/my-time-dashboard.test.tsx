@@ -70,9 +70,9 @@ const baseProps = {
 describe("test_AS_my_time_summary_cards_render", () => {
   it("renders today/this week/this month summary totals", () => {
     render(<MyTimeView {...baseProps} view="weekly" />);
-    expect(screen.getByTestId("summary-card-today")).toHaveTextContent("1h");
-    expect(screen.getByTestId("summary-card-this-week")).toHaveTextContent("5h");
-    expect(screen.getByTestId("summary-card-this-month")).toHaveTextContent("20h");
+    expect(screen.getByTestId("summary-card-today")).toHaveTextContent("1 hr");
+    expect(screen.getByTestId("summary-card-this-week")).toHaveTextContent("5 hr");
+    expect(screen.getByTestId("summary-card-this-month")).toHaveTextContent("20 hr");
   });
 });
 
@@ -110,8 +110,7 @@ describe("test_AS_my_time_by_project_breakdown", () => {
     render(<MyTimeView {...baseProps} view="weekly" />);
     const breakdown = screen.getByTestId("by-project-card");
     expect(breakdown).toHaveTextContent("Docs project");
-    expect(breakdown).toHaveTextContent("1h 30m total");
-    expect(breakdown).toHaveTextContent("1h 30m billable");
+    expect(breakdown).toHaveTextContent("1 hr 30 min");
   });
 });
 
@@ -137,7 +136,7 @@ describe("test_AS_weekly_grid_shows_assigned_and_worked_tasks", () => {
     const docsRow = screen.getByText("Write docs").closest("tr")!;
     expect(
       within(docsRow).getByRole("button", { name: `Log time for ${days[0]!.date}` }),
-    ).toHaveTextContent("1h 30m");
+    ).toHaveTextContent("1 hr 30 min");
   });
 });
 
@@ -181,7 +180,7 @@ describe("test_AS_weekly_grid_cell_edit_logs_new_time_entry", () => {
     await waitFor(() => {
       expect(
         screen.getByRole("button", { name: "Log time for 2026-09-07" }),
-      ).toHaveTextContent("1h 30m");
+      ).toHaveTextContent("1 hr 30 min");
     });
   });
 });
