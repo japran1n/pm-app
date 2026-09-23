@@ -754,7 +754,7 @@ export async function createFullDemoProject(
       admin
         .from("channel_members")
         .insert(
-          (["owner", "admin", "member"] as DemoRole[]).map((r) => ({
+          (["owner", "admin", "member", "client"] as DemoRole[]).map((r) => ({
             channel_id: projectChannel.id,
             user_id: memberUserIds[r],
           })),
