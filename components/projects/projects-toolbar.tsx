@@ -3,10 +3,13 @@ import type { TaskTemplatePickerOption } from "@/lib/queries/templates";
 
 // F010 (PL-040): toolbar row for the Projects page — search input (left,
 // grows to fill available space), view toggle (middle) and New Project
-// (right). This is a Server Component wrapper: the search input and the
-// view toggle are static placeholders for now (F011 wires up client-side
-// filtering, F012 wires up the `?view=` toggle) — only `NewProjectDialog`
-// is interactive today, same as before this feature.
+// (right). The view toggle is still a static placeholder (F012 wires up
+// the `?view=` toggle). The search input is a real, controlled input as
+// of F011 (PL-041) — wired up by `ProjectsToolbarWithSearch`
+// (components/projects/projects-search-context.tsx), which passes
+// `searchValue`/`onSearchChange`; when neither is given (e.g. the
+// archived view, or any other caller with nothing to search) it renders
+// as a disabled placeholder, same as before F011.
 //
 // Layout: row (`flex-row`) with the search input taking the remaining
 // space (`flex-1`) once there's room; below the `sm` breakpoint the row
@@ -15,21 +18,37 @@ import type { TaskTemplatePickerOption } from "@/lib/queries/templates";
 export function ProjectsToolbar({
   workspaceId,
   templateOptions,
+  searchValue,
+  onSearchChange,
 }: {
   workspaceId: string;
   templateOptions: TaskTemplatePickerOption[];
+  searchValue?: string;
+  onSearchChange?: (value: string) => void;
 }) {
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-      {/* Static placeholder — F011 (PL-041) wires up case-insensitive
-          client-side filtering by name/phase. */}
-      <input
-        type="search"
-        placeholder="Search projects…"
-        aria-label="Search projects"
-        disabled
-        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring sm:flex-1"
-      />
+      {onSearchChange ? (
+        // F011 (PL-041): case-insensitive client-side filtering by
+        // project name or current phase name, owned by
+        // `ProjectsSearchProvider`/`ProjectsView`.
+        <input
+          type="search"
+          placeholder="Search projects…"
+          aria-label="Search projects"
+          value={searchValue ?? ""}
+          onChange={(event) => onSearchChange(event.target.value)}
+          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring sm:flex-1"
+        />
+      ) : (
+        <input
+          type="search"
+          placeholder="Search projects…"
+          aria-label="Search projects"
+          disabled
+          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring sm:flex-1"
+        />
+      )}
 
       {/* Static placeholder — F012 (PL-042) wires this up to `?view=`
           routing (grid is the default). Plain radio inputs rather than the

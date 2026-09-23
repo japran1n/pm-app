@@ -1,9 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Suspense } from "react";
-import { Archive, FolderKanban } from "lucide-react";
-
-import { EmptyState } from "@/components/empty-state";
+import { Archive } from "lucide-react";
 
 import { getWorkspaceContext } from "@/lib/queries/workspaces";
 import {
@@ -14,10 +12,13 @@ import {
   getArchivedWorkspaceProjects,
   type ProjectHealthQueryInput,
 } from "@/lib/queries/projects";
-import { ProjectCard } from "@/components/projects/project-card";
 import { ArchivedProjectCard } from "@/components/projects/archived-project-card";
 import { getWorkspaceProjectTemplateOptions } from "@/lib/queries/templates";
-import { ProjectsToolbar } from "@/components/projects/projects-toolbar";
+import { ProjectsView } from "@/components/projects/projects-view";
+import {
+  ProjectsSearchProvider,
+  ProjectsToolbarWithSearch,
+} from "@/components/projects/projects-search-context";
 import { logger } from "@/lib/observability/logger";
 
 // F027 (AS-027, AS-034, AS-042): lists every non-deleted project in the
@@ -113,111 +114,119 @@ export default async function ProjectsPage({
   const canRestore = role === "owner" || role === "admin";
 
   return (
-    <div className="flex flex-col gap-8 p-6 pt-4 lg:p-8 lg:pt-8">
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-xl font-semibold">Projects</h1>
-          <p className="text-sm text-muted-foreground">
-            {isArchivedView
-              ? `Projects archived from ${workspace.name}. Archiving hides a project from the active list without deleting its data.`
-              : `All projects in ${workspace.name}.`}
-          </p>
+    <ProjectsSearchProvider>
+      <div className="flex flex-col gap-8 p-6 pt-4 lg:p-8 lg:pt-8">
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1">
+            <h1 className="text-xl font-semibold">Projects</h1>
+            <p className="text-sm text-muted-foreground">
+              {isArchivedView
+                ? `Projects archived from ${workspace.name}. Archiving hides a project from the active list without deleting its data.`
+                : `All projects in ${workspace.name}.`}
+            </p>
+          </div>
+          {/* F010 (PL-040): toolbar row — view toggle (placeholder,
+              F012) and New Project, still rendered synchronously ahead
+              of the Suspense boundary below (same perf convention as
+              before). F011 (PL-041): the search input inside it is now
+              real — `ProjectsToolbarWithSearch` reads/writes the query
+              from `ProjectsSearchProvider` above, which `ProjectsView`
+              (inside the Suspense boundary) reads from too, so a query
+              typed here filters the grid once it loads. Not rendered at
+              all for the archived view — "New Project" and search
+              aren't offered there, same as before this feature. */}
+          {!isArchivedView && (
+            <ProjectsToolbarWithSearch
+              workspaceId={workspace.id}
+              templateOptions={projectTemplateOptions}
+            />
+          )}
         </div>
-        {/* F010 (PL-040): toolbar row — search (placeholder, F011), view
-            toggle (placeholder, F012) and New Project. Only rendered for
-            the active view — "New Project" isn't offered on the archived
-            view, same as before this feature. */}
-        {!isArchivedView && (
-          <ProjectsToolbar
-            workspaceId={workspace.id}
-            templateOptions={projectTemplateOptions}
-          />
+
+        {/* F012 (SB-045): filter control — Active is the default (no
+            query param, matching this page's pre-existing
+            bookmarked/linked URL), Archived is only offered to
+            non-guests (see `isArchivedView` above). */}
+        {role !== "guest" && (
+          <div className="flex items-center gap-1 border-b">
+            <Link
+              href={`/w/${workspaceSlug}/projects`}
+              className={`border-b-2 px-1 pb-2 text-sm font-medium ${
+                isArchivedView
+                  ? "border-transparent text-muted-foreground hover:text-foreground"
+                  : "border-primary text-foreground"
+              }`}
+            >
+              Active
+            </Link>
+            <Link
+              href={`/w/${workspaceSlug}/projects?filter=archived`}
+              className={`border-b-2 px-1 pb-2 text-sm font-medium ${
+                isArchivedView
+                  ? "border-primary text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Archived
+            </Link>
+          </div>
         )}
-      </div>
 
-      {/* F012 (SB-045): filter control — Active is the default (no query
-          param, matching this page's pre-existing bookmarked/linked URL),
-          Archived is only offered to non-guests (see `isArchivedView`
-          above). */}
-      {role !== "guest" && (
-        <div className="flex items-center gap-1 border-b">
-          <Link
-            href={`/w/${workspaceSlug}/projects`}
-            className={`border-b-2 px-1 pb-2 text-sm font-medium ${
-              isArchivedView
-                ? "border-transparent text-muted-foreground hover:text-foreground"
-                : "border-primary text-foreground"
-            }`}
-          >
-            Active
-          </Link>
-          <Link
-            href={`/w/${workspaceSlug}/projects?filter=archived`}
-            className={`border-b-2 px-1 pb-2 text-sm font-medium ${
-              isArchivedView
-                ? "border-primary text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            Archived
-          </Link>
-        </div>
-      )}
-
-      {/* Perf (W9b): the project list + favourite ids fetch (and its
-          per-project open-task-count batching in getWorkspaceProjects) is
-          the heaviest data-dependent panel on this page, so it streams in
-          separately via Suspense instead of blocking the header/New
-          Project controls above. */}
-      <Suspense
-        fallback={
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
-            {/* F009 (PL-031): three-zone skeleton (top zone, inner panel,
-                footer row) mirroring components/projects/project-card.tsx,
-                same shape as app/(workspace)/w/[workspaceSlug]/projects/loading.tsx
-                so the Suspense boundary and the route's loading.tsx never
-                visibly disagree. */}
-            {Array.from({ length: 6 }).map((_, index) => (
-              <div
-                key={index}
-                className="flex h-full animate-pulse flex-col gap-3 rounded-md border bg-card p-4 shadow-xs"
-              >
-                <div className="flex items-start gap-3">
-                  <div className="size-9 shrink-0 rounded-md bg-muted" />
-                  <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-                    <div className="h-4 w-2/3 rounded bg-muted" />
-                    <div className="h-3 w-1/2 rounded bg-muted" />
+        {/* Perf (W9b): the project list + favourite ids fetch (and its
+            per-project open-task-count batching in getWorkspaceProjects) is
+            the heaviest data-dependent panel on this page, so it streams in
+            separately via Suspense instead of blocking the header/New
+            Project controls above. */}
+        <Suspense
+          fallback={
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+              {/* F009 (PL-031): three-zone skeleton (top zone, inner panel,
+                  footer row) mirroring components/projects/project-card.tsx,
+                  same shape as app/(workspace)/w/[workspaceSlug]/projects/loading.tsx
+                  so the Suspense boundary and the route's loading.tsx never
+                  visibly disagree. */}
+              {Array.from({ length: 6 }).map((_, index) => (
+                <div
+                  key={index}
+                  className="flex h-full animate-pulse flex-col gap-3 rounded-md border bg-card p-4 shadow-xs"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="size-9 shrink-0 rounded-md bg-muted" />
+                    <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                      <div className="h-4 w-2/3 rounded bg-muted" />
+                      <div className="h-3 w-1/2 rounded bg-muted" />
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-2 rounded-lg bg-secondary p-3">
+                    <div className="h-3 w-1/3 rounded bg-muted" />
+                    <div className="h-1.5 w-full rounded-full bg-muted" />
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="h-6 w-16 rounded-full bg-muted" />
+                    <div className="h-3 w-12 rounded bg-muted" />
                   </div>
                 </div>
-                <div className="flex flex-col gap-2 rounded-lg bg-secondary p-3">
-                  <div className="h-3 w-1/3 rounded bg-muted" />
-                  <div className="h-1.5 w-full rounded-full bg-muted" />
-                </div>
-                <div className="flex items-center justify-between gap-2">
-                  <div className="h-6 w-16 rounded-full bg-muted" />
-                  <div className="h-3 w-12 rounded bg-muted" />
-                </div>
-              </div>
-            ))}
-          </div>
-        }
-      >
-        {isArchivedView ? (
-          <ArchivedProjectsSection
-            workspaceId={workspace.id}
-            workspaceSlug={workspaceSlug}
-            canRestore={canRestore}
-          />
-        ) : (
-          <ProjectsGridSection
-            workspaceId={workspace.id}
-            workspaceSlug={workspaceSlug}
-            canArchive={canArchive}
-            canSaveTemplate={canSaveTemplate}
-          />
-        )}
-      </Suspense>
-    </div>
+              ))}
+            </div>
+          }
+        >
+          {isArchivedView ? (
+            <ArchivedProjectsSection
+              workspaceId={workspace.id}
+              workspaceSlug={workspaceSlug}
+              canRestore={canRestore}
+            />
+          ) : (
+            <ProjectsGridSection
+              workspaceId={workspace.id}
+              workspaceSlug={workspaceSlug}
+              canArchive={canArchive}
+              canSaveTemplate={canSaveTemplate}
+            />
+          )}
+        </Suspense>
+      </div>
+    </ProjectsSearchProvider>
   );
 }
 
@@ -370,9 +379,32 @@ export async function ProjectsGridSection({
       })
     : new Map();
 
+  // F011 (PL-041): every project's view model, resolved and serialized
+  // here (Server Component) and handed to `ProjectsView` (Client
+  // Component) as plain data — no functions, so it's a valid prop across
+  // the Server → Client boundary. `ProjectsView` reads the search query
+  // from `ProjectsSearchProvider` (mounted by the page above this
+  // Suspense boundary, alongside the header's `ProjectsToolbarWithSearch`)
+  // and filters this array in-memory.
+  const items = (projects ?? []).map((project) => ({
+    project,
+    healthInput: healthInputsByProject.get(project.id) ?? {
+      overdueTaskCount: 0,
+      totalTaskCount: 0,
+      doneTaskCount: 0,
+      currentPhase: null,
+    },
+    isFavorite: favoriteProjectIds.has(project.id),
+    teamPreview: teamPreviewByProject.get(project.id),
+  }));
+
   return (
     <>
       {loadError && (
+        // F010 (PL-040): New Project stays reachable even when the list
+        // failed to load — it's the header's `ProjectsToolbarWithSearch`,
+        // unaffected by this failure since it's rendered above the
+        // Suspense boundary this component lives in.
         <div
           role="alert"
           className="flex flex-col gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive"
@@ -384,40 +416,14 @@ export async function ProjectsGridSection({
         </div>
       )}
 
-      {projects && projects.length === 0 && (
-        <EmptyState
-          icon={FolderKanban}
-          title="No projects yet"
-          description="Create your first project to start organizing work."
+      {!loadError && (
+        <ProjectsView
+          items={items}
+          workspaceId={workspaceId}
+          workspaceSlug={workspaceSlug}
+          canArchive={canArchive}
+          canSaveTemplate={canSaveTemplate}
         />
-      )}
-
-      {projects && projects.length > 0 && (
-        <div className="grid grid-cols-1 items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
-          {projects.map((project) => {
-            const healthInput = healthInputsByProject.get(project.id) ?? {
-              overdueTaskCount: 0,
-              totalTaskCount: 0,
-              doneTaskCount: 0,
-              currentPhase: null,
-            };
-            const isFavorite = favoriteProjectIds.has(project.id);
-
-            return (
-              <ProjectCard
-                key={project.id}
-                project={project}
-                workspaceId={workspaceId}
-                workspaceSlug={workspaceSlug}
-                canArchive={canArchive}
-                canSaveTemplate={canSaveTemplate}
-                isFavorite={isFavorite}
-                healthInput={healthInput}
-                teamPreview={teamPreviewByProject.get(project.id)}
-              />
-            );
-          })}
-        </div>
       )}
     </>
   );
