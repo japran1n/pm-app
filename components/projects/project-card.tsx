@@ -78,7 +78,10 @@ export function ProjectCard({
       key={project.id}
       className="group/card hover:border-border-control-hover flex h-full flex-col"
     >
-      <CardHeader className="flex flex-row items-start justify-between gap-2 bg-muted/30">
+      <CardHeader
+        data-testid="card-top-zone"
+        className="flex flex-row items-start justify-between gap-2 bg-muted/30"
+      >
         <Link
           href={`/w/${workspaceSlug}/projects/${project.id}/list`}
           className="flex flex-1 items-start gap-3"
@@ -143,7 +146,10 @@ export function ProjectCard({
         </div>
       </CardHeader>
       <CardContent className="flex flex-1 flex-col justify-end gap-3">
-        <div className="flex flex-col gap-3 rounded-lg bg-card p-3">
+        <div
+          data-testid="card-inner-panel"
+          className="flex flex-col gap-3 rounded-lg bg-secondary p-3"
+        >
           <p className="text-sm text-muted-foreground">
             {dueDate ? (
               <span data-testid="due-date" className="font-mono">
@@ -180,44 +186,46 @@ export function ProjectCard({
             </div>
           )}
         </div>
-        <div className="flex items-center justify-between gap-2">
-          <div data-testid="card-team">
-            {teamPreview && teamPreview.people.length > 0 ? (
-              <UserAvatarGroup people={teamPreview.people} limit={4} />
-            ) : null}
-          </div>
-          <Badge
-            title={healthTitle}
-            data-testid="time-pill"
-            className={`font-mono ${PROJECT_HEALTH_TEXT_CLASS[health]}`}
-          >
-            {computeTimeLeft(dueDate, new Date()) ?? healthLabel}
-          </Badge>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {/* AS-034: open (not "done"-category) task count,
-                batched in getWorkspaceProjects. `null` only if
-                that count query itself failed — an explicit
-                "pending" badge rather than a misleading fake 0 in
-                that case. */}
-          {project.openTaskCount === null ? (
+        <div data-testid="card-footer" className="flex flex-col gap-2">
+          <div className="flex items-center justify-between gap-2">
+            <div data-testid="card-team">
+              {teamPreview && teamPreview.people.length > 0 ? (
+                <UserAvatarGroup people={teamPreview.people} limit={4} />
+              ) : null}
+            </div>
             <Badge
-              variant="outline"
-              title="Couldn't load the task count — try refreshing"
+              title={healthTitle}
+              data-testid="time-pill"
+              className={`font-mono ${PROJECT_HEALTH_TEXT_CLASS[health]}`}
             >
-              Open tasks: pending
+              {computeTimeLeft(dueDate, new Date()) ?? healthLabel}
             </Badge>
-          ) : (
-            <Badge variant="secondary">
-              <span className="font-mono">{project.openTaskCount}</span> open
-              task
-              {project.openTaskCount === 1 ? "" : "s"}
-            </Badge>
-          )}
-          {/* Feature request "Project health badge": automatic
-                on_track/at_risk/overdue rollup, computed from the
-                batched inputs fetched above. */}
-          <ProjectHealthBadge health={computeProjectHealth(healthInput)} />
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {/* AS-034: open (not "done"-category) task count,
+                  batched in getWorkspaceProjects. `null` only if
+                  that count query itself failed — an explicit
+                  "pending" badge rather than a misleading fake 0 in
+                  that case. */}
+            {project.openTaskCount === null ? (
+              <Badge
+                variant="outline"
+                title="Couldn't load the task count — try refreshing"
+              >
+                Open tasks: pending
+              </Badge>
+            ) : (
+              <Badge variant="secondary">
+                <span className="font-mono">{project.openTaskCount}</span>{" "}
+                open task
+                {project.openTaskCount === 1 ? "" : "s"}
+              </Badge>
+            )}
+            {/* Feature request "Project health badge": automatic
+                  on_track/at_risk/overdue rollup, computed from the
+                  batched inputs fetched above. */}
+            <ProjectHealthBadge health={computeProjectHealth(healthInput)} />
+          </div>
         </div>
       </CardContent>
     </Card>

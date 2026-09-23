@@ -80,6 +80,21 @@ describe("F005", () => {
     expect(screen.getByText("No tasks yet")).toBeTruthy();
     expect(screen.queryByRole("progressbar")).toBeNull();
   });
+  it("test_PL_020_exactly_3_semantic_zones", () => {
+    r({ endDate: "2026-12-01" }, {});
+    expect(screen.getByTestId("card-top-zone")).toBeTruthy();
+    expect(screen.getByTestId("card-inner-panel")).toBeTruthy();
+    expect(screen.getByTestId("card-footer")).toBeTruthy();
+    expect(
+      screen.queryAllByTestId(/^card-(top-zone|inner-panel|footer)$/).length,
+    ).toBe(3);
+  });
+  it("test_PL_032_inner_panel_steps_up_from_card", () => {
+    r({}, {});
+    expect(screen.getByTestId("card-inner-panel").className).toContain(
+      "bg-secondary",
+    );
+  });
   it("test_PL_027_data_is_mono", () => {
     r({ endDate: "2026-12-01" }, {});
     expect(screen.getByTestId("due-date").className).toContain("font-mono");
