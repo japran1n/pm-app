@@ -45,13 +45,22 @@ export default async function ProjectsPage({
   searchParams,
 }: {
   params: Promise<{ workspaceSlug: string }>;
-  searchParams: Promise<{ filter?: string | string[] }>;
+  searchParams: Promise<{ filter?: string | string[]; view?: string | string[] }>;
 }) {
   const { workspaceSlug } = await params;
   const resolvedSearchParams = await searchParams;
   const filterParam = Array.isArray(resolvedSearchParams.filter)
     ? resolvedSearchParams.filter[0]
     : resolvedSearchParams.filter;
+  // F012 (PL-042): `?view=list|grid`, read server-side so the requested
+  // view renders on the initial response (no client-side flash). Any
+  // value other than exactly "list" (missing, "grid", or anything else
+  // unrecognised) falls back to grid — same normalisation the toolbar's
+  // toggle uses (components/projects/projects-toolbar.tsx).
+  const viewParam = Array.isArray(resolvedSearchParams.view)
+    ? resolvedSearchParams.view[0]
+    : resolvedSearchParams.view;
+  const isListView = viewParam === "list";
 
   // ARCH-001: caller identity, the workspace-by-slug lookup, and the
   // caller's own membership role all come from the shared cached helper
@@ -222,6 +231,7 @@ export default async function ProjectsPage({
               workspaceSlug={workspaceSlug}
               canArchive={canArchive}
               canSaveTemplate={canSaveTemplate}
+              isListView={isListView}
             />
           )}
         </Suspense>
@@ -317,12 +327,22 @@ export async function ProjectsGridSection({
   workspaceSlug,
   canArchive,
   canSaveTemplate,
+  isListView,
 }: {
   workspaceId: string;
   workspaceSlug: string;
   canArchive: boolean;
   canSaveTemplate: boolean;
+  isListView?: boolean;
 }) {
+  // F012 (PL-042): `?view=list` renders the list view instead of the grid
+  // — an empty placeholder for now (F013 owns the actual list table, per
+  // the clarified spec's "placeholder empty div for F013"). Rendered
+  // server-side so there's no grid-then-list flash on load.
+  if (isListView) {
+    return <div data-testid="projects-list-view-placeholder" />;
+  }
+
   // Perf (W9): the project list and favourite ids each depend only on
   // `workspaceId` (already known) — neither depends on the other's
   // result — so both run as one parallel batch. `getWorkspaceProjects`'s

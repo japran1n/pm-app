@@ -76,7 +76,7 @@ describe("F010 PL-040: Projects toolbar layout", () => {
 
     const html = renderToStaticMarkup(element);
     expect(html).toContain('type="search"');
-    expect(html).toContain('role="radiogroup"');
+    expect(html).toContain('aria-label="View"');
     expect(html).toContain("New Project");
   });
 
@@ -107,7 +107,7 @@ describe("F010 PL-040: Projects toolbar layout", () => {
 
     const html = renderToStaticMarkup(element);
     expect(html).not.toContain('type="search"');
-    expect(html).not.toContain('role="radiogroup"');
+    expect(html).not.toContain('aria-label="View"');
     expect(html).not.toContain("New Project");
   });
 });
