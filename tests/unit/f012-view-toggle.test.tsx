@@ -127,20 +127,56 @@ describe("F012 PL-042: Projects view toggle (?view=)", () => {
   });
 
   it("PL-042: an invalid ?view= value falls back to grid, at the page level", async () => {
-    const { default: ProjectsPage } = await import(
+    const pageModule = await import(
       "@/app/(workspace)/w/[workspaceSlug]/projects/page"
     );
+    const { default: ProjectsPage, ProjectsGridSection } = pageModule;
 
     // The Suspense fallback (skeleton) is what react-dom's static renderer
     // shows for an unresolved async child — asserting on it here would
-    // only prove the skeleton renders, not which view was chosen. The
-    // page-level fallback-to-grid logic itself (`isListView` computation)
-    // is exercised directly via its own unit test below instead.
+    // only prove the skeleton renders, not which view was chosen. Instead,
+    // walk the *actual* element tree `ProjectsPage` returns (a plain,
+    // un-rendered React element graph — safe to inspect without invoking
+    // Suspense) and find the real `ProjectsGridSection` element by its
+    // function reference, then read the `isListView` prop the page
+    // actually computed and passed down for `view=bogus`.
+    //
+    // This is a real mutation gate for PL-042: if the page's fallback
+    // logic is changed (e.g. `viewParam === "list"` flipped to
+    // `viewParam !== "grid"`, which would treat "bogus" as list), this
+    // prop flips to `true` and this test fails.
+    function findGridSectionProps(node: unknown): Record<string, unknown> | undefined {
+      if (node == null || typeof node !== "object") return undefined;
+      if (
+        "type" in node &&
+        (node as { type: unknown }).type === ProjectsGridSection
+      ) {
+        return (node as unknown as { props: Record<string, unknown> }).props;
+      }
+      if ("props" in node) {
+        const children = (node as { props?: { children?: unknown } }).props?.children;
+        if (Array.isArray(children)) {
+          for (const child of children) {
+            const found = findGridSectionProps(child);
+            if (found) return found;
+          }
+        } else if (children) {
+          const found = findGridSectionProps(children);
+          if (found) return found;
+        }
+      }
+      return undefined;
+    }
+
     const element = await ProjectsPage({
       params: Promise.resolve({ workspaceSlug: "acme" }),
       searchParams: Promise.resolve({ view: "bogus" }),
     });
-    // Sanity: page renders without throwing for an unrecognised value.
+    const gridProps = findGridSectionProps(element);
+    expect(gridProps).toBeDefined();
+    expect(gridProps!.isListView).toBe(false);
+
+    // Sanity: page still renders without throwing.
     expect(() => renderToStaticMarkup(element)).not.toThrow();
   });
 
