@@ -335,14 +335,6 @@ export async function ProjectsGridSection({
   canSaveTemplate: boolean;
   isListView?: boolean;
 }) {
-  // F012 (PL-042): `?view=list` renders the list view instead of the grid
-  // — an empty placeholder for now (F013 owns the actual list table, per
-  // the clarified spec's "placeholder empty div for F013"). Rendered
-  // server-side so there's no grid-then-list flash on load.
-  if (isListView) {
-    return <div data-testid="projects-list-view-placeholder" />;
-  }
-
   // Perf (W9): the project list and favourite ids each depend only on
   // `workspaceId` (already known) — neither depends on the other's
   // result — so both run as one parallel batch. `getWorkspaceProjects`'s
@@ -443,6 +435,10 @@ export async function ProjectsGridSection({
           workspaceSlug={workspaceSlug}
           canArchive={canArchive}
           canSaveTemplate={canSaveTemplate}
+          // F013 (PL-042, PL-044): `?view=list` (read server-side above)
+          // renders the same filtered items as a table instead of a grid
+          // — no flash on load, same empty/error states as the grid.
+          view={isListView ? "list" : "grid"}
         />
       )}
     </>

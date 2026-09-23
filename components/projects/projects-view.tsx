@@ -5,6 +5,7 @@ import { FolderKanban } from "lucide-react";
 
 import { EmptyState } from "@/components/empty-state";
 import { ProjectCard } from "@/components/projects/project-card";
+import { ProjectListTable } from "@/components/projects/project-list-table";
 import { useProjectsSearch } from "@/components/projects/projects-search-context";
 import type {
   ProjectHealthQueryInput,
@@ -46,12 +47,17 @@ export function ProjectsView({
   workspaceSlug,
   canArchive,
   canSaveTemplate,
+  view = "grid",
 }: {
   items: ProjectsViewItem[];
   workspaceId: string;
   workspaceSlug: string;
   canArchive: boolean;
   canSaveTemplate: boolean;
+  // F013 (PL-042, PL-044): which layout to render — same filtered
+  // `filteredItems`/empty-state logic below is shared between grid and
+  // list, only the final render branches.
+  view?: "grid" | "list";
 }) {
   const search = useProjectsSearch();
   const trimmedQuery = (search?.query ?? "").trim();
@@ -85,6 +91,21 @@ export function ProjectsView({
           No projects match &ldquo;{trimmedQuery}&rdquo;
         </p>
       </div>
+    );
+  }
+
+  if (view === "list") {
+    // F013 (PL-043, PL-044): list view — same `filteredItems`, same
+    // favourite/actions/empty/error parity, just table rows instead of
+    // cards.
+    return (
+      <ProjectListTable
+        items={filteredItems}
+        workspaceId={workspaceId}
+        workspaceSlug={workspaceSlug}
+        canArchive={canArchive}
+        canSaveTemplate={canSaveTemplate}
+      />
     );
   }
 

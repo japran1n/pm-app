@@ -91,7 +91,7 @@ describe("F012 PL-042: Projects view toggle (?view=)", () => {
   // an async Server Component embedded inside `<Suspense>`, same
   // convention as tests/unit/f011-projects-search.test.tsx.
 
-  it("PL-042: with isListView unset (default), the grid view renders (not the list placeholder)", async () => {
+  it("PL-042: with isListView unset (default), the grid view renders (not a table)", async () => {
     const { ProjectsGridSection } = await import(
       "@/app/(workspace)/w/[workspaceSlug]/projects/page"
     );
@@ -104,11 +104,11 @@ describe("F012 PL-042: Projects view toggle (?view=)", () => {
     });
 
     const html = renderToStaticMarkup(element);
-    expect(html).not.toContain("projects-list-view-placeholder");
+    expect(html).not.toContain("<table");
     expect(html).toContain("Alpha");
   });
 
-  it("PL-042: ?view=list renders the list placeholder instead of the grid, server-side (no flash)", async () => {
+  it("PL-042: ?view=list renders the list table instead of the grid, server-side (no flash)", async () => {
     const { ProjectsGridSection } = await import(
       "@/app/(workspace)/w/[workspaceSlug]/projects/page"
     );
@@ -122,8 +122,8 @@ describe("F012 PL-042: Projects view toggle (?view=)", () => {
     });
 
     const html = renderToStaticMarkup(element);
-    expect(html).toContain("projects-list-view-placeholder");
-    expect(html).not.toContain("Alpha");
+    expect(html).toContain("<table");
+    expect(html).toContain("Alpha");
   });
 
   it("PL-042: an invalid ?view= value falls back to grid, at the page level", async () => {
@@ -163,7 +163,7 @@ describe("F012 PL-042: Projects view toggle (?view=)", () => {
     });
 
     const html = renderToStaticMarkup(element);
-    expect(html).not.toContain("projects-list-view-placeholder");
+    expect(html).not.toContain("<table");
     expect(html).toContain("Alpha");
   });
 
