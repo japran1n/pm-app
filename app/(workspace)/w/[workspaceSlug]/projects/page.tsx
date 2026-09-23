@@ -17,7 +17,7 @@ import {
 import { ProjectCard } from "@/components/projects/project-card";
 import { ArchivedProjectCard } from "@/components/projects/archived-project-card";
 import { getWorkspaceProjectTemplateOptions } from "@/lib/queries/templates";
-import { NewProjectDialog } from "@/components/new-project-dialog";
+import { ProjectsToolbar } from "@/components/projects/projects-toolbar";
 import { logger } from "@/lib/observability/logger";
 
 // F027 (AS-027, AS-034, AS-042): lists every non-deleted project in the
@@ -114,7 +114,7 @@ export default async function ProjectsPage({
 
   return (
     <div className="flex flex-col gap-8 p-6 pt-4 lg:p-8 lg:pt-8">
-      <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-1">
           <h1 className="text-xl font-semibold">Projects</h1>
           <p className="text-sm text-muted-foreground">
@@ -123,8 +123,12 @@ export default async function ProjectsPage({
               : `All projects in ${workspace.name}.`}
           </p>
         </div>
+        {/* F010 (PL-040): toolbar row — search (placeholder, F011), view
+            toggle (placeholder, F012) and New Project. Only rendered for
+            the active view — "New Project" isn't offered on the archived
+            view, same as before this feature. */}
         {!isArchivedView && (
-          <NewProjectDialog
+          <ProjectsToolbar
             workspaceId={workspace.id}
             templateOptions={projectTemplateOptions}
           />
