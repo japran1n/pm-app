@@ -167,12 +167,33 @@ export default async function ProjectsPage({
           Project controls above. */}
       <Suspense
         fallback={
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+            {/* F009 (PL-031): three-zone skeleton (top zone, inner panel,
+                footer row) mirroring components/projects/project-card.tsx,
+                same shape as app/(workspace)/w/[workspaceSlug]/projects/loading.tsx
+                so the Suspense boundary and the route's loading.tsx never
+                visibly disagree. */}
             {Array.from({ length: 6 }).map((_, index) => (
               <div
                 key={index}
-                className="h-44 animate-pulse rounded-md bg-muted"
-              />
+                className="flex h-full animate-pulse flex-col gap-3 rounded-md border bg-card p-4 shadow-xs"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="size-9 shrink-0 rounded-md bg-muted" />
+                  <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                    <div className="h-4 w-2/3 rounded bg-muted" />
+                    <div className="h-3 w-1/2 rounded bg-muted" />
+                  </div>
+                </div>
+                <div className="flex flex-col gap-2 rounded-lg bg-secondary p-3">
+                  <div className="h-3 w-1/3 rounded bg-muted" />
+                  <div className="h-1.5 w-full rounded-full bg-muted" />
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="h-6 w-16 rounded-full bg-muted" />
+                  <div className="h-3 w-12 rounded bg-muted" />
+                </div>
+              </div>
             ))}
           </div>
         }
@@ -260,7 +281,7 @@ export async function ArchivedProjectsSection({
       )}
 
       {archivedProjects && archivedProjects.length > 0 && (
-        <div className="grid grid-cols-1 items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
           {archivedProjects.map((project) => (
             <ArchivedProjectCard
               key={project.id}
@@ -368,7 +389,7 @@ export async function ProjectsGridSection({
       )}
 
       {projects && projects.length > 0 && (
-        <div className="grid grid-cols-1 items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
           {projects.map((project) => {
             const healthInput = healthInputsByProject.get(project.id) ?? {
               overdueTaskCount: 0,
