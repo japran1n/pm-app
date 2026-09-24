@@ -102,3 +102,27 @@ export async function getWaitingOnYouCount(
     },
   };
 }
+
+// REUSE-PORTAL-04: the multi-project chooser's per-card "N waiting on you"
+// badge used to count `getPortalOverview().waitingOnYou` TASKS — a
+// different source from the in-project "For you" badge (approvals +
+// outstanding deliverables), so the two disagreed for the same project.
+// It now uses the same `getWaitingOnYouCount` per project. A project whose
+// read failed is omitted (no badge), per AS-007's "no number when the read
+// fails" rule.
+export async function getWaitingOnYouTotalsByProject(
+  projectIds: readonly string[],
+  todayIso: string,
+): Promise<Map<string, number>> {
+  const results = await Promise.all(
+    projectIds.map(async (projectId) => ({
+      projectId,
+      result: await getWaitingOnYouCount(projectId, todayIso),
+    })),
+  );
+  const totals = new Map<string, number>();
+  for (const { projectId, result } of results) {
+    if (result.ok) totals.set(projectId, result.data.total);
+  }
+  return totals;
+}

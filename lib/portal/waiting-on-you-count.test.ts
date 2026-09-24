@@ -18,7 +18,10 @@ vi.mock("@/lib/queries/deliverables", async () => {
   };
 });
 
-import { getWaitingOnYouCount } from "@/lib/portal/waiting-on-you-count";
+import {
+  getWaitingOnYouCount,
+  getWaitingOnYouTotalsByProject,
+} from "@/lib/portal/waiting-on-you-count";
 import type { PortalApproval } from "@/lib/queries/approvals";
 import type { PortalDeliverable } from "@/lib/queries/deliverables";
 
@@ -189,5 +192,30 @@ describe("AS-007: single waiting-on-you count", () => {
     const result = await getWaitingOnYouCount(PROJECT_ID, TODAY);
 
     expect(result).toEqual({ ok: false, error: "boom" });
+  });
+});
+
+describe("REUSE-PORTAL-04: chooser badge uses the same count", () => {
+  it("returns each project's For-you total and omits failed reads", async () => {
+    getOpenApprovalsForClient.mockImplementation(async (projectId: string) =>
+      projectId === "broken"
+        ? { ok: false, error: "boom" }
+        : { ok: true, data: [approval({ projectId })] },
+    );
+    getClientDeliverablesForPortal.mockImplementation(async (projectId: string) => ({
+      ok: true,
+      data: [
+        deliverable({ projectId, state: "in_progress" }),
+        deliverable({ id: "d2", projectId, state: "delivered" }),
+      ],
+    }));
+
+    const totals = await getWaitingOnYouTotalsByProject(["a", "b", "broken"], TODAY);
+    const single = await getWaitingOnYouCount("a", TODAY);
+
+    expect(single.ok && single.data.total).toBe(2);
+    expect(totals.get("a")).toBe(2);
+    expect(totals.get("b")).toBe(2);
+    expect(totals.has("broken")).toBe(false);
   });
 });

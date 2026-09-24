@@ -4,7 +4,6 @@ import { CheckCircle2, Clock3 } from "lucide-react";
 
 import {
   getPortalProjects,
-  getPortalOverview,
   getPortalActivitySummary,
 } from "@/lib/queries/portal";
 import { getCurrentUser } from "@/lib/auth/current-user";
@@ -12,7 +11,7 @@ import { ProjectProgress } from "@/components/portal/project-progress";
 import { EmptyState } from "@/components/empty-state";
 import { WorkspaceLogo } from "@/components/workspace/workspace-logo";
 import { SignOutButton } from "@/components/portal/portal-sign-out-button";
-import { countWaitingOnYouByProject } from "@/lib/portal/waiting-on-you-by-project";
+import { getWaitingOnYouTotalsByProject } from "@/lib/portal/waiting-on-you-count";
 import { formatDayMonth } from "@/lib/format";
 
 // C4 / F003 (missions/20260903-portal, "Project scope"): the portal's
@@ -66,8 +65,13 @@ export default async function PortalOverviewPage({
     redirect(`/portal/${workspace.slug}/p/${projects[0].id}`);
   }
 
-  const [overview, activity] = await Promise.all([
-    getPortalOverview(workspace.id),
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const [waitingCountByProject, activity] = await Promise.all([
+    // REUSE-PORTAL-04: same count the in-project "For you" badge shows.
+    getWaitingOnYouTotalsByProject(
+      projects.map((project) => project.id),
+      todayIso,
+    ),
     // F2: only meaningful for a client session — the layout above already
     // guarantees anyone reaching this page is a client (canViewClientPortal
     // redirects everyone else), and `user` is guaranteed by that same
@@ -94,9 +98,6 @@ export default async function PortalOverviewPage({
   // fact, at the resolution this chooser screen actually needs. The full
   // task-level list still exists, scoped to one project, on that
   // project's own overview page (`p/[projectId]/page.tsx`).
-  const waitingCountByProject = countWaitingOnYouByProject(
-    overview.waitingOnYou,
-  );
 
   return (
     <div className="flex min-h-svh flex-col">
