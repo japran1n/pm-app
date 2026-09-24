@@ -74,3 +74,33 @@ export const reorderQuestionsSchema = z.object({
 });
 
 export type ReorderQuestionsInput = z.infer<typeof reorderQuestionsSchema>;
+
+// SEC-ACT4-07 / GAP3-04 (audit 2026-09-24): saveBriefAnswer used to accept
+// anything. Answers are client-authored and end up in the generated brief
+// document and in revision history, so both size and shape are bounded
+// here. `null` clears the corresponding field.
+export const BRIEF_ANSWER_TEXT_MAX = 10000;
+export const BRIEF_ANSWER_OPTIONS_MAX = 50;
+export const BRIEF_ANSWER_OPTION_MAX = 500;
+
+export const saveBriefAnswerSchema = z.object({
+  briefId: z.string().uuid("Invalid brief."),
+  questionId: z.string().uuid("Invalid question."),
+  answerText: z
+    .string()
+    .max(
+      BRIEF_ANSWER_TEXT_MAX,
+      `Answer must be ${BRIEF_ANSWER_TEXT_MAX} characters or fewer.`,
+    )
+    .nullable(),
+  answerOptions: z
+    .array(
+      z
+        .string()
+        .max(BRIEF_ANSWER_OPTION_MAX, "That option is too long."),
+    )
+    .max(BRIEF_ANSWER_OPTIONS_MAX, "Too many options selected.")
+    .nullable(),
+});
+
+export type SaveBriefAnswerInput = z.infer<typeof saveBriefAnswerSchema>;

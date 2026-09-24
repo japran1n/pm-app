@@ -84,6 +84,15 @@ async function isProjectLeadOrWorkspaceAdmin(
     return true;
   }
 
+  // SEC-ACT1-06 (audit 2026-09-24): a project_members lead row alone is not
+  // enough — the caller must still be an ACTIVE workspace member with a
+  // team role. Former members, and members since demoted to client (or the
+  // read-only viewer role), no longer inherit lead rights from a stale row.
+  // Mirrors is_project_lead_or_workspace_admin (migration 20261131010000).
+  if (!membership || membership.role === "client" || membership.role === "viewer") {
+    return false;
+  }
+
   const { data: leadRow } = await admin
     .from("project_members")
     .select("id")

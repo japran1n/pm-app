@@ -644,23 +644,12 @@ export async function revokeInvite(
 // A non-sole owner's row CAN now be the target of this action (unlike the
 // old implementation, which rejected touching any owner row outright).
 //
-// This guard is a check-then-act count-then-update (count active owners,
-// reject if <= 1, otherwise update), NOT the atomic SELECT ... FOR UPDATE
-// Postgres-function pattern F094's `remove_workspace_member` used to close
-// the equivalent TOCTOU race for AS-018. That RPC pattern is the intended
-// long-term shape for this guard too (reusing the same technique, not
-// reinventing a different one) — deploying it requires `supabase db push`
-// against the linked project, which this worker's sandbox could not reach
-// (direct/pooled Postgres connection attempts hung with no error; the
-// Supabase Management API needed for `--linked` requires
-// SUPABASE_ACCESS_TOKEN, which is not present in this environment). See
-// the F129 handoff's Out-of-scope section for the exact follow-up spec:
-// add a `change_workspace_member_role` SECURITY DEFINER function mirroring
-// `remove_workspace_member` once migration-push access is restored, and
-// swap this block to call it. Until then, this is the same class of race
-// mission-1's original (pre-F094) removeMember guard had — narrow window,
-// requires two concurrent role-change calls against the same 2-owner
-// workspace, not exercised by any assigned assertion here.
+// SEC-ACT1-05 (audit 2026-09-24): the guard is now atomic — the
+// `change_workspace_member_role` SECURITY DEFINER RPC (migration
+// 20261131010000) locks the workspace's active owner rows and the target
+// row, re-checks the actor, counts owners and updates in one transaction.
+// Only an owner may change an owner's role (an admin could previously
+// demote a co-owner).
 //
 // AS-235: a guest cannot be promoted directly to admin (or owner — already
 // excluded from `newRole` entirely). Per the clarified spec, promoting a
@@ -767,47 +756,80 @@ export async function changeMemberRole(
     return { ok: true };
   }
 
-  if (targetRow.role === "owner") {
-    // AS-219: count the workspace's other active owners before allowing a
-    // demotion. See the doc comment above this function for why this is a
-    // check-then-act count rather than the atomic RPC pattern used
-    // elsewhere in this file.
-    const { count: ownerCount, error: ownerCountError } = await admin
-      .from("workspace_members")
-      .select("id", { count: "exact", head: true })
-      .eq("workspace_id", parsed.data.workspaceId)
-      .eq("role", "owner")
-      .eq("status", "active");
-
-    if (ownerCountError) {
-      logger.error("changeMemberRole: owner count check failed", { error: ownerCountError });
-      return {
-        ok: false,
-        error: "Something went wrong. Please try again in a moment.",
-      };
-    }
-
-    if ((ownerCount ?? 0) <= 1) {
-      return {
-        ok: false,
-        error: "You cannot change the role of the sole owner of a workspace.",
-      };
-    }
+  // SEC-ACT1-05 (audit 2026-09-24): only an owner may change an owner's
+  // role. Checked here for a clean message, and again atomically inside
+  // the RPC below against the locked rows.
+  if (targetRow.role === "owner" && membership.role !== "owner") {
+    return {
+      ok: false,
+      error: "Only an owner can change another owner's role.",
+    };
   }
 
-  const { error: updateError } = await admin
-    .from("workspace_members")
-    .update({ role: parsed.data.newRole })
-    .eq("id", parsed.data.targetMembershipId)
-    .eq("workspace_id", parsed.data.workspaceId)
-    .eq("status", "active");
+  // SEC-ACT1-05: the last-owner guard and the update are one atomic
+  // statement — `change_workspace_member_role` (migration
+  // 20261131010000) locks every active owner row (id order) and the
+  // target row before counting, re-checks the actor's role, and updates in
+  // the same transaction. Replaces the old count-then-update TOCTOU.
+  const { data: rpcRows, error: rpcError } = await (
+    admin.rpc as unknown as (
+      fn: "change_workspace_member_role",
+      args: {
+        p_membership_id: string;
+        p_workspace_id: string;
+        p_new_role: string;
+        p_actor_id: string;
+      },
+    ) => Promise<{
+      data: Array<{ changed: boolean; reason: string | null; old_role: string | null }> | null;
+      error: unknown;
+    }>
+  )("change_workspace_member_role", {
+    p_membership_id: parsed.data.targetMembershipId,
+    p_workspace_id: parsed.data.workspaceId,
+    p_new_role: parsed.data.newRole,
+    p_actor_id: user.id,
+  });
 
-  if (updateError) {
-    logger.error("changeMemberRole: update failed", { error: updateError });
+  if (rpcError) {
+    logger.error("changeMemberRole: change_workspace_member_role RPC failed", { error: rpcError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
     };
+  }
+
+  const rpcResult = Array.isArray(rpcRows) ? rpcRows[0] : null;
+
+  if (!rpcResult?.changed) {
+    switch (rpcResult?.reason) {
+      case "sole_owner":
+        return {
+          ok: false,
+          error: "You cannot change the role of the sole owner of a workspace.",
+        };
+      case "owner_protected":
+        return { ok: false, error: "Only an owner can change another owner's role." };
+      case "guest_to_admin":
+        return {
+          ok: false,
+          error:
+            "A guest cannot be promoted directly to admin. Change them to a member first, then to admin.",
+        };
+      case "not_active":
+        return { ok: false, error: "Only active members can have their role changed." };
+      case "forbidden":
+        return {
+          ok: false,
+          error: "Only the workspace owner or an admin can change member roles.",
+        };
+      default:
+        return { ok: false, error: "This member no longer exists." };
+    }
+  }
+
+  if (rpcResult.reason === "unchanged") {
+    return { ok: true };
   }
 
   // A `client` has no access to internal workspace-wide channels (the
@@ -846,7 +868,10 @@ export async function changeMemberRole(
     action: "member.role_changed",
     targetType: "workspace_member",
     targetId: parsed.data.targetMembershipId,
-    metadata: { old_role: targetRow.role, new_role: parsed.data.newRole },
+    metadata: {
+      old_role: rpcResult.old_role ?? targetRow.role,
+      new_role: parsed.data.newRole,
+    },
   });
 
   const { data: workspaceRow } = await admin
@@ -948,6 +973,17 @@ export async function removeMember(
     return {
       ok: false,
       error: "Only active members can be removed.",
+    };
+  }
+
+  // SEC-ACT1-05: an admin cannot remove an owner. remove_workspace_member
+  // enforces this for end-user sessions, but this action calls it with the
+  // service-role client (where that in-function check is skipped), so the
+  // rule is enforced here.
+  if (targetRow.role === "owner" && membership.role !== "owner") {
+    return {
+      ok: false,
+      error: "Only an owner can remove another owner.",
     };
   }
 

@@ -30,7 +30,7 @@ import { logger } from "@/lib/observability/logger";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { calculatePosition } from "@/lib/board/position";
-import { getBrief, type BriefQuestion } from "@/lib/queries/brief";
+import { getBrief, type BriefAnswer, type BriefQuestion } from "@/lib/queries/brief";
 import { isBriefAnswerAnswered } from "@/lib/brief/is-answered";
 import { buildBriefDocumentContent } from "@/lib/brief/document";
 import { createNotification } from "@/lib/notifications/create-notification";
@@ -38,6 +38,7 @@ import {
   createQuestionSchema,
   updateQuestionSchema,
   reorderQuestionsSchema,
+  saveBriefAnswerSchema,
   type CreateQuestionInput,
   type UpdateQuestionInput,
 } from "@/lib/validation/brief";
@@ -439,12 +440,37 @@ async function notifyDecisionOwnersOfAnswerChange(
   }
 }
 
+// SEC-ACT4-07 / GAP3-04 (audit 2026-09-24):
+//   - input is validated (uuids, length caps on text/options);
+//   - the question must belong to the brief's project, and choice answers
+//     must pick from the question's own options;
+//   - an unchanged answer is a no-op (autosave re-sends identical values;
+//     no write, no revision, no notification);
+//   - the write is a single upsert on the unique (brief_id, question_id)
+//     index (migration 20261131010000), so concurrent first saves can no
+//     longer create duplicate answer rows;
+//   - revision coalescing (same author re-saving within a few minutes) is
+//     done by the record_brief_answer_revision trigger in that migration.
 export async function saveBriefAnswer(
   briefId: string,
   questionId: string,
   answerText: string | null,
   answerOptions: string[] | null,
 ): Promise<{ success: boolean; error?: string }> {
+  const parsed = saveBriefAnswerSchema.safeParse({
+    briefId,
+    questionId,
+    answerText: answerText ?? null,
+    answerOptions: answerOptions ?? null,
+  });
+  if (!parsed.success) {
+    return {
+      success: false,
+      error: parsed.error.issues[0]?.message ?? "Couldn't save this answer.",
+    };
+  }
+  const input = parsed.data;
+
   const { supabase, user } = await getCurrentUser();
   if (!user) {
     return { success: false, error: "You must be signed in to save an answer." };
@@ -452,14 +478,14 @@ export async function saveBriefAnswer(
 
   const { data: question, error: questionError } = await supabase
     .from("brief_questions")
-    .select("prompt")
-    .eq("id", questionId)
+    .select("prompt, project_id, answer_type, options")
+    .eq("id", input.questionId)
     .maybeSingle();
 
   if (questionError) {
     logger.error("saveBriefAnswer: failed to load question prompt", {
       error: questionError,
-      questionId,
+      questionId: input.questionId,
     });
     return { success: false, error: "Couldn't save this answer." };
   }
@@ -478,7 +504,7 @@ export async function saveBriefAnswer(
   const { data: brief, error: briefError } = await supabase
     .from("briefs")
     .select("state, project_id")
-    .eq("id", briefId)
+    .eq("id", input.briefId)
     .maybeSingle();
 
   if (briefError) {
@@ -486,15 +512,35 @@ export async function saveBriefAnswer(
     return { success: false, error: "Couldn't save this answer." };
   }
 
-  if (brief?.state === "approved") {
+  if (!brief || brief.project_id !== question.project_id) {
+    return { success: false, error: "Couldn't save this answer. The question was not found." };
+  }
+
+  if (brief.state === "approved") {
     return { success: false, error: "Brief is approved and answers are locked." };
+  }
+
+  const isChoice =
+    question.answer_type === "single_choice" || question.answer_type === "multi_choice";
+  let options = input.answerOptions;
+  if (isChoice && options) {
+    const allowed = new Set<string>((question.options as string[] | null) ?? []);
+    options = Array.from(new Set(options));
+    if (!options.every((option) => allowed.has(option))) {
+      return { success: false, error: "Choose one of the listed options." };
+    }
+    if (question.answer_type === "single_choice" && options.length > 1) {
+      return { success: false, error: "Choose one option." };
+    }
+  } else if (!isChoice && options && options.length > 0) {
+    return { success: false, error: "This question takes a written answer." };
   }
 
   const { data: existing, error: existingError } = await supabase
     .from("brief_answers")
-    .select("id")
-    .eq("brief_id", briefId)
-    .eq("question_id", questionId)
+    .select("id, answer_text, answer_options")
+    .eq("brief_id", input.briefId)
+    .eq("question_id", input.questionId)
     .maybeSingle();
 
   if (existingError) {
@@ -506,63 +552,80 @@ export async function saveBriefAnswer(
     return { success: false, error: "Couldn't save this answer." };
   }
 
-  const now = new Date().toISOString();
-
-  if (existing) {
-    const { error: updateError } = await supabase
-      .from("brief_answers")
-      .update({
-        question_prompt_snapshot: question.prompt,
-        answer_text: answerText,
-        answer_options: answerOptions,
-        answered_by: user.id,
-        answered_at: now,
-      })
-      .eq("id", existing.id);
-
-    if (updateError) {
-      logger.error("saveBriefAnswer: update failed", { error: updateError, briefId, questionId });
-      return { success: false, error: "Couldn't save this answer." };
-    }
-
-    // F068 (AS-136/AS-137): only an already-answered question being
-    // CHANGED (this `existing` branch, not the first-time insert below)
-    // can possibly need a post-submission notice, and only once the
-    // brief has left 'draft' -- AS-137 ("changing an answer before
-    // submission sends no notification") is satisfied purely by this
-    // gate never firing while brief.state = 'draft'. Non-fatal: a
-    // notification failure must never fail the answer save itself, same
-    // convention every other fan-out call site in this codebase follows
-    // (see lib/notifications/create-notification.ts's header).
-    await notifyDecisionOwnersOfAnswerChange(supabase, briefId, questionId, user.id);
-
-    if (brief?.project_id) {
-      await revalidatePortalForBriefProject(supabase, brief.project_id);
-    }
-
+  if (
+    existing &&
+    (existing.answer_text ?? null) === input.answerText &&
+    sameOptions(existing.answer_options as string[] | null, options)
+  ) {
     return { success: true };
   }
 
-  const { error: insertError } = await supabase.from("brief_answers").insert({
-    brief_id: briefId,
-    question_id: questionId,
-    question_prompt_snapshot: question.prompt,
-    answer_text: answerText,
-    answer_options: answerOptions,
-    answered_by: user.id,
-    answered_at: now,
-  });
+  const { error: upsertError } = await supabase.from("brief_answers").upsert(
+    {
+      brief_id: input.briefId,
+      question_id: input.questionId,
+      question_prompt_snapshot: question.prompt,
+      answer_text: input.answerText,
+      answer_options: options,
+      answered_by: user.id,
+      answered_at: new Date().toISOString(),
+    },
+    { onConflict: "brief_id,question_id" },
+  );
 
-  if (insertError) {
-    logger.error("saveBriefAnswer: insert failed", { error: insertError, briefId, questionId });
+  if (upsertError) {
+    logger.error("saveBriefAnswer: upsert failed", { error: upsertError, briefId, questionId });
     return { success: false, error: "Couldn't save this answer." };
   }
 
-  if (brief?.project_id) {
-    await revalidatePortalForBriefProject(supabase, brief.project_id);
+  if (existing) {
+    // F068 (AS-136/AS-137): only an already-answered question being
+    // CHANGED can need a post-submission notice, and only once the brief
+    // has left 'draft' (checked inside). Non-fatal.
+    await notifyDecisionOwnersOfAnswerChange(supabase, input.briefId, input.questionId, user.id);
   }
 
+  await revalidatePortalForBriefProject(supabase, brief.project_id);
+
   return { success: true };
+}
+
+function sameOptions(a: string[] | null | undefined, b: string[] | null | undefined): boolean {
+  const left = a ?? null;
+  const right = b ?? null;
+  if (left === null || right === null) return left === right;
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+// GAP3-04: answers (client-authored) and prompts are inserted into a
+// Markdown document that the docs editor parses with raw HTML enabled.
+// Backslash-escape every Markdown/HTML-significant ASCII punctuation mark
+// (CommonMark treats `\<char>` as that literal character), so an answer
+// renders as the literal text the client typed — never as HTML, links,
+// images, headings or list syntax.
+const MARKDOWN_SPECIAL = /[\\`*_{}[\]()<>#+\-.!|~&:]/g;
+
+function escapeMarkdownText(value: string): string {
+  return value
+    .replace(/\r\n?/g, "\n")
+    .replace(MARKDOWN_SPECIAL, (char) => `\\${char}`);
+}
+
+function escapeBriefForDocument(
+  questions: BriefQuestion[],
+  answers: BriefAnswer[],
+): { questions: BriefQuestion[]; answers: BriefAnswer[] } {
+  return {
+    questions: questions.map((question) => ({
+      ...question,
+      prompt: escapeMarkdownText(question.prompt),
+    })),
+    answers: answers.map((answer) => ({
+      ...answer,
+      answerText: answer.answerText === null ? null : escapeMarkdownText(answer.answerText),
+      answerOptions: answer.answerOptions?.map(escapeMarkdownText) ?? null,
+    })),
+  };
 }
 
 // Marks a brief as submitted (F061, AS-124/AS-125). Submission is
@@ -770,7 +833,9 @@ export async function generateBriefDocument(
     return { success: false, error: "Couldn't generate the brief document." };
   }
 
-  const content = buildBriefDocumentContent(questions, answers);
+  // GAP3-04: escape client-authored text before it becomes Markdown.
+  const escaped = escapeBriefForDocument(questions, answers);
+  const content = buildBriefDocumentContent(escaped.questions, escaped.answers);
 
   const { data: inserted, error: insertError } = await supabase
     .from("docs")

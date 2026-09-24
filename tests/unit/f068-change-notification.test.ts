@@ -31,18 +31,34 @@ type TableState = {
 
 let table: TableState;
 
+// SEC-ACT4-07: saveBriefAnswer checks the question belongs to the brief's
+// project and reads its answer type.
+function questionWithProject() {
+  if (!table.question.data) return table.question;
+  return {
+    ...table.question,
+    data: {
+      answer_type: "long_text",
+      options: null,
+      project_id: table.brief.data?.project_id,
+      ...table.question.data,
+    },
+  };
+}
+
 function fromImpl(name: string) {
   switch (name) {
     case "brief_questions":
       return {
         select: () => ({
           eq: () => ({
-            maybeSingle: () => Promise.resolve(table.question),
+            maybeSingle: () => Promise.resolve(questionWithProject()),
           }),
         }),
       };
     case "brief_answers":
       return {
+        upsert: () => Promise.resolve(table.updateAnswer),
         select: () => ({
           eq: () => ({
             eq: () => ({
