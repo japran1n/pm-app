@@ -1,17 +1,14 @@
+import { slugifySegment } from "@/lib/utils/slugify";
+
 /**
- * Stable slug for a section name. Latin diacritics are folded to ASCII;
+ * Stable anchor slug for a section name, from the app's single slug
+ * generator (lib/utils/slugify.ts). Latin diacritics are folded to ASCII;
  * other scripts (Cyrillic, CJK, ...) are preserved so they do not collapse
  * into a single fallback. Falls back to "section" only for names with no
  * letters or digits at all.
  */
 export function slugifySection(name: string): string {
-  const slug = name
-    .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, "-")
-    .replace(/^-+|-+$/g, "");
-  return slug || "section";
+  return slugifySegment(name, { keepUnicodeLetters: true }) || "section";
 }
 
 /**

@@ -18,6 +18,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
+import { slugifySegment } from "@/lib/utils/slugify";
 
 function download(filename: string, contents: string, mime: string) {
   const blob = new Blob([contents], { type: `${mime};charset=utf-8` });
@@ -36,7 +37,7 @@ export function ShareExportMenu({
   pages: BoardPage[];
   sitemapName: string;
 }) {
-  const slug = (sitemapName || "sitemap").toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  const slug = slugifySegment(sitemapName) || "sitemap";
 
   return (
     <DropdownMenu>

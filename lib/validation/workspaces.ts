@@ -5,6 +5,7 @@ import {
   ALLOWED_AVATAR_MIME_TYPES,
 } from "@/lib/validation/profile";
 import { logger } from "@/lib/observability/logger";
+import { slugifySegment } from "@/lib/utils/slugify";
 
 // Validates create-workspace input (AS-006) before it reaches Supabase.
 export const createWorkspaceSchema = z.object({
@@ -193,20 +194,16 @@ export type UploadWorkspaceLogoInput = z.infer<
   typeof uploadWorkspaceLogoSchema
 >;
 
-// Turns "My Team!!" into "my-team", collapsing non-alphanumerics to single
-// hyphens and trimming leading/trailing ones. Falls back to "workspace" if
-// the name has no URL-safe characters at all (e.g. an all-emoji name).
+// Turns "My Team!!" into "my-team" and "Göteborg" into "goteborg" via the
+// app's single slug generator (lib/utils/slugify.ts). Falls back to
+// "workspace" if the name has no URL-safe characters at all (e.g. an
+// all-emoji name). Only used for a NEW workspace's slug.
 //
 // Lives outside lib/actions/workspaces.ts (a "use server" file) because
 // every export of a "use server" module must itself be an async Server
 // Action — a plain sync helper like this fails the Next.js build.
 export function slugify(name: string): string {
-  const base = name
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return base || "workspace";
+  return slugifySegment(name) || "workspace";
 }
 
 // Finds a unique slug by appending -2, -3, ... on collision. Takes the admin

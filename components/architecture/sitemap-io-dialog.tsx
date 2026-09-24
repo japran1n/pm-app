@@ -34,6 +34,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { slugifySegment } from "@/lib/utils/slugify";
 
 type Format = "xml" | "csv" | "md" | "json" | "brief-md" | "brief-json";
 
@@ -115,7 +116,7 @@ export function SitemapIoDialog({
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    const slug = (projectName || "site").toLowerCase().replace(/[^a-z0-9]+/g, "-");
+    const slug = slugifySegment(projectName) || "site";
     const isBrief = format === "brief-md" || format === "brief-json";
     const pageSuffix =
       isBrief && briefPageSlug !== "__all__"
