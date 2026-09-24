@@ -1,0 +1,34 @@
+# gitleaks configuration (audit 2026-09-24). Used by the `secret-scan` job in
+# .github/workflows/ci.yml. Extends gitleaks' default ruleset (which already
+# includes generic JWTs, private keys, cloud credentials, ...) with the
+# Supabase key formats this project uses.
+
+title = "pm-app gitleaks config"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "supabase-secret-key"
+description = "Supabase secret API key (sb_secret_)"
+regex = '''sb_secret_[A-Za-z0-9_-]{20,}'''
+keywords = ["sb_secret_"]
+
+[[rules]]
+id = "supabase-personal-access-token"
+description = "Supabase Management API personal access token (sbp_)"
+regex = '''sbp_[a-f0-9]{40}'''
+keywords = ["sbp_"]
+
+# Keep this list minimal. Only files that are templates or hold deliberately
+# fake fixture values belong here — never a real credential.
+[[allowlists]]
+description = "Env template and tests that plant fake keys to prove redaction/detection works"
+paths = [
+  '''^\.env\.example$''',
+  '''^tests/setup/testing-library\.ts$''',
+  '''^tests/unit/ci-supabase-env-export\.test\.ts$''',
+  '''^tests/unit/check-realtime-publication\.test\.ts$''',
+  '''^tests/unit/check-migration-drift\.test\.ts$''',
+  '''^extension/tests/no-secret-key\.spec\.ts$''',
+]

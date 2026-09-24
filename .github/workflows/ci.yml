@@ -16,7 +16,38 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: false
 
+# Least privilege for the default GITHUB_TOKEN in every job below.
+permissions:
+  contents: read
+
 jobs:
+  # Secret scanning (audit 2026-09-24): scripts/check-no-secret-key.mjs only
+  # catches HS256 JWT-format keys. gitleaks' default ruleset also covers
+  # generic JWTs (session access tokens), private keys, cloud credentials,
+  # etc.; .gitleaks.toml adds Supabase sb_secret_ / sbp_ rules and the
+  # allow-list. Official action, pinned to the v3.0.0 commit SHA (verified
+  # via `git ls-remote https://github.com/gitleaks/gitleaks-action` on
+  # 2026-09-24); gitleaks binary pinned to 8.30.1 (latest release that day,
+  # https://github.com/gitleaks/gitleaks/releases). No GITLEAKS_LICENSE
+  # needed: this repo belongs to a personal account (action README).
+  secret-scan:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_VERSION: "8.30.1"
+          GITLEAKS_CONFIG: .gitleaks.toml
+          # Job token is contents:read only; no PR review comments.
+          GITLEAKS_ENABLE_COMMENTS: "false"
+
   ci-fast:
     name: Fast CI (type + lint + unit tests)
     runs-on: ubuntu-latest
@@ -156,7 +187,10 @@ jobs:
         # latest release is v3.x; `@v3` is the correct tag (not `@v1`).
         uses: supabase/setup-cli@v3
         with:
-          version: latest
+          # Pinned (audit 2026-09-24) instead of `latest` so an upstream CLI
+          # release cannot silently change CI behaviour. 2.116.0 is the
+          # version in use locally on 2026-09-24; keep in sync with backup.yml.
+          version: "2.116.0"
 
       - name: Start local Supabase stack
         run: supabase start
@@ -245,10 +279,47 @@ jobs:
         # and these are absent, so that "not run" can never be mistaken for
         # "passed". Until both repository secrets exist those five fail by
         # design; every other suite is unaffected.
+        #
+        # SECURITY (audit 2026-09-24): the Management API PAT is no longer
+        # exposed to this step. It used to be in env for the whole suite
+        # (~470 files, any of which could read or log it). The suites that
+        # genuinely need it are excluded here and run in their own step
+        # below, which is the only place the PAT is present.
+        run: >-
+          npx vitest run
+          --exclude tests/integration/f016i-anon-execute-catalog.test.ts
+          --exclude tests/integration/f016j-client-requests-allowlist-guard.test.ts
+          --exclude tests/integration/f016l-public-table-rls-catalog.test.ts
+          --exclude tests/integration/f020b-projects-allowlist-guard.test.ts
+          --exclude tests/integration/f025-portal-table-triple-sweep.test.ts
+          --exclude tests/integration/f025e-guard-hardening.test.ts
+          --exclude tests/integration/f098-node-meta-rls-policies.test.ts
+          --exclude tests/integration/overdue-notification-sweep.test.ts
+          --exclude tests/integration/workspace-time-by-person-archived-project-exclusion.test.ts
+
+      # The only step that receives the Supabase Management API PAT: the
+      # suites that introspect the real hosted project (grants, RLS, cron)
+      # and cannot run against the local stack. Keep this file list in sync
+      # with the --exclude list above (`grep -rl SUPABASE_ACCESS_TOKEN
+      # tests/integration`).
+      # NOTE: f016j / f020b add and drop a probe column on the hosted
+      # project — DDL against production from CI. Tracked as a follow-up;
+      # they should move to a dedicated staging project.
+      - name: Management-API catalog tests (hosted project)
         env:
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-        run: npm run test
+        run: >-
+          npx vitest run
+          tests/integration/f016i-anon-execute-catalog.test.ts
+          tests/integration/f016j-client-requests-allowlist-guard.test.ts
+          tests/integration/f016l-public-table-rls-catalog.test.ts
+          tests/integration/f020b-projects-allowlist-guard.test.ts
+          tests/integration/f025-portal-table-triple-sweep.test.ts
+          tests/integration/f025e-guard-hardening.test.ts
+          tests/integration/f098-node-meta-rls-policies.test.ts
+          tests/integration/overdue-notification-sweep.test.ts
+          tests/integration/workspace-time-by-person-archived-project-exclusion.test.ts
 
       # F092 (AS-369): the four integration tests that wait for a real
       # Supabase Realtime WebSocket event (see
@@ -267,10 +338,8 @@ jobs:
       # called from tests/integration/reaction-realtime-delivery.test.ts's
       # own `beforeAll` on every run of this step. See
       # missions/20260903-portal/handoffs/F103-handoff.md.
+      # No Management API PAT here: none of the realtime suites use it.
       - name: Realtime integration tests (serial, uncontended)
-        env:
-          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: npm run test:realtime
 
       - name: End-to-end tests (Playwright)

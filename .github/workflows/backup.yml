@@ -19,22 +19,52 @@ concurrency:
   group: backup-${{ github.ref }}
   cancel-in-progress: false
 
+# Least privilege: read the repo; `issues: write` only so the failure step
+# below can open/update a tracking issue.
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   backup:
     name: Supabase DB Backup
     runs-on: ubuntu-latest
+    env:
+      # Pinned (audit 2026-09-24) instead of `latest`; keep in sync with ci.yml.
+      SUPABASE_CLI_VERSION: "2.116.0"
     steps:
+      # SECURITY (audit 2026-09-24): the dumps contain production data
+      # (auth.users password hashes, share tokens, client content). They are
+      # encrypted with `age` to a PUBLIC key before they ever touch the
+      # artifact store; only the holder of the matching private key (kept
+      # OFF GitHub) can decrypt. Fail before dumping anything if the key is
+      # missing or malformed — never fall back to plaintext.
+      - name: Require backup encryption key
+        env:
+          BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+        run: |
+          if [ -z "${BACKUP_ENCRYPTION_KEY}" ]; then
+            echo "::error::BACKUP_ENCRYPTION_KEY secret is not set (expected an age public key, age1...). Refusing to produce an unencrypted backup."
+            exit 1
+          fi
+          case "${BACKUP_ENCRYPTION_KEY}" in
+            age1*) ;;
+            *) echo "::error::BACKUP_ENCRYPTION_KEY must be an age public key (starts with age1)."; exit 1 ;;
+          esac
+
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install age
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq age
+
       # Version pinned to @v3, the same tag ci.yml already verified as
       # current (see that workflow's "Setup Supabase CLI" step comment,
-      # verified against https://github.com/supabase/setup-cli 2026-08-28)
-      # — kept in sync rather than re-verified independently here.
+      # verified against https://github.com/supabase/setup-cli 2026-08-28).
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v3
         with:
-          version: latest
+          version: ${{ env.SUPABASE_CLI_VERSION }}
 
       # `db dump --linked`/`--data-only` both require the local CLI to be
       # linked to the target hosted project first (confirmed via
@@ -57,20 +87,65 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-        run: supabase db dump --linked -f schema-backup.sql
+        run: |
+          umask 077
+          supabase db dump --linked -f schema-backup.sql
 
+      # Live session material is excluded from the data dump (audit
+      # 2026-09-24): restoring it is never wanted (users simply sign in
+      # again) and it is directly usable to hijack sessions if a dump
+      # leaks. `--exclude/-x schema.table` is the CLI's data-only exclude
+      # flag (`supabase db dump --help`, CLI 2.116.0).
       - name: Dump data
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-        run: supabase db dump --linked --data-only -f data-backup.sql
+        run: |
+          umask 077
+          supabase db dump --linked --data-only \
+            -x auth.refresh_tokens \
+            -x auth.sessions \
+            -x auth.mfa_amr_claims \
+            -x auth.one_time_tokens \
+            -f data-backup.sql
 
-      - name: Upload backup artifacts
+      - name: Encrypt dumps
+        env:
+          BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          for f in schema-backup.sql data-backup.sql; do
+            test -s "$f" || { echo "::error::$f is missing or empty"; exit 1; }
+            age --encrypt --recipient "${BACKUP_ENCRYPTION_KEY}" --output "$f.age" "$f"
+            shred -u "$f" || rm -f "$f"
+          done
+          ls -l ./*.age
+
+      - name: Upload encrypted backup artifacts
         uses: actions/upload-artifact@v4
         with:
           name: db-backup-${{ github.run_number }}-${{ github.run_attempt }}
           path: |
-            schema-backup.sql
-            data-backup.sql
-          retention-days: 90
+            schema-backup.sql.age
+            data-backup.sql.age
+          retention-days: 14
           if-no-files-found: error
+
+      # Backups silently failed from 2026-09-21 (billing) with nobody
+      # noticing. On any failure, open (or comment on) a tracking issue so
+      # it shows up in the repo, in addition to the red run.
+      - name: Report failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Database backup failing"
+          existing=$(gh issue list --repo "${{ github.repository }}" --state open --search "in:title \"$title\"" --json number --jq '.[0].number' || true)
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --repo "${{ github.repository }}" --body "Backup failed again: $RUN_URL"
+          else
+            gh issue create --repo "${{ github.repository }}" --title "$title" \
+              --body "The nightly Supabase backup workflow failed: $RUN_URL. Until this is fixed there is no fresh restore point."
+          fi

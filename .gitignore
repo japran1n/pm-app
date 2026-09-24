@@ -55,3 +55,7 @@ extension/playwright-report/
 
 # ShipStudio metadata
 .shipstudio/
+
+# Playwright MCP session artifacts (console logs / page snapshots). These
+# have captured live Supabase access/refresh tokens before — never commit.
+.playwright-mcp/
