@@ -41,11 +41,27 @@ export function hasAuthCookie(request: NextRequest): boolean {
  * a NextResponse carrying the refreshed cookies. Call this from app/proxy.ts's
  * exported `proxy(request)` function and return its result (or a redirect
  * built from `supabaseResponse.cookies`, per F010's auth-guard logic).
+ *
+ * `prepareForwardedHeaders` (SEC-HTTP-07): edits the headers of the request
+ * that is forwarded to the app (e.g. proxy.ts sets the CSP + `x-nonce` —
+ * Next reads the nonce from the *request's* CSP header when rendering). It
+ * runs on a fresh copy of the request's headers every time the forwarded
+ * response is (re)built, so a cookie refresh in `setAll` keeps both the
+ * refreshed cookies and the edits.
  */
-export async function updateSession(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({
-    request,
-  });
+export async function updateSession(
+  request: NextRequest,
+  prepareForwardedHeaders?: (headers: Headers) => void,
+) {
+  const next = () => {
+    if (!prepareForwardedHeaders) return NextResponse.next({ request });
+    // Copy AFTER any `request.cookies.set` so refreshed cookies are forwarded.
+    const headers = new Headers(request.headers);
+    prepareForwardedHeaders(headers);
+    return NextResponse.next({ request: { headers } });
+  };
+
+  let supabaseResponse = next();
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -59,9 +75,7 @@ export async function updateSession(request: NextRequest) {
           for (const { name, value } of cookiesToSet) {
             request.cookies.set(name, value);
           }
-          supabaseResponse = NextResponse.next({
-            request,
-          });
+          supabaseResponse = next();
           for (const { name, value, options } of cookiesToSet) {
             supabaseResponse.cookies.set(name, value, options);
           }

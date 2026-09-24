@@ -29,26 +29,36 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "4.5mb",
     },
   },
-  // Audit NX-001: baseline security headers. The inline theme script obstacle
-  // (audit NX-002) is resolved — the script was extracted to /theme-init.js
-  // (public/theme-init.js, served as a static file). A full enforcing CSP with
-  // a per-request nonce is tracked as a separate PR; a Content-Security-Policy-
-  // Report-Only header with nonce support is set in middleware.ts.
+  // SEC-HTTP-07: don't advertise the framework.
+  poweredByHeader: false,
+  // Audit NX-001 / SEC-HTTP-07: baseline security headers for every route.
+  // The CSP itself (per-request nonce) is set by proxy.ts, Report-Only
+  // unless CSP_ENFORCE=true. `frame-ancestors 'none'` there and
+  // X-Frame-Options DENY here say the same thing for CSP2/legacy browsers.
   async headers() {
+    const isProd = process.env.NODE_ENV === "production";
     return [
       {
         source: "/(.*)",
         headers: [
           { key: "X-Frame-Options", value: "DENY" },
           { key: "X-Content-Type-Options", value: "nosniff" },
-          {
-            key: "Strict-Transport-Security",
-            value: "max-age=63072000; includeSubDomains",
-          },
+          // HSTS only in production builds: on localhost it is ignored over
+          // http anyway, and a dev server behind an https tunnel must not
+          // pin a developer's browser to https for two years.
+          ...(isProd
+            ? [
+                {
+                  key: "Strict-Transport-Security",
+                  value: "max-age=63072000; includeSubDomains",
+                },
+              ]
+            : []),
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           {
             key: "Permissions-Policy",
-            value: "camera=(), microphone=(), geolocation=()",
+            value:
+              "camera=(), microphone=(), geolocation=(), payment=(), usb=(), browsing-topics=()",
           },
         ],
       },

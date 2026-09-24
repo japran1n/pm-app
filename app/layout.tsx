@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { DM_Sans, DM_Mono } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -22,7 +23,15 @@ export const metadata: Metadata = {
   description: "Goodguys Studio is your team's workspace for projects, tasks, and clients.",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  // SEC-HTTP-07: per-request CSP nonce minted by proxy.ts and forwarded on
+  // the request. Under `script-src 'nonce-…' 'strict-dynamic'` every
+  // parser-inserted script needs it — Next nonces its own scripts from the
+  // request's CSP header; this layout's own scripts are nonced here.
+  // Reading headers() makes every route dynamic, which a per-request nonce
+  // requires anyway (a prerendered page cannot carry one).
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
+
   return (
     <html
       lang="en"
@@ -34,7 +43,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             blocking script instead of an inline raw-HTML one —
             CSP-compatible, and keeps app/ free of raw-HTML sinks. */}
         {/* eslint-disable-next-line @next/next/no-sync-scripts -- must run before first paint */}
-        <script src="/theme-init.js" />
+        <script src="/theme-init.js" nonce={nonce} />
       </head>
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
         <ThemeProvider
@@ -42,6 +51,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           defaultTheme="light"
           enableSystem
           disableTransitionOnChange
+          nonce={nonce}
         >
           {children}
           <Toaster />
