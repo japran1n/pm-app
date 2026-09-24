@@ -729,8 +729,8 @@ test.describe.serial("F299 holistic keyboard-only flow (AS-570)", () => {
 
       await tabUntilTestId(page, "report-form-status");
       expect(await activeTestId(page)).toBe("report-form-status");
-      await page.getByTestId("report-form-status").selectOption("in_review");
-      await expect(page.getByTestId("report-form-status")).toHaveValue("in_review");
+      await page.getByTestId("report-form-status").selectOption("QA by Dev");
+      await expect(page.getByTestId("report-form-status")).toHaveValue("QA by Dev");
 
       await tabUntilTestId(page, "report-form-title");
       await page.keyboard.type("F299 keyboard-only report");
@@ -752,7 +752,7 @@ test.describe.serial("F299 holistic keyboard-only flow (AS-570)", () => {
       expect(error).toBeNull();
       expect(rows).toHaveLength(1);
       createdTaskIds.push(rows![0].id as string);
-      expect(rows![0].status).toBe("in_review");
+      expect(rows![0].status).toBe("QA by Dev");
     } finally {
       await context.close();
     }

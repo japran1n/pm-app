@@ -331,18 +331,25 @@ export function Popup() {
 
   async function disconnect() {
     // AS-537: signing out must clear chrome.storage.local completely and
-    // leave no residue — not just the supabase-js session key, but any
-    // other cache this extension ever writes there. supabase-js's
-    // `signOut()` removes its own storage key (and calls the server to
-    // revoke the refresh token); `chrome.storage.local.clear()`
-    // afterwards is belt-and-suspenders so a future cached-profile key
-    // introduced elsewhere in the extension can never survive a
-    // disconnect either.
+    // leave no residue. Audit SEC-EXT-02: `scope: "local"` revokes ONLY the
+    // extension's own session (a separate session minted for it by
+    // /extension-connect/exchange) — the default global scope used to end
+    // every session the user had, including the web app in their browser.
+    // `chrome.storage.local.clear()` afterwards is belt-and-suspenders so
+    // no cached key survives a disconnect, even if the network call fails.
     explicitSignOutRef.current = true;
     const supabase = createExtensionSupabaseClient();
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: "local" }).catch(() => {});
     await chrome.storage.local.clear();
     setStatus({ kind: "signed_out" });
+  }
+
+  // Audit SEC-EXT-05: after a report is filed ("Report another", or right
+  // after a successful submit) the previous screenshot must not ride along
+  // on the next report — clear the popup's capture UI state too, not just
+  // the module-level store the form reads from.
+  function resetCapture() {
+    setCaptureState({ kind: "idle" });
   }
 
   return (
@@ -536,6 +543,7 @@ export function Popup() {
                 accessToken={status.accessToken}
                 reporterId={status.userId}
                 reporterEmail={status.email}
+                onCaptureReset={resetCapture}
               />
             </div>
           )}

@@ -14,6 +14,11 @@
 //   getItem(key: string): Promise<string | null> | string | null
 //   setItem(key: string, value: string): Promise<void> | void
 //   removeItem(key: string): Promise<void> | void
+// Audit SEC-EXT-02: the session stored here is the extension's OWN session
+// (minted separately by /extension-connect/exchange), never the user's
+// browser session. It stays in `local` (not `session`) so the extension
+// survives a browser restart — see PERMISSIONS.md "Session".
+//
 // `chrome.storage.local` is namespaced per-extension already, so no key
 // prefixing is needed beyond what supabase-js itself uses.
 export const chromeStorageAdapter = {

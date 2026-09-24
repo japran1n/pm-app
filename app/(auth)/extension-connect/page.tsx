@@ -13,8 +13,8 @@ import { Logo } from "@/components/brand/logo";
 // back here, so the flow resumes after they authenticate.
 //
 // Signed in (AS-532): mints a short-lived, single-use handoff token
-// (lib/extension-handoff.ts) server-side from the *server's own* resolved
-// session — never anything claimed by the client — and renders it in a
+// (lib/extension-handoff.ts) server-side for the *server's own* resolved
+// user — never anything claimed by the client — and renders it in a
 // hidden DOM node. `extension/src/content/extension-connect.ts`, a content
 // script scoped only to this page's own origin+path in
 // extension/manifest.json, reads that node and relays the token to the
@@ -22,7 +22,7 @@ import { Logo } from "@/components/brand/logo";
 // app/(auth)/extension-connect/exchange/route.ts. The user never retypes
 // credentials.
 export default async function ExtensionConnectPage() {
-  const { supabase, user } = await getCurrentUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return (
@@ -48,32 +48,10 @@ export default async function ExtensionConnectPage() {
     );
   }
 
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-
-  if (!session) {
-    // Extremely unlikely (getUser() already re-validated the JWT), but if
-    // the session cookie is somehow gone by this point, fail loudly rather
-    // than minting a token from nothing.
-    return (
-      <main className="flex min-h-svh flex-1 flex-col items-center justify-center gap-6 p-6 text-center">
-        <p role="alert" data-testid="extension-connect-error">
-          Your session could not be read. Please sign in again.
-        </p>
-        <Link href="/sign-in?next=/extension-connect" className="underline">
-          Sign in
-        </Link>
-      </main>
-    );
-  }
-
-  const token = mintExtensionHandoffToken({
-    accessToken: session.access_token,
-    refreshToken: session.refresh_token,
-    userId: user.id,
-    email: user.email ?? null,
-  });
+  // Audit SEC-HTTP-08: the token carries only the user id — never this
+  // browser session's tokens. The exchange route mints a separate session
+  // for the extension.
+  const token = mintExtensionHandoffToken({ userId: user.id });
 
   return (
     <main className="flex min-h-svh flex-1 flex-col items-center justify-center gap-4 p-6 text-center">

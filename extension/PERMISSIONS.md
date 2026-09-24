@@ -1,88 +1,98 @@
 # PM-App QA Feedback — permissions justification
 
 This document is the store-listing-reusable justification for every
-permission, host permission, and content script the extension declares. It
-was audited against the built `dist/manifest.json` on 2026-08-21 (F298).
-Nothing broader than what is listed below is declared anywhere in the
-manifest — in particular, `<all_urls>` never appears.
+permission, host permission, and content script the extension declares.
+Re-audited against the source on 2026-09-24 (audit SEC-EXT-08: the previous
+version justified `scripting` with an "element picker" feature that was
+never reachable from the UI; that dead code has been deleted). Nothing
+broader than what is listed below is declared anywhere in the manifest — in
+particular, `<all_urls>` never appears.
+
+`<app origin>` below is the pm-app origin the extension is built for
+(`VITE_APP_URL` at build time, production by default — see
+`vite.config.ts`).
 
 ## Permissions
 
 - **`activeTab`** — grants temporary access to the single tab the user is
-  looking at, and only immediately after the user interacts with the
-  extension (clicking its toolbar icon opens the popup, which is itself the
-  qualifying gesture). Used for `chrome.tabs.captureVisibleTab`
-  (screenshotting the tab the reporter is looking at) and as the
-  fallback/primary basis for `chrome.scripting.executeScript` calls (element
-  picking) on arbitrary pages the reporter chooses to report a bug on. This
-  is the narrowest permission Chrome offers for "the page the user is
-  currently looking at, only when they act" — no persistent or background
-  tab access is requested.
-- **`storage`** — used for `chrome.storage.local` only (never `sync`), to
-  hold the reporter's session token after the one-time web-app handoff
-  between popup opens. Nothing is synced to a Google account or any server
-  other than this app's own API.
-- **`scripting`** — required to call `chrome.scripting.executeScript`,
-  which injects the element-picker code into the current page **on
-  demand**, only when the reporter explicitly triggers "pick element". No
-  content script from this permission runs automatically or on every page
-  load — it only runs when invoked, scoped to the single tab the call
-  targets.
+  looking at, and only after the user interacts with the extension
+  (clicking its toolbar icon opens the popup, which is the qualifying
+  gesture). Used for `chrome.tabs.captureVisibleTab` (screenshotting the tab
+  the reporter is looking at) and as the host access for the two
+  `chrome.scripting.executeScript` calls below on whatever page the reporter
+  is filing a bug about.
+- **`storage`** — `chrome.storage.local` only (never `sync`). Holds the
+  extension's own session (see "Session" below), the last-used
+  workspace/project, an unsent report draft, and a just-captured screenshot
+  while the popup is closed during region selection. Everything is cleared
+  on "Disconnect".
+- **`scripting`** — required for `chrome.scripting.executeScript`, used on
+  demand in exactly two places, both on the active tab only:
+  1. **Region selection** (`src/capture/region-overlay.ts`): when the
+     reporter clicks "Select area to capture", a temporary overlay is
+     injected so they can drag a rectangle; it removes itself when they
+     finish or press Escape.
+  2. **Page context** (`src/capture/page-context.ts`): when the reporter
+     submits a report, the page's URL, viewport size and device pixel ratio
+     are read so the task describes the page under test rather than the
+     popup.
+  No script from this permission runs automatically or on page load.
 
 ## Host permissions
 
-- **`http://localhost:3000/*`** — scoped to this app's own origin only
-  (the same origin the extension is built to talk to; see
-  `tech-decisions.md`). This is what lets `chrome.scripting.executeScript`
-  target that origin without requiring the exact toolbar-icon gesture
-  `activeTab` demands (Chrome allows script injection into a
-  `host_permissions`-covered origin without a fresh gesture) — used
-  specifically for the one-time session-handoff content script below. It
-  does not grant any access to any other site the reporter visits.
+- **`<app origin>/*`** — the app's own origin only. Lets the background
+  service worker call the app's session-handoff endpoint
+  (`/extension-connect/exchange`, which deliberately sends no CORS headers
+  for web pages) and lets the one content script below run on the connect
+  page. It grants no access to any other site the reporter visits.
 
 ## Content scripts (`content_scripts`)
 
-- **One entry, matching `http://localhost:3000/extension-connect*` only**
-  — this is the one content script that is NOT injected on demand via
-  `chrome.scripting.executeScript`. It runs automatically, but only on the
-  app's own one-time "extension connect" handoff page, because that page's
-  entire job is to hand a fresh session token to the extension the moment
-  the reporter lands on it after signing in — there is no user gesture
-  aimed at the extension itself at that point (no toolbar click has
-  happened yet), so `activeTab`'s gesture-only model cannot cover this case.
-  This is a deliberate, narrow exception to the "on-demand injection"
-  pattern used everywhere else in this extension, not the same category as
-  the on-demand `chrome.scripting.executeScript` calls: it is scoped to one
-  exact path on the extension's own origin, runs once per handoff, and
-  reads nothing from the page except the token the app itself placed there
-  for this purpose. It never runs on any other site or path.
+- **One entry, matching `<app origin>/extension-connect*` only** — runs
+  automatically on the app's own "connect the extension" page, because
+  that page's whole job is to hand a one-time, 60-second, single-use
+  connect code to the extension right after the user signs in; there is no
+  toolbar gesture at that point, so `activeTab` cannot cover it. It only
+  reads that one code from the page and never runs on any other site or
+  path.
+
+## Session
+
+The connect code carries no credentials. The server redeems it once and
+mints a **separate** session for the extension, so the extension never
+holds (or rotates, or revokes) the user's browser session. "Disconnect"
+signs out that extension session only (`scope: "local"`) and clears
+`chrome.storage.local`.
+
+The extension session is stored in `chrome.storage.local`, so the extension
+stays connected across browser restarts. `chrome.storage.session` would be
+cleared on every restart and force a reconnect each time; the trade-off was
+judged not worth it. `chrome.storage.local` is readable only by this
+extension's own pages, worker and content script (which runs only on the
+connect page) — not by websites.
 
 ## What the extension can and cannot see (plain language)
 
 **The extension can only see the page you are actively looking at when you
-click its toolbar icon or explicitly start a capture — it cannot read pages
-in other tabs, browse your browsing history, or run in the background on
-pages you have not interacted with.**
+click its toolbar icon and start a capture or submit a report — it cannot
+read pages in other tabs, browse your browsing history, or run in the
+background on pages you have not interacted with.**
 
 Specifically:
 
 - It can take a screenshot of the tab you are currently viewing, but only
-  right after you click the extension's icon — it cannot screenshot any
-  other tab, and it cannot take a screenshot later without you clicking the
-  icon again.
-- It can read the position, size, and a CSS selector for one element on the
-  current page, but only after you explicitly click "pick element" and then
-  click that element yourself — it does not read the page's contents
-  otherwise, and stops listening the moment you pick or cancel.
+  right after you click the extension's icon.
+- When you submit a report it reads that page's address, window size and
+  pixel ratio. By default only the address's origin and path go into the
+  task — the query string and `#fragment` (which can contain sign-in codes
+  or tokens) are dropped unless you tick "Include full page URL".
 - It never runs automatically on pages you have not chosen to interact with
-  — the one exception is the app's own one-time sign-in handoff page
-  (`localhost:3000/extension-connect`), where it only ever reads the
-  one-time token that page itself placed there for the extension to pick
-  up.
-- It stores your session token locally in the browser
-  (`chrome.storage.local`); nothing is synced to a Google account, and
-  nothing is sent anywhere except this app's own server when you submit a
-  report.
+  — the one exception is the app's own connect page, where it only reads
+  the one-time code that page placed there for it.
+- Your extension session is stored locally in the browser
+  (`chrome.storage.local`); nothing is synced to a Google account.
+- It contacts no server other than this app and its Supabase project — no
+  analytics, and no web fonts or other third-party resources.
 - It cannot access `chrome://` pages, the Chrome Web Store, or other
   browser-internal pages — Chrome blocks extensions from those regardless
   of permissions, and the extension explains this plainly if you try.

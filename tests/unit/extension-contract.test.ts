@@ -58,13 +58,24 @@ describe("extensionCreateTaskSchema contract (P2-5)", () => {
     expect(result.success).toBe(false);
   });
 
-  it("rejects an unknown status value", () => {
+  it("accepts a per-project (v2) status name", () => {
     const result = extensionCreateTaskSchema.safeParse({
       projectId: "00000000-0000-4000-8000-000000000001",
       title: "Bug",
-      status: "wont_fix",
+      status: "QA by Dev",
     });
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects an empty or over-long status", () => {
+    for (const status of ["   ", "x".repeat(101)]) {
+      const result = extensionCreateTaskSchema.safeParse({
+        projectId: "00000000-0000-4000-8000-000000000001",
+        title: "Bug",
+        status,
+      });
+      expect(result.success).toBe(false);
+    }
   });
 
   it("has the expected top-level keys", () => {

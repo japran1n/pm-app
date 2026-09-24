@@ -1,45 +1,49 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+
+import { createAdminClient } from "@/lib/supabase/admin";
+import { serverEnv } from "@/lib/env";
+import { logger } from "@/lib/observability/logger";
+
 // F281 (AS-532/AS-533): server-only helpers for the extension session
-// handoff.
+// handoff. A short-lived one-time token is rendered by
+// app/(auth)/extension-connect/page.tsx, read out of the DOM by the
+// extension's content script (scoped to that one page), and redeemed by the
+// extension's service worker at app/(auth)/extension-connect/exchange.
 //
-// Chosen pattern (see tech-decisions.md "QA feedback extension" and the
-// F281 clarification's tie-breaker rule — "take the simpler, more private
-// option"): a short-lived one-time token, not `externally_connectable`.
-// `externally_connectable` requires the web app to call
-// `chrome.runtime.sendMessage(extensionId, ...)`, which means either
-// publishing the extension to pin a stable id or shipping a generated
-// signing key in the manifest just to keep an unpacked-dev id stable —
-// more moving parts, and it still means the extension is *listening* for
-// messages from any tab that matches the declared origin pattern. A
-// one-time token minted server-side and read out of the DOM by a content
-// script scoped to our own `/extension-connect` page never opens a
-// listening surface at all: the content script only *reads*, it never
-// *receives* messages from the page, and the token is useless without the
-// server round-trip in `consumeExtensionHandoffToken` below.
+// Audit SEC-HTTP-08 / SEC-EXT-02 / GAP5-07 (2026-09-24): the token used to
+// carry the web session's OWN access + refresh tokens. That handed the
+// extension the browser session itself: refresh-token rotation on either
+// side randomly logged the other out, and "Disconnect" (a global signOut)
+// ended every session the user had. Now:
 //
-// The token is an AES-256-GCM–encrypted, base64url-encoded blob containing
-// the session's access/refresh tokens plus an expiry. No secret Supabase
-// key is embedded in it or anywhere client-side; the encryption key
-// (`EXTENSION_HANDOFF_SECRET`) is a server-only env var, never sent to the
-// browser.
+//  - The token carries only { userId, nonce, expiresAt } — no credentials.
+//  - On redeem, the server mints a SEPARATE Supabase session for the same
+//    user (admin generateLink -> verifyOtp with the hashed token, no email
+//    sent — same mechanism app/dev-login/route.ts uses). The extension's
+//    refresh token belongs to its own session family; the web session is
+//    never read, rotated or revoked by anything the extension does.
+//  - Single use is enforced in the DATABASE (not just in memory), via the
+//    existing service-role-only `bump_extension_rate_limit` counter with a
+//    per-token bucket and limit 1. The in-memory set stays as a cheap
+//    first check. A DB error fails CLOSED here (unlike the API rate limit,
+//    which fails open) — this is an auth gate.
 //
-// "One-time": enforced two ways. (1) The token embeds a short (60s) TTL,
-// checked on every consume. (2) A best-effort in-memory set of already-
-// consumed token digests rejects replay within the same server process.
-// (2) does not survive a process restart or span multiple serverless
-// instances — documented as a known limitation in the F281 handoff rather
-// than solved with a new database table, which the 45-minute budget for
-// this feature does not cover; the 60s TTL is the primary defense.
+// The token is AES-256-GCM encrypted with EXTENSION_HANDOFF_SECRET (a
+// server-only env var) and expires after 60 seconds.
 
 const ALGORITHM = "aes-256-gcm";
 const TOKEN_TTL_MS = 60_000;
 
+// One fixed window from the epoch to 2038: floor(epoch / 2^31-1) is 0 for
+// every timestamp before 2038-01-19, so the (user, bucket) row is a single
+// permanent "already redeemed" marker rather than a counter that resets.
+const SINGLE_USE_WINDOW_SECONDS = 2_147_483_647;
+
 type HandoffPayload = {
-  accessToken: string;
-  refreshToken: string;
   userId: string;
-  email: string | null;
+  nonce: string;
   expiresAt: number; // epoch ms
 };
 
@@ -59,17 +63,10 @@ function digest(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
-export function mintExtensionHandoffToken(input: {
-  accessToken: string;
-  refreshToken: string;
-  userId: string;
-  email: string | null;
-}): string {
+export function mintExtensionHandoffToken(input: { userId: string }): string {
   const payload: HandoffPayload = {
-    accessToken: input.accessToken,
-    refreshToken: input.refreshToken,
     userId: input.userId,
-    email: input.email,
+    nonce: randomBytes(16).toString("hex"),
     expiresAt: Date.now() + TOKEN_TTL_MS,
   };
 
@@ -83,11 +80,17 @@ export function mintExtensionHandoffToken(input: {
   return Buffer.concat([iv, authTag, encrypted]).toString("base64url");
 }
 
-export type ConsumeResult =
-  | { ok: true; session: Omit<HandoffPayload, "expiresAt"> }
+export type DecodeResult =
+  | { ok: true; userId: string; digest: string }
   | { ok: false; reason: "invalid" | "expired" | "already_used" };
 
-export function consumeExtensionHandoffToken(token: string): ConsumeResult {
+/**
+ * Pure part of redeeming a token: decrypt, validate shape and expiry, and
+ * reject tokens already seen by THIS process. Marks the token as consumed
+ * in memory on success. Does not touch the database — see
+ * `consumeExtensionHandoffToken` for the durable single-use check.
+ */
+export function decodeExtensionHandoffToken(token: string): DecodeResult {
   let key: Buffer;
   try {
     key = getKey();
@@ -100,13 +103,7 @@ export function consumeExtensionHandoffToken(token: string): ConsumeResult {
     return { ok: false, reason: "already_used" };
   }
 
-  let raw: Buffer;
-  try {
-    raw = Buffer.from(token, "base64url");
-  } catch {
-    return { ok: false, reason: "invalid" };
-  }
-
+  const raw = Buffer.from(token, "base64url");
   if (raw.length < 12 + 16) {
     return { ok: false, reason: "invalid" };
   }
@@ -129,9 +126,8 @@ export function consumeExtensionHandoffToken(token: string): ConsumeResult {
   }
 
   if (
-    typeof payload.accessToken !== "string" ||
-    typeof payload.refreshToken !== "string" ||
     typeof payload.userId !== "string" ||
+    typeof payload.nonce !== "string" ||
     typeof payload.expiresAt !== "number"
   ) {
     return { ok: false, reason: "invalid" };
@@ -142,14 +138,99 @@ export function consumeExtensionHandoffToken(token: string): ConsumeResult {
   }
 
   consumedDigests.add(tokenDigest);
+  return { ok: true, userId: payload.userId, digest: tokenDigest };
+}
+
+export type ConsumeResult =
+  | { ok: true; userId: string }
+  | { ok: false; reason: "invalid" | "expired" | "already_used" | "unavailable" };
+
+/**
+ * Redeem a handoff token exactly once across every server instance.
+ */
+export async function consumeExtensionHandoffToken(
+  token: string,
+  admin: ReturnType<typeof createAdminClient> = createAdminClient(),
+): Promise<ConsumeResult> {
+  const decoded = decodeExtensionHandoffToken(token);
+  if (!decoded.ok) return decoded;
+
+  const { data: firstUse, error } = await admin.rpc("bump_extension_rate_limit", {
+    p_user_id: decoded.userId,
+    p_bucket: `handoff:${decoded.digest}`,
+    p_limit: 1,
+    p_window_seconds: SINGLE_USE_WINDOW_SECONDS,
+  });
+
+  if (error) {
+    logger.error("extension-handoff: single-use check failed; rejecting (fail-closed)", {
+      error,
+    });
+    return { ok: false, reason: "unavailable" };
+  }
+  if (firstUse !== true) {
+    return { ok: false, reason: "already_used" };
+  }
+
+  return { ok: true, userId: decoded.userId };
+}
+
+export type ExtensionSession = {
+  accessToken: string;
+  refreshToken: string;
+  userId: string;
+  email: string | null;
+};
+
+/**
+ * Mint a brand-new Supabase session for `userId`, independent of any
+ * session the user already has (browser or otherwise). Uses the admin
+ * `generateLink` API to obtain a hashed magic-link token (no email is
+ * sent) and immediately verifies it server-side on a throwaway client, so
+ * the link itself never leaves this function.
+ */
+export async function mintExtensionSession(
+  userId: string,
+  admin: ReturnType<typeof createAdminClient> = createAdminClient(),
+): Promise<ExtensionSession | null> {
+  const { data: userData, error: userError } =
+    await admin.auth.admin.getUserById(userId);
+  const email = userData?.user?.email;
+  if (userError || !email) {
+    logger.error("extension-handoff: could not load user for session mint", {
+      error: userError,
+    });
+    return null;
+  }
+
+  const { data: linkData, error: linkError } =
+    await admin.auth.admin.generateLink({ type: "magiclink", email });
+  const hashedToken = linkData?.properties?.hashed_token;
+  if (linkError || !hashedToken) {
+    logger.error("extension-handoff: generateLink failed", { error: linkError });
+    return null;
+  }
+
+  const env = serverEnv();
+  const verifier = createSupabaseClient(
+    env.NEXT_PUBLIC_SUPABASE_URL,
+    env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+    { auth: { autoRefreshToken: false, persistSession: false } },
+  );
+  const { data: verified, error: verifyError } = await verifier.auth.verifyOtp({
+    type: "magiclink",
+    token_hash: hashedToken,
+  });
+  const session = verified?.session;
+  if (verifyError || !session || session.user.id !== userId) {
+    logger.error("extension-handoff: verifyOtp failed", { error: verifyError });
+    return null;
+  }
 
   return {
-    ok: true,
-    session: {
-      accessToken: payload.accessToken,
-      refreshToken: payload.refreshToken,
-      userId: payload.userId,
-      email: payload.email,
-    },
+    accessToken: session.access_token,
+    refreshToken: session.refresh_token,
+    userId,
+    email: session.user.email ?? null,
   };
 }

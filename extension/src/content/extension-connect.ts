@@ -10,7 +10,10 @@
 // malicious page were injected with the same origin+path (i.e. it would
 // have to *be* pm-app), all it can do is read one data attribute the page
 // itself renders server-side from a real session.
+let relayed = false;
+
 function relayHandoffToken(): void {
+  if (relayed) return;
   const node = document.querySelector<HTMLElement>(
     "[data-testid='extension-handoff']",
   );
@@ -19,15 +22,20 @@ function relayHandoffToken(): void {
     return;
   }
 
+  // The token is single-use server-side; relay it exactly once.
+  relayed = true;
+  observer?.disconnect();
   chrome.runtime.sendMessage({ type: "EXTENSION_HANDOFF_TOKEN", token });
 }
 
-relayHandoffToken();
-
 // The page renders the token node synchronously in its initial HTML
 // (Server Component), but observe for late hydration/navigation just in
-// case, and stop once we've successfully relayed a token.
-const observer = new MutationObserver(() => {
-  relayHandoffToken();
-});
-observer.observe(document.documentElement, { childList: true, subtree: true });
+// case, and stop once we've relayed a token.
+let observer: MutationObserver | null = null;
+relayHandoffToken();
+if (!relayed) {
+  observer = new MutationObserver(() => {
+    relayHandoffToken();
+  });
+  observer.observe(document.documentElement, { childList: true, subtree: true });
+}

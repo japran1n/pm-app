@@ -194,9 +194,40 @@ export const GET = withExtensionAuth(
       visibleProjectIds.has(row.id),
     );
 
+    // Audit SEC-EXT-06: statuses are per-project (`project_statuses`), not
+    // the pre-v2 four-value enum the extension used to hard-code. Only the
+    // visible projects' columns are read, in board order.
+    const statusesByProject = new Map<string, { name: string; category: string }[]>();
+    if (visibleProjectRows.length > 0) {
+      const { data: statusRows, error: statusesError } = await admin
+        .from("project_statuses")
+        .select("project_id, name, category, position")
+        .in(
+          "project_id",
+          visibleProjectRows.map((row) => row.id),
+        )
+        .order("position", { ascending: true });
+      if (statusesError) {
+        logger.error("extension/context: failed to look up project statuses", { error: statusesError });
+        return NextResponse.json(
+          { error: "Something went wrong. Please try again in a moment." },
+          { status: 500, headers },
+        );
+      }
+      for (const row of statusRows ?? []) {
+        const list = statusesByProject.get(row.project_id) ?? [];
+        list.push({ name: row.name, category: row.category });
+        statusesByProject.set(row.project_id, list);
+      }
+    }
+
     return NextResponse.json(
       {
-        projects: visibleProjectRows.map((row) => ({ id: row.id, name: row.name })),
+        projects: visibleProjectRows.map((row) => ({
+          id: row.id,
+          name: row.name,
+          statuses: statusesByProject.get(row.id) ?? [],
+        })),
         members,
         taskTypes: (taskTypeRows ?? []).map((row) => ({ id: row.id, name: row.name })),
       },

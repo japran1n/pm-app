@@ -268,8 +268,9 @@ test.describe.serial("F293 report form (AS-555, AS-556, AS-557)", () => {
       await expect(projectSelect).toBeVisible({ timeout: 10_000 });
       await projectSelect.selectOption({ label: "F293 pw project A" });
 
-      // AS-555: status picker, defaults to "todo", change it explicitly.
-      await page.getByTestId("report-form-status").selectOption("in_review");
+      // AS-555 / SEC-EXT-06: status picker lists the project's own (v2)
+      // columns from the context API; defaults to "Project default".
+      await page.getByTestId("report-form-status").selectOption("QA by Dev");
 
       // AS-556: title (required), description, priority, due date.
       await page.getByTestId("report-form-title").fill("F293 real report");
@@ -290,7 +291,7 @@ test.describe.serial("F293 report form (AS-555, AS-556, AS-557)", () => {
       expect(rows).toHaveLength(1);
       const row = rows![0];
       createdTaskIds.push(row.id as string);
-      expect(row.status).toBe("in_review");
+      expect(row.status).toBe("QA by Dev");
       expect(row.priority).toBe("high");
       expect(row.due_date).toBe("2026-09-01");
       expect(row.author_id).toBe(memberUserId);

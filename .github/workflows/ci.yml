@@ -120,8 +120,19 @@ jobs:
         working-directory: extension
         run: npx eslint .
 
+      # Audit SEC-EXT-07: the build used to throw on every CI run because
+      # extension/.env (gitignored) does not exist here. VITE_APP_URL now
+      # defaults to production in vite.config.ts; the Supabase values are
+      # placeholders — this job proves the bundle builds and ships no
+      # secret key, it does not produce a publishable artifact. The
+      # Playwright suite (extension/tests) is not run here: it needs a
+      # headed Chromium with the unpacked extension loaded, a local app on
+      # :3000 and live Supabase credentials.
       - name: Build extension
         working-directory: extension
+        env:
+          VITE_SUPABASE_URL: https://placeholder.supabase.co
+          VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ci_placeholder
         run: npm run build
 
   ci:

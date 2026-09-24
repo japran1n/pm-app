@@ -1,11 +1,16 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
 import { APP_URL } from "../lib/supabase";
-import { getAnnotatedResult, getLastCapture } from "../capture/store";
+import {
+  clearAnnotatedResult,
+  clearLastCapture,
+  getAnnotatedResult,
+  getLastCapture,
+} from "../capture/store";
 import { checkScreenshotSize, uploadScreenshotForTask } from "../submit/upload";
 import { collectEnvironmentMetadata } from "../capture/environment";
 import { collectPageContextOnActiveTab } from "../capture/page-context";
-import { buildTaskDescription } from "../submit/describe";
+import { buildTaskDescription, redactPageUrl } from "../submit/describe";
 import { getLastReportContext, setLastReportContext } from "../state/preferences";
 import { getDraft, saveDraft, clearDraft, type ReportDraft } from "../submit/draft";
 import { classifySubmitError, SubmitErrorMessage, type SubmitErrorInfo } from "./errors";
@@ -27,28 +32,21 @@ import { ReportSuccess } from "./success";
 // F295 (AS-560): the description actually sent to the server is NOT the
 // raw textarea value — it's `submit/describe.ts`'s buildTaskDescription()
 // result, which appends a structured, readable technical-metadata block
-// (environment, picked element) after the reporter's own words. Environment
+// (environment) after the reporter's own words. Environment
 // metadata is collected fresh at submit time via F288's
 // collectEnvironmentMetadata() (using the connected session's own reporter
-// id/email, passed down from Popup.tsx); the picked element is read from
-// whichever in-popup state Popup.tsx already holds and passed down as a
-// prop, since it does not live in a shared store this component could
-// otherwise reach (see that feature's own handoff). Console/network capture
-// support has been removed entirely (not needed).
+// id/email, passed down from Popup.tsx). (Element picking and console/network capture have been removed.)
 //
 // Sensible defaults (per this feature's clarification, "everything else
-// optional"): status defaults to "todo" (also the DB column's own default,
-// mirrored here so the picker shows the same value the server will actually
-// persist if left untouched — see lib/validation/tasks.ts's
-// createTaskSchema comment for the same rationale on the web app side), no
+// optional"): status defaults to "Project default" (omitted from the
+// request; the server resolves the project's first not-started column), no
 // assignee, no priority, no due date.
 
-const STATUS_OPTIONS = [
-  { value: "todo", label: "To do" },
-  { value: "in_progress", label: "In progress" },
-  { value: "in_review", label: "In review" },
-  { value: "done", label: "Done" },
-] as const;
+// Audit SEC-EXT-06: statuses are per-project (`project_statuses`, the v2
+// set by default) and come from GET /api/extension/context — no hard-coded
+// list here. "" means "project default": the field is omitted from the
+// request and the server resolves the project's first not-started column.
+type ProjectStatus = { name: string; category: string };
 
 const PRIORITY_OPTIONS = [
   { value: "", label: "No priority" },
@@ -60,7 +58,7 @@ const PRIORITY_OPTIONS = [
 ] as const;
 
 type Workspace = { id: string; name: string; slug: string };
-type Project = { id: string; name: string };
+type Project = { id: string; name: string; statuses?: ProjectStatus[] };
 type Member = { id: string; name: string };
 type TaskType = { id: string; name: string };
 
@@ -91,10 +89,14 @@ export function ReportForm({
   accessToken,
   reporterId,
   reporterEmail,
+  onCaptureReset,
 }: {
   accessToken: string;
   reporterId?: string | null;
   reporterEmail?: string | null;
+  /** Called once a report no longer needs the current screenshot, so the
+   * popup can drop its own capture preview state (SEC-EXT-05). */
+  onCaptureReset?: () => void;
 }) {
   const [workspacesState, setWorkspacesState] = useState<WorkspacesState>({
     kind: "loading",
@@ -105,7 +107,11 @@ export function ReportForm({
   });
   const [projectId, setProjectId] = useState("");
   const [taskTypeId, setTaskTypeId] = useState("");
-  const [status, setStatus] = useState<(typeof STATUS_OPTIONS)[number]["value"]>("todo");
+  const [status, setStatus] = useState("");
+  // Audit SEC-EXT-04: the page URL goes into the task description as
+  // origin + path only by default — query strings and fragments routinely
+  // carry OAuth codes, access tokens, reset links and PII. Opt-in per report.
+  const [includeFullUrl, setIncludeFullUrl] = useState(false);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [assigneeId, setAssigneeId] = useState("");
@@ -149,7 +155,7 @@ export function ReportForm({
     if (draftState.kind !== "loaded" || !draftState.draft || appliedDraftFields.current) return;
     appliedDraftFields.current = true;
     const d = draftState.draft;
-    setStatus(d.status as (typeof STATUS_OPTIONS)[number]["value"]);
+    setStatus(d.status);
     setTitle(d.title);
     setDescription(d.description);
     setAssigneeId(d.assigneeId);
@@ -350,6 +356,22 @@ export function ReportForm({
     }
   }, [workspaceContext, rememberedContext, workspaceId, draftState]);
 
+  const projectStatuses = useMemo<ProjectStatus[]>(
+    () =>
+      workspaceContext.kind === "loaded"
+        ? (workspaceContext.projects.find((p) => p.id === projectId)?.statuses ?? [])
+        : [],
+    [workspaceContext, projectId],
+  );
+
+  // A status only makes sense for the project it came from: drop a
+  // restored/previous choice the selected project doesn't have (e.g. a
+  // pre-v2 "todo" from an old draft) so the server default applies.
+  useEffect(() => {
+    if (workspaceContext.kind !== "loaded" || !projectId || !status) return;
+    if (!projectStatuses.some((s) => s.name === status)) setStatus("");
+  }, [workspaceContext, projectId, status, projectStatuses]);
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!projectId || !title.trim()) return;
@@ -423,7 +445,10 @@ export function ReportForm({
     );
     const finalDescription = buildTaskDescription({
       reporterText: description.trim(),
-      environment,
+      environment: {
+        ...environment,
+        pageUrl: redactPageUrl(environment.pageUrl, includeFullUrl),
+      },
       element: null,
     });
 
@@ -438,7 +463,7 @@ export function ReportForm({
           projectId,
           title: title.trim(),
           description: finalDescription || undefined,
-          status,
+          status: status || undefined,
           priority: priority || undefined,
           assigneeId: assigneeId || undefined,
           dueDate: dueDate || undefined,
@@ -499,10 +524,12 @@ export function ReportForm({
             boardPath,
             attachmentWarning: `Task created, but the screenshot could not be attached: ${uploadResult.error}`,
           });
+          discardScreenshot();
           return;
         }
       }
 
+      discardScreenshot();
       setSubmitState({ kind: "success", taskId, taskKey, boardPath });
     } catch {
       // F297 (AS-565): `fetch()` itself threw — no HTTP response was ever
@@ -525,8 +552,22 @@ export function ReportForm({
   // workspace/project are deliberately left untouched (they're already
   // the just-remembered/just-used values, not re-fetched as if this were
   // the reporter's first-ever report).
+  // Audit SEC-EXT-05: a filed report's screenshot must never be re-attached
+  // to the next one (it used to be, even after switching workspace) — clear
+  // every place a screenshot can come from: the module store (plain and
+  // annotated), a restored draft image, and the popup's own preview state.
+  function discardScreenshot() {
+    clearLastCapture();
+    clearAnnotatedResult();
+    setRestoredDraftImage(null);
+    setDraftImageOmittedNotice(false);
+    onCaptureReset?.();
+  }
+
   function reportAnother() {
-    setStatus("todo");
+    discardScreenshot();
+    setIncludeFullUrl(false);
+    setStatus("");
     setTitle("");
     setDescription("");
     setAssigneeId("");
@@ -677,13 +718,12 @@ export function ReportForm({
               data-testid="report-form-status"
               className="pm-select"
               value={status}
-              onChange={(e) =>
-                setStatus(e.target.value as (typeof STATUS_OPTIONS)[number]["value"])
-              }
+              onChange={(e) => setStatus(e.target.value)}
             >
-              {STATUS_OPTIONS.map((s) => (
-                <option key={s.value} value={s.value}>
-                  {s.label}
+              <option value="">Project default</option>
+              {projectStatuses.map((s) => (
+                <option key={s.name} value={s.name}>
+                  {s.name}
                 </option>
               ))}
             </select>
@@ -717,6 +757,20 @@ export function ReportForm({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
             />
+            <label
+              htmlFor="report-include-full-url"
+              className="pm-meta"
+              style={{ display: "flex", alignItems: "center", gap: "var(--pm-space-2)", marginTop: "var(--pm-space-2)" }}
+            >
+              <input
+                id="report-include-full-url"
+                data-testid="report-form-include-full-url"
+                type="checkbox"
+                checked={includeFullUrl}
+                onChange={(e) => setIncludeFullUrl(e.target.checked)}
+              />
+              Include full page URL (query and #fragment)
+            </label>
           </div>
 
           <div className="pm-field pm-field-optional">

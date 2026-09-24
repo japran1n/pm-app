@@ -54,22 +54,22 @@ function readManifest(): ExtensionManifest {
  * Rewrites the three origin-scoped manifest fields (host_permissions,
  * content_scripts[].matches; web_accessible_resources[].matches is derived
  * by crxjs from content_scripts and needs no separate rewrite) to match the
- * configured app origin. Throws — does not silently fall back — if the
- * origin is missing or unparseable, since a manifest that still points at
- * localhost is a silently-broken, unusable artifact (M19 BLOCKER-5).
+ * configured app origin. Throws if the origin is unparseable.
  */
+// Audit SEC-EXT-07: VITE_APP_URL used to be mandatory with no default, so
+// every CI build (which has no extension/.env) threw, and the only working
+// artifact anyone ever built pointed at localhost. It is now a build-time
+// variable with the production origin as its default — set VITE_APP_URL
+// (e.g. http://localhost:3000 in extension/.env) to build against another
+// deployment. The resolved value is also injected into the bundle via
+// `define` below, so the manifest origins and the runtime APP_URL can never
+// disagree.
+export const DEFAULT_APP_URL = "https://pm-app-beige.vercel.app";
+
 function withAppOrigin(
   manifest: ExtensionManifest,
-  appUrl: string | undefined,
+  appUrl: string,
 ): ExtensionManifest {
-  if (!appUrl) {
-    throw new Error(
-      "VITE_APP_URL is not set. It is required to generate the extension manifest's " +
-        "host_permissions and content_scripts origins — set it in extension/.env " +
-        "(see .env.example) before building.",
-    );
-  }
-
   let origin: string;
   try {
     origin = new URL(appUrl).origin;
@@ -98,7 +98,8 @@ function withAppOrigin(
 
 export default defineConfig(({ mode, command }) => {
   const env = loadEnv(mode, process.cwd(), "");
-  const manifest = withAppOrigin(readManifest(), env.VITE_APP_URL);
+  const appUrl = (env.VITE_APP_URL || DEFAULT_APP_URL).replace(/\/+$/, "");
+  const manifest = withAppOrigin(readManifest(), appUrl);
 
   // Only enforce this at actual build time (not `vite dev`/`--watch` with no
   // env configured yet in some ad-hoc local setup) — but this project has no
@@ -108,6 +109,9 @@ export default defineConfig(({ mode, command }) => {
 
   return {
     plugins: [react(), crx({ manifest })],
+    define: {
+      "import.meta.env.VITE_APP_URL": JSON.stringify(appUrl),
+    },
     build: {
       outDir: "dist",
       emptyOutDir: true,

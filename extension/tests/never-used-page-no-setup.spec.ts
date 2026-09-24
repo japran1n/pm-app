@@ -1,19 +1,16 @@
-// F298 — AS-569: capture and element-pick both work the FIRST time on a
+// F298 — AS-569: capture works the FIRST time on a
 // page the extension has genuinely never touched before — no prior visit
 // to that page, no prior grant beyond the one-time activeTab-equivalent
 // gesture the popup interaction itself provides.
 //
-// This is a holistic proof, distinct from F283/F287's own per-feature
-// tests: it exercises both capabilities back-to-back against ONE single
-// fresh page (a unique, never-served-before path) within a single test, to
-// prove "no prior setup" as a combined claim rather than two separate ones.
-// (Console/network capture, previously a third capability proven here, has
-// been removed from the extension entirely — not needed.)
+// Proven against ONE single fresh page (a unique, never-served-before path).
+// (Element picking and console/network capture, previously also proven
+// here, have been removed from the extension — audit SEC-EXT-08.)
 //
 // Follows F287's established `host_permissions:
 // ["http://localhost:3000/*"]` trick for driving `chrome.scripting.
 // executeScript` without a real toolbar-icon gesture Playwright cannot
-// reproduce (documented at length in element-picker-selector.spec.ts). The
+// reproduce. The
 // one capability that genuinely requires the literal activeTab gesture —
 // `chrome.tabs.captureVisibleTab` — is proven the same way
 // capture-visible-tab.spec.ts proves it: by stubbing only that one Chrome
@@ -88,7 +85,7 @@ function startFixtureServer(marker: string, uniquePath: string): Promise<http.Se
   });
 }
 
-test("AS_569_capture_and_pick_both_work_the_first_time_on_a_genuinely_never_before_seen_page", async () => {
+test("AS_569_capture_works_the_first_time_on_a_genuinely_never_before_seen_page", async () => {
   const marker = crypto.randomBytes(8).toString("hex");
   const uniquePath = `/never-seen-${marker}`;
   const server = await startFixtureServer(marker, uniquePath);
@@ -131,8 +128,7 @@ test("AS_569_capture_and_pick_both_work_the_first_time_on_a_genuinely_never_befo
 
     // The select-area-first flow (region-overlay.ts) also runs via real
     // `chrome.scripting.executeScript` against this fresh, never-visited
-    // page — same real-injection story as capability 2 below, just for the
-    // overlay instead of the picker. A real click-drag on the live page
+    // page. A real click-drag on the live page
     // drives it end to end, matching the file's own "no prior visit, no
     // prior injection" intent.
     await popupPage.getByTestId("capture-button").click();
@@ -145,22 +141,6 @@ test("AS_569_capture_and_pick_both_work_the_first_time_on_a_genuinely_never_befo
     await expect(popupPage.getByTestId("capture-success")).toBeVisible();
     await expect(popupPage.getByTestId("capture-error")).toHaveCount(0);
 
-    // --- capability 2: element pick ---
-    // Real chrome.scripting.executeScript against the real fresh page —
-    // no prior visit, no prior injection, works purely off
-    // host_permissions + this gesture-adjacent popup interaction.
-    await contentPage.bringToFront();
-    await popupPage.getByTestId("pick-element-button").click();
-    await expect(popupPage.getByTestId("pick-element-hint")).toBeVisible();
-
-    const target = contentPage.locator("#target");
-    const box = await target.boundingBox();
-    expect(box).toBeTruthy();
-    await contentPage.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
-    await contentPage.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2);
-
-    await expect(popupPage.getByTestId("pick-element-result")).toBeVisible({ timeout: 10_000 });
-    await expect(popupPage.getByTestId("pick-element-selector")).toHaveText("#target");
   } finally {
     await context.close();
     await new Promise<void>((resolve) => server.close(() => resolve()));

@@ -98,3 +98,22 @@ export function buildTaskDescription(input: BuildDescriptionInput): string {
 
   return [reporterText, SEPARATOR, METADATA_HEADING, "", sections.join("\n\n")].join("\n\n");
 }
+
+/**
+ * Audit SEC-EXT-04: reduce a page URL to origin + path unless the reporter
+ * explicitly opted in to the full URL. Query strings and fragments often
+ * carry OAuth codes/tokens, password-reset links, session ids or PII, and
+ * task descriptions are visible to everyone on the project (and possibly
+ * clients). A value that doesn't parse as a URL is returned unchanged
+ * (nothing to strip from it).
+ */
+export function redactPageUrl(url: string, includeFull: boolean): string {
+  if (includeFull) return url;
+  try {
+    const parsed = new URL(url);
+    if (!parsed.search && !parsed.hash) return url;
+    return `${parsed.origin === "null" ? `${parsed.protocol}//` : parsed.origin}${parsed.pathname}`;
+  } catch {
+    return url;
+  }
+}

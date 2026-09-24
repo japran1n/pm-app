@@ -53,12 +53,17 @@ export const extensionCreateTaskSchema = z.object({
     .max(10000, "Description must be 10000 characters or fewer.")
     .optional()
     .nullable(),
-  // AS-555: fixed four-status list (matches lib/actions/tasks.ts's own
-  // `status` type) — this mission's custom-project-statuses feature (M16)
-  // has not landed, per this feature's clarification, so there is no
-  // per-project status list to source this from yet.
+  // AS-555 / audit SEC-EXT-06: statuses are per-project (`project_statuses`)
+  // — the extension renders the chosen project's own columns from
+  // GET /api/extension/context. Same relaxed shape as createTaskSchema:
+  // any non-empty column name; createTaskForUser resolves it against the
+  // project's real columns. Omitted = the server picks the project's
+  // default (first not-started) column.
   status: z
-    .enum(["todo", "in_progress", "in_review", "done"])
+    .string()
+    .trim()
+    .min(1, "Status is required.")
+    .max(100, "Status must be 100 characters or fewer.")
     .optional(),
   // AS-556: matches `tasks_priority_check` (lib/validation/tasks.ts's
   // createTaskSchema).

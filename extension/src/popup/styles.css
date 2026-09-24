@@ -22,8 +22,11 @@
  *   --ds-success     → status-done color (#12784f light / #4ade80-ish dark)
  */
 
-/* ── Google Fonts: Inter variable + Source Code Pro ────────────────────── */
-@import url("https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Source+Code+Pro:wght@400;500&display=swap");
+/* ── Fonts ────────────────────────────────────────────────────────────────
+ * Audit SEC-EXT-04: no remote font loading. The popup used to @import Google
+ * Fonts, which contacted a third party on every open despite PERMISSIONS.md
+ * saying nothing is sent anywhere but pm-app. Inter / Source Code Pro are
+ * used when installed locally; otherwise the system UI / mono stacks. */
 
 /* ── Light palette (default) ─────────────────────────────────────────── */
 :root {

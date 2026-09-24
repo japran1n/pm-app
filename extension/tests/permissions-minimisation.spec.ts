@@ -26,7 +26,11 @@ const permissionsDocPath = path.join(extensionRoot, "PERMISSIONS.md");
 // other, which is the gap BLOCKER-5 found (both copies could be, and were,
 // hardcoded to the wrong origin in lockstep).
 const builtEnv = loadEnv("production", extensionRoot, "");
-const configuredOrigin = new URL(builtEnv.VITE_APP_URL).origin;
+// SEC-EXT-07: VITE_APP_URL is optional; vite.config.ts falls back to the
+// production origin (DEFAULT_APP_URL) when it is unset.
+const configuredOrigin = new URL(
+  builtEnv.VITE_APP_URL || "https://pm-app-beige.vercel.app",
+).origin;
 
 test.beforeAll(() => {
   if (!fs.existsSync(distManifestPath)) {
