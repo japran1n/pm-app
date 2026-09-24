@@ -53,7 +53,10 @@ import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { canEditTask, type WorkspaceRole } from "@/lib/auth/permissions";
-import type { ProjectVisibility } from "@/lib/actions/project-visibility";
+import {
+  filterProjectsVisibleToCaller,
+  type ProjectVisibility,
+} from "@/lib/actions/project-visibility";
 import { writeAudit } from "@/lib/activity/audit";
 import { revalidatePortalProject } from "@/lib/actions/portal-revalidate";
 import {
@@ -902,27 +905,25 @@ export async function bulkSetTaskPhase(
     phaseProjectId = (phaseRow as { project_id: string } | null)?.project_id ?? null;
   }
 
-  // Private-project visibility (mirrors bulkUpdateTasks'
-  // lib/actions/tasks.ts:3994-4012 rule, re-applied here): only needed
-  // for tasks whose project is actually private — one extra query
-  // covering every such project in this call, not one per task. Without
-  // this, a workspace member who is a member of the workspace but NOT of
-  // a private project's `project_members` could write `phase_id` on that
-  // project's tasks through this admin-client bulk path even though
+  // Project visibility per task, one project_members query for the whole
+  // call. Without this, a caller who cannot see a project could write
+  // `phase_id` on its tasks through this admin-client bulk path even though
   // `setTaskPhase` (via `requireVisibility`) rejects the identical call.
-  const privateProjectIds = new Set(
-    [...contexts.values()].filter((c) => c.visibility === "private").map((c) => c.projectId),
-  );
-  const explicitMemberProjectIds = new Set<string>();
-  if (privateProjectIds.size > 0) {
-    const { data: memberRows } = await admin
-      .from("project_members")
-      .select("project_id")
-      .in("project_id", [...privateProjectIds])
-      .eq("user_id", user.id);
-    for (const row of memberRows ?? []) {
-      explicitMemberProjectIds.add(row.project_id as string);
-    }
+  let visibleProjectIds: Set<string>;
+  try {
+    visibleProjectIds = await filterProjectsVisibleToCaller(
+      admin,
+      user.id,
+      [...contexts.values()].flatMap((c) => {
+        const role = roleByWorkspace.get(c.workspaceId);
+        return role
+          ? [{ projectId: c.projectId, visibility: c.visibility, role }]
+          : [];
+      }),
+    );
+  } catch (error) {
+    logger.error("bulkSetTaskPhase: visibility lookup failed", { error });
+    return { ok: false, error: "Something went wrong. Please try again in a moment." };
   }
 
   const allowedIds: string[] = [];
@@ -936,12 +937,7 @@ export async function bulkSetTaskPhase(
       failedIds.push({ id, reason: "You don't have permission to edit this task." });
       continue;
     }
-    if (
-      context.visibility === "private" &&
-      role !== "owner" &&
-      role !== "admin" &&
-      !explicitMemberProjectIds.has(context.projectId)
-    ) {
+    if (!visibleProjectIds.has(context.projectId)) {
       failedIds.push({ id, reason: "You don't have access to this task's project." });
       continue;
     }

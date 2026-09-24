@@ -7,7 +7,10 @@ import {
 } from "@/lib/api/extension-auth";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { resolvePeople } from "@/lib/queries/people";
-import type { ProjectVisibility } from "@/lib/actions/project-visibility";
+import {
+  filterProjectsVisibleToCaller,
+  type ProjectVisibility,
+} from "@/lib/actions/project-visibility";
 import { logger } from "@/lib/observability/logger";
 
 // F293 (AS-555, AS-556, AS-557): the second, read-only Route Handler the
@@ -167,48 +170,29 @@ export const GET = withExtensionAuth(
     // `createTaskForUser` (lib/tasks/create.ts) and `uploadAttachmentForUser`
     // (lib/attachments/upload.ts) already enforce via
     // `isProjectVisibleToCaller`, batching the `project_members` lookup into a
-    // single query rather than one round trip per private project.
+    // single query rather than one round trip per project.
     const allProjectRows = projectRows ?? [];
-    const privateProjectIds = allProjectRows
-      .filter((row) => ((row.visibility as ProjectVisibility) ?? "workspace") === "private")
-      .map((row) => row.id);
-
-    let visiblePrivateProjectIds = new Set<string>();
-    if (
-      privateProjectIds.length > 0 &&
-      membership.role !== "owner" &&
-      membership.role !== "admin"
-    ) {
-      const { data: privateMemberRows, error: privateMemberError } = await admin
-        .from("project_members")
-        .select("project_id")
-        .eq("user_id", user.id)
-        .in("project_id", privateProjectIds);
-
-      if (privateMemberError) {
-        logger.error("extension/context: failed to look up project memberships", { error: privateMemberError });
-        return NextResponse.json(
-          { error: "Something went wrong. Please try again in a moment." },
-          { status: 500, headers },
-        );
-      }
-
-      visiblePrivateProjectIds = new Set(
-        (privateMemberRows ?? []).map((row) => row.project_id),
+    let visibleProjectIds: Set<string>;
+    try {
+      visibleProjectIds = await filterProjectsVisibleToCaller(
+        admin,
+        user.id,
+        allProjectRows.map((row) => ({
+          projectId: row.id,
+          visibility: (row.visibility as ProjectVisibility) ?? "workspace",
+          role: membership.role,
+        })),
+      );
+    } catch (error) {
+      logger.error("extension/context: failed to look up project memberships", { error });
+      return NextResponse.json(
+        { error: "Something went wrong. Please try again in a moment." },
+        { status: 500, headers },
       );
     }
-
-    // isProjectVisibleToCaller's rule, applied per row using the batched
-    // lookup above instead of a per-project query: workspace-visible OR
-    // caller is owner/admin OR caller has an explicit project_members row.
-    // Guests are excluded from the workspace-visible shortcut — they only
-    // see projects they're explicitly a member of.
-    const visibleProjectRows = allProjectRows.filter((row) => {
-      const visibility = (row.visibility as ProjectVisibility) ?? "workspace";
-      if (visibility === "workspace" && membership.role !== "guest") return true;
-      if (membership.role === "owner" || membership.role === "admin") return true;
-      return visiblePrivateProjectIds.has(row.id);
-    });
+    const visibleProjectRows = allProjectRows.filter((row) =>
+      visibleProjectIds.has(row.id),
+    );
 
     return NextResponse.json(
       {

@@ -24,9 +24,8 @@
 // lib/actions/project-members.ts's `isProjectLeadOrWorkspaceAdmin` already
 // uses for its own per-user, admin-client-driven re-derivation of an RLS
 // helper. A mentioned user is visible when they are an active workspace
-// member AND (the project is workspace-visible, OR they are a workspace
-// owner/admin, OR they have an explicit project_members row for this
-// project).
+// member AND `isProjectVisibleForRole` (lib/actions/project-visibility.ts)
+// holds for their role on this project.
 //
 // Enforcement is "strip", not "reject the whole comment" (the clarified
 // spec's Notes left this open; the simpler option that adds no new
@@ -37,6 +36,8 @@
 
 import type { JSONContent } from "@tiptap/react";
 import type { createAdminClient } from "@/lib/supabase/admin";
+import type { WorkspaceRole } from "@/lib/auth/permissions";
+import { filterUsersWhoCanSeeProject } from "@/lib/actions/project-visibility";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
@@ -179,40 +180,25 @@ export async function resolveVisibleMentionIds(
     throw new MentionVisibilityCheckError(memberError);
   }
 
-  const activeRoleById = new Map<string, string>(
-    (memberRows ?? []).map((row) => [row.user_id as string, row.role as string]),
+  const activeRoleById = new Map<string, WorkspaceRole>(
+    (memberRows ?? []).map((row) => [
+      row.user_id as string,
+      row.role as WorkspaceRole,
+    ]),
   );
 
-  const visible = new Set<string>();
-  const needsProjectMembership: string[] = [];
-
-  for (const id of ids) {
-    const role = activeRoleById.get(id);
-    if (!role) continue; // not even an active workspace member — never visible
-    if (projectVisibility === "workspace" || role === "owner" || role === "admin") {
-      visible.add(id);
-    } else {
-      needsProjectMembership.push(id);
-    }
+  try {
+    return await filterUsersWhoCanSeeProject(
+      admin,
+      {
+        projectId,
+        visibility: projectVisibility === "private" ? "private" : "workspace",
+      },
+      activeRoleById,
+    );
+  } catch (error) {
+    throw new MentionVisibilityCheckError(error);
   }
-
-  if (needsProjectMembership.length > 0) {
-    const { data: projectMemberRows, error: projectMemberError } = await admin
-      .from("project_members")
-      .select("user_id")
-      .eq("project_id", projectId)
-      .in("user_id", needsProjectMembership);
-
-    if (projectMemberError) {
-      throw new MentionVisibilityCheckError(projectMemberError);
-    }
-
-    for (const row of projectMemberRows ?? []) {
-      visible.add(row.user_id as string);
-    }
-  }
-
-  return visible;
 }
 
 /**

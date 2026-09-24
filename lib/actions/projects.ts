@@ -17,6 +17,7 @@ import {
 } from "@/lib/auth/require-membership";
 import { canCreateProject, canWrite } from "@/lib/auth/permissions";
 import { writeAudit } from "@/lib/activity/audit";
+import { isProjectVisibleToCaller } from "@/lib/actions/project-visibility";
 import type { Database } from "@/lib/supabase/database.types";
 import type { ActionResult } from "@/lib/actions/authz";
 
@@ -381,22 +382,20 @@ export async function editProject(
     return { ok: false, error: "Project not found." };
   }
 
-  // Verify the caller can actually see this project. For private projects the
-  // caller must have an explicit project_members row; for workspace-visible
-  // projects any active workspace member qualifies (already established above
-  // by requireActiveMembership). Returning "Project not found." rather than a
-  // permission error avoids leaking the existence of projects the caller has
-  // no access to.
-  if (existing.visibility === "private") {
-    const { data: projectMemberRow } = await admin
-      .from("project_members")
-      .select("user_id")
-      .eq("project_id", projectId)
-      .eq("user_id", user.id)
-      .maybeSingle();
-    if (!projectMemberRow) {
-      return { ok: false, error: "Project not found." };
-    }
+  // Verify the caller can actually see this project (a guest outside it, or
+  // a member outside a private one, must not edit it). "Project not found."
+  // rather than a permission error avoids leaking its existence.
+  const visible = await isProjectVisibleToCaller(
+    admin,
+    {
+      projectId,
+      visibility: existing.visibility === "private" ? "private" : "workspace",
+    },
+    user.id,
+    membership.role,
+  );
+  if (!visible) {
+    return { ok: false, error: "Project not found." };
   }
 
   const nextStartDate =

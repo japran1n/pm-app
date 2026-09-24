@@ -10,7 +10,10 @@ import {
 import { logger } from "@/lib/observability/logger";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { canWrite, canEditTask, type WorkspaceRole } from "@/lib/auth/permissions";
-import { type ProjectVisibility } from "@/lib/actions/project-visibility";
+import {
+  filterProjectsVisibleToCaller,
+  type ProjectVisibility,
+} from "@/lib/actions/project-visibility";
 import {
   diffTaskFields,
   writeTaskFieldChanges,
@@ -210,24 +213,26 @@ export async function bulkUpdateTasks(
     }
   }
 
-  // Private-project visibility (AS-290's rule, re-applied here): only
-  // needed for tasks whose project is actually private — one extra query
-  // covering every such project in this call, not one per task.
-  const privateProjectIds = new Set(
-    [...contexts.values()]
-      .filter((c) => c.visibility === "private")
-      .map((c) => c.projectId),
-  );
-  const explicitMemberProjectIds = new Set<string>();
-  if (privateProjectIds.size > 0) {
-    const { data: memberRows } = await admin
-      .from("project_members")
-      .select("project_id")
-      .in("project_id", [...privateProjectIds])
-      .eq("user_id", user.id);
-    for (const row of memberRows ?? []) {
-      explicitMemberProjectIds.add(row.project_id as string);
-    }
+  // Project visibility per task, one project_members query for the whole
+  // call. A task whose workspace role is unknown is rejected below anyway.
+  let visibleProjectIds: Set<string>;
+  try {
+    visibleProjectIds = await filterProjectsVisibleToCaller(
+      admin,
+      user.id,
+      [...contexts.values()].flatMap((c) => {
+        const role = roleByWorkspace.get(c.workspaceId);
+        return role
+          ? [{ projectId: c.projectId, visibility: c.visibility, role }]
+          : [];
+      }),
+    );
+  } catch (error) {
+    logger.error("bulk task visibility lookup failed", { error });
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
   }
 
   const allowedIds: string[] = [];
@@ -244,12 +249,7 @@ export async function bulkUpdateTasks(
       });
       continue;
     }
-    if (
-      context.visibility === "private" &&
-      role !== "owner" &&
-      role !== "admin" &&
-      !explicitMemberProjectIds.has(context.projectId)
-    ) {
+    if (!visibleProjectIds.has(context.projectId)) {
       failedIds.push({
         id,
         reason: "You don't have access to this task's project.",
@@ -720,24 +720,26 @@ export async function bulkDeleteTasks(
     }
   }
 
-  // Private-project visibility (AS-290's rule, re-applied here exactly as
-  // bulkUpdateTasks does): one extra query covering every private project
-  // touched by this call, not one per task.
-  const privateProjectIds = new Set(
-    [...contexts.values()]
-      .filter((c) => c.visibility === "private")
-      .map((c) => c.projectId),
-  );
-  const explicitMemberProjectIds = new Set<string>();
-  if (privateProjectIds.size > 0) {
-    const { data: memberRows } = await admin
-      .from("project_members")
-      .select("project_id")
-      .in("project_id", [...privateProjectIds])
-      .eq("user_id", user.id);
-    for (const row of memberRows ?? []) {
-      explicitMemberProjectIds.add(row.project_id as string);
-    }
+  // Project visibility per task, one project_members query for the whole
+  // call. A task whose workspace role is unknown is rejected below anyway.
+  let visibleProjectIds: Set<string>;
+  try {
+    visibleProjectIds = await filterProjectsVisibleToCaller(
+      admin,
+      user.id,
+      [...contexts.values()].flatMap((c) => {
+        const role = roleByWorkspace.get(c.workspaceId);
+        return role
+          ? [{ projectId: c.projectId, visibility: c.visibility, role }]
+          : [];
+      }),
+    );
+  } catch (error) {
+    logger.error("bulk task visibility lookup failed", { error });
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
   }
 
   const allowedIds: string[] = [];
@@ -758,12 +760,7 @@ export async function bulkDeleteTasks(
       });
       continue;
     }
-    if (
-      context.visibility === "private" &&
-      role !== "owner" &&
-      role !== "admin" &&
-      !explicitMemberProjectIds.has(context.projectId)
-    ) {
+    if (!visibleProjectIds.has(context.projectId)) {
       failedIds.push({
         id,
         reason: "You don't have access to this task's project.",

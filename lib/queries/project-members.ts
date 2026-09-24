@@ -14,6 +14,8 @@ import { logger } from "@/lib/observability/logger";
 
 import { createClient } from "@/lib/supabase/server";
 import { resolvePeople } from "@/lib/queries/people";
+import type { WorkspaceRole } from "@/lib/auth/permissions";
+import { isProjectVisibleForRole } from "@/lib/actions/project-visibility";
 
 export type ProjectMemberRow = {
   id: string;
@@ -135,11 +137,10 @@ export type VisibilityLossEntry = {
 // Computes who would lose access if a currently `'workspace'`-visible
 // project were switched to `'private'` — the difference between "everyone
 // who currently has workspace-wide access" and "everyone who has an
-// explicit project_members row", per `is_project_visible_to`'s logic
-// (supabase/migrations/20260821140526_project_visibility_rls_sweep.sql):
-// an active workspace member keeps access after the switch only if they
-// are a workspace owner/admin OR already have an explicit project_members
-// row. Everyone else in this list loses access. Deliberately safe to
+// explicit project_members row": an active member who can see the project
+// under `isProjectVisibleForRole` while it is workspace-visible but not
+// once it is private. Guests and clients never appear (their access is
+// project_members-only either way). Deliberately safe to
 // compute even when the project is already `'private'` (it would just
 // describe who's excluded today) — the caller only surfaces this as a
 // warning when switching *to* private.
@@ -176,13 +177,17 @@ export async function getVisibilityLossPreview(
   );
 
   const losingIds = (memberRows ?? [])
-    .filter(
-      (row) =>
-        row.user_id &&
-        row.role !== "owner" &&
-        row.role !== "admin" &&
-        !explicitIds.has(row.user_id),
-    )
+    .filter((row) => {
+      if (!row.user_id) return false;
+      const rule = {
+        role: row.role as WorkspaceRole,
+        isProjectMember: explicitIds.has(row.user_id),
+      };
+      return (
+        isProjectVisibleForRole({ ...rule, visibility: "workspace" }) &&
+        !isProjectVisibleForRole({ ...rule, visibility: "private" })
+      );
+    })
     .map((row) => row.user_id as string);
 
   const people = await resolvePeople(losingIds);

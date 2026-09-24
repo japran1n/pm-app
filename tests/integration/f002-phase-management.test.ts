@@ -105,13 +105,9 @@ describe.skipIf(!haveAdminCreds)(
     // that lookup is ever consulted.
     const EXPLICIT_MEMBER = 4;
 
-    // F006m: a workspace "guest" with NO explicit `project_members` row
-    // on the shared `projectId` fixture (`visibility: "workspace"`) — the
-    // caller isProjectVisibleToCaller (lib/actions/project-visibility.ts:
-    // 16-31) and seedDefaultPhasesImpl's own `requireVisibility: true`
-    // gate both admit on a workspace-visible project, but the SQL
-    // `is_project_visible_to` predicate excludes 'guest' from its
-    // workspace-visibility branch entirely.
+    // A workspace "guest" with NO explicit `project_members` row on the
+    // shared `projectId` fixture (`visibility: "workspace"`): cannot see
+    // that project, since guests only see projects they are added to.
     const GUEST = 5;
 
     async function signInAs(slot: number) {
@@ -927,41 +923,26 @@ describe.skipIf(!haveAdminCreds)(
     });
 
     // ------------------------------------------------------------------
-    // F006m (M1 scrutiny round 3, minor): F006i's fix for the private-
-    // project hole (above) used `is_project_visible_to`, whose SQL rule
-    // excludes role 'guest' from the workspace-visibility branch. But
-    // seedDefaultPhasesImpl's own gate — `isProjectVisibleToCaller`
-    // (lib/actions/project-visibility.ts:16-31) via `requireVisibility:
-    // true` (lib/actions/phases.ts:188) — admits ANY role, guest
-    // included, on a `visibility: "workspace"` project. A guest with no
-    // `project_members` row can already create phases one at a time
-    // (`project_phases_insert_team` uses `is_project_workspace_writer`,
-    // which admits guest) on the shared workspace-visible `projectId`
-    // fixture, so the ten-at-once RPC must agree.
+    // A guest sees only projects they have a project_members row for
+    // (`is_project_visible_to`), regardless of the project's visibility.
+    // Both the Server Action gate and the RPC must reject a guest outside
+    // a workspace-visible project.
     // ------------------------------------------------------------------
 
-    it("F006m: a guest with no explicit project_members row on a WORKSPACE-visible project can seed_default_phases over RPC, matching the Server Action's own gate", async () => {
+    it("a guest with no explicit project_members row on a WORKSPACE-visible project is rejected by createPhase and by seed_default_phases over RPC", async () => {
       await signInAs(GUEST);
       const guestClient = currentTestClient as unknown as SupabaseClient;
 
-      // Primary success test's counterpart: the guest can create a phase
-      // individually on this same workspace-visible project via the
-      // ordinary, fully-gated action.
       const { createPhase } = await import("@/lib/actions/phases");
-      const individualResult = await createPhase({ projectId, name: "F006m guest individual phase" });
-      expect(individualResult.ok).toBe(true);
-      if (individualResult.ok) {
-        await adminClient.from("project_phases").delete().eq("id", individualResult.data.id);
-      }
+      const individualResult = await createPhase({ projectId, name: "Guest outside project phase" });
+      expect(individualResult.ok).toBe(false);
 
-      // Dedicated fresh workspace-visible project so "ten rows inserted"
-      // is a genuine before/after check, not shared fixture state.
       const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-guest-seed`;
       const { data: proj, error: projErr } = await adminClient
         .from("projects")
         .insert({
           workspace_id: workspaceId,
-          name: `F006m guest workspace-visible Project ${uniqueSuffix}`,
+          name: `Guest workspace-visible Project ${uniqueSuffix}`,
           created_by: ownerUserId,
           visibility: "workspace",
         })
@@ -973,16 +954,17 @@ describe.skipIf(!haveAdminCreds)(
       const { error: rpcError } = await guestClient.rpc("seed_default_phases", {
         p_project_id: proj.id,
       });
-      expect(rpcError).toBeNull();
+      expect(rpcError).not.toBeNull();
+      expect(rpcError?.code).toBe("42501");
 
       const { data: rows } = await adminClient
         .from("project_phases")
         .select("id")
         .eq("project_id", proj.id);
-      expect(rows ?? []).toHaveLength(10);
+      expect(rows ?? []).toHaveLength(0);
     });
 
-    it("F006m: a guest with no explicit project_members row on a PRIVATE project is still rejected by seed_default_phases over RPC (F006i's fix survives), and nothing is inserted", async () => {
+    it("a guest with no explicit project_members row on a PRIVATE project is rejected by seed_default_phases over RPC, and nothing is inserted", async () => {
       const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-guest-private-deny`;
       const { data: proj, error: projErr } = await adminClient
         .from("projects")

@@ -9,6 +9,7 @@ import {
   type WorkspaceRole,
 } from "@/lib/auth/permissions";
 import {
+  filterUsersWhoCanSeeProject,
   isProjectVisibleToCaller,
   type ProjectVisibility,
 } from "@/lib/actions/project-visibility";
@@ -76,24 +77,11 @@ export async function loadTaskAssignContext(
   };
 }
 
-// AS-290: re-implements `public.is_project_visible_to`'s rule
-// (supabase/migrations/20260821140526_project_visibility_rls_sweep.sql) in
-// application code. Every action in this file uses the admin client, which
-// bypasses RLS entirely by design (see the module-level doc comments on
-// createTask/editTask above) — so the visibility check RLS would otherwise
-// provide has to be re-run explicitly here, exactly like every other
-// "defense in depth" re-check in this file (AS-143). A candidate user id is
-// assignable only if they are an ACTIVE workspace member of the task's
-// workspace AND (the project is 'workspace'-visible, OR they're a
-// workspace owner/admin, OR they have an explicit project_members row for
-// this project) — a guest, or an otherwise-active workspace member, who
-// lacks access to a private project is rejected even though they are
-// technically an active workspace member (AS-290's exact scenario).
-//
-// One query per input (workspace_members, then project_members only when
-// the project is private) — bounded by the size of the caller-supplied
-// candidate list, never a per-existing-row loop over the task's current
-// assignees (this feature's performance-budget answer).
+// AS-290: a candidate user id is assignable only if they are an ACTIVE
+// workspace member of the task's workspace AND can see the task's project
+// under `isProjectVisibleForRole` (the admin client bypasses RLS, so the
+// rule is re-run here). One workspace_members query plus at most one
+// project_members query, bounded by the caller-supplied candidate list.
 export async function filterProjectVisibleUserIds(
   admin: ReturnType<typeof createAdminClient>,
   context: TaskAssignContext,
@@ -115,31 +103,16 @@ export async function filterProjectVisibleUserIds(
     ]),
   );
 
-  if (context.visibility === "workspace") {
-    return new Set(activeRoleById.keys());
+  try {
+    return await filterUsersWhoCanSeeProject(
+      admin,
+      { projectId: context.projectId, visibility: context.visibility },
+      activeRoleById,
+    );
+  } catch (error) {
+    logger.error("filterProjectVisibleUserIds: project_members lookup failed", { error });
+    return new Set();
   }
-
-  // Private project: only workspace owners/admins, or candidates with an
-  // explicit project_members row for THIS project, are assignable.
-  const { data: explicitRows } = await admin
-    .from("project_members")
-    .select("user_id")
-    .eq("project_id", context.projectId)
-    .in("user_id", candidateUserIds);
-
-  const explicitIds = new Set(
-    (explicitRows ?? [])
-      .map((row) => row.user_id as string)
-      .filter(Boolean),
-  );
-
-  const visible = new Set<string>();
-  for (const [userId, role] of activeRoleById) {
-    if (role === "owner" || role === "admin" || explicitIds.has(userId)) {
-      visible.add(userId);
-    }
-  }
-  return visible;
 }
 
 // F160 clarification, ambiguity Q1 ("decide the deprecated-column mirror
