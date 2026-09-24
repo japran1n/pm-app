@@ -41,6 +41,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { logger } from "@/lib/observability/logger";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { isProjectVisibleToCaller } from "@/lib/actions/project-visibility";
+import { canTeamWrite, isClient } from "@/lib/auth/permissions";
 import {
   ALLOWED_ATTACHMENT_MIME_TYPES,
   MAX_ATTACHMENT_SIZE_BYTES,
@@ -101,7 +102,7 @@ export async function deliverPortalDeliverable(
   const { data: deliverableRow, error: deliverableError } = await admin
     .from("client_deliverables")
     .select(
-      "id, task_id, state, tasks(id, deleted_at, project_id, projects(workspace_id, visibility, portal_enabled))",
+      "id, project_id, task_id, state, tasks(id, deleted_at, project_id, projects(workspace_id, visibility, portal_enabled))",
     )
     .eq("id", parsedId.data.deliverableId)
     .maybeSingle();
@@ -150,6 +151,13 @@ export async function deliverPortalDeliverable(
     return { ok: false, error: "Deliverable not found." };
   }
 
+  // The file lands on the linked task, the state change on the
+  // deliverable's own project — both must be the same project, or a
+  // caller authorized for one could write into the other.
+  if (taskRow.project_id !== deliverableRow.project_id) {
+    return { ok: false, error: "Deliverable not found." };
+  }
+
   // Defense in depth (mirrors getAttachmentSignedUrl's own three-check
   // shape): active membership, portal enabled, project visible to this
   // caller. The RPC below re-checks all of this independently as the
@@ -158,6 +166,12 @@ export async function deliverPortalDeliverable(
   // action in this codebase follows.
   const membership = await requireActiveMembership(admin, workspaceId, user.id);
   if (!membership.ok) {
+    return { ok: false, error: "You don't have permission to send this file." };
+  }
+
+  // A client of the project, or a team member who can write. Viewers and
+  // guests may not mark a deliverable delivered.
+  if (!isClient({ role: membership.role }) && !canTeamWrite({ role: membership.role })) {
     return { ok: false, error: "You don't have permission to send this file." };
   }
 

@@ -56,6 +56,22 @@ type AdminClient = ReturnType<typeof createAdminClient>;
 const DOCUMENT_COLUMNS =
   "id, project_id, title, kind, file_path, url, uploaded_by, created_at";
 
+// Every upload is stored under `{project_id}/...`. A row whose file_path
+// points elsewhere (e.g. inserted directly through PostgREST by a writer of
+// another project) must never be signed or removed on that row's behalf.
+function isScopeDocumentPathInProject(
+  filePath: string | null | undefined,
+  projectId: string,
+): filePath is string {
+  if (!filePath) return false;
+  const segments = filePath.split("/");
+  return (
+    segments.length >= 2 &&
+    segments[0] === projectId &&
+    segments.slice(1).every((segment) => segment !== "" && segment !== "." && segment !== "..")
+  );
+}
+
 function toScopeDocument(row: {
   id: string;
   project_id: string;
@@ -367,6 +383,10 @@ async function loadDocumentExtra(
     return { ok: false, error: "Document not found." };
   }
 
+  if (data.kind === "upload" && !isScopeDocumentPathInProject(data.file_path, data.project_id)) {
+    return { ok: false, error: "Document not found." };
+  }
+
   const workspace = project.workspaces as { slug: string } | { slug: string }[] | null;
   const workspaceSlug = Array.isArray(workspace) ? workspace[0]?.slug : workspace?.slug;
   if (!workspaceSlug) {
@@ -462,23 +482,30 @@ export async function getScopeDocumentSignedUrl(
   const { data: documentRow, error: documentError } = await admin
     .from("project_scope_documents")
     .select(
-      "id, kind, file_path, project_id, projects(workspace_id, visibility, portal_enabled)",
+      "id, kind, file_path, project_id, projects(workspace_id, visibility, portal_enabled, deleted_at)",
     )
     .eq("id", documentId)
     .maybeSingle();
 
-  if (documentError || !documentRow || documentRow.kind !== "upload" || !documentRow.file_path) {
+  if (
+    documentError ||
+    !documentRow ||
+    documentRow.kind !== "upload" ||
+    !isScopeDocumentPathInProject(documentRow.file_path, documentRow.project_id)
+  ) {
     return { ok: false, error: "Document not found." };
   }
 
+  const filePath = documentRow.file_path;
+
   const project = documentRow.projects as
-    | { workspace_id: string; visibility: string; portal_enabled: boolean }
-    | { workspace_id: string; visibility: string; portal_enabled: boolean }[]
+    | { workspace_id: string; visibility: string; portal_enabled: boolean; deleted_at: string | null }
+    | { workspace_id: string; visibility: string; portal_enabled: boolean; deleted_at: string | null }[]
     | null;
   const projectRow = Array.isArray(project) ? project[0] : project;
   const workspaceId = projectRow?.workspace_id;
 
-  if (!workspaceId) {
+  if (!workspaceId || projectRow?.deleted_at) {
     return { ok: false, error: "Document not found." };
   }
 
@@ -507,7 +534,7 @@ export async function getScopeDocumentSignedUrl(
 
   const { data: signedUrlData, error: signedUrlError } = await admin.storage
     .from(BUCKET)
-    .createSignedUrl(documentRow.file_path, SIGNED_URL_TTL_SECONDS);
+    .createSignedUrl(filePath, SIGNED_URL_TTL_SECONDS);
 
   if (signedUrlError || !signedUrlData?.signedUrl) {
     logger.error("getScopeDocumentSignedUrl: signed URL generation failed", {

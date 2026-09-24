@@ -9,12 +9,13 @@ import {
 import { logger } from "@/lib/observability/logger";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { type ActionResult, withAuthz } from "@/lib/actions/authz";
-import { type WorkspaceRole } from "@/lib/auth/permissions";
+import { isClient, type WorkspaceRole } from "@/lib/auth/permissions";
 import {
   isProjectVisibleToCaller,
   type ProjectVisibility,
 } from "@/lib/actions/project-visibility";
 import { isDoneStatus } from "@/lib/tasks/blocked-guard";
+import { visibleRelatedProjectIds } from "@/lib/tasks/related-task-visibility";
 import type { TaskDetailSheetTask } from "@/components/task/task-detail-sheet";
 import type { TaskComment } from "@/components/task/comment-list";
 import type { TaskAttachment } from "@/components/task/attachment-list";
@@ -105,6 +106,12 @@ const getOpenBlockersImpl = withAuthz(
     },
   },
   async (input, ctx): Promise<GetOpenBlockersResult> => {
+    // Team-side read: the portal has its own task read path, and a client
+    // must never see non-client-visible blockers through this one.
+    if (isClient({ role: ctx.role })) {
+      return { ok: false, error: "Task not found." };
+    }
+
     // Same blocked_task_id -> blocking task embed + FK disambiguation as
     // getTaskDetail's own blockedByQuery below (F155's two same-table FKs,
     // task_dependencies_blocking_task_id_fkey/_blocked_task_id_fkey).
@@ -116,7 +123,7 @@ const getOpenBlockersImpl = withAuthz(
     const { data: rows, error: blockersError } = await ctx.admin
       .from("task_dependencies")
       .select(
-        "id, blocking:tasks!task_dependencies_blocking_task_id_fkey(id, title, status, status_id, number, deleted_at, projects(key), project_statuses(category))",
+        "id, blocking:tasks!task_dependencies_blocking_task_id_fkey(id, title, status, status_id, number, deleted_at, projects(id, key, visibility), project_statuses(category))",
       )
       .eq("blocked_task_id", input.taskId);
 
@@ -128,6 +135,20 @@ const getOpenBlockersImpl = withAuthz(
           "Something went wrong checking this task's blockers. Please try again.",
       };
     }
+
+    const blockerProjects = (rows ?? []).map((row) => {
+      const blocking = Array.isArray(row.blocking) ? row.blocking[0] : row.blocking;
+      const blockingProject = Array.isArray(blocking?.projects)
+        ? blocking.projects[0]
+        : blocking?.projects;
+      return { id: blockingProject?.id, visibility: blockingProject?.visibility };
+    });
+    const visibleProjectIds = await visibleRelatedProjectIds(
+      ctx.admin,
+      ctx.user.id,
+      ctx.role,
+      blockerProjects,
+    );
 
     const openBlockers: DependencyRelatedTask[] = (rows ?? [])
       .map((row) => {
@@ -147,14 +168,24 @@ const getOpenBlockersImpl = withAuthz(
         const blockingProject = Array.isArray(blocking.projects)
           ? blocking.projects[0]
           : blocking.projects;
-        const related: DependencyRelatedTask = {
-          dependencyId: row.id,
-          taskId: blocking.id,
-          title: blocking.title,
-          status: blocking.status as DependencyRelatedTask["status"],
-          projectKey: blockingProject?.key,
-          number: blocking.number,
-        };
+        // A blocker in a project the caller can't see still blocks, but
+        // is reported without its title or key.
+        const canSee = !!blockingProject?.id && visibleProjectIds.has(blockingProject.id);
+        const related: DependencyRelatedTask = canSee
+          ? {
+              dependencyId: row.id,
+              taskId: blocking.id,
+              title: blocking.title,
+              status: blocking.status as DependencyRelatedTask["status"],
+              projectKey: blockingProject?.key,
+              number: blocking.number,
+            }
+          : {
+              dependencyId: row.id,
+              taskId: blocking.id,
+              title: "Task in another project",
+              status: blocking.status as DependencyRelatedTask["status"],
+            };
         return related;
       })
       .filter((row): row is DependencyRelatedTask => row !== null);
@@ -327,6 +358,12 @@ export async function getTaskDetail(
     };
   }
 
+  // Team-side read (admin client, no comments.internal / client_visible
+  // filtering). Clients read tasks through lib/queries/portal/task-detail.ts.
+  if (isClient({ role: membership.role })) {
+    return { ok: false, error: "Task not found." };
+  }
+
   // F323 (AS-227, AS-228, AS-229): read-path confidentiality — the caller
   // must be able to SEE this task's project themselves, not just be an
   // active workspace member (see isProjectVisibleToCaller's doc comment in
@@ -431,7 +468,7 @@ export async function getTaskDetail(
   const blockedByQuery = admin
     .from("task_dependencies")
     .select(
-      "id, blocking:tasks!task_dependencies_blocking_task_id_fkey(id, title, status, number, deleted_at, projects(key))",
+      "id, blocking:tasks!task_dependencies_blocking_task_id_fkey(id, title, status, number, deleted_at, projects(id, key, visibility))",
     )
     .eq("blocked_task_id", parsed.data.taskId)
     .order("created_at", { ascending: true });
@@ -439,7 +476,7 @@ export async function getTaskDetail(
   const blocksQuery = admin
     .from("task_dependencies")
     .select(
-      "id, blocked:tasks!task_dependencies_blocked_task_id_fkey(id, title, status, number, deleted_at, projects(key))",
+      "id, blocked:tasks!task_dependencies_blocked_task_id_fkey(id, title, status, number, deleted_at, projects(id, key, visibility))",
     )
     .eq("blocking_task_id", parsed.data.taskId)
     .order("created_at", { ascending: true });
@@ -637,6 +674,21 @@ export async function getTaskDetail(
   // single whole-task query either way (no per-row round trip either
   // way) and a plain `.filter()` is simpler than an `!inner` join plus
   // dot-path filter for a two-row-shape (object-or-array) embed.
+  // A related task in a project the caller can't see is dropped, same as
+  // RLS on `tasks` would drop it from the embed.
+  const firstOf = <T>(value: T | T[] | null | undefined): T | null | undefined =>
+    Array.isArray(value) ? value[0] : value;
+  const relatedProjects = [
+    ...(blockedByResult.data ?? []).map((row) => firstOf(firstOf(row.blocking)?.projects)),
+    ...(blocksResult.data ?? []).map((row) => firstOf(firstOf(row.blocked)?.projects)),
+  ].map((p) => ({ id: p?.id, visibility: p?.visibility }));
+  const visibleRelatedIds = await visibleRelatedProjectIds(
+    admin,
+    user.id,
+    membership.role,
+    relatedProjects,
+  );
+
   const blockedBy: DependencyRelatedTask[] = (blockedByResult.data ?? [])
     .map((row) => {
       const blocking = Array.isArray(row.blocking)
@@ -646,6 +698,7 @@ export async function getTaskDetail(
       const blockingProject = Array.isArray(blocking.projects)
         ? blocking.projects[0]
         : blocking.projects;
+      if (!blockingProject?.id || !visibleRelatedIds.has(blockingProject.id)) return null;
       const related: DependencyRelatedTask = {
         dependencyId: row.id,
         taskId: blocking.id,
@@ -667,6 +720,7 @@ export async function getTaskDetail(
       const blockedProject = Array.isArray(blocked.projects)
         ? blocked.projects[0]
         : blocked.projects;
+      if (!blockedProject?.id || !visibleRelatedIds.has(blockedProject.id)) return null;
       const related: DependencyRelatedTask = {
         dependencyId: row.id,
         taskId: blocked.id,

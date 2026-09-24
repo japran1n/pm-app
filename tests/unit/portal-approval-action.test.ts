@@ -26,7 +26,7 @@ type TaskRow = {
   project_id: string;
   client_visible: boolean;
   pending_client_approval: boolean;
-  projects: { workspace_id: string } | null;
+  projects: { workspace_id: string; visibility?: string; portal_enabled?: boolean } | null;
 } | null;
 
 type MockOpts = {
@@ -36,6 +36,10 @@ type MockOpts = {
   membership: { ok: true; role: string } | { ok: false };
   rpcError?: { message: string } | null;
   addCommentOk?: boolean;
+  // App-side mirror of assert_portal_task_actionable_by_client, checked
+  // before the trail comment is written.
+  isProjectMember?: boolean;
+  isDecisionOwner?: boolean;
   // F024b (AS-052): when true, `assertNotPreview()` refuses every
   // RPC-backed portal write action before it does anything else.
   isPreview?: boolean;
@@ -72,6 +76,36 @@ function makeAdminClient() {
                     opts.membership.ok
                       ? { data: { role: opts.membership.role }, error: null }
                       : { data: null, error: null },
+                }),
+              }),
+            }),
+          }),
+        };
+      }
+      if (table === "project_members") {
+        return {
+          select: () => ({
+            eq: () => ({
+              eq: () => ({
+                maybeSingle: async () => ({
+                  data: opts.isProjectMember === false ? null : { user_id: USER_ID },
+                  error: null,
+                }),
+              }),
+            }),
+          }),
+        };
+      }
+      if (table === "project_decision_owners") {
+        return {
+          select: () => ({
+            eq: () => ({
+              eq: () => ({
+                limit: () => ({
+                  maybeSingle: async () => ({
+                    data: opts.isDecisionOwner === false ? null : { user_id: USER_ID },
+                    error: null,
+                  }),
                 }),
               }),
             }),
@@ -160,7 +194,7 @@ function sharedPendingTask(): TaskRow {
     project_id: PROJECT_ID,
     client_visible: true,
     pending_client_approval: true,
-    projects: { workspace_id: WORKSPACE_ID },
+    projects: { workspace_id: WORKSPACE_ID, visibility: "workspace", portal_enabled: true },
   };
 }
 
@@ -288,6 +322,38 @@ describe("approvePortalTask / requestPortalTaskChanges (F020)", () => {
     if (!result.ok) {
       expect(result.error).toBe("No one is assigned to decide this yet.");
     }
+  });
+
+  it("request_changes_writes_no_comment_when_the_caller_is_not_a_member_of_the_task_project", async () => {
+    opts.isProjectMember = false;
+    const { requestPortalTaskChanges } = await import("@/lib/actions/portal-approval");
+    const result = await requestPortalTaskChanges(TASK_ID, "please fix this");
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe("Task not found.");
+    expect(commentCalls).toHaveLength(0);
+    expect(rpcCalls).toHaveLength(0);
+  });
+
+  it("request_changes_writes_no_comment_when_the_portal_is_disabled", async () => {
+    opts.taskRow = {
+      ...sharedPendingTask()!,
+      projects: { workspace_id: WORKSPACE_ID, visibility: "workspace", portal_enabled: false },
+    };
+    const { requestPortalTaskChanges } = await import("@/lib/actions/portal-approval");
+    const result = await requestPortalTaskChanges(TASK_ID, "please fix this");
+    expect(result.ok).toBe(false);
+    expect(commentCalls).toHaveLength(0);
+    expect(rpcCalls).toHaveLength(0);
+  });
+
+  it("request_changes_writes_no_comment_when_the_caller_owns_no_decision_type", async () => {
+    opts.isDecisionOwner = false;
+    const { requestPortalTaskChanges } = await import("@/lib/actions/portal-approval");
+    const result = await requestPortalTaskChanges(TASK_ID, "please fix this");
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe("No one is assigned to decide this yet.");
+    expect(commentCalls).toHaveLength(0);
+    expect(rpcCalls).toHaveLength(0);
   });
 
   it("test_AS_013_014_happy_path_calls_approve_rpc_with_the_parsed_task_id", async () => {

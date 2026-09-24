@@ -28,6 +28,7 @@ import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { isClient } from "@/lib/auth/permissions";
+import { isProjectVisibleToCaller } from "@/lib/actions/project-visibility";
 import { addComment } from "@/lib/actions/comments";
 import { assertNotPreview } from "@/lib/auth/assert-not-preview";
 import { createNotification } from "@/lib/notifications/create-notification";
@@ -66,7 +67,13 @@ function friendlyPortalTaskActionError(message: string | undefined): string {
 async function resolvePendingClientTask(
   taskId: string,
 ): Promise<
-  | { ok: true; workspaceId: string; projectId: string }
+  | {
+      ok: true;
+      workspaceId: string;
+      projectId: string;
+      visibility: "workspace" | "private";
+      portalEnabled: boolean;
+    }
   | { ok: false; error: string }
 > {
   // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data needed before the RLS-respecting write below
@@ -75,7 +82,7 @@ async function resolvePendingClientTask(
   const { data: taskRow, error: taskError } = await admin
     .from("tasks")
     .select(
-      "id, project_id, client_visible, pending_client_approval, projects!inner(workspace_id)",
+      "id, project_id, client_visible, pending_client_approval, projects!inner(workspace_id, visibility, portal_enabled)",
     )
     .eq("id", taskId)
     .is("deleted_at", null)
@@ -86,12 +93,11 @@ async function resolvePendingClientTask(
   }
 
   const project = taskRow.projects as
-    | { workspace_id: string }
-    | { workspace_id: string }[]
+    | { workspace_id: string; visibility: string | null; portal_enabled: boolean | null }
+    | { workspace_id: string; visibility: string | null; portal_enabled: boolean | null }[]
     | null;
-  const workspaceId = Array.isArray(project)
-    ? project[0]?.workspace_id
-    : project?.workspace_id;
+  const projectRow = Array.isArray(project) ? project[0] : project;
+  const workspaceId = projectRow?.workspace_id;
 
   if (!workspaceId || !taskRow.project_id) {
     return { ok: false, error: "Task not found." };
@@ -104,7 +110,49 @@ async function resolvePendingClientTask(
     return { ok: false, error: "Task not found." };
   }
 
-  return { ok: true, workspaceId, projectId: taskRow.project_id };
+  return {
+    ok: true,
+    workspaceId,
+    projectId: taskRow.project_id,
+    visibility: projectRow?.visibility === "private" ? "private" : "workspace",
+    portalEnabled: projectRow?.portal_enabled === true,
+  };
+}
+
+// App-side mirror of assert_portal_task_actionable_by_client, for callers
+// that write something (the trail comment) before that RPC runs: the
+// caller must be a client of THIS project, the portal must be on, and
+// they must own a decision type on the project.
+async function requireClientTaskActor(
+  resolved: { projectId: string; visibility: "workspace" | "private"; portalEnabled: boolean },
+  userId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!resolved.portalEnabled) return { ok: false, error: "Task not found." };
+
+  // eslint-disable-next-line no-restricted-syntax -- ARCH-003: authorization lookup; caller already verified as an active client member via requireClientCaller
+  const admin = createAdminClient();
+  const visible = await isProjectVisibleToCaller(
+    admin,
+    { projectId: resolved.projectId, visibility: resolved.visibility },
+    userId,
+    "client",
+  );
+  if (!visible) return { ok: false, error: "Task not found." };
+
+  const { data: owner, error } = await admin
+    .from("project_decision_owners")
+    .select("user_id")
+    .eq("project_id", resolved.projectId)
+    .eq("user_id", userId)
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    logger.error("requireClientTaskActor: decision owner lookup failed", { error });
+    return { ok: false, error: "Something went wrong. Please try again in a moment." };
+  }
+  if (!owner) return { ok: false, error: NO_DECISION_OWNER_FRIENDLY_MESSAGE };
+
+  return { ok: true };
 }
 
 // F084: fan out an in-app notification to the project's decision owners
@@ -262,6 +310,9 @@ export async function requestPortalTaskChanges(
 
   const caller = await requireClientCaller(resolved.workspaceId);
   if (!caller.ok) return caller;
+
+  const actor = await requireClientTaskActor(resolved, caller.userId);
+  if (!actor.ok) return actor;
 
   // Unlike Approve's fixed trail comment (best-effort, posted *after* the
   // flag flips, because the approval itself is the payload there), the

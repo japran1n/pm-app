@@ -13,6 +13,8 @@ import { logger } from "@/lib/observability/logger";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { formatTaskKey, parseTaskKeyQuery } from "@/lib/tasks/task-key";
 import { isProjectVisibleToCaller } from "@/lib/actions/project-visibility";
+import { isClient, type WorkspaceRole } from "@/lib/auth/permissions";
+import { normalizeVisibility } from "@/lib/tasks/related-task-visibility";
 import type { ActionOutcome, ActionResult } from "@/lib/actions/authz";
 
 // F156: createDependency (AS-278). Mirrors lib/actions/checklist.ts's
@@ -54,6 +56,8 @@ type TaskLookup = {
   number: number;
   deletedAt: string | null;
   workspaceId: string;
+  projectId: string;
+  projectVisibility: "workspace" | "private";
   projectKey: string;
 };
 
@@ -63,7 +67,7 @@ async function loadTaskLookup(
 ): Promise<TaskLookup | null> {
   const { data: row, error } = await admin
     .from("tasks")
-    .select("id, title, number, deleted_at, projects(workspace_id, key)")
+    .select("id, title, number, deleted_at, project_id, projects(workspace_id, key, visibility)")
     .eq("id", taskId)
     .maybeSingle();
 
@@ -72,8 +76,8 @@ async function loadTaskLookup(
   }
 
   const project = row.projects as
-    | { workspace_id: string; key: string }
-    | { workspace_id: string; key: string }[]
+    | { workspace_id: string; key: string; visibility: string | null }
+    | { workspace_id: string; key: string; visibility: string | null }[]
     | null;
   const projectRow = Array.isArray(project) ? project[0] : project;
 
@@ -87,8 +91,24 @@ async function loadTaskLookup(
     number: row.number,
     deletedAt: row.deleted_at,
     workspaceId: projectRow.workspace_id,
+    projectId: row.project_id,
+    projectVisibility: normalizeVisibility(projectRow.visibility),
     projectKey: projectRow.key,
   };
+}
+
+async function canSeeTask(
+  admin: ReturnType<typeof createAdminClient>,
+  task: TaskLookup,
+  userId: string,
+  role: WorkspaceRole,
+): Promise<boolean> {
+  return isProjectVisibleToCaller(
+    admin,
+    { projectId: task.projectId, visibility: task.projectVisibility },
+    userId,
+    role,
+  );
 }
 
 function describeTask(task: TaskLookup): string {
@@ -191,6 +211,19 @@ export async function createDependency(
       ok: false,
       error: "You don't have permission to create a dependency on this task.",
     };
+  }
+
+  // Both tasks must be visible to the caller before anything about them
+  // (including the cycle message below, which names both) is returned.
+  if (isClient({ role: membership.role })) {
+    return { ok: false, error: "Task not found." };
+  }
+  const [canSeeBlocking, canSeeBlocked] = await Promise.all([
+    canSeeTask(admin, blockingTask, user.id, membership.role),
+    canSeeTask(admin, blockedTask, user.id, membership.role),
+  ]);
+  if (!canSeeBlocking || !canSeeBlocked) {
+    return { ok: false, error: "Task not found." };
   }
 
   const { data: inserted, error: insertError } = await supabase
@@ -435,6 +468,13 @@ export async function getDependencyCandidates(
       ok: false,
       error: "You don't have permission to search for tasks here.",
     };
+  }
+
+  if (
+    isClient({ role: membership.role }) ||
+    !(await canSeeTask(admin, task, user.id, membership.role))
+  ) {
+    return { ok: false, error: "Task not found." };
   }
 
   const closureRpc =
