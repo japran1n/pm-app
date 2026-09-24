@@ -20,7 +20,19 @@ import { Checkbox } from "@/components/ui/checkbox";
 
 const GENERIC_ERROR = "Something went wrong. Please try again in a moment.";
 
-export function CustomFieldsSection({ taskId, canEdit }: { taskId: string; canEdit: boolean }) {
+export function CustomFieldsSection({
+  taskId,
+  canEdit,
+  // "sidebar" renders each field as a compact label+value property row
+  // matching the sidebar's existing Status/Priority/Billing style.
+  // "card" (the default) renders the original rounded-border card with
+  // full-width inputs — kept for any legacy call sites.
+  variant = "card",
+}: {
+  taskId: string;
+  canEdit: boolean;
+  variant?: "card" | "sidebar";
+}) {
   const [fields, setFields] = useState<TaskCustomFieldWithValue[] | null>(null);
   const [draftValues, setDraftValues] = useState<Record<string, string>>({});
   const [isPending, startTransition] = useTransition();
@@ -97,6 +109,95 @@ export function CustomFieldsSection({ taskId, canEdit }: { taskId: string; canEd
         (prev ?? []).map((f) => (f.id === field.id ? { ...f, value: result.data.value } : f)),
       );
     });
+  }
+
+  if (variant === "sidebar") {
+    return (
+      <div
+        data-testid="custom-fields-section"
+        className="flex flex-col gap-2"
+      >
+        {fields.map((field) => {
+          const inputId = `task-custom-field-${field.id}-${taskId}`;
+          if (field.fieldType === "checkbox") {
+            const checked = field.value === "true";
+            return (
+              <div key={field.id} className="flex flex-col">
+                <Label
+                  htmlFor={inputId}
+                  className="text-sm text-muted-foreground mb-1"
+                >
+                  {field.name}
+                </Label>
+                <label
+                  htmlFor={inputId}
+                  className="flex h-9 items-center gap-2 text-sm"
+                >
+                  <Checkbox
+                    id={inputId}
+                    checked={checked}
+                    disabled={!canEdit || isPending}
+                    onCheckedChange={(next) =>
+                      commitValue(field, next === true ? "true" : "false")
+                    }
+                    data-testid={`custom-field-input-${field.id}`}
+                  />
+                  <span className={checked ? undefined : "text-muted-foreground"}>
+                    {checked ? "Yes" : "No"}
+                  </span>
+                </label>
+              </div>
+            );
+          }
+
+          const draft = draftValues[field.id] ?? field.value ?? "";
+          const placeholder =
+            field.fieldType === "number"
+              ? "0"
+              : field.fieldType === "url"
+                ? "https://..."
+                : "Empty";
+
+          return (
+            <div key={field.id} className="flex flex-col">
+              <Label
+                htmlFor={inputId}
+                className="text-sm text-muted-foreground mb-1"
+              >
+                {field.name}
+              </Label>
+              <Input
+                id={inputId}
+                type={
+                  field.fieldType === "number"
+                    ? "number"
+                    : field.fieldType === "url"
+                      ? "url"
+                      : "text"
+                }
+                value={draft}
+                placeholder={placeholder}
+                disabled={!canEdit || isPending}
+                data-testid={`custom-field-input-${field.id}`}
+                className="h-9 text-sm"
+                onChange={(event) =>
+                  setDraftValues((prev) => ({
+                    ...prev,
+                    [field.id]: event.target.value,
+                  }))
+                }
+                onBlur={() =>
+                  commitValue(
+                    field,
+                    draftValues[field.id] ?? field.value ?? "",
+                  )
+                }
+              />
+            </div>
+          );
+        })}
+      </div>
+    );
   }
 
   return (

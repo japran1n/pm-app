@@ -60,7 +60,6 @@ import { TASK_TYPE_DEFINITIONS } from "@/lib/task-types/definitions";
 import { toPlainJson } from "@/lib/comments/rich-text";
 import { setTaskBlockedReason } from "@/lib/actions/tasks";
 import { PageLinksEditor } from "@/components/task/page-links-editor";
-import { CustomFieldsSection } from "@/components/task/custom-fields-section";
 // F012 (TT-024): the "Created by" row's avatar — same component every
 // other person-display surface in this Sheet already uses (assignee
 // picker, Watchers).
@@ -1409,6 +1408,40 @@ export function TaskDetailFields({
                 </span>
               </div>
             </div>
+
+            {/* F012 (TT-024): "Created by" moved to sidebar footer —
+                sits below the property list so it reads after every
+                editable field. Displayed as small metadata, not a
+                section header. A task whose author has left the
+                workspace or whose authorId is null renders nothing
+                (same clarified spec rule as before). */}
+            {task.authorId && (() => {
+              const author = members.find((m) => m.userId === task.authorId);
+              if (!author) return null;
+              return (
+                <div
+                  data-testid="task-created-by"
+                  className="flex flex-wrap items-center gap-x-1.5 gap-y-1 border-t pt-4 text-xs text-muted-foreground"
+                >
+                  <span>Created by</span>
+                  <UserAvatar
+                    person={{
+                      id: author.userId,
+                      name: author.name,
+                      email: author.email,
+                      avatarUrl: author.avatarUrl,
+                    }}
+                    size="sm"
+                  />
+                  <span className="text-foreground">{memberLabelFor(author)}</span>
+                  {task.createdAt && (
+                    <span className="font-mono">
+                      {formatTaskDate(task.createdAt.slice(0, 10))}
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         );
 
@@ -1517,15 +1550,6 @@ export function TaskDetailFields({
         <PageLinksEditor taskId={task.id} canEdit={canEdit} />
       )}
 
-      {/* Project custom fields: flexible, project-scoped extra
-          fields (lib/actions/custom-fields.ts) — not gated by
-          task type, unlike the Page-only sections above, since
-          a project's PM-defined fields apply to every task in
-          that project. Renders nothing at all when the project
-          has no custom fields defined (CustomFieldsSection's own
-          "empty means no section" contract). */}
-      <CustomFieldsSection taskId={task.id} canEdit={canEdit} />
-
       <MobileCollapsibleSection title="Description">
         <Label htmlFor={`task-description-${task.id}`}>
           Description
@@ -1565,46 +1589,8 @@ export function TaskDetailFields({
           extraction) has no effect on where it visually renders. */}
       {blockedDoneDialog}
 
-      {/* F012 (TT-024): read-only "Created by" row — author avatar +
-          name + creation date (mono, formatTaskDate's "11 Sep 2026"
-          shape). Placed at the very bottom of this field-editing
-          surface (Clarified implementation): it's the one field here
-          nothing ever edits, so it reads last, after every editable
-          field/section above. The author is looked up against the
-          `members` prop this Sheet already has loaded (no second
-          fetch) — a task whose author has since left the workspace (not
-          in `members`) or whose `authorId` is null/undefined (legacy
-          row predating F012, or a system-generated task) renders
-          nothing at all, per this feature's clarified "if author_id is
-          null, show nothing" answer. */}
-      {task.authorId &&
-        (() => {
-          const author = members.find((m) => m.userId === task.authorId);
-          if (!author) return null;
-          return (
-            <div
-              data-testid="task-created-by"
-              className="flex items-center gap-2 border-t pt-4 text-sm text-muted-foreground"
-            >
-              <span>Created by</span>
-              <UserAvatar
-                person={{
-                  id: author.userId,
-                  name: author.name,
-                  email: author.email,
-                  avatarUrl: author.avatarUrl,
-                }}
-                size="sm"
-              />
-              <span className="text-foreground">{memberLabelFor(author)}</span>
-              {task.createdAt && (
-                <span className="font-mono text-xs">
-                  {formatTaskDate(task.createdAt.slice(0, 10))}
-                </span>
-              )}
-            </div>
-          );
-        })()}
+      {/* "Created by" is now rendered inside sidebarRows above (portaled
+          into the Sheet's right column). Nothing to render here. */}
     </>
   );
 }

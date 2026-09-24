@@ -12,13 +12,12 @@ import type { RefObject } from "react";
 import { createPortal } from "react-dom";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import type { WorkspaceRole } from "@/lib/auth/permissions";
+import { canEditTask, type WorkspaceRole } from "@/lib/auth/permissions";
 import { TagsEditor } from "@/components/task/tags-editor";
 // F010 (TT-021): the right column's "Time tracked" summary row reuses
 // the same total-minutes-across-entries computation and formatting
 // TimeTracking itself uses for its own header total, so the two numbers
 // never disagree.
-import { formatDuration } from "@/lib/time/format-duration";
 import { SubtaskList } from "@/components/task/subtask-list";
 import { Checklist } from "@/components/task/checklist";
 // F196 (AS-358, AS-361): the Comments/Activity toggle — see
@@ -39,7 +38,10 @@ import {
 // same "smallest-possible-client-boundary, caller passes current value
 // down, component calls its own Server Action" convention as TagsEditor/
 // Checklist above.
-import { RecurrenceEditor } from "@/components/task/recurrence-editor";
+import {
+  RecurrenceEditorRow,
+} from "@/components/task/recurrence-editor";
+import { CustomFieldsSection } from "@/components/task/custom-fields-section";
 // F157 (AS-277, AS-282) — restored 2026-09-14 (audit follow-up): the
 // section was removed by a product-cleanup commit, but that left the
 // dependency feature with NO management UI anywhere while the
@@ -84,29 +86,10 @@ export function TaskDetailSections({
   attachmentListRef: RefObject<AttachmentListHandle | null>;
   /** F010 (TT-021): the Sheet's right-column DOM node — see
    * task-detail-fields.tsx's own `sidebarContainer` doc comment for the
-   * full rationale (portal instead of lifting state). Tags and a
-   * "Time tracked" summary row (which just links/scrolls down to the
-   * full Time tracking section below, rather than duplicating that
-   * section's own state up here) are portaled into it. `null`/undefined
-   * falls back to rendering both inline, in their original position. */
+   * full rationale (portal instead of lifting state). Tags are portaled
+   * into it. `null`/undefined falls back to rendering them inline. */
   sidebarContainer?: HTMLElement | null;
 }) {
-  // F010 (TT-021): total minutes across every logged time entry — same
-  // sum TimeTracking itself computes for its own header total, just
-  // recomputed here (not imported from that component, which doesn't
-  // export a reusable summary hook) so the sidebar summary and the
-  // real section, however far apart they now render, never disagree.
-  const totalTrackedMinutes = timeEntries.reduce(
-    (sum, entry) => sum + entry.minutes,
-    0,
-  );
-
-  function scrollToTimeTracking() {
-    document
-      .getElementById(`task-time-tracking-section-${task.id}`)
-      ?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }
-
   const sidebarRows = (
     <>
       <TagsEditor
@@ -115,52 +98,39 @@ export function TaskDetailSections({
         currentUserRole={currentUserRole}
       />
 
-      {/* F010 (TT-021): "Time tracked" summary row — the full
-          Time tracking section (entries, timer, estimate progress)
-          stays in the main column below; this is just a total +
-          a scroll-to-it shortcut, so the right column doesn't have
-          to duplicate that section's own state. */}
-      <div className="flex flex-col">
-        <Label className="text-sm text-muted-foreground mb-1">
-          Time tracked
-        </Label>
-        <button
-          type="button"
-          onClick={scrollToTimeTracking}
-          className="flex h-9 w-full items-center justify-between rounded-md border border-input bg-transparent px-3 text-sm shadow-xs transition-colors hover:bg-accent/50 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
-        >
-          <span className="font-mono">
-            {formatDuration(totalTrackedMinutes)}
-          </span>
-          <span className="text-muted-foreground">View details</span>
-        </button>
-      </div>
+      {/* Recurrence moved from main column to sidebar as a compact row —
+          shows the plain-language summary; Edit button opens a Popover
+          with the full Frequency / Interval / Ends form. */}
+      <RecurrenceEditorRow
+        taskId={task.id}
+        recurrence={task.recurrence ?? null}
+        currentUserRole={currentUserRole}
+      />
+
+      {/* Custom fields: project-scoped extra fields rendered as compact
+          sidebar property rows — same label+control style as Status/Priority.
+          Returns null when the project has no custom fields defined. */}
+      <CustomFieldsSection
+        taskId={task.id}
+        canEdit={currentUserRole ? canEditTask({ role: currentUserRole }) : true}
+        variant="sidebar"
+      />
     </>
   );
 
   return (
     <>
-      {/* F513 (design cleanup): every section from here down
-          (Recurrence/Subtasks/Checklist/Activity/Attachments/
-          Time tracking) is separated by a Separator — Description
-          was the one gap in that rhythm, sitting flush against
-          Tags with nothing but the shared `gap-6` between two
-          otherwise-unrelated sections. */}
-      <Separator />
-
-      {/* F010 (TT-021): Tags + the Time tracked summary now render in
-          the Sheet's right column (see `sidebarRows` above) rather
-          than inline here — portaled when `sidebarContainer` is
-          mounted, falling back to this original position otherwise. */}
-      {sidebarContainer ? createPortal(sidebarRows, sidebarContainer) : sidebarRows}
-
-      <Separator />
-
-      <RecurrenceEditor
-        taskId={task.id}
-        recurrence={task.recurrence ?? null}
-        currentUserRole={currentUserRole}
-      />
+      {/* F010 (TT-021): Tags + Recurrence row now render in the Sheet's
+          right column (see `sidebarRows` above) rather than inline here —
+          portaled when `sidebarContainer` is mounted, falling back to
+          this original position otherwise. When portaled, no separator is
+          needed above/below because the content doesn't live here. */}
+      {sidebarContainer ? createPortal(sidebarRows, sidebarContainer) : (
+        <>
+          <Separator />
+          {sidebarRows}
+        </>
+      )}
 
       <Separator />
 

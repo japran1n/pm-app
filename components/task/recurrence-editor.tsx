@@ -38,6 +38,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -246,6 +251,67 @@ export function RecurrenceEditor({
           </Button>
         )}
       </div>
+    </div>
+  );
+}
+
+// RecurrenceEditorRow: sidebar property row variant — shows the plain-
+// language summary (or "Does not repeat") as a trigger button; clicking
+// opens a Popover with the full Frequency/Interval/Ends form above.
+// Replaces the always-open form that previously lived in the main column.
+export function RecurrenceEditorRow({
+  taskId,
+  recurrence,
+  currentUserRole,
+}: {
+  taskId: string;
+  recurrence: RecurrenceRule | null;
+  currentUserRole?: WorkspaceRole;
+}) {
+  const canEdit = currentUserRole
+    ? canEditTask({ role: currentUserRole })
+    : true;
+
+  const summary = summarizeRecurrenceRule(recurrence);
+
+  return (
+    <div className="flex flex-col">
+      <Label
+        className="text-sm text-muted-foreground mb-1"
+      >
+        Repeats
+      </Label>
+      <Popover>
+        <PopoverTrigger
+          render={
+            <button
+              type="button"
+              className="flex h-9 w-full items-center justify-between rounded-md border border-input bg-transparent px-3 text-sm shadow-xs transition-colors hover:bg-accent/50 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+              aria-label={`Recurrence: ${summary ?? "Does not repeat"}. Click to edit.`}
+            >
+              <span className={summary ? undefined : "text-muted-foreground"}>
+                {summary ?? "Does not repeat"}
+              </span>
+              <span className="text-xs text-muted-foreground">Edit</span>
+            </button>
+          }
+        />
+        <PopoverContent
+          className="w-80 p-4"
+          align="end"
+          data-testid="recurrence-popover"
+        >
+          {/* Full RecurrenceEditor form rendered inside the popover. The
+              popover stays open while editing — the user closes it with
+              the same click-outside / Escape that closes every other
+              Popover in this Sheet. */}
+          <RecurrenceEditor
+            taskId={taskId}
+            recurrence={recurrence}
+            currentUserRole={currentUserRole}
+          />
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }
