@@ -1177,8 +1177,9 @@ export function Board({
           </div>
         )}
 
-        <DragOverlay>
+        <DragOverlay dropAnimation={{ duration: 200, easing: "cubic-bezier(0.18, 0.67, 0.6, 1.22)" }}>
           {activeTask ? (
+            <div className="rotate-1 scale-[1.03] shadow-2xl ring-1 ring-border/50 rounded-lg">
             <TaskCard
               task={activeTask}
               assignee={
@@ -1201,6 +1202,7 @@ export function Board({
                 .filter((person): person is UserAvatarPerson => Boolean(person))}
               timezone={timezone}
             />
+            </div>
           ) : null}
         </DragOverlay>
       </DndContext>

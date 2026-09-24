@@ -109,15 +109,25 @@ export function SortableTaskCard({
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.5 : 1,
   };
 
   const showMoveMenu =
     !!onMoveToColumn && !!moveToColumnOptions && moveToColumnOptions.length > 0;
 
+  if (isDragging) {
+    return (
+      <div
+        ref={setNodeRef}
+        style={{ ...style, minHeight: "60px" }}
+        className="rounded-lg border-2 border-dashed border-border/50 bg-muted/30"
+        aria-hidden="true"
+      />
+    );
+  }
+
   return (
     <div ref={setNodeRef} style={style} className="relative">
-      <div {...attributes} {...listeners}>
+      <div {...attributes} {...listeners} className={canDrag ? "cursor-grab active:cursor-grabbing" : undefined}>
         <TaskCard
           task={task}
           onClick={onClick}
