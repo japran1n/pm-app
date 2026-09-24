@@ -586,6 +586,16 @@ export type MyProjectProgress = {
   projectId: string;
   projectName: string;
   projectKey: string;
+  icon: string | null;
+  description: string | null;
+  endDate: string | null;
+  targetLaunchDate: string | null;
+  currentPhase: {
+    name: string | null;
+    state: string;
+    plannedStart: string | null;
+    plannedEnd: string | null;
+  } | null;
   doneCount: number;
   totalCount: number;
   overdueCount: number;
@@ -605,7 +615,7 @@ export async function getMyProjectsProgress(
   // `getWorkspaceProjects`).
   const { data: memberRows, error: memberError } = await supabase
     .from("project_members")
-    .select("project_id, projects!inner(id, name, key, workspace_id, deleted_at)")
+    .select("project_id, projects!inner(id, name, key, workspace_id, deleted_at, icon, description, end_date, target_launch_date)")
     .eq("user_id", userId)
     .eq("projects.workspace_id", workspaceId)
     .is("projects.deleted_at", null);
@@ -617,7 +627,17 @@ export async function getMyProjectsProgress(
 
   type MemberRow = {
     project_id: string;
-    projects: { id: string; name: string; key: string | null; workspace_id: string; deleted_at: string | null } | null;
+    projects: {
+      id: string;
+      name: string;
+      key: string | null;
+      workspace_id: string;
+      deleted_at: string | null;
+      icon: string | null;
+      description: string | null;
+      end_date: string | null;
+      target_launch_date: string | null;
+    } | null;
   };
 
   const projects = ((memberRows ?? []) as unknown as MemberRow[])
@@ -678,12 +698,41 @@ export async function getMyProjectsProgress(
     }
   }
 
+  // Step 3: current active phase per project, same pattern as
+  // getProjectHealthInputs above.
+  const { data: phaseRows, error: phaseError } = await supabase
+    .from("project_phases")
+    .select("project_id, name, state, planned_start, planned_end, position")
+    .in("project_id", projectIds)
+    .eq("state", "active")
+    .order("position", { ascending: true });
+
+  if (phaseError) {
+    logger.error("getMyProjectsProgress: failed to load phases", { error: phaseError });
+  }
+
+  const currentPhaseByProject = new Map<string, MyProjectProgress["currentPhase"]>();
+  for (const phase of phaseRows ?? []) {
+    if (currentPhaseByProject.has(phase.project_id)) continue;
+    currentPhaseByProject.set(phase.project_id, {
+      name: phase.name ?? null,
+      state: phase.state,
+      plannedStart: phase.planned_start ?? null,
+      plannedEnd: phase.planned_end ?? null,
+    });
+  }
+
   // Step 4: overdueCount desc, then projectName asc.
   return projects
     .map((project) => ({
       projectId: project.id,
       projectName: project.name,
       projectKey: project.key ?? "",
+      icon: project.icon ?? null,
+      description: project.description ?? null,
+      endDate: project.end_date ?? null,
+      targetLaunchDate: project.target_launch_date ?? null,
+      currentPhase: currentPhaseByProject.get(project.id) ?? null,
       doneCount: doneByProject.get(project.id) ?? 0,
       totalCount: totalByProject.get(project.id) ?? 0,
       overdueCount: overdueByProject.get(project.id) ?? 0,
