@@ -9,6 +9,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { passwordSignInSchema, signInSchema } from "@/lib/validation/auth";
 import { logger } from "@/lib/observability/logger";
 import { appUrl, isPasswordLoginEnabled } from "@/lib/env";
+import { checkRateLimit, clientIpFromRequest, type RateLimitRule } from "@/lib/rate-limit";
 import {
   PORTAL_PREVIEW_ACCESS_COOKIE,
   PORTAL_PREVIEW_REFRESH_COOKIE,
@@ -19,15 +20,44 @@ import type { ActionOutcome } from "@/lib/actions/authz";
 
 export type SignInResult = ActionOutcome;
 
+// SEC-HTTP-09: application-level throttling for the unauthenticated sign-in
+// actions, keyed by client IP and by the submitted identifier (lower-cased;
+// hashed before it reaches the DB — see lib/rate-limit.ts). Cross-instance
+// via the shared `bump_extension_rate_limit` counter, with an in-process
+// fallback. Supabase Auth's own limits still apply behind this.
+const RATE_WINDOW_SECONDS = 15 * 60;
+const SIGN_IN_LIMITS = {
+  magicLinkIp: { bucket: "auth_magic_link_ip", limit: 20, windowSeconds: RATE_WINDOW_SECONDS, distributed: true },
+  magicLinkEmail: { bucket: "auth_magic_link_email", limit: 5, windowSeconds: RATE_WINDOW_SECONDS, distributed: true },
+  passwordIp: { bucket: "auth_password_ip", limit: 30, windowSeconds: RATE_WINDOW_SECONDS, distributed: true },
+  passwordIdentifier: { bucket: "auth_password_identifier", limit: 10, windowSeconds: RATE_WINDOW_SECONDS, distributed: true },
+} satisfies Record<string, RateLimitRule>;
+
+const RATE_LIMITED_ERROR = "Too many attempts. Please wait a few minutes and try again.";
+
+// Both keys are always bumped (no short-circuit) so an attacker rotating
+// identifiers from one IP still spends the IP budget.
+async function withinSignInLimits(
+  ipRule: RateLimitRule,
+  idRule: RateLimitRule,
+  identifier: string,
+): Promise<boolean> {
+  const ip = await clientIpFromRequest();
+  const [ipOk, idOk] = await Promise.all([
+    checkRateLimit(ipRule, ip),
+    checkRateLimit(idRule, identifier.trim().toLowerCase()),
+  ]);
+  return ipOk && idOk;
+}
+
 // Requests a Supabase Auth magic link for the given email (AS-002).
 //
-// Rate limiting: no custom throttling is implemented here. Supabase Auth
-// has built-in rate limits on the magic-link (OTP) send endpoint — by
-// default a fixed number of emails per hour per address and a global
-// project-level email rate limit — which is enforced server-side by
-// Supabase itself before this action's request ever succeeds. Per
-// AS-145, that built-in throttling is relied upon and documented here
-// rather than reimplemented in application code.
+// Rate limiting: Supabase Auth has built-in rate limits on the magic-link
+// (OTP) send endpoint — by default a fixed number of emails per hour per
+// address and a global project-level email rate limit — enforced
+// server-side by Supabase itself (AS-145). SEC-HTTP-09 adds a per-IP and
+// per-email application limit in front of it (`withinSignInLimits` above),
+// which also bounds the admin invite lookup below.
 export async function signInWithMagicLink(
   _prevState: SignInResult | null,
   formData: FormData,
@@ -41,6 +71,10 @@ export async function signInWithMagicLink(
       ok: false,
       error: parsed.error.issues[0]?.message ?? "Enter a valid email address.",
     };
+  }
+
+  if (!(await withinSignInLimits(SIGN_IN_LIMITS.magicLinkIp, SIGN_IN_LIMITS.magicLinkEmail, parsed.data.email))) {
+    return { ok: false, error: RATE_LIMITED_ERROR };
   }
 
   const supabase = await createClient();
@@ -262,6 +296,10 @@ export async function signInWithPassword(
   }
 
   const { identifier, password } = parsed.data;
+
+  if (!(await withinSignInLimits(SIGN_IN_LIMITS.passwordIp, SIGN_IN_LIMITS.passwordIdentifier, identifier))) {
+    return { ok: false, error: RATE_LIMITED_ERROR };
+  }
 
   let email: string | null = identifier.includes("@") ? identifier : null;
   if (!email) {
