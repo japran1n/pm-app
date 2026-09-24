@@ -21,6 +21,8 @@
 // two calls with nothing in common but the URL, exactly as two different
 // people opening the same channel would produce.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import dns from "node:dns";
+import type { transport as Transport } from "@/lib/site-preview/safe-fetch";
 import { cleanup, render, screen, act } from "@testing-library/react";
 import { createElement } from "react";
 
@@ -29,6 +31,15 @@ import { createElement } from "react";
 import "@testing-library/jest-dom/vitest";
 
 import { clearLinkPreviewCacheForTests } from "@/lib/chat/link-preview-cache";
+
+// getLinkPreview requires a signed-in caller, rate limits cache misses and
+// fetches through the SSRF-hardened transport; stub all three here.
+vi.mock("@/lib/auth/current-user", () => ({
+  getCurrentUser: vi.fn(async () => ({ supabase: null, user: { id: "viewer-1" } })),
+}));
+vi.mock("@/lib/chat/link-preview-rate-limit", () => ({
+  allowLinkPreviewFetch: vi.fn(async () => true),
+}));
 
 const OK_HTML = `<html><head>
   <meta property="og:title" content="A Great Article" />
@@ -50,21 +61,34 @@ function mockHtmlResponse(html: string) {
 }
 
 describe("getLinkPreview server-side cache (AS-086, AS-087)", () => {
-  const originalFetch = global.fetch;
+  // Resolved per test: other suites in this file call vi.resetModules(), and
+  // getLinkPreview must see the same safe-fetch instance the test stubs.
+  let transport: typeof Transport;
+  let originalFetch: typeof Transport.fetch;
+  const originalLookup = dns.promises.lookup;
+
+  beforeEach(async () => {
+    ({ transport } = await import("@/lib/site-preview/safe-fetch"));
+    originalFetch = transport.fetch;
+    dns.promises.lookup = vi.fn(async () => [
+      { address: "93.184.215.14", family: 4 },
+    ]) as unknown as typeof dns.promises.lookup;
+  });
 
   beforeEach(() => {
     clearLinkPreviewCacheForTests();
   });
 
   afterEach(() => {
-    global.fetch = originalFetch;
+    transport.fetch = originalFetch;
+    dns.promises.lookup = originalLookup;
     vi.useRealTimers();
     clearLinkPreviewCacheForTests();
   });
 
   it("test_AS_086_a_second_call_for_a_resolved_url_performs_no_second_network_fetch", async () => {
     const fetchSpy = vi.fn(async () => mockHtmlResponse(OK_HTML));
-    global.fetch = fetchSpy as unknown as typeof fetch;
+    transport.fetch = fetchSpy as unknown as typeof Transport.fetch;
 
     const { getLinkPreview } = await import("@/lib/chat/link-preview");
 
@@ -79,7 +103,7 @@ describe("getLinkPreview server-side cache (AS-086, AS-087)", () => {
   it("test_AS_086_cached_entry_expires_and_is_refetched_afterward", async () => {
     vi.useFakeTimers();
     const fetchSpy = vi.fn(async () => mockHtmlResponse(OK_HTML));
-    global.fetch = fetchSpy as unknown as typeof fetch;
+    transport.fetch = fetchSpy as unknown as typeof Transport.fetch;
 
     const { getLinkPreview } = await import("@/lib/chat/link-preview");
 
@@ -101,7 +125,7 @@ describe("getLinkPreview server-side cache (AS-086, AS-087)", () => {
 
   it("test_AS_087_a_url_with_no_usable_preview_is_cached_and_not_refetched", async () => {
     const fetchSpy = vi.fn(async () => mockHtmlResponse(NO_METADATA_HTML));
-    global.fetch = fetchSpy as unknown as typeof fetch;
+    transport.fetch = fetchSpy as unknown as typeof Transport.fetch;
 
     const { getLinkPreview } = await import("@/lib/chat/link-preview");
 
@@ -119,7 +143,7 @@ describe("getLinkPreview server-side cache (AS-086, AS-087)", () => {
     const fetchSpy = vi.fn(async () => {
       throw new Error("network error");
     });
-    global.fetch = fetchSpy as unknown as typeof fetch;
+    transport.fetch = fetchSpy as unknown as typeof Transport.fetch;
 
     const { getLinkPreview } = await import("@/lib/chat/link-preview");
 
@@ -133,10 +157,10 @@ describe("getLinkPreview server-side cache (AS-086, AS-087)", () => {
     vi.useFakeTimers();
     const successSpy = vi.fn(async () => mockHtmlResponse(OK_HTML));
     const negativeSpy = vi.fn(async () => mockHtmlResponse(NO_METADATA_HTML));
-    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+    transport.fetch = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       return url.includes("negative") ? negativeSpy() : successSpy();
-    }) as unknown as typeof fetch;
+    }) as unknown as typeof Transport.fetch;
 
     const { getLinkPreview } = await import("@/lib/chat/link-preview");
 
@@ -164,7 +188,7 @@ describe("getLinkPreview server-side cache (AS-086, AS-087)", () => {
     // exactly as two separate people opening the same channel would look
     // like from this module's point of view.
     const fetchSpy = vi.fn(async () => mockHtmlResponse(OK_HTML));
-    global.fetch = fetchSpy as unknown as typeof fetch;
+    transport.fetch = fetchSpy as unknown as typeof Transport.fetch;
 
     const { getLinkPreview } = await import("@/lib/chat/link-preview");
 

@@ -14,17 +14,21 @@
 // for why it is a plain in-process TTL map rather than a `link_previews`
 // table or `unstable_cache`.
 //
-// Remaining scope this file still does NOT cover -- a hardened version
-// would additionally need:
-//   - a rate limit per workspace/sender to stop a chat channel from being
-//     used to hammer an arbitrary external host,
-//   - real SSRF hardening via DNS resolution + blocking the resolved IP
-//     (not just the hostname) against private/loopback/link-local ranges,
-//     since a hostname-only check (what this file does) can't catch DNS
-//     rebinding.
-// See the F120 handoff for the full list.
+// Hardening: callers must be signed in; outbound fetches go through
+// `safeFetch` (resolved-address SSRF checks on every redirect hop, connection
+// pinned to the checked address); the body is read only up to `</head>` or
+// 64KB and parsed linearly (link-preview-parse.ts); cache misses are rate
+// limited per user (link-preview-rate-limit.ts).
 import { logger } from "@/lib/observability/logger";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { getCachedLinkPreview, setCachedLinkPreview } from "@/lib/chat/link-preview-cache";
+import {
+  MAX_PARSE_CHARS,
+  extractLinkPreviewMeta,
+  headEndIndex,
+} from "@/lib/chat/link-preview-parse";
+import { allowLinkPreviewFetch } from "@/lib/chat/link-preview-rate-limit";
+import { safeFetch } from "@/lib/site-preview/safe-fetch";
 
 export type LinkPreviewResult =
   | {
@@ -45,32 +49,10 @@ export type LinkPreviewResult =
 type LinkPreviewData = Extract<LinkPreviewResult, { ok: true }>["data"];
 
 const FETCH_TIMEOUT_MS = 3000;
-const MAX_RESPONSE_BYTES = 512 * 1024;
+const MAX_URL_LENGTH = 2048;
 
-// Best-effort hostname-level SSRF guard -- blocks the obvious cases
-// (localhost, loopback, link-local, and the private IPv4 ranges) by
-// hostname/literal-IP inspection. This is NOT a substitute for resolving
-// DNS and checking the resolved address (a hostname can point anywhere at
-// request time, including after this check runs) -- see the file doc
-// comment's "hardened version" list.
-function isBlockedHost(hostname: string): boolean {
-  const host = hostname.toLowerCase();
-  if (host === "localhost" || host.endsWith(".localhost")) return true;
-  if (host === "0.0.0.0" || host === "::1" || host === "[::1]") return true;
-  // IPv4 literal checks: loopback, private (RFC1918), link-local.
-  const ipv4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (ipv4) {
-    const [a, b] = [Number(ipv4[1]), Number(ipv4[2])];
-    if (a === 127) return true;
-    if (a === 10) return true;
-    if (a === 172 && b >= 16 && b <= 31) return true;
-    if (a === 192 && b === 168) return true;
-    if (a === 169 && b === 254) return true;
-  }
-  return false;
-}
-
-function isFetchableUrl(raw: string): URL | null {
+function parseHttpUrl(raw: unknown): URL | null {
+  if (typeof raw !== "string" || raw.length > MAX_URL_LENGTH) return null;
   let url: URL;
   try {
     url = new URL(raw);
@@ -78,81 +60,66 @@ function isFetchableUrl(raw: string): URL | null {
     return null;
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") return null;
-  if (isBlockedHost(url.hostname)) return null;
   return url;
-}
-
-function decodeHtmlEntities(text: string): string {
-  return text
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'");
-}
-
-function extractMeta(html: string, property: string): string | null {
-  // Matches both attribute orders (`property` then `content`, or vice
-  // versa) and either `property=`/`name=` since sites use both
-  // interchangeably for Open Graph / Twitter Card tags.
-  const patterns = [
-    new RegExp(
-      `<meta[^>]+(?:property|name)=["']${property}["'][^>]*content=["']([^"']*)["']`,
-      "i",
-    ),
-    new RegExp(
-      `<meta[^>]+content=["']([^"']*)["'][^>]*(?:property|name)=["']${property}["']`,
-      "i",
-    ),
-  ];
-  for (const pattern of patterns) {
-    const match = html.match(pattern);
-    if (match?.[1]) return decodeHtmlEntities(match[1]);
-  }
-  return null;
-}
-
-function extractTitleTag(html: string): string | null {
-  const match = html.match(/<title[^>]*>([^<]*)<\/title>/i);
-  return match?.[1] ? decodeHtmlEntities(match[1].trim()) : null;
 }
 
 /**
  * Fetches `url` server-side within a short timeout and extracts Open Graph
  * (falling back to `<title>`) metadata. Never throws -- every failure mode
- * (invalid/blocked URL, timeout, non-2xx response, no HTML, no usable
- * title) resolves to `{ ok: false }` so the caller can render a plain link
- * with no visible error, per AS-072.
+ * (unauthenticated caller, invalid/blocked URL, rate limited, timeout,
+ * non-2xx response, no HTML, no usable title) resolves to `{ ok: false }` so
+ * the caller can render a plain link with no visible error, per AS-072.
  *
  * F125 (AS-086/AS-087): checks the shared server-side cache first. A hit
  * -- success OR negative -- returns immediately with no network fetch at
- * all; a miss fetches as before and populates the cache for every
- * subsequent render/viewer/page-load until the entry's TTL expires. The
- * cache key is the RAW input URL exactly as received (not `isFetchableUrl`'s
- * normalized `URL#toString()`), so a blocked/unparseable URL is cached and
- * short-circuits future calls before `isFetchableUrl` even has to
- * re-evaluate it.
+ * all; a miss fetches and populates the cache until the entry's TTL
+ * expires. The cache key is the raw input URL exactly as received.
  */
 export async function getLinkPreview(rawUrl: string): Promise<LinkPreviewResult> {
+  const { user } = await getCurrentUser();
+  if (!user) return { ok: false };
+
+  const url = parseHttpUrl(rawUrl);
+  if (!url) return { ok: false };
+
   const cached = getCachedLinkPreview<LinkPreviewData>(rawUrl);
   if (cached !== undefined) return cached;
 
-  const result = await fetchLinkPreview(rawUrl);
+  // Rate-limited results are not cached: the URL itself is fine.
+  if (!(await allowLinkPreviewFetch(user.id))) return { ok: false };
+
+  const result = await fetchLinkPreview(url, rawUrl);
   setCachedLinkPreview<LinkPreviewData>(rawUrl, result);
   return result;
 }
 
-async function fetchLinkPreview(rawUrl: string): Promise<LinkPreviewResult> {
-  const url = isFetchableUrl(rawUrl);
-  if (!url) return { ok: false };
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-
+async function readHead(response: Response): Promise<string> {
+  const reader = response.body?.getReader();
+  if (!reader) {
+    return (await response.text()).slice(0, MAX_PARSE_CHARS);
+  }
+  const decoder = new TextDecoder();
+  let html = "";
   try {
-    const response = await fetch(url.toString(), {
-      signal: controller.signal,
-      redirect: "follow",
+    while (html.length < MAX_PARSE_CHARS) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const scanFrom = Math.max(0, html.length - "</head".length);
+      html += decoder.decode(value, { stream: true });
+      if (headEndIndex(html, scanFrom) !== -1) break;
+    }
+  } finally {
+    void reader.cancel().catch(() => {});
+  }
+  return html.slice(0, MAX_PARSE_CHARS);
+}
+
+async function fetchLinkPreview(url: URL, rawUrl: string): Promise<LinkPreviewResult> {
+  try {
+    const { response, url: finalUrl } = await safeFetch(url, {
+      timeoutMs: FETCH_TIMEOUT_MS,
+      allowHttp: true,
+      maxRedirects: 3,
       headers: {
         // Identifies the request as ours, per the clarified spec's "our
         // own User-Agent" requirement -- some sites otherwise refuse
@@ -162,60 +129,25 @@ async function fetchLinkPreview(rawUrl: string): Promise<LinkPreviewResult> {
       },
     });
 
-    if (!response.ok) return { ok: false };
-
-    const contentType = response.headers.get("content-type") ?? "";
-    if (!contentType.includes("text/html")) return { ok: false };
-
-    // Size cap: read at most MAX_RESPONSE_BYTES worth of the body -- an OG
-    // tag is always in `<head>`, so the full document (which could be
-    // arbitrarily large) never needs to be buffered.
-    const reader = response.body?.getReader();
-    let html = "";
-    if (reader) {
-      let received = 0;
-      const decoder = new TextDecoder();
-      while (received < MAX_RESPONSE_BYTES) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        received += value.byteLength;
-        html += decoder.decode(value, { stream: true });
-      }
-      void reader.cancel().catch(() => {});
-    } else {
-      html = await response.text();
+    if (!response.ok) {
+      void response.body?.cancel().catch(() => {});
+      return { ok: false };
     }
 
-    const title =
-      extractMeta(html, "og:title") ??
-      extractMeta(html, "twitter:title") ??
-      extractTitleTag(html);
+    const contentType = response.headers.get("content-type") ?? "";
+    if (!contentType.includes("text/html")) {
+      void response.body?.cancel().catch(() => {});
+      return { ok: false };
+    }
 
-    if (!title) return { ok: false };
+    const parsed = extractLinkPreviewMeta(await readHead(response), finalUrl);
+    if (!parsed) return { ok: false };
 
-    const description =
-      extractMeta(html, "og:description") ?? extractMeta(html, "twitter:description");
-    const imageUrl = extractMeta(html, "og:image") ?? extractMeta(html, "twitter:image");
-    const siteName = extractMeta(html, "og:site_name");
-
-    return {
-      ok: true,
-      data: {
-        url: url.toString(),
-        title,
-        description: description ?? null,
-        imageUrl: imageUrl ?? null,
-        siteName: siteName ?? null,
-      },
-    };
+    return { ok: true, data: { url: url.toString(), ...parsed } };
   } catch (error) {
-    // Timeout (AbortError) and network failures both land here -- never
-    // surfaced to the user, per AS-072's "no error surfaced" requirement.
-    // Logged server-side only, matching every other non-fatal side effect
-    // in this codebase (e.g. sendMessage's notify step).
-    logger.error("getLinkPreview: fetch failed (non-fatal)", { error, url: rawUrl });
+    // Blocked targets, timeouts and network failures all land here -- never
+    // surfaced to the user, per AS-072. Logged server-side only.
+    logger.warn("getLinkPreview: fetch failed (non-fatal)", { error, url: rawUrl });
     return { ok: false };
-  } finally {
-    clearTimeout(timer);
   }
 }

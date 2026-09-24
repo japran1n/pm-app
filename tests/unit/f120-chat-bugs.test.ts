@@ -15,6 +15,8 @@
 // rather than a real browser layout test.
 
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import dns from "node:dns";
+import type { transport as Transport } from "@/lib/site-preview/safe-fetch";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
@@ -23,6 +25,12 @@ import { extractLinkHrefs, firstPreviewableUrl } from "@/lib/chat/extract-links"
 
 vi.mock("server-only", () => ({}));
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
+
+// getLinkPreview requires a signed-in caller (the supabase mock below),
+// rate limits cache misses and fetches through the SSRF-hardened transport.
+vi.mock("@/lib/chat/link-preview-rate-limit", () => ({
+  allowLinkPreviewFetch: vi.fn(async () => true),
+}));
 
 let mockSendMessageSupabase: unknown = null;
 vi.mock("@/lib/supabase/server", () => ({
@@ -222,10 +230,26 @@ describe("sendMessage integration (AS-071)", () => {
 });
 
 describe("getLinkPreview (AS-072)", () => {
-  const originalFetch = global.fetch;
+  // Resolved per test: other suites in this file call vi.resetModules(), and
+  // getLinkPreview must see the same safe-fetch instance the test stubs.
+  let transport: typeof Transport;
+  let originalFetch: typeof Transport.fetch;
+  const originalLookup = dns.promises.lookup;
+
+  beforeEach(async () => {
+    ({ transport } = await import("@/lib/site-preview/safe-fetch"));
+    originalFetch = transport.fetch;
+    mockSendMessageSupabase = {
+      auth: { getUser: async () => ({ data: { user: { id: "viewer-1" } } }) },
+    };
+    dns.promises.lookup = vi.fn(async () => [
+      { address: "93.184.215.14", family: 4 },
+    ]) as unknown as typeof dns.promises.lookup;
+  });
 
   afterEach(() => {
-    global.fetch = originalFetch;
+    transport.fetch = originalFetch;
+    dns.promises.lookup = originalLookup;
     vi.useRealTimers();
   });
 
@@ -236,12 +260,12 @@ describe("getLinkPreview (AS-072)", () => {
       <meta property="og:site_name" content="ExampleTube" />
     </head></html>`;
 
-    global.fetch = vi.fn(async () => ({
+    transport.fetch = vi.fn(async () => ({
       ok: true,
       headers: { get: (key: string) => (key === "content-type" ? "text/html" : null) },
       body: null,
       text: async () => html,
-    })) as unknown as typeof fetch;
+    })) as unknown as typeof Transport.fetch;
 
     const { getLinkPreview } = await import("@/lib/chat/link-preview");
     const result = await getLinkPreview("https://example.com/watch");
@@ -254,12 +278,12 @@ describe("getLinkPreview (AS-072)", () => {
   });
 
   it("test_AS_072_url_with_no_retrievable_metadata_fails_closed_with_no_throw", async () => {
-    global.fetch = vi.fn(async () => ({
+    transport.fetch = vi.fn(async () => ({
       ok: true,
       headers: { get: (key: string) => (key === "content-type" ? "text/html" : null) },
       body: null,
       text: async () => "<html><head></head><body>no title, no OG tags</body></html>",
-    })) as unknown as typeof fetch;
+    })) as unknown as typeof Transport.fetch;
 
     const { getLinkPreview } = await import("@/lib/chat/link-preview");
     const result = await getLinkPreview("https://example.com/nothing-here");
@@ -268,9 +292,9 @@ describe("getLinkPreview (AS-072)", () => {
   });
 
   it("test_AS_072_unreachable_url_fails_closed_with_no_throw", async () => {
-    global.fetch = vi.fn(async () => {
+    transport.fetch = vi.fn(async () => {
       throw new Error("network error");
-    }) as unknown as typeof fetch;
+    }) as unknown as typeof Transport.fetch;
 
     const { getLinkPreview } = await import("@/lib/chat/link-preview");
     await expect(getLinkPreview("https://this-does-not-resolve.invalid")).resolves.toEqual({
@@ -279,12 +303,12 @@ describe("getLinkPreview (AS-072)", () => {
   });
 
   it("test_AS_072_non_ok_response_fails_closed", async () => {
-    global.fetch = vi.fn(async () => ({
+    transport.fetch = vi.fn(async () => ({
       ok: false,
       headers: { get: () => null },
       body: null,
       text: async () => "",
-    })) as unknown as typeof fetch;
+    })) as unknown as typeof Transport.fetch;
 
     const { getLinkPreview } = await import("@/lib/chat/link-preview");
     const result = await getLinkPreview("https://example.com/404");
@@ -293,7 +317,7 @@ describe("getLinkPreview (AS-072)", () => {
 
   it("test_AS_072_private_ip_and_localhost_targets_are_never_fetched", async () => {
     const fetchSpy = vi.fn();
-    global.fetch = fetchSpy as unknown as typeof fetch;
+    transport.fetch = fetchSpy as unknown as typeof Transport.fetch;
 
     const { getLinkPreview } = await import("@/lib/chat/link-preview");
     const results = await Promise.all([
