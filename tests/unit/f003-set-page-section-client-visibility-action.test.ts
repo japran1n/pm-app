@@ -9,6 +9,12 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
+vi.mock("@/lib/actions/architecture/authorize", async () =>
+  (await import("../helpers/architecture-authorize-mock")).architectureAuthorizeMock({
+    workspaceFor: () => "ws-1",
+  }),
+);
+
 vi.mock("@/lib/observability/logger", () => ({
   logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
 }));
@@ -61,10 +67,14 @@ function buildAdminMock() {
               // Distinguish the single-row update (used for the page/section
               // itself) from the sections-cascade update, which chains
               // .is().select() afterwards.
+              const cascade: Record<string, unknown> = {
+                select: vi.fn(async () => sectionsUpdateSelectResult),
+              };
+              cascade.eq = vi.fn(() => cascade);
+              cascade.is = vi.fn(() => cascade);
               return {
-                is: vi.fn(() => ({
-                  select: vi.fn(async () => sectionsUpdateSelectResult),
-                })),
+                eq: vi.fn(() => cascade),
+                is: vi.fn(() => cascade),
                 then: (resolve: (v: unknown) => void) => resolve({ error: null }),
               };
             }),

@@ -20,6 +20,12 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
+vi.mock("@/lib/actions/architecture/authorize", async () =>
+  (await import("../helpers/architecture-authorize-mock")).architectureAuthorizeMock({
+    workspaceFor: () => "ws-1",
+  }),
+);
+
 vi.mock("@/lib/observability/logger", () => ({
   logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
 }));
@@ -82,16 +88,22 @@ function buildAdminMock() {
           update: vi.fn((patch: unknown) => {
             taskUpdateSpy(patch);
             return {
-              eq: vi.fn((column: string) => ({
-                is: vi.fn(() => ({
+              eq: vi.fn((column: string) => {
+                const cascade: Record<string, unknown> = {
                   select: vi.fn(async () =>
                     column === "parent_task_id" && sectionsUpdateShouldFail
                       ? { data: null, error: { message: "sections update failed" } }
                       : { data: [], error: null },
                   ),
-                })),
-                then: (resolve: (v: unknown) => void) => resolve({ error: null }),
-              })),
+                };
+                cascade.eq = vi.fn(() => cascade);
+                cascade.is = vi.fn(() => cascade);
+                return {
+                  eq: vi.fn(() => cascade),
+                  is: vi.fn(() => cascade),
+                  then: (resolve: (v: unknown) => void) => resolve({ error: null }),
+                };
+              }),
             };
           }),
           insert: vi.fn(() => ({

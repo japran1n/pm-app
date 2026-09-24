@@ -12,6 +12,12 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
+vi.mock("@/lib/actions/architecture/authorize", async () =>
+  (await import("../helpers/architecture-authorize-mock")).architectureAuthorizeMock({
+    workspaceFor: () => "ws-1",
+  }),
+);
+
 let updatedRow: { id: string; title: unknown } | null = null;
 
 function resetShared() {

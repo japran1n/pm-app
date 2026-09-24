@@ -14,6 +14,12 @@ import React from "react";
 
 vi.mock("server-only", () => ({}));
 
+vi.mock("@/lib/actions/architecture/authorize", async () =>
+  (await import("../helpers/architecture-authorize-mock")).architectureAuthorizeMock({
+    workspaceFor: () => "ws-1",
+  }),
+);
+
 vi.mock("@/lib/observability/logger", () => ({
   logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
 }));

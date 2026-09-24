@@ -16,6 +16,12 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("@/lib/actions/architecture/authorize", async () =>
+  (await import("../helpers/architecture-authorize-mock")).architectureAuthorizeMock({
+    workspaceFor: () => "ws-1",
+  }),
+);
+
 const TASK_ID = "c6d92920-fa93-408d-91cb-87cb907b3fec";
 const PROJECT_ID = "83a351f8-6762-498d-8c6e-a1683703c6f1";
 const WORKSPACE_ID = "73b61885-e883-48cb-b7fa-6477238ffc00";

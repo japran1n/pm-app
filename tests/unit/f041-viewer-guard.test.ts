@@ -9,6 +9,12 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
+vi.mock("@/lib/actions/architecture/authorize", async () =>
+  (await import("../helpers/architecture-authorize-mock")).architectureAuthorizeMock({
+    workspaceFor: () => "ws-1",
+  }),
+);
+
 const WORKSPACE_ID = "22222222-2222-4222-8222-222222222222";
 const PROJECT_ID = "33333333-3333-4333-8333-333333333333";
 const PAGE_TASK_ID = "44444444-4444-4444-8444-444444444444";
@@ -64,9 +70,21 @@ vi.mock("@/lib/supabase/admin", () => ({
       }
 
       if (table === "tasks") {
+        const pageRow = {
+          id: PAGE_TASK_ID,
+          project_id: PROJECT_ID,
+          page_slug: "home",
+          parent_task_id: null,
+          projects: { workspace_id: WORKSPACE_ID },
+        };
         return {
           select: () => ({
             eq: () => ({
+              eq: () => ({
+                is: () => ({
+                  maybeSingle: async () => ({ data: pageRow, error: null }),
+                }),
+              }),
               is: () => ({
                 maybeSingle: async () => ({
                   data: {
@@ -141,7 +159,7 @@ describe("F041 viewer-role guard (AS-097)", () => {
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.error).toMatch(/viewer/i);
+      expect(result.error).toMatch(/permission/i);
     }
     expect(insertCalled).toBe(false);
   });
@@ -151,7 +169,7 @@ describe("F041 viewer-role guard (AS-097)", () => {
     const result = await deletePage(PAGE_TASK_ID);
 
     expect(result.success).toBe(false);
-    expect(result.error).toMatch(/viewer/i);
+    expect(result.error).toMatch(/permission/i);
     expect(rpcCalled).toBe(false);
   });
 
@@ -160,7 +178,7 @@ describe("F041 viewer-role guard (AS-097)", () => {
     const result = await createSection(PAGE_TASK_ID, PROJECT_ID, "New section");
 
     expect(result.success).toBe(false);
-    expect(result.error).toMatch(/viewer/i);
+    expect(result.error).toMatch(/permission/i);
     expect(insertCalled).toBe(false);
   });
 });

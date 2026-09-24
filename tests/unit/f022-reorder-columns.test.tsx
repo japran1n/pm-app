@@ -16,8 +16,8 @@ const updateMock = vi.fn(() => ({
 
 const inMock = vi.fn(async () => ({
   data: [
-    { id: "page-1", page_slug: "home", projects: { workspace_id: "ws-1" } },
-    { id: "page-2", page_slug: "pricing", projects: { workspace_id: "ws-1" } },
+    { id: "page-1", project_id: "project-1", page_slug: "home", parent_task_id: null },
+    { id: "page-2", project_id: "project-1", page_slug: "pricing", parent_task_id: null },
   ],
   error: null,
 }));
@@ -68,6 +68,12 @@ vi.mock("next/navigation", () => ({
 import { reorderPages } from "@/lib/actions/architecture";
 import { ArchitectureBoard } from "@/components/architecture/board";
 import type { BoardPage } from "@/lib/queries/architecture";
+
+vi.mock("@/lib/actions/architecture/authorize", async () =>
+  (await import("../helpers/architecture-authorize-mock")).architectureAuthorizeMock({
+    workspaceFor: () => "ws-1",
+  }),
+);
 
 afterEach(() => {
   cleanup();

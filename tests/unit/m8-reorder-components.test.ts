@@ -81,6 +81,12 @@ vi.mock("@/lib/actions/portal-revalidate", () => ({
 
 import { reorderComponents } from "@/lib/actions/architecture";
 
+vi.mock("@/lib/actions/architecture/authorize", async () =>
+  (await import("../helpers/architecture-authorize-mock")).architectureAuthorizeMock({
+    workspaceFor: () => "ws-1",
+  }),
+);
+
 const PROJECT_ID = "00000000-0000-4000-8000-000000000001";
 
 afterEach(() => {

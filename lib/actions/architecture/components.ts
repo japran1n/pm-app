@@ -7,14 +7,9 @@
 import { revalidatePath } from "next/cache";
 
 import { logger } from "@/lib/observability/logger";
-import {
-  revalidatePortalProject,
-  extractWorkspaceSlug,
-} from "@/lib/actions/portal-revalidate";
+import { revalidatePortalProject } from "@/lib/actions/portal-revalidate";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUser } from "@/lib/auth/current-user";
-import { requireActiveMembership } from "@/lib/auth/require-membership";
-import { canWrite } from "@/lib/auth/permissions";
 import { z } from "zod";
 
 import { reorderComponentsSchema } from "@/lib/validation/architecture";
@@ -24,6 +19,10 @@ import type {
   MutationWithIdResult,
   MutationWithComponentIdResult,
 } from "./shared";
+import {
+  authorizeArchitectureProject,
+  areArchitectureSections,
+} from "./authorize";
 
 // Mission 20260910-182104, F025 (AS-051, AS-052): turns an existing
 // section into a component. A section IS a subtask (standing decision 1);
@@ -77,8 +76,24 @@ export async function createComponentFromSection(
     return { success: false, error: "Section not found." };
   }
 
-  if (taskRow.project_id !== projectId) {
+  if (
+    taskRow.project_id !== projectId ||
+    !(await areArchitectureSections(admin, [taskRow]))
+  ) {
     return { success: false, error: "Section not found." };
+  }
+
+  const authz = await authorizeArchitectureProject(
+    admin,
+    user.id,
+    taskRow.project_id,
+  );
+
+  if (!authz.ok) {
+    return {
+      success: false,
+      error: "You don't have permission to create a component in this project.",
+    };
   }
 
   if (taskRow.component_id) {
@@ -88,30 +103,7 @@ export async function createComponentFromSection(
     };
   }
 
-  const workspaceId = (taskRow as { projects: { workspace_id: string } }).projects
-    .workspace_id;
-  const createComponentFromSectionWorkspace = (
-    taskRow as { projects: { workspaces: { slug: string } | { slug: string }[] | null } }
-  ).projects.workspaces;
-  const createComponentFromSectionWorkspaceSlug = extractWorkspaceSlug(
-    createComponentFromSectionWorkspace,
-  );
-
-  const membership = await requireActiveMembership(admin, workspaceId, user.id);
-
-  if (!membership.ok) {
-    return {
-      success: false,
-      error: "You don't have permission to create a component in this project.",
-    };
-  }
-
-  if (!canWrite({ role: membership.role })) {
-    return {
-      success: false,
-      error: "Viewers don't have permission to create a component.",
-    };
-  }
+  const createComponentFromSectionWorkspaceSlug = authz.access.workspaceSlug;
 
   // AS-065: two components in the same project cannot share a
   // case-insensitive name (page_components_project_id_lower_name_idx,
@@ -225,41 +217,18 @@ export async function createComponent(
   // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
-  const { data: projectRow, error: projectError } = await admin
-    .from("projects")
-    .select("id, workspace_id, workspaces(slug)")
-    .eq("id", projectId)
-    .maybeSingle();
+  const authz = await authorizeArchitectureProject(admin, user.id, projectId);
 
-  if (projectError || !projectRow) {
-    return { success: false, error: "Project not found." };
+  if (!authz.ok) {
+    return authz.reason === "not_found"
+      ? { success: false, error: "Project not found." }
+      : {
+          success: false,
+          error: "You don't have permission to create a component in this project.",
+        };
   }
 
-  const createComponentWorkspace = projectRow.workspaces as
-    | { slug: string }
-    | { slug: string }[]
-    | null;
-  const createComponentWorkspaceSlug = extractWorkspaceSlug(createComponentWorkspace);
-
-  const membership = await requireActiveMembership(
-    admin,
-    projectRow.workspace_id,
-    user.id,
-  );
-
-  if (!membership.ok) {
-    return {
-      success: false,
-      error: "You don't have permission to create a component in this project.",
-    };
-  }
-
-  if (!canWrite({ role: membership.role })) {
-    return {
-      success: false,
-      error: "Viewers don't have permission to create a component.",
-    };
-  }
+  const createComponentWorkspaceSlug = authz.access.workspaceSlug;
 
   const { count: existingComponentCount, error: countError } = await admin
     .from("page_components")
@@ -342,11 +311,16 @@ export async function linkComponentToSection(
 
   const { data: sectionRow, error: sectionError } = await admin
     .from("tasks")
-    .select("id, project_id")
+    .select("id, project_id, page_slug, parent_task_id")
     .eq("id", sectionTaskId)
+    .is("deleted_at", null)
     .maybeSingle();
 
-  if (sectionError || !sectionRow) {
+  if (
+    sectionError ||
+    !sectionRow ||
+    !(await areArchitectureSections(admin, [sectionRow]))
+  ) {
     return { success: false, error: "Section not found." };
   }
 
@@ -367,41 +341,22 @@ export async function linkComponentToSection(
     };
   }
 
-  const { data: projectRow, error: projectError } = await admin
-    .from("projects")
-    .select("id, workspace_id, workspaces(slug)")
-    .eq("id", sectionRow.project_id)
-    .maybeSingle();
-
-  if (projectError || !projectRow) {
-    return { success: false, error: "Project not found." };
-  }
-
-  const linkComponentWorkspace = projectRow.workspaces as
-    | { slug: string }
-    | { slug: string }[]
-    | null;
-  const linkComponentWorkspaceSlug = extractWorkspaceSlug(linkComponentWorkspace);
-
-  const membership = await requireActiveMembership(
+  const authz = await authorizeArchitectureProject(
     admin,
-    projectRow.workspace_id,
     user.id,
+    sectionRow.project_id,
   );
 
-  if (!membership.ok) {
-    return {
-      success: false,
-      error: "You don't have permission to link a component in this project.",
-    };
+  if (!authz.ok) {
+    return authz.reason === "not_found"
+      ? { success: false, error: "Project not found." }
+      : {
+          success: false,
+          error: "You don't have permission to link a component in this project.",
+        };
   }
 
-  if (!canWrite({ role: membership.role })) {
-    return {
-      success: false,
-      error: "Viewers don't have permission to link a component.",
-    };
-  }
+  const linkComponentWorkspaceSlug = authz.access.workspaceSlug;
 
   const { error: updateError } = await admin
     .from("tasks")
@@ -486,30 +441,20 @@ export async function renameComponent(
     return { success: false, error: "Component not found." };
   }
 
-  const workspaceId = (componentRow as { projects: { workspace_id: string } })
-    .projects.workspace_id;
-  const renameComponentWorkspace = (
-    componentRow as {
-      projects: { workspaces: { slug: string } | { slug: string }[] | null };
-    }
-  ).projects.workspaces;
-  const renameComponentWorkspaceSlug = extractWorkspaceSlug(renameComponentWorkspace);
+  const authz = await authorizeArchitectureProject(
+    admin,
+    user.id,
+    componentRow.project_id,
+  );
 
-  const membership = await requireActiveMembership(admin, workspaceId, user.id);
-
-  if (!membership.ok) {
+  if (!authz.ok) {
     return {
       success: false,
       error: "You don't have permission to rename this component.",
     };
   }
 
-  if (!canWrite({ role: membership.role })) {
-    return {
-      success: false,
-      error: "Viewers don't have permission to rename a component.",
-    };
-  }
+  const renameComponentWorkspaceSlug = authz.access.workspaceSlug;
 
   // AS-065: unique(project_id, lower(name)) -- enforced by
   // page_components_project_id_lower_name_idx
@@ -576,43 +521,29 @@ export async function unlinkComponentFromSection(
 
   const { data: sectionRow, error: sectionError } = await admin
     .from("tasks")
-    .select("id, project_id, projects(workspace_id, workspaces(slug))")
+    .select("id, project_id")
     .eq("id", sectionTaskId)
+    .is("deleted_at", null)
     .maybeSingle();
 
-  if (
-    sectionError ||
-    !sectionRow ||
-    !(sectionRow as { projects?: { workspace_id?: string } }).projects
-      ?.workspace_id
-  ) {
+  if (sectionError || !sectionRow) {
     return { success: false, error: "Section not found." };
   }
 
-  const workspaceId = (sectionRow as { projects: { workspace_id: string } })
-    .projects.workspace_id;
-  const unlinkComponentWorkspace = (
-    sectionRow as {
-      projects: { workspaces: { slug: string } | { slug: string }[] | null };
-    }
-  ).projects.workspaces;
-  const unlinkComponentWorkspaceSlug = extractWorkspaceSlug(unlinkComponentWorkspace);
+  const authz = await authorizeArchitectureProject(
+    admin,
+    user.id,
+    sectionRow.project_id,
+  );
 
-  const membership = await requireActiveMembership(admin, workspaceId, user.id);
-
-  if (!membership.ok) {
+  if (!authz.ok) {
     return {
       success: false,
       error: "You don't have permission to unlink a component in this project.",
     };
   }
 
-  if (!canWrite({ role: membership.role })) {
-    return {
-      success: false,
-      error: "Viewers don't have permission to unlink a component.",
-    };
-  }
+  const unlinkComponentWorkspaceSlug = authz.access.workspaceSlug;
 
   const { error: updateError } = await admin
     .from("tasks")
@@ -684,30 +615,20 @@ export async function deleteComponent(
     return { success: false, error: "Component not found." };
   }
 
-  const workspaceId = (componentRow as { projects: { workspace_id: string } })
-    .projects.workspace_id;
-  const deleteComponentWorkspace = (
-    componentRow as {
-      projects: { workspaces: { slug: string } | { slug: string }[] | null };
-    }
-  ).projects.workspaces;
-  const deleteComponentWorkspaceSlug = extractWorkspaceSlug(deleteComponentWorkspace);
+  const authz = await authorizeArchitectureProject(
+    admin,
+    user.id,
+    componentRow.project_id,
+  );
 
-  const membership = await requireActiveMembership(admin, workspaceId, user.id);
-
-  if (!membership.ok) {
+  if (!authz.ok) {
     return {
       success: false,
       error: "You don't have permission to delete a component in this project.",
     };
   }
 
-  if (!canWrite({ role: membership.role })) {
-    return {
-      success: false,
-      error: "Viewers don't have permission to delete a component.",
-    };
-  }
+  const deleteComponentWorkspaceSlug = authz.access.workspaceSlug;
 
   const { error: deleteError } = await admin
     .from("page_components")
@@ -770,38 +691,22 @@ export async function reorderComponents(
   // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
-  const { data: projectRow, error: projectError } = await admin
-    .from("projects")
-    .select("id, workspace_id, workspaces(slug)")
-    .eq("id", parsed.data.projectId)
-    .is("deleted_at", null)
-    .maybeSingle();
+  const authz = await authorizeArchitectureProject(
+    admin,
+    user.id,
+    parsed.data.projectId,
+  );
 
-  if (projectError || !projectRow) {
-    return { success: false, error: "Project not found." };
+  if (!authz.ok) {
+    return authz.reason === "not_found"
+      ? { success: false, error: "Project not found." }
+      : {
+          success: false,
+          error: "You don't have permission to reorder components in this project.",
+        };
   }
 
-  const reorderComponentsWorkspace = projectRow.workspaces as
-    | { slug: string }
-    | { slug: string }[]
-    | null;
-  const reorderComponentsWorkspaceSlug = extractWorkspaceSlug(reorderComponentsWorkspace);
-
-  const membership = await requireActiveMembership(admin, projectRow.workspace_id, user.id);
-
-  if (!membership.ok) {
-    return {
-      success: false,
-      error: "You don't have permission to reorder components in this project.",
-    };
-  }
-
-  if (!canWrite({ role: membership.role })) {
-    return {
-      success: false,
-      error: "Viewers don't have permission to reorder components.",
-    };
-  }
+  const reorderComponentsWorkspaceSlug = authz.access.workspaceSlug;
 
   const { data: existingComponents, error: existingComponentsError } = await admin
     .from("page_components")

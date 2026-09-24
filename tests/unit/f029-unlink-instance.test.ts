@@ -13,6 +13,12 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
+vi.mock("@/lib/actions/architecture/authorize", async () =>
+  (await import("../helpers/architecture-authorize-mock")).architectureAuthorizeMock({
+    workspaceFor: () => "ws-1",
+  }),
+);
+
 const WORKSPACE_ID = "22222222-2222-4222-8222-222222222222";
 const PROJECT_ID = "33333333-3333-4333-8333-333333333333";
 const SECTION_A_ID = "44444444-4444-4444-8444-444444444444";
@@ -80,16 +86,17 @@ vi.mock("@/lib/supabase/admin", () => ({
       if (table === "tasks") {
         return {
           select: () => ({
-            eq: (_col: string, id: string) => ({
-              maybeSingle: async () => {
+            eq: (_col: string, id: string) => {
+              const maybeSingle = async () => {
                 const row = tasks[id];
                 if (!row) return { data: null, error: null };
                 return {
                   data: { ...row, projects: { workspace_id: WORKSPACE_ID } },
                   error: null,
                 };
-              },
-            }),
+              };
+              return { maybeSingle, is: () => ({ maybeSingle }) };
+            },
           }),
           update: (values: { component_id: string | null }) => ({
             eq: async (_col: string, id: string) => {

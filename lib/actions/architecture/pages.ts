@@ -26,14 +26,9 @@
 import { revalidatePath } from "next/cache";
 
 import { logger } from "@/lib/observability/logger";
-import {
-  revalidatePortalProject,
-  extractWorkspaceSlug,
-} from "@/lib/actions/portal-revalidate";
+import { revalidatePortalProject } from "@/lib/actions/portal-revalidate";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUser } from "@/lib/auth/current-user";
-import { requireActiveMembership } from "@/lib/auth/require-membership";
-import { canWrite } from "@/lib/auth/permissions";
 import type { BoardPageKind } from "@/lib/queries/architecture";
 import {
   createPageSchema,
@@ -44,6 +39,10 @@ import {
 import { z } from "zod";
 
 import type { MutationResult } from "./shared";
+import {
+  authorizeArchitectureProject,
+  authorizeArchitectureProjects,
+} from "./authorize";
 import type { ActionResult } from "@/lib/actions/authz";
 
 export type CreatePageResult = ActionResult<{
@@ -80,45 +79,20 @@ export async function createPage(
   // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
-  // Look up the project's owning workspace server-side -- never trust a
-  // workspace id supplied by the client -- same convention
-  // createTaskForUser's project lookup uses (lib/tasks/create.ts).
-  const { data: projectRow, error: projectError } = await admin
-    .from("projects")
-    .select("id, workspace_id, deleted_at, workspaces(slug)")
-    .eq("id", projectId)
-    .is("deleted_at", null)
-    .maybeSingle();
+  // The project's owning workspace is looked up server-side -- never
+  // trust a workspace id supplied by the client.
+  const authz = await authorizeArchitectureProject(admin, user.id, projectId);
 
-  if (projectError || !projectRow) {
-    return { ok: false, error: "Project not found." };
+  if (!authz.ok) {
+    return authz.reason === "not_found"
+      ? { ok: false, error: "Project not found." }
+      : {
+          ok: false,
+          error: "You don't have permission to create a page in this project.",
+        };
   }
 
-  const createPageWorkspace = projectRow.workspaces as
-    | { slug: string }
-    | { slug: string }[]
-    | null;
-  const createPageWorkspaceSlug = extractWorkspaceSlug(createPageWorkspace);
-
-  const membership = await requireActiveMembership(
-    admin,
-    projectRow.workspace_id,
-    user.id,
-  );
-
-  if (!membership.ok) {
-    return {
-      ok: false,
-      error: "You don't have permission to create a page in this project.",
-    };
-  }
-
-  if (!canWrite({ role: membership.role })) {
-    return {
-      ok: false,
-      error: "Viewers don't have permission to create pages.",
-    };
-  }
+  const createPageWorkspaceSlug = authz.access.workspaceSlug;
 
   // AS-017: two pages in the same project cannot share a slug. Checked
   // server-side (defense in depth against a stale client/race), scoped to
@@ -158,7 +132,7 @@ export async function createPage(
   const { data: pageTaskTypeId, error: ensureError } = await admin.rpc(
     "ensure_task_type",
     {
-      p_workspace_id: projectRow.workspace_id,
+      p_workspace_id: authz.access.workspaceId,
       p_system_key: "page",
       p_name: "Page",
       p_color: "#3670e1",
@@ -290,28 +264,20 @@ export async function changePageKind(
     return { success: false, error: "Page not found." };
   }
 
-  const workspaceId = (taskRow as { projects: { workspace_id: string } }).projects
-    .workspace_id;
-  const changePageKindWorkspace = (
-    taskRow as { projects: { workspaces: { slug: string } | { slug: string }[] | null } }
-  ).projects.workspaces;
-  const changePageKindWorkspaceSlug = extractWorkspaceSlug(changePageKindWorkspace);
+  const authz = await authorizeArchitectureProject(
+    admin,
+    user.id,
+    taskRow.project_id,
+  );
 
-  const membership = await requireActiveMembership(admin, workspaceId, user.id);
-
-  if (!membership.ok) {
+  if (!authz.ok) {
     return {
       success: false,
       error: "You don't have permission to change this page's kind.",
     };
   }
 
-  if (!canWrite({ role: membership.role })) {
-    return {
-      success: false,
-      error: "Viewers don't have permission to change a page's kind.",
-    };
-  }
+  const changePageKindWorkspaceSlug = authz.access.workspaceSlug;
 
   const { error: updateError } = await admin
     .from("tasks")
@@ -384,28 +350,20 @@ export async function changePageSlug(
     return { success: false, error: "Page not found." };
   }
 
-  const workspaceId = (taskRow as { projects: { workspace_id: string } }).projects
-    .workspace_id;
-  const changePageSlugWorkspace = (
-    taskRow as { projects: { workspaces: { slug: string } | { slug: string }[] | null } }
-  ).projects.workspaces;
-  const changePageSlugWorkspaceSlug = extractWorkspaceSlug(changePageSlugWorkspace);
+  const authz = await authorizeArchitectureProject(
+    admin,
+    user.id,
+    taskRow.project_id,
+  );
 
-  const membership = await requireActiveMembership(admin, workspaceId, user.id);
-
-  if (!membership.ok) {
+  if (!authz.ok) {
     return {
       success: false,
       error: "You don't have permission to change this page's slug.",
     };
   }
 
-  if (!canWrite({ role: membership.role })) {
-    return {
-      success: false,
-      error: "Viewers don't have permission to change a page's slug.",
-    };
-  }
+  const changePageSlugWorkspaceSlug = authz.access.workspaceSlug;
 
   // AS-141: two pages in the same project cannot share a slug. Scoped to
   // this project only -- same slug in a different project is fine.
@@ -513,28 +471,20 @@ export async function renamePage(
     return { success: false, error: "Page not found." };
   }
 
-  const workspaceId = (taskRow as { projects: { workspace_id: string } }).projects
-    .workspace_id;
-  const renamePageWorkspace = (
-    taskRow as { projects: { workspaces: { slug: string } | { slug: string }[] | null } }
-  ).projects.workspaces;
-  const renamePageWorkspaceSlug = extractWorkspaceSlug(renamePageWorkspace);
+  const authz = await authorizeArchitectureProject(
+    admin,
+    user.id,
+    taskRow.project_id,
+  );
 
-  const membership = await requireActiveMembership(admin, workspaceId, user.id);
-
-  if (!membership.ok) {
+  if (!authz.ok) {
     return {
       success: false,
       error: "You don't have permission to rename this page.",
     };
   }
 
-  if (!canWrite({ role: membership.role })) {
-    return {
-      success: false,
-      error: "Viewers don't have permission to rename a page.",
-    };
-  }
+  const renamePageWorkspaceSlug = authz.access.workspaceSlug;
 
   const { error: updateError } = await admin
     .from("tasks")
@@ -610,28 +560,20 @@ export async function deletePage(
     return { success: false, error: "Page not found." };
   }
 
-  const workspaceId = (taskRow as { projects: { workspace_id: string } }).projects
-    .workspace_id;
-  const deletePageWorkspace = (
-    taskRow as { projects: { workspaces: { slug: string } | { slug: string }[] | null } }
-  ).projects.workspaces;
-  const deletePageWorkspaceSlug = extractWorkspaceSlug(deletePageWorkspace);
+  const authz = await authorizeArchitectureProject(
+    admin,
+    user.id,
+    taskRow.project_id,
+  );
 
-  const membership = await requireActiveMembership(admin, workspaceId, user.id);
-
-  if (!membership.ok) {
+  if (!authz.ok) {
     return {
       success: false,
       error: "You don't have permission to delete this page.",
     };
   }
 
-  if (!canWrite({ role: membership.role })) {
-    return {
-      success: false,
-      error: "Viewers don't have permission to delete a page.",
-    };
-  }
+  const deletePageWorkspaceSlug = authz.access.workspaceSlug;
 
   const { data: cascadeResult, error: cascadeError } = await admin.rpc(
     "cascade_delete_task",
@@ -701,9 +643,13 @@ export async function reorderPages(
 
   const ids = updates.map((update) => update.id);
 
+  if (new Set(ids).size !== ids.length) {
+    return { success: false, error: "Invalid reorder payload." };
+  }
+
   const { data: taskRows, error: taskError } = await admin
     .from("tasks")
-    .select("id, project_id, page_slug, projects(workspace_id, workspaces(slug))")
+    .select("id, project_id, page_slug, parent_task_id")
     .in("id", ids)
     .is("deleted_at", null);
 
@@ -711,49 +657,33 @@ export async function reorderPages(
     return { success: false, error: "Page not found." };
   }
 
-  // F004c (AS-006): keyed by projectId, NOT slug — two different projects
-  // in the SAME workspace share the same workspace slug, so a slug-keyed
-  // map would silently drop every project but the last one seen for that
-  // slug, and this batch can span multiple projects at once.
-  const reorderPagesPortalTargets = new Map<string, string>();
   for (const taskRow of taskRows) {
-    const projects = (
-      taskRow as {
-        projects?: { workspaces?: { slug: string } | { slug: string }[] | null } | null;
-      }
-    ).projects;
-    const workspace = projects?.workspaces;
-    const slug = extractWorkspaceSlug(workspace);
-    if (slug) {
-      reorderPagesPortalTargets.set(taskRow.project_id, slug);
+    if (!taskRow.page_slug || taskRow.parent_task_id !== null) {
+      return { success: false, error: "Page not found." };
     }
   }
 
-  const membershipCache = new Map<string, boolean>();
+  // Every project the batch touches is authorized, resolved from the rows
+  // themselves; one failure rejects the whole batch.
+  const authz = await authorizeArchitectureProjects(
+    admin,
+    user.id,
+    taskRows.map((row) => row.project_id),
+  );
 
-  for (const taskRow of taskRows) {
-    if (!taskRow.page_slug) {
-      return { success: false, error: "Page not found." };
-    }
+  if (!authz.ok) {
+    return {
+      success: false,
+      error: "You don't have permission to reorder these pages.",
+    };
+  }
 
-    const workspaceId = (taskRow as { projects?: { workspace_id?: string } })
-      .projects?.workspace_id;
-
-    if (!workspaceId) {
-      return { success: false, error: "Page not found." };
-    }
-
-    if (!membershipCache.has(workspaceId)) {
-      const membership = await requireActiveMembership(admin, workspaceId, user.id);
-      const allowed = membership.ok && canWrite({ role: membership.role });
-      membershipCache.set(workspaceId, allowed);
-    }
-
-    if (!membershipCache.get(workspaceId)) {
-      return {
-        success: false,
-        error: "You don't have permission to reorder these pages.",
-      };
+  // F004c (AS-006): keyed by projectId, NOT slug — two different projects
+  // in the SAME workspace share the same workspace slug.
+  const reorderPagesPortalTargets = new Map<string, string>();
+  for (const [projectIdForSlug, access] of authz.accessByProject) {
+    if (access.workspaceSlug) {
+      reorderPagesPortalTargets.set(projectIdForSlug, access.workspaceSlug);
     }
   }
 
@@ -841,7 +771,7 @@ export async function setPageClientVisibility(
   const { data: taskRow, error: taskError } = await admin
     .from("tasks")
     .select(
-      "id, project_id, page_slug, parent_task_id, projects!inner(workspace_id, workspaces(slug))",
+      "id, project_id, page_slug, parent_task_id",
     )
     .eq("id", parsed.data.taskId)
     .is("deleted_at", null)
@@ -856,32 +786,26 @@ export async function setPageClientVisibility(
     return { ok: false, error: "Page not found." };
   }
 
-  const project = taskRow.projects as
-    | { workspace_id: string; workspaces: { slug: string } | { slug: string }[] | null }
-    | { workspace_id: string; workspaces: { slug: string } | { slug: string }[] | null }[]
-    | null;
-  const projectRow = Array.isArray(project) ? project[0] : project;
-  const workspaceId = projectRow?.workspace_id;
+  // Same gate as setTaskClientVisibility (lib/actions/client-visibility.ts):
+  // sharing with the client is an edit to the task, so `canEditTask`, plus
+  // project visibility since the write below bypasses RLS.
+  const authz = await authorizeArchitectureProject(
+    admin,
+    user.id,
+    taskRow.project_id,
+    { writeGate: "task" },
+  );
 
-  if (!workspaceId) {
-    return { ok: false, error: "Page not found." };
+  if (!authz.ok) {
+    return authz.reason === "not_found"
+      ? { ok: false, error: "Page not found." }
+      : {
+          ok: false,
+          error: "You don't have permission to change what the client sees.",
+        };
   }
 
-  const workspace = projectRow?.workspaces as { slug: string } | { slug: string }[] | null;
-  const workspaceSlug = extractWorkspaceSlug(workspace);
-
-  const membership = await requireActiveMembership(admin, workspaceId, user.id);
-
-  if (!membership.ok) {
-    return { ok: false, error: "Page not found." };
-  }
-
-  if (!canWrite({ role: membership.role })) {
-    return {
-      ok: false,
-      error: "You don't have permission to change what the client sees.",
-    };
-  }
+  const workspaceSlug = authz.access.workspaceSlug;
 
   const { error: updateError } = await admin
     .from("tasks")
@@ -904,6 +828,8 @@ export async function setPageClientVisibility(
       .from("tasks")
       .update({ client_visible: true })
       .eq("parent_task_id", parsed.data.taskId)
+      .eq("project_id", taskRow.project_id)
+      .is("page_slug", null)
       .is("deleted_at", null)
       .select("id");
 
@@ -977,26 +903,18 @@ export async function importPages(
   // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
-  const { data: projectRow, error: projectError } = await admin
-    .from("projects")
-    .select("id, workspace_id, deleted_at, workspaces(slug)")
-    .eq("id", projectId)
-    .is("deleted_at", null)
-    .maybeSingle();
-
-  if (projectError || !projectRow) {
-    return { ok: false, error: "Project not found." };
+  const authz = await authorizeArchitectureProject(admin, user.id, projectId);
+  if (!authz.ok) {
+    return authz.reason === "not_found"
+      ? { ok: false, error: "Project not found." }
+      : { ok: false, error: "You don't have permission to import pages into this project." };
   }
 
-  const membership = await requireActiveMembership(admin, projectRow.workspace_id, user.id);
-  if (!membership.ok || !canWrite({ role: membership.role })) {
-    return { ok: false, error: "You don't have permission to import pages into this project." };
-  }
 
   // Same self-healing lookup createPage uses -- resolves (and seeds when
   // absent) the workspace's 'page' task type.
   const { data: pageTaskTypeId, error: ensureError } = await admin.rpc("ensure_task_type", {
-    p_workspace_id: projectRow.workspace_id,
+    p_workspace_id: authz.access.workspaceId,
     p_system_key: "page",
     p_name: "Page",
     p_color: "#3670e1",
@@ -1061,10 +979,7 @@ export async function importPages(
   // "always revalidate on any page-creating write" convention as its
   // single-page sibling rather than inventing a client_visible gate this
   // action's sibling doesn't have.
-  const importPagesWorkspaceSlug = extractWorkspaceSlug(
-    (projectRow as { workspaces?: { slug: string } | { slug: string }[] | null })
-      .workspaces,
-  );
+  const importPagesWorkspaceSlug = authz.access.workspaceSlug;
   if (importPagesWorkspaceSlug) {
     revalidatePortalProject(importPagesWorkspaceSlug, projectId);
   }

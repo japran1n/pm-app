@@ -49,6 +49,12 @@ import { EstimateSummary } from "@/components/architecture/estimate-summary";
 import type { BoardPage } from "@/lib/queries/architecture";
 import type { ArchitectureNodeDetails } from "@/lib/architecture/types";
 
+vi.mock("@/lib/actions/architecture/authorize", async () =>
+  (await import("../helpers/architecture-authorize-mock")).architectureAuthorizeMock({
+    workspaceFor: () => "ws-1",
+  }),
+);
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn() }),
 }));

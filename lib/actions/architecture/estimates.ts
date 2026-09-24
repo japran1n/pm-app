@@ -13,8 +13,6 @@ import { revalidatePath } from "next/cache";
 import { logger } from "@/lib/observability/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUser } from "@/lib/auth/current-user";
-import { requireActiveMembership } from "@/lib/auth/require-membership";
-import { canWrite } from "@/lib/auth/permissions";
 import { writeAudit } from "@/lib/activity/audit";
 import {
   setDisciplineEstimatesBulkSchema,
@@ -22,6 +20,7 @@ import {
 } from "@/lib/validation/architecture";
 
 import type { MutationResult } from "./shared";
+import { authorizeArchitectureProject } from "./authorize";
 
 // Shared task lookup: resolves project_id + workspace_id for a task id,
 // server-side, so callers can never smuggle in a different project_id via
@@ -123,19 +122,16 @@ export async function setDisciplineEstimatesBulk(
     return { success: false, error: "Task not found." };
   }
 
-  const membership = await requireActiveMembership(admin, taskInfo.workspaceId, user.id);
+  const authz = await authorizeArchitectureProject(
+    admin,
+    user.id,
+    taskInfo.projectId,
+  );
 
-  if (!membership.ok) {
+  if (!authz.ok) {
     return {
       success: false,
       error: "You don't have permission to set estimates on this task.",
-    };
-  }
-
-  if (!canWrite({ role: membership.role })) {
-    return {
-      success: false,
-      error: "Viewers don't have permission to set estimates.",
     };
   }
 

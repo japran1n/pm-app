@@ -60,12 +60,20 @@ vi.mock("@/lib/observability/logger", () => ({
 
 import { moveSectionToPage } from "@/lib/actions/architecture";
 
+vi.mock("@/lib/actions/architecture/authorize", async () =>
+  (await import("../helpers/architecture-authorize-mock")).architectureAuthorizeMock({
+    workspaceFor: () => "ws-1",
+    pages: () => ({ "page-old": "project-1", "page-new": "project-1" }),
+  }),
+);
+
 describe("F021 moveSectionToPage", () => {
   it("AS-043/AS-044: accepts (sectionTaskId, newPageTaskId, position) and repoints parent_task_id + position", async () => {
     maybeSingleMock
       .mockResolvedValueOnce({
         data: {
           id: "section-1",
+          project_id: "project-1",
           page_slug: null,
           parent_task_id: "page-old",
           projects: { workspace_id: "ws-1" },
@@ -95,6 +103,7 @@ describe("F021 moveSectionToPage", () => {
       .mockResolvedValueOnce({
         data: {
           id: "section-2",
+          project_id: "project-1",
           page_slug: null,
           parent_task_id: "page-old",
           projects: { workspace_id: "ws-1" },

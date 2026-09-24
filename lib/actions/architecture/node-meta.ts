@@ -13,23 +13,21 @@ import { revalidatePath } from "next/cache";
 import { type z } from "zod";
 
 import { logger } from "@/lib/observability/logger";
-import { extractWorkspaceSlug } from "@/lib/actions/portal-revalidate";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUser } from "@/lib/auth/current-user";
-import { requireActiveMembership } from "@/lib/auth/require-membership";
-import { canWrite } from "@/lib/auth/permissions";
 import {
   setNodeMetaSchema,
   copyStatusSchema,
 } from "@/lib/validation/architecture";
 
 import type { MutationResult } from "./shared";
+import { authorizeArchitectureProject } from "./authorize";
 
 type CopyStatus = z.infer<typeof copyStatusSchema>;
 
-// Shared helper: resolve the task's owning project + workspace, and
-// confirm the caller is an active, write-capable member -- same convention
-// as sections.ts. Returns the project id and workspace slug on success.
+// Shared helper: resolve the task's owning project from the task row and
+// authorize the caller against it -- same convention as sections.ts.
+// Returns the project id and workspace slug on success.
 async function resolveTaskAndAuthorizeWrite(
   admin: ReturnType<typeof createAdminClient>,
   taskId: string,
@@ -40,45 +38,36 @@ async function resolveTaskAndAuthorizeWrite(
 > {
   const { data: taskRow, error: taskError } = await admin
     .from("tasks")
-    .select("id, project_id, projects(workspace_id, workspaces(slug))")
+    .select("id, project_id")
     .eq("id", taskId)
     .is("deleted_at", null)
     .maybeSingle();
 
-  if (
-    taskError ||
-    !taskRow ||
-    !(taskRow as { projects?: { workspace_id?: string } }).projects
-      ?.workspace_id
-  ) {
+  if (taskError || !taskRow) {
     return { ok: false, error: "Not found." };
   }
 
-  const projects = (
-    taskRow as {
-      projects: {
-        workspace_id: string;
-        workspaces: { slug: string } | { slug: string }[] | null;
-      };
-    }
-  ).projects;
-  const workspaceId = projects.workspace_id;
-  const workspaceSlug = extractWorkspaceSlug(projects.workspaces);
+  const authz = await authorizeArchitectureProject(
+    admin,
+    userId,
+    taskRow.project_id,
+  );
 
-  const membership = await requireActiveMembership(admin, workspaceId, userId);
-
-  if (!membership.ok) {
-    return { ok: false, error: "Not found." };
-  }
-
-  if (!canWrite({ role: membership.role })) {
+  if (!authz.ok) {
     return {
       ok: false,
-      error: "You don't have permission to make this change.",
+      error:
+        authz.reason === "not_found"
+          ? "Not found."
+          : "You don't have permission to make this change.",
     };
   }
 
-  return { ok: true, projectId: taskRow.project_id, workspaceSlug };
+  return {
+    ok: true,
+    projectId: taskRow.project_id,
+    workspaceSlug: authz.access.workspaceSlug,
+  };
 }
 
 export async function setNodeMeta(

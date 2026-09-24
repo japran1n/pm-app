@@ -5,8 +5,8 @@
 // AS-090: a workspace writer can create, rename, delete components.
 // AS-094: a client cannot reorder sections or pages.
 //
-// These server actions (lib/actions/architecture.ts) already re-check
-// `canWrite` (lib/auth/permissions.ts) server-side before every mutation,
+// These server actions (lib/actions/architecture.ts) re-check the team
+// write gate server-side (authorizeArchitectureProject) before every mutation,
 // independent of any client-side UI gating -- this suite proves that
 // re-check is real by driving the *actual* `canWrite` predicate (not a
 // stub that always returns true) through `requireActiveMembership`'s role,
@@ -149,7 +149,7 @@ describe("F040 writer-only affordances", () => {
     const { renamePage } = await import("@/lib/actions/architecture");
     const result = await renamePage(PAGE_TASK_ID, "New name");
     expect(result.success).toBe(false);
-    expect(result.error).toMatch(/viewer/i);
+    expect(result.error).toMatch(/permission/i);
   });
 
   it("AS-089: a workspace writer (member) can delete a page", async () => {
@@ -164,7 +164,7 @@ describe("F040 writer-only affordances", () => {
     const { deletePage } = await import("@/lib/actions/architecture");
     const result = await deletePage(PAGE_TASK_ID);
     expect(result.success).toBe(false);
-    expect(result.error).toMatch(/viewer/i);
+    expect(result.error).toMatch(/permission/i);
   });
 
   // AS-090 (components): source-scan confirms createComponent and
@@ -173,7 +173,7 @@ describe("F040 writer-only affordances", () => {
   // heavier to stub fully in this suite (see f025/f031 test files for
   // full behavioural coverage of those actions); this suite adds the
   // writer-gate proof on top.
-  it("AS-090: createComponent and createComponentFromSection re-check canWrite before mutating", () => {
+  it("AS-090: createComponent and createComponentFromSection re-check write access before mutating", () => {
     const source = ["pages", "sections", "components"]
       .map((m) =>
         readFileSync(
@@ -209,8 +209,8 @@ describe("F040 writer-only affordances", () => {
       );
 
       expect(
-        fnBody.includes("canWrite("),
-        `${fnName} does not call canWrite()`,
+        fnBody.includes("authorizeArchitectureProject("),
+        `${fnName} does not call authorizeArchitectureProject()`,
       ).toBe(true);
     }
   });
@@ -219,7 +219,7 @@ describe("F040 writer-only affordances", () => {
   // reorderPages compute `allowed = membership.ok && canWrite(...)` per
   // row -- since canWrite() returns false for role "client" (and for
   // "viewer"), a client caller is rejected the same way a viewer is.
-  it("AS-094: reorderSections and reorderPages gate on canWrite (rejects client/viewer)", () => {
+  it("AS-094: reorderSections and reorderPages authorize every project (rejects client/viewer)", () => {
     const source = ["pages", "sections", "components"]
       .map((m) =>
         readFileSync(
@@ -242,7 +242,7 @@ describe("F040 writer-only affordances", () => {
         nextFnStart === -1 ? source.length : nextFnStart,
       );
 
-      expect(fnBody.includes("canWrite(")).toBe(true);
+      expect(fnBody.includes("authorizeArchitectureProjects(")).toBe(true);
     }
   });
 });

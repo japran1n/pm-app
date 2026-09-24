@@ -16,6 +16,12 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
+vi.mock("@/lib/actions/architecture/authorize", async () =>
+  (await import("../helpers/architecture-authorize-mock")).architectureAuthorizeMock({
+    workspaceFor: () => "ws-1",
+  }),
+);
+
 let insertedRow: Record<string, unknown> | null = null;
 let rpcCalls: { name: string; args: unknown }[] = [];
 let existingCount = 0;

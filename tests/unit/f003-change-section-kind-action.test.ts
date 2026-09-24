@@ -8,6 +8,17 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
+vi.mock("@/lib/actions/architecture/authorize", async () =>
+  (await import("../helpers/architecture-authorize-mock")).architectureAuthorizeMock({
+    workspaceFor: (projectId: string) =>
+      projectId === PROJECT_ID
+        ? WORKSPACE_ID
+        : projectId === OTHER_PROJECT_ID
+          ? OTHER_WORKSPACE_ID
+          : undefined,
+  }),
+);
+
 const USER_ID = "11111111-1111-4111-8111-111111111111";
 const WORKSPACE_ID = "22222222-2222-4222-8222-222222222222";
 const PROJECT_ID = "33333333-3333-4333-8333-333333333333";

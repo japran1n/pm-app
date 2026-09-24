@@ -13,6 +13,12 @@ import { createPageSchema } from "@/lib/validation/architecture";
 
 vi.mock("server-only", () => ({}));
 
+vi.mock("@/lib/actions/architecture/authorize", async () =>
+  (await import("../helpers/architecture-authorize-mock")).architectureAuthorizeMock({
+    workspaceFor: () => "ws-1",
+  }),
+);
+
 describe("createPageSchema.slug (F012, AS-018)", () => {
   it("test_AS_018_empty_slug_fails_validation", () => {
     const result = createPageSchema.safeParse({

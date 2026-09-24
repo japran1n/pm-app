@@ -13,6 +13,12 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
+vi.mock("@/lib/actions/architecture/authorize", async () =>
+  (await import("../helpers/architecture-authorize-mock")).architectureAuthorizeMock({
+    workspaceFor: () => "ws-1",
+  }),
+);
+
 const WORKSPACE_ID = "22222222-2222-4222-8222-222222222222";
 const PROJECT_ID = "33333333-3333-4333-8333-333333333333";
 const SECTION_ID = "44444444-4444-4444-8444-444444444444";

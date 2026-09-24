@@ -7,20 +7,21 @@
 import { revalidatePath } from "next/cache";
 
 import { logger } from "@/lib/observability/logger";
-import {
-  revalidatePortalProject,
-  extractWorkspaceSlug,
-} from "@/lib/actions/portal-revalidate";
+import { revalidatePortalProject } from "@/lib/actions/portal-revalidate";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUser } from "@/lib/auth/current-user";
-import { requireActiveMembership } from "@/lib/auth/require-membership";
-import { canWrite } from "@/lib/auth/permissions";
 import { createSectionSchema, changeSectionKindSchema } from "@/lib/validation/architecture";
 import { z } from "zod";
 import { writeAudit } from "@/lib/activity/audit";
 
 import type { MutationResult, MutationWithIdResult } from "./shared";
 import type { ActionResult } from "@/lib/actions/authz";
+import {
+  authorizeArchitectureProject,
+  authorizeArchitectureProjects,
+  areArchitectureSections,
+  loadArchitecturePages,
+} from "./authorize";
 
 // Mission 20260910-182104, F013 (AS-003, AS-029, AS-038): creates a section
 // under a page. Standing decision 1: a section IS a subtask of the page
@@ -54,49 +55,9 @@ export async function createSection(
   // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
 
-  // Look up the project's owning workspace server-side -- never trust a
-  // workspace id supplied by the client -- same convention createPage
-  // uses.
-  const { data: projectRow, error: projectError } = await admin
-    .from("projects")
-    .select("id, workspace_id, deleted_at, workspaces(slug)")
-    .eq("id", projectId)
-    .is("deleted_at", null)
-    .maybeSingle();
-
-  if (projectError || !projectRow) {
-    return { success: false, error: "Project not found." };
-  }
-
-  const createSectionWorkspace = projectRow.workspaces as
-    | { slug: string }
-    | { slug: string }[]
-    | null;
-  const createSectionWorkspaceSlug = extractWorkspaceSlug(createSectionWorkspace);
-
-  const membership = await requireActiveMembership(
-    admin,
-    projectRow.workspace_id,
-    user.id,
-  );
-
-  if (!membership.ok) {
-    return {
-      success: false,
-      error: "You don't have permission to create a section in this project.",
-    };
-  }
-
-  if (!canWrite({ role: membership.role })) {
-    return {
-      success: false,
-      error: "Viewers don't have permission to create sections.",
-    };
-  }
-
   // Confirm the parent is actually a page (page_slug set, no
   // parent_task_id of its own) belonging to this project before attaching
-  // a section to it.
+  // a section to it. The project is authorized from the page row.
   const { data: pageRow, error: pageError } = await admin
     .from("tasks")
     .select("id, project_id, page_slug, parent_task_id")
@@ -114,13 +75,30 @@ export async function createSection(
     return { success: false, error: "Page not found." };
   }
 
+  const authz = await authorizeArchitectureProject(
+    admin,
+    user.id,
+    pageRow.project_id,
+  );
+
+  if (!authz.ok) {
+    return authz.reason === "not_found"
+      ? { success: false, error: "Project not found." }
+      : {
+          success: false,
+          error: "You don't have permission to create a section in this project.",
+        };
+  }
+
+  const createSectionWorkspaceSlug = authz.access.workspaceSlug;
+
   // AS-002: sections use the same `page` task type as the page they
   // belong to -- resolved via the same `ensure_task_type` helper as
   // createPage.
   const { data: pageTaskTypeId, error: ensureError } = await admin.rpc(
     "ensure_task_type",
     {
-      p_workspace_id: projectRow.workspace_id,
+      p_workspace_id: authz.access.workspaceId,
       p_system_key: "page",
       p_name: "Page",
       p_color: "#3670e1",
@@ -243,28 +221,24 @@ export async function deleteSection(
     return { success: false, error: "Section not found." };
   }
 
-  const workspaceId = (taskRow as { projects: { workspace_id: string } }).projects
-    .workspace_id;
-  const deleteSectionWorkspace = (
-    taskRow as { projects: { workspaces: { slug: string } | { slug: string }[] | null } }
-  ).projects.workspaces;
-  const deleteSectionWorkspaceSlug = extractWorkspaceSlug(deleteSectionWorkspace);
+  if (!(await areArchitectureSections(admin, [taskRow]))) {
+    return { success: false, error: "Section not found." };
+  }
 
-  const membership = await requireActiveMembership(admin, workspaceId, user.id);
+  const authz = await authorizeArchitectureProject(
+    admin,
+    user.id,
+    taskRow.project_id,
+  );
 
-  if (!membership.ok) {
+  if (!authz.ok) {
     return {
       success: false,
       error: "You don't have permission to delete this section.",
     };
   }
 
-  if (!canWrite({ role: membership.role })) {
-    return {
-      success: false,
-      error: "Viewers don't have permission to delete a section.",
-    };
-  }
+  const deleteSectionWorkspaceSlug = authz.access.workspaceSlug;
 
   const { data: cascadeResult, error: cascadeError } = await admin.rpc(
     "cascade_delete_task",
@@ -341,7 +315,7 @@ export async function renameSection(
 
   const { data: taskRow, error: taskError } = await admin
     .from("tasks")
-    .select("id, project_id, parent_task_id, projects(workspace_id, workspaces(slug))")
+    .select("id, project_id, page_slug, parent_task_id, projects(workspace_id, workspaces(slug))")
     .eq("id", taskId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -356,28 +330,24 @@ export async function renameSection(
     return { success: false, error: "Section not found." };
   }
 
-  const workspaceId = (taskRow as { projects: { workspace_id: string } })
-    .projects.workspace_id;
-  const renameSectionWorkspace = (
-    taskRow as { projects: { workspaces: { slug: string } | { slug: string }[] | null } }
-  ).projects.workspaces;
-  const renameSectionWorkspaceSlug = extractWorkspaceSlug(renameSectionWorkspace);
+  if (!(await areArchitectureSections(admin, [taskRow]))) {
+    return { success: false, error: "Section not found." };
+  }
 
-  const membership = await requireActiveMembership(admin, workspaceId, user.id);
+  const authz = await authorizeArchitectureProject(
+    admin,
+    user.id,
+    taskRow.project_id,
+  );
 
-  if (!membership.ok) {
+  if (!authz.ok) {
     return {
       success: false,
       error: "You don't have permission to rename this section.",
     };
   }
 
-  if (!canWrite({ role: membership.role })) {
-    return {
-      success: false,
-      error: "Viewers don't have permission to rename a section.",
-    };
-  }
+  const renameSectionWorkspaceSlug = authz.access.workspaceSlug;
 
   const { error: updateError } = await admin
     .from("tasks")
@@ -447,11 +417,13 @@ export async function reorderSections(
 
   const ids = updates.map((update) => update.id);
 
+  if (new Set(ids).size !== ids.length) {
+    return { success: false, error: "Invalid reorder payload." };
+  }
+
   const { data: taskRows, error: taskError } = await admin
     .from("tasks")
-    .select(
-      "id, project_id, page_slug, parent_task_id, projects(workspace_id, workspaces(slug))",
-    )
+    .select("id, project_id, page_slug, parent_task_id")
     .in("id", ids)
     .is("deleted_at", null);
 
@@ -459,49 +431,31 @@ export async function reorderSections(
     return { success: false, error: "Section not found." };
   }
 
-  // F004c (AS-006): keyed by projectId, NOT slug — two different projects
-  // in the SAME workspace share the same workspace slug, so a slug-keyed
-  // map would silently drop every project but the last one seen for that
-  // slug, and this batch can span multiple projects at once.
-  const reorderSectionsPortalTargets = new Map<string, string>();
-  for (const taskRow of taskRows) {
-    const projects = (
-      taskRow as {
-        projects?: { workspaces?: { slug: string } | { slug: string }[] | null } | null;
-      }
-    ).projects;
-    const workspace = projects?.workspaces;
-    const slug = extractWorkspaceSlug(workspace);
-    if (slug) {
-      reorderSectionsPortalTargets.set(taskRow.project_id, slug);
-    }
+  if (!(await areArchitectureSections(admin, taskRows))) {
+    return { success: false, error: "Section not found." };
   }
 
-  const membershipCache = new Map<string, boolean>();
+  // Every project the batch touches is authorized, resolved from the rows
+  // themselves; one failure rejects the whole batch.
+  const authz = await authorizeArchitectureProjects(
+    admin,
+    user.id,
+    taskRows.map((row) => row.project_id),
+  );
 
-  for (const taskRow of taskRows) {
-    if (taskRow.page_slug || !taskRow.parent_task_id) {
-      return { success: false, error: "Section not found." };
-    }
+  if (!authz.ok) {
+    return {
+      success: false,
+      error: "You don't have permission to reorder these sections.",
+    };
+  }
 
-    const workspaceId = (taskRow as { projects?: { workspace_id?: string } })
-      .projects?.workspace_id;
-
-    if (!workspaceId) {
-      return { success: false, error: "Section not found." };
-    }
-
-    if (!membershipCache.has(workspaceId)) {
-      const membership = await requireActiveMembership(admin, workspaceId, user.id);
-      const allowed = membership.ok && canWrite({ role: membership.role });
-      membershipCache.set(workspaceId, allowed);
-    }
-
-    if (!membershipCache.get(workspaceId)) {
-      return {
-        success: false,
-        error: "You don't have permission to reorder these sections.",
-      };
+  // F004c (AS-006): keyed by projectId, NOT slug — two different projects
+  // in the SAME workspace share the same workspace slug.
+  const reorderSectionsPortalTargets = new Map<string, string>();
+  for (const [projectIdForSlug, access] of authz.accessByProject) {
+    if (access.workspaceSlug) {
+      reorderSectionsPortalTargets.set(projectIdForSlug, access.workspaceSlug);
     }
   }
 
@@ -580,47 +534,41 @@ export async function moveSectionToPage(
 
   const { data: sectionRow, error: sectionError } = await admin
     .from("tasks")
-    .select("id, project_id, page_slug, parent_task_id, projects(workspace_id, workspaces(slug))")
+    .select("id, project_id, page_slug, parent_task_id")
     .eq("id", sectionTaskId)
     .is("deleted_at", null)
     .maybeSingle();
 
-  if (sectionError || !sectionRow || sectionRow.page_slug || !sectionRow.parent_task_id) {
+  if (
+    sectionError ||
+    !sectionRow ||
+    !(await areArchitectureSections(admin, [sectionRow]))
+  ) {
     return { success: false, error: "Section not found." };
   }
 
-  const { data: pageRow, error: pageError } = await admin
-    .from("tasks")
-    .select("id, page_slug, projects(workspace_id)")
-    .eq("id", newPageTaskId)
-    .is("deleted_at", null)
-    .maybeSingle();
+  // The destination must be a live top-level page in the section's own
+  // project; a section never moves across projects.
+  const destinationPages = await loadArchitecturePages(admin, [newPageTaskId]);
 
-  if (pageError || !pageRow || !pageRow.page_slug) {
+  if (destinationPages?.get(newPageTaskId) !== sectionRow.project_id) {
     return { success: false, error: "Destination page not found." };
   }
 
-  const sectionWorkspaceId = (sectionRow as { projects?: { workspace_id?: string } })
-    .projects?.workspace_id;
-  const pageWorkspaceId = (pageRow as { projects?: { workspace_id?: string } })
-    .projects?.workspace_id;
+  const authz = await authorizeArchitectureProject(
+    admin,
+    user.id,
+    sectionRow.project_id,
+  );
 
-  if (!sectionWorkspaceId || !pageWorkspaceId || sectionWorkspaceId !== pageWorkspaceId) {
-    return { success: false, error: "Destination page not found." };
-  }
-
-  const moveSectionWorkspace = (
-    sectionRow as { projects?: { workspaces?: { slug: string } | { slug: string }[] | null } }
-  ).projects?.workspaces;
-  const moveSectionWorkspaceSlug = extractWorkspaceSlug(moveSectionWorkspace);
-
-  const membership = await requireActiveMembership(admin, sectionWorkspaceId, user.id);
-  if (!membership.ok || !canWrite({ role: membership.role })) {
+  if (!authz.ok) {
     return {
       success: false,
       error: "You don't have permission to move this section.",
     };
   }
+
+  const moveSectionWorkspaceSlug = authz.access.workspaceSlug;
 
   // AS-045: `component_id` is deliberately absent from this update -- the
   // section keeps whatever component link it already had, on the same
@@ -696,47 +644,44 @@ export async function setSectionClientVisibility(
   const { data: taskRow, error: taskError } = await admin
     .from("tasks")
     .select(
-      "id, project_id, page_slug, parent_task_id, projects!inner(workspace_id, workspaces(slug))",
+      "id, project_id, page_slug, parent_task_id",
     )
     .eq("id", parsed.data.taskId)
     .is("deleted_at", null)
     .maybeSingle();
 
+  // Only a real architecture section (a non-page child of a top-level page
+  // in the same project) can be shared from here; any other subtask goes
+  // through setTaskClientVisibility.
   if (
     taskError ||
     !taskRow ||
-    taskRow.page_slug ||
-    !taskRow.parent_task_id
+    !taskRow.parent_task_id ||
+    !(await areArchitectureSections(admin, [taskRow]))
   ) {
     return { ok: false, error: "Section not found." };
   }
 
-  const project = taskRow.projects as
-    | { workspace_id: string; workspaces: { slug: string } | { slug: string }[] | null }
-    | { workspace_id: string; workspaces: { slug: string } | { slug: string }[] | null }[]
-    | null;
-  const projectRow = Array.isArray(project) ? project[0] : project;
-  const workspaceId = projectRow?.workspace_id;
+  // Same gate as setTaskClientVisibility (lib/actions/client-visibility.ts):
+  // `canEditTask`, plus project visibility since the write below bypasses
+  // RLS.
+  const authz = await authorizeArchitectureProject(
+    admin,
+    user.id,
+    taskRow.project_id,
+    { writeGate: "task" },
+  );
 
-  if (!workspaceId) {
-    return { ok: false, error: "Section not found." };
+  if (!authz.ok) {
+    return authz.reason === "not_found"
+      ? { ok: false, error: "Section not found." }
+      : {
+          ok: false,
+          error: "You don't have permission to change what the client sees.",
+        };
   }
 
-  const workspace = projectRow?.workspaces as { slug: string } | { slug: string }[] | null;
-  const workspaceSlug = extractWorkspaceSlug(workspace);
-
-  const membership = await requireActiveMembership(admin, workspaceId, user.id);
-
-  if (!membership.ok) {
-    return { ok: false, error: "Section not found." };
-  }
-
-  if (!canWrite({ role: membership.role })) {
-    return {
-      ok: false,
-      error: "You don't have permission to change what the client sees.",
-    };
-  }
+  const workspaceSlug = authz.access.workspaceSlug;
 
   // F004c (item 6): the parent-page lookup now runs AFTER the permission
   // check (previously it ran before, doing an extra query even for a
@@ -826,10 +771,10 @@ export async function setSectionClientVisibility(
 // AS-018 (a task from a different project is rejected): this action
 // takes no `projectId` argument (clarified API: `changeSectionKind(taskId,
 // kind)`), so "different project" can only ever mean "a project outside
-// a workspace this caller is an active member of" -- the workspace is
-// resolved from the task row itself (never trusted from the caller), so
-// requireActiveMembership below is the enforcement point for that case,
-// same as every other task-scoped action in this file.
+// a project this caller may write" -- the project is resolved from the
+// task row itself (never trusted from the caller), so
+// authorizeArchitectureProject below is the enforcement point for that
+// case, same as every other task-scoped action in this file.
 //
 // AS-021 (idempotent): re-applying the same kind short-circuits before the
 // UPDATE and the audit write (see the `taskRow.section_kind ===
@@ -866,7 +811,7 @@ export async function changeSectionKind(
   const { data: taskRow, error: taskError } = await admin
     .from("tasks")
     .select(
-      "id, project_id, section_kind, parent_task_id, projects(workspace_id, workspaces(slug))",
+      "id, project_id, page_slug, section_kind, parent_task_id, projects(workspace_id, workspaces(slug))",
     )
     .eq("id", parsed.data.taskId)
     .is("deleted_at", null)
@@ -881,28 +826,25 @@ export async function changeSectionKind(
     return { success: false, error: "Section not found." };
   }
 
-  const workspaceId = (taskRow as { projects: { workspace_id: string } }).projects
-    .workspace_id;
-  const changeSectionKindWorkspace = (
-    taskRow as { projects: { workspaces: { slug: string } | { slug: string }[] | null } }
-  ).projects.workspaces;
-  const changeSectionKindWorkspaceSlug = extractWorkspaceSlug(changeSectionKindWorkspace);
+  if (!(await areArchitectureSections(admin, [taskRow]))) {
+    return { success: false, error: "Section not found." };
+  }
 
-  const membership = await requireActiveMembership(admin, workspaceId, user.id);
+  const authz = await authorizeArchitectureProject(
+    admin,
+    user.id,
+    taskRow.project_id,
+  );
 
-  if (!membership.ok) {
+  if (!authz.ok) {
     return {
       success: false,
       error: "You don't have permission to change this section's kind.",
     };
   }
 
-  if (!canWrite({ role: membership.role })) {
-    return {
-      success: false,
-      error: "Viewers don't have permission to change a section's kind.",
-    };
-  }
+  const workspaceId = authz.access.workspaceId;
+  const changeSectionKindWorkspaceSlug = authz.access.workspaceSlug;
 
   // AS-020 (scrutiny remediation): a no-op call (kind already matches) is
   // short-circuited before the UPDATE and audit write below -- otherwise a
