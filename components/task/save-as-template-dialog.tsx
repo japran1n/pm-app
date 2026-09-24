@@ -38,19 +38,32 @@ export function SaveAsTemplateDialog({
   taskTitle,
   disabled = false,
   disabledTitle,
+  // When open/onOpenChange are provided the caller owns the open state and
+  // this component renders no trigger of its own — used by the task detail
+  // sheet's ⋯ dropdown menu so a DropdownMenuItem can open this dialog.
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange,
 }: {
   taskId: string;
   taskTitle: string;
   disabled?: boolean;
   disabledTitle?: string;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const isControlled = controlledOpen !== undefined;
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const open = isControlled ? controlledOpen : uncontrolledOpen;
   const [name, setName] = useState(taskTitle);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   function handleOpenChange(nextOpen: boolean) {
-    setOpen(nextOpen);
+    if (isControlled) {
+      controlledOnOpenChange?.(nextOpen);
+    } else {
+      setUncontrolledOpen(nextOpen);
+    }
     if (nextOpen) {
       setName(taskTitle);
       setError(null);
@@ -70,7 +83,7 @@ export function SaveAsTemplateDialog({
       const result = await saveTaskAsTemplate(taskId, trimmed);
       if (result.ok) {
         toast.success(`Saved "${result.data.name}" as a template.`);
-        setOpen(false);
+        handleOpenChange(false);
       } else {
         // Failure handling (clarified spec): the dialog stays open with
         // the entered name intact and a plain-language error, so the
@@ -83,19 +96,26 @@ export function SaveAsTemplateDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger
-        render={
-          <Button
-            type="button"
-            variant="outline"
-            disabled={disabled}
-            title={disabled ? disabledTitle : undefined}
-          >
-            <LayoutTemplate className="size-4" aria-hidden="true" />
-            Save as template
-          </Button>
-        }
-      />
+      {/* Render the built-in trigger button only when the caller hasn't
+          taken over the open state (i.e. uncontrolled mode — the footer
+          button path). In controlled mode (⋯ dropdown menu) the trigger
+          is the DropdownMenuItem itself; rendering an extra Button here
+          would create a second, invisible trigger. */}
+      {!isControlled && (
+        <DialogTrigger
+          render={
+            <Button
+              type="button"
+              variant="outline"
+              disabled={disabled}
+              title={disabled ? disabledTitle : undefined}
+            >
+              <LayoutTemplate className="size-4" aria-hidden="true" />
+              Save as template
+            </Button>
+          }
+        />
+      )}
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Save as template</DialogTitle>

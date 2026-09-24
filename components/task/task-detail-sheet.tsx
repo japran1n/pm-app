@@ -49,8 +49,10 @@ import { usePathname } from "next/navigation";
 import {
   Copy,
   CornerUpLeft,
+  LayoutTemplate,
   Link as LinkIcon,
   Loader2,
+  MoreHorizontal,
   Repeat,
   Trash2,
 } from "lucide-react";
@@ -126,6 +128,13 @@ import { UserAvatar, type UserAvatarPerson } from "@/components/user-avatar";
 // assignee set, header + trigger.
 import { UserAvatarGroup } from "@/components/user-avatar-group";
 import { Button, buttonVariants } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -139,7 +148,6 @@ import {
   Sheet,
   SheetContent,
   SheetDescription,
-  SheetFooter,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
@@ -515,6 +523,10 @@ export function TaskDetailSheet({
   // handling; no new server action was written since duplicateTask already
   // implements exactly this.
   const [isDuplicating, startDuplicateTransition] = useTransition();
+  // Controlled open state for SaveAsTemplateDialog when triggered from the
+  // ⋯ dropdown menu — the dialog itself is rendered below the dropdown so
+  // it doesn't close when the menu unmounts.
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
 
   function handleDuplicate() {
     if (!task) return;
@@ -963,8 +975,80 @@ export function TaskDetailSheet({
                 }))}
                 currentUserId={currentUserId}
               />
+              {/* Secondary task actions — rare operations that don't
+                  warrant permanent footer space. SaveAsTemplateDialog
+                  mounts here (controls its own open state internally)
+                  so it can render its Dialog while the trigger sits in
+                  this menu. */}
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="size-7 shrink-0"
+                      aria-label="Task actions"
+                    >
+                      <MoreHorizontal className="size-4" aria-hidden="true" />
+                    </Button>
+                  }
+                />
+                <DropdownMenuContent align="end" className="w-44">
+                  <DropdownMenuItem
+                    disabled={isDuplicating || !canEdit}
+                    onSelect={() => handleDuplicate()}
+                  >
+                    {isDuplicating ? (
+                      <Loader2 className="mr-2 size-4 animate-spin" aria-hidden="true" />
+                    ) : (
+                      <Copy className="mr-2 size-4" aria-hidden="true" />
+                    )}
+                    Duplicate
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={!canSaveTemplate}
+                    title={canSaveTemplate ? undefined : saveTemplateDisabledTitle}
+                    onSelect={(e) => {
+                      // Prevent the dropdown from closing before the dialog
+                      // opens — the dialog is rendered outside the dropdown
+                      // so this is safe to let through once state is set.
+                      e.preventDefault();
+                      setTemplateDialogOpen(true);
+                    }}
+                  >
+                    <LayoutTemplate className="mr-2 size-4" aria-hidden="true" />
+                    Save as template
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    disabled={isDeleting || !canDelete}
+                    className="text-destructive focus:text-destructive"
+                    onSelect={() => handleDelete()}
+                  >
+                    {isDeleting ? (
+                      <Loader2 className="mr-2 size-4 animate-spin" aria-hidden="true" />
+                    ) : (
+                      <Trash2 className="mr-2 size-4" aria-hidden="true" />
+                    )}
+                    Delete task
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               </div>
             </SheetHeader>
+            {/* SaveAsTemplateDialog in controlled mode — rendered outside
+                the DropdownMenu so it stays mounted when the menu closes.
+                Only mounts when the task is loaded to guarantee taskId/
+                taskTitle are available. */}
+            <SaveAsTemplateDialog
+              taskId={task.id}
+              taskTitle={task.title}
+              disabled={!canSaveTemplate}
+              disabledTitle={saveTemplateDisabledTitle}
+              open={templateDialogOpen}
+              onOpenChange={setTemplateDialogOpen}
+            />
             {/* F513 (design cleanup): `py-6` closes the gap that used to
                 leave the first field (Title) touching the header's own
                 bottom edge, and the last section (Time tracking) touching
@@ -1172,69 +1256,6 @@ export function TaskDetailSheet({
               />
             </div>
 
-            <SheetFooter>
-              <SaveAsTemplateDialog
-                taskId={task.id}
-                taskTitle={task.title}
-                disabled={!canSaveTemplate}
-                disabledTitle={saveTemplateDisabledTitle}
-              />
-              <Button
-                type="button"
-                variant="outline"
-                disabled={isDuplicating || !canEdit}
-                title={canEdit ? undefined : "You don't have permission to duplicate this task."}
-                onClick={handleDuplicate}
-              >
-                {isDuplicating ? (
-                  <>
-                    <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-                    Duplicating...
-                  </>
-                ) : (
-                  <>
-                    <Copy className="size-4" aria-hidden="true" />
-                    Duplicate
-                  </>
-                )}
-              </Button>
-              {/* UX audit (Nalaz 5): "Delete task" is destructive and
-                  irreversible, but sat stacked directly against
-                  "Duplicate"/"Save as template" with identical spacing,
-                  inviting an accidental click straight after one of those.
-                  A Separator plus extra top margin gives it its own visual
-                  group -- same destructive-action-gets-a-gap pattern this
-                  codebase doesn't otherwise have a precedent for, so a
-                  plain Separator (already used throughout this Sheet) was
-                  reused rather than introducing a new pattern. The button
-                  itself is untouched (still `variant="destructive"`,
-                  still full-width, still the same click target) -- only
-                  its position relative to the other two changed. */}
-              <Separator className="mt-2" />
-              <Button
-                type="button"
-                variant="destructive"
-                className="mt-2"
-                disabled={isDeleting || !canDelete}
-                title={canDelete ? undefined : "You don't have permission to delete this task."}
-                onClick={handleDelete}
-              >
-                {isDeleting ? (
-                  <>
-                    <Loader2
-                      className="size-4 animate-spin"
-                      aria-hidden="true"
-                    />
-                    Deleting...
-                  </>
-                ) : (
-                  <>
-                    <Trash2 className="size-4" aria-hidden="true" />
-                    Delete task
-                  </>
-                )}
-              </Button>
-            </SheetFooter>
           </AttachmentDropzone>
         )}
       </SheetContent>

@@ -5,6 +5,8 @@ import { LayoutTemplate } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { CreatePageDialog } from "@/components/architecture/create-page-dialog";
+import { ArchitectureActionsProvider } from "@/lib/architecture/actions-context";
+import { projectBackedActions } from "@/lib/architecture/project-backed-actions";
 
 // Mission 20260910-182104, F005 (AS-028, AS-030): the empty state shown on
 // a project's Architecture board when it has no pages yet. Mirrors
@@ -37,11 +39,18 @@ export function ArchitectureBoardEmptyState({ projectId }: { projectId: string }
       <Button type="button" onClick={() => setDialogOpen(true)}>
         Add first page
       </Button>
-      <CreatePageDialog
-        projectId={projectId}
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-      />
+      {/* ArchitectureActionsProvider is required by CreatePageDialog's
+          useArchitectureActions() hook. When the board has no pages,
+          ArchitectureViewToggle (which normally provides the context) is
+          never rendered, so this empty state must supply its own provider
+          with the same project-backed actions. */}
+      <ArchitectureActionsProvider actions={projectBackedActions}>
+        <CreatePageDialog
+          projectId={projectId}
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+        />
+      </ArchitectureActionsProvider>
     </div>
   );
 }

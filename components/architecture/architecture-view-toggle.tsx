@@ -7,11 +7,11 @@ import { toast } from "sonner";
 
 import type { BoardComponent, BoardPage } from "@/lib/queries/architecture";
 import { ArchitectureBoard } from "@/components/architecture/board";
-import * as architectureActions from "@/lib/actions/architecture";
 import {
   ArchitectureActionsProvider,
   type ArchitectureActions,
 } from "@/lib/architecture/actions-context";
+import { projectBackedActions } from "@/lib/architecture/project-backed-actions";
 import type { ArchitectureNodeDetails } from "@/lib/architecture/types";
 import { EstimateSummary } from "@/components/architecture/estimate-summary";
 
@@ -28,47 +28,9 @@ import { EstimateSummary } from "@/components/architecture/estimate-summary";
 // `architectureActions.<name>(...)` call site per barrel export -- the
 // same guarantee tests/unit/m6-action-barrel-guard.test.ts already checks
 // for every export of lib/actions/architecture.ts.
-const projectBackedActions: ArchitectureActions = {
-  createSection: (...args) => architectureActions.createSection(...args),
-  deleteSection: (...args) => architectureActions.deleteSection(...args),
-  renameSection: (...args) => architectureActions.renameSection(...args),
-  reorderSections: (...args) => architectureActions.reorderSections(...args),
-  moveSectionToPage: (...args) => architectureActions.moveSectionToPage(...args),
-  changeSectionKind: (...args) => architectureActions.changeSectionKind(...args),
-  createPage: (...args) => architectureActions.createPage(...args),
-  changePageKind: (...args) => architectureActions.changePageKind(...args),
-  changePageSlug: (...args) => architectureActions.changePageSlug(...args),
-  renamePage: (...args) => architectureActions.renamePage(...args),
-  deletePage: (...args) => architectureActions.deletePage(...args),
-  reorderPages: (...args) => architectureActions.reorderPages(...args),
-  importPages: (...args) => architectureActions.importPages(...args),
-  readOnly: false,
-  estimates: {
-    setDisciplineEstimatesBulk: (...args) =>
-      architectureActions.setDisciplineEstimatesBulk(...args),
-    getNodeDetailsForToggle: (...args) => architectureActions.getNodeDetailsForToggle(...args),
-  },
-  nodeMeta: {
-    setNodeMeta: (...args) => architectureActions.setNodeMeta(...args),
-  },
-  clientVisibility: {
-    setPageClientVisibility: (...args) =>
-      architectureActions.setPageClientVisibility(...args),
-    setSectionClientVisibility: (...args) =>
-      architectureActions.setSectionClientVisibility(...args),
-  },
-  componentLinks: {
-    createComponent: (...args) => architectureActions.createComponent(...args),
-    createComponentFromSection: (...args) =>
-      architectureActions.createComponentFromSection(...args),
-    linkComponentToSection: (...args) => architectureActions.linkComponentToSection(...args),
-    unlinkComponentFromSection: (...args) =>
-      architectureActions.unlinkComponentFromSection(...args),
-    renameComponent: (...args) => architectureActions.renameComponent(...args),
-    deleteComponent: (...args) => architectureActions.deleteComponent(...args),
-    reorderComponents: (...args) => architectureActions.reorderComponents(...args),
-  },
-};
+// projectBackedActions is now defined in lib/architecture/project-backed-actions.ts
+// and shared with ArchitectureBoardEmptyState (which needs the same provider
+// but renders independently of this toggle component).
 
 // NX-006: CanvasBoard is the only consumer of @xyflow/react — statically
 // importing it here pulled the whole flow-graph library into the shared
