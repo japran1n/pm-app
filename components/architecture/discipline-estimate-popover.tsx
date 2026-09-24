@@ -6,10 +6,8 @@ import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 
 import { useArchitectureActions } from "@/lib/architecture/actions-context";
-import {
-  parseEstimateInput,
-  disciplineEstimateNoteSchema,
-} from "@/lib/validation/architecture";
+import { disciplineEstimateNoteSchema } from "@/lib/validation/architecture";
+import { parseDurationToMinutes as parseEstimateInput } from "@/lib/time/parse-duration";
 import type { DisciplineEstimate, WorkCategory } from "@/lib/architecture/types";
 import { WORK_CATEGORIES } from "@/lib/architecture/types";
 import { Input } from "@/components/ui/input";

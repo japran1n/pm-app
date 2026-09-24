@@ -14,10 +14,8 @@ import { logger } from "@/lib/observability/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { writeAudit } from "@/lib/activity/audit";
-import {
-  setDisciplineEstimatesBulkSchema,
-  parseEstimateInput,
-} from "@/lib/validation/architecture";
+import { setDisciplineEstimatesBulkSchema } from "@/lib/validation/architecture";
+import { parseDurationToMinutes as parseEstimateInput } from "@/lib/time/parse-duration";
 
 import type { MutationResult } from "./shared";
 import { authorizeArchitectureProject } from "./authorize";

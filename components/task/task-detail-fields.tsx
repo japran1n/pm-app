@@ -41,7 +41,7 @@ import { getMentionCandidates } from "@/lib/actions/comments";
 // "human string in, minutes out" contract lib/time/parse-estimate.ts's own
 // doc comment describes, and the inverse formatDuration already reused by
 // TimeTracking (right column) so both surfaces agree on display format.
-import { parseEstimate } from "@/lib/time/parse-estimate";
+import { parseDurationToMinutes as parseEstimate } from "@/lib/time/parse-duration";
 import { formatDuration } from "@/lib/time/format-duration";
 // F002 (missions/20260903-portal, AS-013): the phase Select's option
 // source — same "Server Action called directly from a Client Component

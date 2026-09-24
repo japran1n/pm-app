@@ -51,8 +51,11 @@ describe("parseEstimate", () => {
     expect(parseEstimate("m")).toBeNull();
   });
 
-  it("test_AS_299_rejects_fractional_input", () => {
-    expect(parseEstimate("1.5h")).toBeNull();
+  // REUSE-LOGIC-10: estimates share the app's single duration parser, which
+  // accepts fractional hours and rounds to whole minutes (the stored
+  // integer column is unchanged).
+  it("test_AS_298_fractional_hours_round_to_whole_minutes", () => {
+    expect(parseEstimate("1.5h")).toBe(90);
   });
 
   it("test_AS_298_rejects_empty_or_whitespace_only_input", () => {

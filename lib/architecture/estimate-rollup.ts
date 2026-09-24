@@ -56,19 +56,3 @@ export function computeSiteTotals(
   }
   return totals;
 }
-
-/**
- * Parses free-form duration input like "2h", "1h30", "1h30m", "90", "90m"
- * into minutes. Returns null when the input doesn't match a supported
- * shape.
- */
-export function parseEstimateInput(input: string): number | null {
-  const s = input.trim().toLowerCase();
-  const hm = s.match(/^(\d+(?:\.\d+)?)\s*h\s*(\d+)\s*m?$/);
-  if (hm) return Math.round(parseFloat(hm[1]) * 60 + parseInt(hm[2], 10));
-  const h = s.match(/^(\d+(?:\.\d+)?)\s*h$/);
-  if (h) return Math.round(parseFloat(h[1]) * 60);
-  const m = s.match(/^(\d+)\s*m?$/);
-  if (m) return parseInt(m[1], 10);
-  return null;
-}

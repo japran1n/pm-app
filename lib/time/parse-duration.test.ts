@@ -41,3 +41,29 @@ describe("parseDurationToMinutes (global Track Time widget)", () => {
     expect(parseDurationToMinutes("0")).toBeNull();
   });
 });
+
+describe("parseDurationToMinutes — single parser (REUSE-LOGIC-10)", () => {
+  it("never silently drops a unitless minutes part after hours", () => {
+    expect(parseDurationToMinutes("1h30")).toBe(90);
+    expect(parseDurationToMinutes("1h 30")).toBe(90);
+  });
+
+  it("accepts fractional hours and long unit names", () => {
+    expect(parseDurationToMinutes("1.5h")).toBe(90);
+    expect(parseDurationToMinutes("1 hour 30 minutes")).toBe(90);
+    expect(parseDurationToMinutes("2 hrs 5 min")).toBe(125);
+  });
+
+  it("rejects leftover or repeated text instead of partially parsing it", () => {
+    expect(parseDurationToMinutes("1h 1h")).toBeNull();
+    expect(parseDurationToMinutes("1h30 lunch")).toBeNull();
+    expect(parseDurationToMinutes("20m 1h")).toBeNull();
+    expect(parseDurationToMinutes("2x")).toBeNull();
+    expect(parseDurationToMinutes("-5m")).toBeNull();
+  });
+
+  it("all duration entry points resolve to this parser", async () => {
+    const estimate = await import("@/lib/time/parse-estimate");
+    expect(estimate.parseEstimate).toBe(parseDurationToMinutes);
+  });
+});

@@ -10,7 +10,7 @@
 import { describe, expect, it } from "vitest";
 import type { BoardPage } from "@/lib/queries/architecture";
 import type { ArchitectureNodeDetails, DisciplineEstimate } from "@/lib/architecture/types";
-import { computeRollups, computeSiteTotals, parseEstimateInput } from "@/lib/architecture/estimate-rollup";
+import { computeRollups, computeSiteTotals } from "@/lib/architecture/estimate-rollup";
 
 const PAGE_A = "00000000-0000-4000-8000-0000000000a1";
 const PAGE_B = "00000000-0000-4000-8000-0000000000a2";
@@ -122,19 +122,5 @@ describe("computeRollups", () => {
 
     expect(r.source).toBe("none");
     expect(r.total).toBe(0);
-  });
-});
-
-describe("parseEstimateInput", () => {
-  it("parses hours+minutes, hours only, and bare minutes", () => {
-    expect(parseEstimateInput("1h30m")).toBe(90);
-    expect(parseEstimateInput("2h")).toBe(120);
-    expect(parseEstimateInput("45")).toBe(45);
-    expect(parseEstimateInput("45m")).toBe(45);
-  });
-
-  it("returns null for unsupported input", () => {
-    expect(parseEstimateInput("abc")).toBeNull();
-    expect(parseEstimateInput("")).toBeNull();
   });
 });
