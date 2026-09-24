@@ -22,7 +22,6 @@ import {
 } from "@/components/project/project-members";
 // F002 (missions/20260903-portal): lets this page link to the sibling
 // columns/phases settings routes — see that component's own doc comment.
-import { ProjectSettingsNav } from "@/components/project/project-settings-nav";
 import { Separator } from "@/components/ui/separator";
 // F008 (missions/20260903-portal, section 4): "Who approves what" — and,
 // per this feature's own "Files (approximate)" list naming "project
@@ -230,7 +229,6 @@ export default async function ProjectSettingsPage({
         </Link>
       </div>
 
-      <ProjectSettingsNav workspaceSlug={workspaceSlug} projectId={project.id} />
 
       {loadError && (
         <div

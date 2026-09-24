@@ -5,7 +5,6 @@ import { getWorkspaceContext } from "@/lib/queries/workspaces";
 import { canTeamWrite } from "@/lib/auth/permissions";
 import { getProjectAccounts, getProjectLinks } from "@/lib/queries/project-site";
 import { SitePanel } from "@/components/project/site-panel";
-import { ProjectSettingsNav } from "@/components/project/project-settings-nav";
 import { Separator } from "@/components/ui/separator";
 
 // F022 (missions/20260903-portal, AS-049, AS-050): project settings
@@ -66,7 +65,6 @@ export default async function ProjectSiteSettingsPage({
         </p>
       </div>
 
-      <ProjectSettingsNav workspaceSlug={workspaceSlug} projectId={project.id} />
 
       <Separator />
 

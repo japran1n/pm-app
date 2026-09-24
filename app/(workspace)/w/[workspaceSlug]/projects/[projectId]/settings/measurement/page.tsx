@@ -5,7 +5,6 @@ import { getWorkspaceContext } from "@/lib/queries/workspaces";
 import { canTeamWrite } from "@/lib/auth/permissions";
 import { getProjectMetricsWithLatestSnapshot, getProjectImprovements } from "@/lib/queries/metrics";
 import { MeasurementPanel } from "@/components/project/measurement-panel";
-import { ProjectSettingsNav } from "@/components/project/project-settings-nav";
 import { Separator } from "@/components/ui/separator";
 
 // F020 (missions/20260903-portal): project settings "Measurement" panel
@@ -74,7 +73,6 @@ export default async function ProjectMeasurementSettingsPage({
         </p>
       </div>
 
-      <ProjectSettingsNav workspaceSlug={workspaceSlug} projectId={project.id} />
 
       <Separator />
 

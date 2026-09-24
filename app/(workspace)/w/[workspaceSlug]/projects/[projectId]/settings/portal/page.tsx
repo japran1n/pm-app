@@ -5,7 +5,6 @@ import { getWorkspaceContext } from "@/lib/queries/workspaces";
 import { canManagePortalSettings, canTeamWrite } from "@/lib/auth/permissions";
 import { getPortalReadiness } from "@/lib/queries/portal-settings";
 import { PortalSettingsPanel } from "@/components/project/portal-settings-panel";
-import { ProjectSettingsNav } from "@/components/project/project-settings-nav";
 import { Separator } from "@/components/ui/separator";
 
 // F080 (missions/20260903-portal, hardening): project settings "Client
@@ -74,7 +73,6 @@ export default async function ProjectPortalSettingsPage({
         </p>
       </div>
 
-      <ProjectSettingsNav workspaceSlug={workspaceSlug} projectId={project.id} />
 
       <Separator />
 

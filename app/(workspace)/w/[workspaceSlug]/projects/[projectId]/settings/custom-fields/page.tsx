@@ -10,7 +10,6 @@ import {
   CustomFieldsManager,
   type ProjectCustomFieldRow,
 } from "@/components/project/custom-fields-manager";
-import { ProjectSettingsNav } from "@/components/project/project-settings-nav";
 import { Separator } from "@/components/ui/separator";
 
 // Project settings "Custom fields" page — flexible, project-scoped extra
@@ -98,7 +97,6 @@ export default async function ProjectCustomFieldsSettingsPage({
         </p>
       </div>
 
-      <ProjectSettingsNav workspaceSlug={workspaceSlug} projectId={project.id} />
 
       <Separator />
 

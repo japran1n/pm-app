@@ -9,7 +9,6 @@ import {
 import { StatusManager, type ProjectColumn } from "@/components/project/status-manager";
 // F002 (missions/20260903-portal): lets this page link to the sibling
 // members/phases settings routes — see that component's own doc comment.
-import { ProjectSettingsNav } from "@/components/project/project-settings-nav";
 import { Separator } from "@/components/ui/separator";
 
 // F219: project settings "Board columns" page (AS-404, AS-405, AS-414).
@@ -113,7 +112,6 @@ export default async function ProjectColumnsSettingsPage({
         </p>
       </div>
 
-      <ProjectSettingsNav workspaceSlug={workspaceSlug} projectId={project.id} />
 
       <Separator />
 

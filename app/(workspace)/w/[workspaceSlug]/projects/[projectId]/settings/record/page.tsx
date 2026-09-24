@@ -9,7 +9,6 @@ import {
   getProjectScopeItems,
 } from "@/lib/queries/project-records";
 import { RecordPanel } from "@/components/project/record-panel";
-import { ProjectSettingsNav } from "@/components/project/project-settings-nav";
 import { Separator } from "@/components/ui/separator";
 
 // F015 (missions/20260903-portal, AS-043, AS-044, AS-045, AS-046): project
@@ -73,7 +72,6 @@ export default async function ProjectRecordSettingsPage({
         </p>
       </div>
 
-      <ProjectSettingsNav workspaceSlug={workspaceSlug} projectId={project.id} />
 
       <Separator />
 

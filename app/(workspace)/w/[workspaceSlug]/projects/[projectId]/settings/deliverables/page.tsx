@@ -5,7 +5,6 @@ import { getWorkspaceContext } from "@/lib/queries/workspaces";
 import { canTeamWrite } from "@/lib/auth/permissions";
 import { getClientDeliverables } from "@/lib/queries/deliverables";
 import { DeliverablesPanel } from "@/components/project/deliverables-panel";
-import { ProjectSettingsNav } from "@/components/project/project-settings-nav";
 import { Separator } from "@/components/ui/separator";
 
 // F013 (missions/20260903-portal): project settings "What we need from
@@ -82,7 +81,6 @@ export default async function ProjectDeliverablesSettingsPage({
         </p>
       </div>
 
-      <ProjectSettingsNav workspaceSlug={workspaceSlug} projectId={project.id} />
 
       <Separator />
 

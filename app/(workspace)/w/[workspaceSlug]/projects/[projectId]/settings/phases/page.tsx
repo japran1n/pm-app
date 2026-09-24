@@ -7,7 +7,6 @@ import { getProjectPhasesForTeam } from "@/lib/queries/phases";
 import { PhaseList } from "@/components/project/phase-list";
 // F002 (missions/20260903-portal): lets this page link to the sibling
 // members/columns settings routes — see that component's own doc comment.
-import { ProjectSettingsNav } from "@/components/project/project-settings-nav";
 import { Separator } from "@/components/ui/separator";
 
 // F002 (missions/20260903-portal): project settings "Phases" page
@@ -84,7 +83,6 @@ export default async function ProjectPhasesSettingsPage({
         </p>
       </div>
 
-      <ProjectSettingsNav workspaceSlug={workspaceSlug} projectId={project.id} />
 
       <Separator />
 

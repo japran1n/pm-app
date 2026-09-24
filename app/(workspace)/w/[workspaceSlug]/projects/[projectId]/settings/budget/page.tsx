@@ -5,7 +5,6 @@ import { getWorkspaceContext } from "@/lib/queries/workspaces";
 import { canTeamWrite } from "@/lib/auth/permissions";
 import { getProjectBudgets } from "@/lib/queries/project-budgets";
 import { BudgetPanel } from "@/components/project/budget-panel";
-import { ProjectSettingsNav } from "@/components/project/project-settings-nav";
 import { Separator } from "@/components/ui/separator";
 
 // F018 (missions/20260903-portal): project settings "Budget" panel
@@ -66,7 +65,6 @@ export default async function ProjectBudgetSettingsPage({
         </p>
       </div>
 
-      <ProjectSettingsNav workspaceSlug={workspaceSlug} projectId={project.id} />
 
       <Separator />
 
