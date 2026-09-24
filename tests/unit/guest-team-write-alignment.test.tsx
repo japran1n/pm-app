@@ -152,11 +152,9 @@ describe("task controls are disabled for a guest", () => {
 
   it("NewTaskDialog trigger is disabled for a guest", () => {
     render(
-      createElement(
-        MembershipProvider,
-        { role: "guest", projectRoles: {} },
-        <NewTaskDialog projectId="11111111-1111-1111-1111-111111111111" assigneeOptions={[]} />,
-      ),
+      <MembershipProvider role="guest" projectRoles={{}}>
+        <NewTaskDialog projectId="11111111-1111-1111-1111-111111111111" assigneeOptions={[]} />
+      </MembershipProvider>,
     );
     expect(screen.getByRole("button", { name: /new task/i })).toBeDisabled();
   });
@@ -165,7 +163,7 @@ describe("task controls are disabled for a guest", () => {
 describe("ToolGate", () => {
   function renderGate(role: WorkspaceRole | null, access: "team" | "sitemaps") {
     const gate = <ToolGate access={access}><span>tool card</span></ToolGate>;
-    render(role ? createElement(MembershipProvider, { role, projectRoles: {} }, gate) : gate);
+    render(role ? <MembershipProvider role={role} projectRoles={{}}>{gate}</MembershipProvider> : gate);
     return screen.queryByText("tool card");
   }
 
@@ -198,11 +196,9 @@ describe("sidebar Tools band", () => {
 
   function renderSidebar(role: WorkspaceRole) {
     render(
-      createElement(
-        MembershipProvider,
-        { role, projectRoles: {} },
-        <AppSidebar {...props} isGuest={role === "guest"} />,
-      ),
+      <MembershipProvider role={role} projectRoles={{}}>
+        <AppSidebar {...props} isGuest={role === "guest"} />
+      </MembershipProvider>,
     );
   }
 

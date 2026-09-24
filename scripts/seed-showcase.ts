@@ -177,7 +177,7 @@ async function seedNotification(
     p_task_id: taskId,
     p_comment_id: commentId,
     p_payload: {},
-  } as Parameters<typeof client.rpc>[1]);
+  } as never);
   await client.auth.signOut();
 }
 
@@ -628,7 +628,7 @@ async function seedProjectA(admin: Admin, u: UserMap): Promise<string> {
 
   await admin.from("client_requests").insert([
     { project_id: pid, created_by: client2, kind: "change", title: "Hero video background option", body: "Can we have an option to use a short looping video instead of the static hero image?", desired_by: d(20), status: "in_review", client_decision: "pending", quoted_hours: 12, quoted_amount: 1500, quote_currency: "EUR", scope_verdict: "change_request", track: "dev_change" },
-    { project_id: pid, created_by: client1, kind: "bug", title: "Logo not showing on mobile (reported 2026-09-10)", body: "The logo disappears on screens narrower than 375px.", status: "submitted", client_decision: "pending", severity: "major", kind: "bug" as never },
+    { project_id: pid, created_by: client1, kind: "bug", title: "Logo not showing on mobile (reported 2026-09-10)", body: "The logo disappears on screens narrower than 375px.", status: "submitted", client_decision: "pending", severity: "major" },
     { project_id: pid, created_by: client1, kind: "question", title: "Can we add Swedish and English language versions?", body: "Our customers are 60% Swedish, 40% international. Could we add English?", status: "declined", decline_reason: "Multi-language is out of scope for this engagement. Happy to quote for Phase 2.", client_decision: "rejected", reviewed_by: owner, reviewed_at: tsPast(10) },
   ]);
 
@@ -1067,10 +1067,10 @@ async function seedProjectB(admin: Admin, u: UserMap, projectAId: string): Promi
 
   // Personal todos (workspace level, not project-specific)
   await admin.from("personal_todos").insert([
-    { user_id: owner, title: "Review Nordvik homepage in staging", is_checked: false, position: 1000 },
-    { user_id: owner, title: "Send growth retainer invoice for September", is_checked: false, position: 2000 },
-    { user_id: admin_, title: "Prepare sprint review agenda", is_checked: true, position: 1000 },
-    { user_id: member, title: "Check GSC for new keyword opportunities", is_checked: false, position: 1000 },
+    { workspace_id: WORKSPACE_ID, user_id: owner, title: "Review Nordvik homepage in staging", is_done: false, position: 1000 },
+    { workspace_id: WORKSPACE_ID, user_id: owner, title: "Send growth retainer invoice for September", is_done: false, position: 2000 },
+    { workspace_id: WORKSPACE_ID, user_id: admin_, title: "Prepare sprint review agenda", is_done: true, position: 1000 },
+    { workspace_id: WORKSPACE_ID, user_id: member, title: "Check GSC for new keyword opportunities", is_done: false, position: 1000 },
   ]);
 
   // Notifications
