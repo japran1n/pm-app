@@ -41,7 +41,6 @@ import {
   forwardRef,
   useEffect,
   useImperativeHandle,
-  useRef,
   useState,
   useTransition,
 } from "react";
@@ -54,17 +53,13 @@ import {
   uploadAttachment,
 } from "@/lib/actions/attachments";
 import { appendAttachment } from "@/lib/tasks/append-attachment";
-import { uploadFilesWithConcurrency } from "@/lib/tasks/upload-files-with-concurrency";
-import { validateAttachmentFile } from "@/lib/tasks/validate-attachment-file";
+import { useUploadQueue } from "@/lib/hooks/use-upload-queue";
 import { canWrite, type WorkspaceRole } from "@/lib/auth/permissions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  UploadProgress,
-  type UploadProgressJob,
-} from "@/components/task/upload-progress";
+import { UploadProgress } from "@/components/task/upload-progress";
 import { ImageLightbox } from "@/components/task/image-lightbox";
 
 // F258 (AS-501, AS-503): the imperative handle AttachmentDropzone
@@ -220,32 +215,12 @@ export const AttachmentList = forwardRef<AttachmentListHandle, {
   // so it can be re-synced below without an Effect — same "adjust state
   // during render on prop change" convention as CommentList/TaskDetailSheet.
   const [syncedTaskId, setSyncedTaskId] = useState(taskId);
-  const [isUploading, startUploadTransition] = useTransition();
   const [openingId, setOpeningId] = useState<string | null>(null);
   // F260 (AS-505, AS-506): id of the image attachment currently shown in
   // the full-size lightbox, or null when it's closed.
   const [lightboxOpenId, setLightboxOpenId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [, startDeleteTransition] = useTransition();
-  // F259 (AS-504, AS-507): per-file progress/rejection rows shown below
-  // the upload control while uploadFiles() is running. Populated with a
-  // "rejected" job immediately (before any network call) for a file that
-  // fails client-side validation, and an "uploading" job that settles to
-  // "success"/"error" for every file that actually gets sent.
-  const [uploadJobs, setUploadJobs] = useState<UploadProgressJob[]>([]);
-  // Job ids whose in-flight Server Action result should be ignored once it
-  // settles (the "cancel" affordance below — the underlying Server Action
-  // call itself has no abort hook, see upload-progress.tsx's header
-  // comment, so cancelling means "don't act on this result", not "stop
-  // the network request").
-  const cancelledJobIdsRef = useRef<Set<string>>(new Set());
-
-  function makeJobId(): string {
-    return typeof crypto !== "undefined" && "randomUUID" in crypto
-      ? crypto.randomUUID()
-      : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-  }
-
   const isAdminOrOwner =
     currentUserRole === "owner" || currentUserRole === "admin";
   // F128 (AS-216): viewers/guests never see a usable upload control.
@@ -282,161 +257,42 @@ export const AttachmentList = forwardRef<AttachmentListHandle, {
     setLocalAttachments(attachments);
   }
 
-  // F258 (AS-501, AS-503): shared single-file upload used by both the
-  // file-picker input and the drag-drop path below, so a drop funnels
-  // through the exact same Server Action call + local-state append + toast
-  // feedback as the pre-existing picker — no second upload implementation.
-  async function uploadOneFile(job: { file: File; jobId: string }) {
-    const { file, jobId } = job;
-    const formData = new FormData();
-    formData.set("taskId", taskId);
-    formData.set("file", file);
-
-    // Bug fix: uploadAttachment (a Server Action call) previously had no
-    // try/catch here — an HTTP-layer failure (e.g. a 413 from the body
-    // exceeding next.config.ts's Server Action bodySizeLimit, or a network
-    // error) rejected this async function's promise instead of resolving
-    // with `{ ok: false }`, leaving this job's progress row stuck on
-    // "uploading" forever with no toast, matching the pattern already used
-    // in components/profile/profile-form.tsx.
-    let result: Awaited<ReturnType<typeof uploadAttachment>>;
-    try {
-      result = await uploadAttachment(formData);
-    } catch {
-      if (cancelledJobIdsRef.current.has(jobId)) {
-        cancelledJobIdsRef.current.delete(jobId);
-        return;
-      }
-      setUploadJobs((previous) =>
-        previous.map((existingJob) =>
-          existingJob.id === jobId
-            ? {
-                ...existingJob,
-                status: "error",
-                reason: "Something went wrong. Please try again in a moment.",
-              }
-            : existingJob,
-        ),
-      );
-      toast.error(`${file.name}: Something went wrong. Please try again in a moment.`);
-      return;
-    }
-
-    // F259: a cancelled job's result is ignored entirely — no state
-    // update, no toast — since its row was already removed from
-    // uploadJobs the moment cancel was clicked.
-    if (cancelledJobIdsRef.current.has(jobId)) {
-      cancelledJobIdsRef.current.delete(jobId);
-      return;
-    }
-
-    if (result.ok) {
-      // AS-115: append directly to local state via the pure
-      // appendAttachment reducer — no page reload, no re-fetch.
+  // F258/F259 (AS-501, AS-503, AS-504, AS-507): picker and drag-drop both
+  // funnel through the shared upload queue (lib/hooks/use-upload-queue.ts):
+  // client-side validation first (rejected rows never hit the network),
+  // concurrency-capped Server Action calls, per-file progress rows/toasts,
+  // cancel = ignore the eventual result, and a rejected Server Action call
+  // settles the row as an error instead of leaving it stuck on "uploading".
+  const uploadQueue = useUploadQueue({
+    upload: (file) => {
+      const formData = new FormData();
+      formData.set("taskId", taskId);
+      formData.set("file", file);
+      return uploadAttachment(formData);
+    },
+    // AS-115: append directly to local state — no reload, no re-fetch.
+    onSuccess: (_file, data) =>
       setLocalAttachments((previous) =>
         appendAttachment(previous, {
-          id: result.data.id,
-          taskId: result.data.taskId,
-          fileName: result.data.fileName,
-          fileUrl: result.data.fileUrl,
-          uploadedBy: result.data.uploadedBy,
-          createdAt: result.data.createdAt,
-          mimeType: result.data.mimeType,
+          id: data.id,
+          taskId: data.taskId,
+          fileName: data.fileName,
+          fileUrl: data.fileUrl,
+          uploadedBy: data.uploadedBy,
+          createdAt: data.createdAt,
+          mimeType: data.mimeType,
         }),
-      );
-      setUploadJobs((previous) =>
-        previous.map((existingJob) =>
-          existingJob.id === jobId
-            ? { ...existingJob, status: "success" }
-            : existingJob,
-        ),
-      );
-      toast.success(`${file.name} uploaded.`);
-    } else {
-      // AS-503: one bad file in a multi-file drop must not silently
-      // swallow the others — each failure gets its own toast naming the
-      // file, matching this component's existing single-upload failure
-      // convention (plain-language sonner toast, control stays
-      // actionable). AS-507: the server's own error message (from Zod
-      // validation or the Storage/DB call) is shown verbatim in the
-      // progress row too, so a server-side rejection explains why exactly
-      // like a client-side one does.
-      setUploadJobs((previous) =>
-        previous.map((existingJob) =>
-          existingJob.id === jobId
-            ? { ...existingJob, status: "error", reason: result.error }
-            : existingJob,
-        ),
-      );
-      toast.error(`${file.name}: ${result.error}`);
-    }
-  }
+      ),
+  });
+  const isUploading = uploadQueue.isUploading;
 
-  // F258 (AS-503): uploads every file with a concurrency cap so a 10-file
-  // drop doesn't fire 10 parallel Server Action calls at once. Shared by
-  // the picker input (below) and AttachmentDropzone's onFilesDropped via
-  // the imperative handle exposed below.
-  //
-  // F259 (AS-504, AS-507): every file is first validated client-side
-  // (validateAttachmentFile — the exact same size/MIME rules the Server
-  // Action re-checks). A file that fails is never sent — it gets an
-  // immediate "rejected" progress row explaining why and no Server
-  // Action call is ever made for it, so it is structurally impossible for
-  // a client-rejected file to leave a partial `attachments` row (nothing
-  // was ever inserted, no Storage upload was ever attempted). Files that
-  // pass get an "uploading" row that settles to "success"/"error" as
-  // uploadOneFile resolves.
   function uploadFiles(files: File[]) {
     if (files.length === 0) return;
     if (!canUpload) {
       toast.error("Viewers don't have permission to upload files.");
       return;
     }
-
-    const jobsToUpload: { file: File; jobId: string }[] = [];
-    const newProgressJobs: UploadProgressJob[] = [];
-
-    for (const file of files) {
-      const jobId = makeJobId();
-      const validation = validateAttachmentFile(file);
-
-      if (!validation.ok) {
-        newProgressJobs.push({
-          id: jobId,
-          fileName: file.name,
-          fileSize: file.size,
-          status: "rejected",
-          reason: validation.reason,
-        });
-        toast.error(`${file.name}: ${validation.reason}`);
-        continue;
-      }
-
-      newProgressJobs.push({
-        id: jobId,
-        fileName: file.name,
-        fileSize: file.size,
-        status: "uploading",
-      });
-      jobsToUpload.push({ file, jobId });
-    }
-
-    setUploadJobs((previous) => [...previous, ...newProgressJobs]);
-
-    if (jobsToUpload.length === 0) return;
-
-    startUploadTransition(async () => {
-      await uploadFilesWithConcurrency(jobsToUpload, uploadOneFile, 3);
-    });
-  }
-
-  function handleCancelUploadJob(jobId: string) {
-    cancelledJobIdsRef.current.add(jobId);
-    setUploadJobs((previous) => previous.filter((job) => job.id !== jobId));
-  }
-
-  function handleDismissUploadJob(jobId: string) {
-    setUploadJobs((previous) => previous.filter((job) => job.id !== jobId));
+    uploadQueue.uploadFiles(files);
   }
 
   // No deps array: `uploadFiles` closes over `canUpload`/`taskId`, which
@@ -593,9 +449,9 @@ export const AttachmentList = forwardRef<AttachmentListHandle, {
 
       {/* F259 (AS-504, AS-507): per-file progress/rejection rows. */}
       <UploadProgress
-        jobs={uploadJobs}
-        onCancel={handleCancelUploadJob}
-        onDismiss={handleDismissUploadJob}
+        jobs={uploadQueue.jobs}
+        onCancel={uploadQueue.cancel}
+        onDismiss={uploadQueue.dismiss}
       />
 
       {/* F260 (AS-505, AS-506): full-size preview, opened by clicking an
