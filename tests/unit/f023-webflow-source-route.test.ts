@@ -20,6 +20,7 @@ vi.mock("@/lib/observability/logger", () => ({
 
 import { GET } from "@/app/api/webflow-source/route";
 import { isWebflowPasswordGate } from "@/lib/site-preview/guards";
+import { transport } from "@/lib/site-preview/safe-fetch";
 
 const AUTHED_USER = { id: "user-1", email: "user@example.com" };
 
@@ -41,7 +42,7 @@ function htmlResponse(
 }
 
 describe("GET /api/webflow-source", () => {
-  const realFetch = global.fetch;
+  const realFetch = transport.fetch;
   const realDnsLookup = dns.promises.lookup;
 
   beforeEach(() => {
@@ -55,7 +56,7 @@ describe("GET /api/webflow-source", () => {
   });
 
   afterEach(() => {
-    global.fetch = realFetch;
+    transport.fetch = realFetch;
     dns.promises.lookup = realDnsLookup;
   });
 
@@ -100,11 +101,11 @@ describe("GET /api/webflow-source", () => {
   });
 
   it("test_TH_050_returns_html_finalUrl_and_blocks", async () => {
-    global.fetch = vi.fn(async () =>
+    transport.fetch = vi.fn(async () =>
       htmlResponse("<html><body>hi</body></html>", {
         url: "https://foo.webflow.io/",
       }),
-    ) as unknown as typeof fetch;
+    ) as unknown as typeof transport.fetch;
 
     const res = await GET(makeRequest("https://foo.webflow.io/"));
     expect(res.status).toBe(200);
@@ -118,9 +119,9 @@ describe("GET /api/webflow-source", () => {
 
   it("test_TH_062_oversized_body_stops_reading_and_returns_413", async () => {
     const big = "a".repeat(2 * 1024 * 1024 + 1);
-    global.fetch = vi.fn(async () =>
+    transport.fetch = vi.fn(async () =>
       htmlResponse(big, { url: "https://foo.webflow.io/" }),
-    ) as unknown as typeof fetch;
+    ) as unknown as typeof transport.fetch;
 
     const res = await GET(makeRequest("https://foo.webflow.io/"));
     // Shared `cappedBodyReader` (also used by the CSS proxy, TH-083) cancels
@@ -130,23 +131,23 @@ describe("GET /api/webflow-source", () => {
   });
 
   it("test_TH_068_response_has_cache_control_no_store", async () => {
-    global.fetch = vi.fn(async () =>
+    transport.fetch = vi.fn(async () =>
       htmlResponse("<html></html>", { url: "https://foo.webflow.io/" }),
-    ) as unknown as typeof fetch;
+    ) as unknown as typeof transport.fetch;
 
     const res = await GET(makeRequest("https://foo.webflow.io/"));
     expect(res.headers.get("cache-control")).toBe("no-store");
   });
 
   it("test_TH_067_no_upstream_headers_are_forwarded", async () => {
-    global.fetch = vi.fn(async () => {
+    transport.fetch = vi.fn(async () => {
       const res = htmlResponse("<html></html>", {
         url: "https://foo.webflow.io/",
       });
       res.headers.set("x-upstream-secret", "leak-me");
       res.headers.set("set-cookie", "session=abc");
       return res;
-    }) as unknown as typeof fetch;
+    }) as unknown as typeof transport.fetch;
 
     const res = await GET(makeRequest("https://foo.webflow.io/"));
     expect(res.headers.get("x-upstream-secret")).toBeNull();
@@ -157,7 +158,7 @@ describe("GET /api/webflow-source", () => {
     const fetchMock = vi.fn(async () =>
       htmlResponse("<html></html>", { url: "https://foo.webflow.io/" }),
     );
-    global.fetch = fetchMock as unknown as typeof fetch;
+    transport.fetch = fetchMock as unknown as typeof transport.fetch;
 
     await GET(makeRequest("https://foo.webflow.io/"));
 
@@ -171,64 +172,74 @@ describe("GET /api/webflow-source", () => {
   });
 
   it("test_TH_064_upstream_timeout_returns_504", async () => {
-    global.fetch = vi.fn(async () => {
+    transport.fetch = vi.fn(async () => {
       const err = new Error("timed out");
       err.name = "TimeoutError";
       throw err;
-    }) as unknown as typeof fetch;
+    }) as unknown as typeof transport.fetch;
 
     const res = await GET(makeRequest("https://foo.webflow.io/"));
     expect(res.status).toBe(504);
   });
 
   it("test_TH_065_non_2xx_upstream_status_is_forwarded", async () => {
-    global.fetch = vi.fn(async () =>
+    transport.fetch = vi.fn(async () =>
       htmlResponse("not found", {
         status: 404,
         url: "https://foo.webflow.io/",
       }),
-    ) as unknown as typeof fetch;
+    ) as unknown as typeof transport.fetch;
 
     const res = await GET(makeRequest("https://foo.webflow.io/"));
     expect(res.status).toBe(404);
   });
 
   it("network error returns 502", async () => {
-    global.fetch = vi.fn(async () => {
+    transport.fetch = vi.fn(async () => {
       throw new Error("network down");
-    }) as unknown as typeof fetch;
+    }) as unknown as typeof transport.fetch;
 
     const res = await GET(makeRequest("https://foo.webflow.io/"));
     expect(res.status).toBe(502);
   });
 
   it("test_TH_060_redirect_to_blocked_address_returns_400", async () => {
-    dns.promises.lookup = vi
-      .fn()
-      // First call: pre-flight check on the requested host — public.
-      .mockResolvedValueOnce([{ address: "1.2.3.4", family: 4 }])
-      // Second call: re-validation of the final host after redirect — blocked.
-      .mockResolvedValueOnce([{ address: "169.254.169.254", family: 4 }]) as unknown as typeof dns.promises.lookup;
+    dns.promises.lookup = vi.fn(async (host: string) =>
+      host === "redirected.webflow.io"
+        ? [{ address: "169.254.169.254", family: 4 }]
+        : [{ address: "1.2.3.4", family: 4 }],
+    ) as unknown as typeof dns.promises.lookup;
 
-    global.fetch = vi.fn(async () =>
-      htmlResponse("<html></html>", {
-        url: "https://redirected.webflow.io/",
-      }),
-    ) as unknown as typeof fetch;
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(null, {
+          status: 302,
+          headers: { location: "https://redirected.webflow.io/" },
+        }),
+    );
+    transport.fetch = fetchMock as unknown as typeof transport.fetch;
 
     const res = await GET(makeRequest("https://foo.webflow.io/"));
     expect(res.status).toBe(400);
+    // The blocked hop is rejected before it is requested.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("test_TH_061_redirect_outside_webflow_io_returns_502", async () => {
-    global.fetch = vi.fn(async () =>
-      htmlResponse("<html></html>", { url: "https://evil.example.com/" }),
-    ) as unknown as typeof fetch;
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(null, {
+          status: 301,
+          headers: { location: "https://evil.example.com/" },
+        }),
+    );
+    transport.fetch = fetchMock as unknown as typeof transport.fetch;
 
     const res = await GET(makeRequest("https://foo.webflow.io/"));
     expect(res.status).toBe(502);
     const body = await res.json();
     expect(body.error).toMatch(/redirect left \.webflow\.io domain/i);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   describe("test_TH_069_staging_password_detection", () => {
@@ -244,9 +255,9 @@ describe("GET /api/webflow-source", () => {
           </body>
         </html>
       `;
-      global.fetch = vi.fn(async () =>
+      transport.fetch = vi.fn(async () =>
         htmlResponse(gateHtml, { url: "https://foo.webflow.io/" }),
-      ) as unknown as typeof fetch;
+      ) as unknown as typeof transport.fetch;
 
       const res = await GET(makeRequest("https://foo.webflow.io/"));
       expect(res.status).toBe(403);
@@ -271,11 +282,11 @@ describe("GET /api/webflow-source", () => {
     });
 
     it("ordinary pages are not misclassified as password gates", async () => {
-      global.fetch = vi.fn(async () =>
+      transport.fetch = vi.fn(async () =>
         htmlResponse("<html><body>Welcome to my site</body></html>", {
           url: "https://foo.webflow.io/",
         }),
-      ) as unknown as typeof fetch;
+      ) as unknown as typeof transport.fetch;
 
       const res = await GET(makeRequest("https://foo.webflow.io/"));
       expect(res.status).toBe(200);

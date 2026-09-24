@@ -2,6 +2,7 @@
 // Mocks fetch and Supabase auth to cover every status code branch without
 // hitting the network or a real session.
 
+import dns from "node:dns";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("server-only", () => ({}));
@@ -19,6 +20,11 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 
 import { GET } from "@/app/api/webflow-source/css/route";
+import { transport } from "@/lib/site-preview/safe-fetch";
+
+const realTransportFetch = transport.fetch;
+const realDnsLookup = dns.promises.lookup;
+let fetchMock: ReturnType<typeof vi.fn>;
 
 function makeRequest(url: string) {
   return { nextUrl: new URL(url) } as unknown as Parameters<typeof GET>[0];
@@ -27,11 +33,16 @@ function makeRequest(url: string) {
 describe("F026 /api/webflow-source/css", () => {
   beforeEach(() => {
     currentUser = { id: "user-1" };
-    vi.stubGlobal("fetch", vi.fn());
+    fetchMock = vi.fn();
+    transport.fetch = fetchMock as unknown as typeof transport.fetch;
+    dns.promises.lookup = vi.fn(async () => [
+      { address: "1.2.3.4", family: 4 },
+    ]) as unknown as typeof dns.promises.lookup;
   });
 
   afterEach(() => {
-    vi.unstubAllGlobals();
+    transport.fetch = realTransportFetch;
+    dns.promises.lookup = realDnsLookup;
   });
 
   it("test_TH_082_auth_required_returns_401", async () => {
@@ -69,7 +80,7 @@ describe("F026 /api/webflow-source/css", () => {
 
   it("test_TH_080_TH_084_proxies_css_with_correct_content_type", async () => {
     const body = "body { color: red; }";
-    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+    fetchMock.mockResolvedValue(
       new Response(body, {
         status: 200,
         headers: { "content-type": "text/css; charset=utf-8" },
@@ -84,14 +95,15 @@ describe("F026 /api/webflow-source/css", () => {
 
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("text/css");
-    expect(res.headers.get("cache-control")).toBe("public, max-age=300");
+    expect(res.headers.get("cache-control")).toBe("private, max-age=300");
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
     const text = await res.text();
     expect(text).toBe(body);
   });
 
   it("test_TH_083_oversized_body_returns_413", async () => {
     const big = "a".repeat(512 * 1024 + 1);
-    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+    fetchMock.mockResolvedValue(
       new Response(big, { status: 200 }),
     );
 
@@ -105,7 +117,7 @@ describe("F026 /api/webflow-source/css", () => {
   });
 
   it("network error returns 502", async () => {
-    (global.fetch as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("boom"));
+    fetchMock.mockRejectedValue(new Error("boom"));
 
     const res = await GET(
       makeRequest(
@@ -117,7 +129,7 @@ describe("F026 /api/webflow-source/css", () => {
   });
 
   it("upstream non-ok status returns 502", async () => {
-    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+    fetchMock.mockResolvedValue(
       new Response("not found", { status: 404 }),
     );
 
@@ -128,5 +140,31 @@ describe("F026 /api/webflow-source/css", () => {
     );
 
     expect(res.status).toBe(502);
+  });
+
+  it("redirect to a non-allowlisted host is refused before it is requested", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(null, { status: 302, headers: { location: "https://evil.com/x.css" } }),
+    );
+    const res = await GET(
+      makeRequest(
+        "http://localhost/api/webflow-source/css?url=https://site.webflow.io/style.css",
+      ),
+    );
+    expect(res.status).toBe(403);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("an allowlisted host resolving to a private address returns 400 without fetching", async () => {
+    dns.promises.lookup = vi.fn(async () => [
+      { address: "::ffff:169.254.169.254", family: 6 },
+    ]) as unknown as typeof dns.promises.lookup;
+    const res = await GET(
+      makeRequest(
+        "http://localhost/api/webflow-source/css?url=https://site.webflow.io/style.css",
+      ),
+    );
+    expect(res.status).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

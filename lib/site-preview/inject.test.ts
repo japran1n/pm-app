@@ -120,11 +120,11 @@ vi.mock("@/lib/queries/project-site", () => ({
 vi.mock("dns", () => ({
   default: {
     promises: {
-      lookup: async () => [{ address: "203.0.113.10", family: 4 }],
+      lookup: async () => [{ address: "93.184.215.14", family: 4 }],
     },
   },
   promises: {
-    lookup: async () => [{ address: "203.0.113.10", family: 4 }],
+    lookup: async () => [{ address: "93.184.215.14", family: 4 }],
   },
 }));
 

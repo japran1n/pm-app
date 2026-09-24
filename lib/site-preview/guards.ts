@@ -20,6 +20,7 @@
 //              `https://sajt.webflow.io.evil.com/`.
 
 import dns from "dns";
+import { isIP } from "net";
 import { createClient } from "@/lib/supabase/server";
 import { getProjectStagingLinks } from "@/lib/queries/project-site";
 
@@ -27,100 +28,153 @@ import { getProjectStagingLinks } from "@/lib/queries/project-site";
 // SSRF address classification — pure, exported for tests (F03/F12)
 // ---------------------------------------------------------------------------
 
-function ipv4ToInt(ip: string): number {
-  return ip
-    .split(".")
-    .reduce((acc, octet) => (acc << 8) | parseInt(octet, 10), 0) >>> 0;
+// Every address is parsed to raw bytes before classification, so alternate
+// spellings (`::ffff:127.0.0.1`, `::ffff:7f00:1`, `0:0:0:0:0:0:0:1`, `::`,
+// bracketed or zone-suffixed forms) cannot slip past a string comparison.
+// Anything that does not parse as an IP literal is treated as blocked.
+
+function parseIpv4(ip: string): number[] | null {
+  if (isIP(ip) !== 4) return null;
+  const parts = ip.split(".").map((p) => Number(p));
+  return parts.length === 4 ? parts : null;
 }
 
-function inCidrV4(ip: string, cidr: string): boolean {
-  const [base, bits] = cidr.split("/");
-  const mask = bits === "32" ? 0xffffffff : (~0 << (32 - parseInt(bits, 10))) >>> 0;
-  return (ipv4ToInt(ip) & mask) === (ipv4ToInt(base) & mask);
+function parseIpv6(input: string): number[] | null {
+  let ip = input;
+  if (ip.startsWith("[") && ip.endsWith("]")) ip = ip.slice(1, -1);
+  const zone = ip.indexOf("%");
+  if (zone !== -1) ip = ip.slice(0, zone);
+  if (isIP(ip) !== 6) return null;
+
+  let tail: number[] = [];
+  const lastColon = ip.lastIndexOf(":");
+  const lastGroup = ip.slice(lastColon + 1);
+  if (lastGroup.includes(".")) {
+    const v4 = parseIpv4(lastGroup);
+    if (!v4) return null;
+    tail = v4;
+    ip = ip.slice(0, lastColon + 1) + "0:0";
+  }
+
+  const [left, right] = ip.includes("::") ? ip.split("::") : [ip, undefined];
+  const leftGroups = left ? left.split(":").filter((g) => g !== "") : [];
+  const rightGroups = right ? right.split(":").filter((g) => g !== "") : [];
+  const missing = 8 - leftGroups.length - rightGroups.length;
+  if (right === undefined && missing !== 0) return null;
+  const groups = [
+    ...leftGroups,
+    ...Array<string>(right === undefined ? 0 : missing).fill("0"),
+    ...rightGroups,
+  ];
+  if (groups.length !== 8) return null;
+
+  const bytes: number[] = [];
+  for (const g of groups) {
+    const n = parseInt(g, 16);
+    bytes.push((n >> 8) & 0xff, n & 0xff);
+  }
+  if (tail.length === 4) bytes.splice(12, 4, ...tail);
+  return bytes;
 }
 
-function inCidrV6(ip: string, cidr: string): boolean {
-  const [base, bitsStr] = cidr.split("/");
-  const bits = parseInt(bitsStr, 10);
+function isBlockedIpv4([a, b, c]: number[]): boolean {
+  return (
+    a === 0 || // 0.0.0.0/8 "this network" (0.0.0.1 reaches localhost on Linux)
+    a === 10 ||
+    a === 127 ||
+    (a === 100 && b >= 64 && b <= 127) || // CGNAT
+    (a === 169 && b === 254) || // link-local, cloud metadata
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 0 && c === 0) || // IETF protocol assignments
+    (a === 192 && b === 0 && c === 2) || // TEST-NET-1
+    (a === 192 && b === 88 && c === 99) || // 6to4 relay anycast
+    (a === 192 && b === 168) ||
+    (a === 198 && (b === 18 || b === 19)) || // benchmarking
+    (a === 198 && b === 51 && c === 100) || // TEST-NET-2
+    (a === 203 && b === 0 && c === 113) || // TEST-NET-3
+    a >= 224 // multicast, reserved, broadcast
+  );
+}
 
-  // Expand both to comparable hex strings at byte boundary
-  const norm = (addr: string): string => {
-    // Minimal IPv6 normalisation sufficient for the ranges we check
-    if (addr.includes("::")) {
-      const [left, right] = addr.split("::");
-      const leftGroups = left ? left.split(":") : [];
-      const rightGroups = right ? right.split(":") : [];
-      const missing = 8 - leftGroups.length - rightGroups.length;
-      const groups = [
-        ...leftGroups,
-        ...Array(missing).fill("0"),
-        ...rightGroups,
-      ];
-      return groups.map((g) => g.padStart(4, "0")).join(":");
-    }
-    return addr
-      .split(":")
-      .map((g) => g.padStart(4, "0"))
-      .join(":");
-  };
+function isBlockedIpv6(bytes: number[]): boolean {
+  const isZero = (from: number, to: number) =>
+    bytes.slice(from, to).every((b) => b === 0);
 
-  const ipNorm = norm(ip.toLowerCase());
-  const baseNorm = norm(base.toLowerCase());
-
-  const ipHex = ipNorm.replace(/:/g, "");
-  const baseHex = baseNorm.replace(/:/g, "");
-
-  const prefixBytes = Math.floor(bits / 4); // hex chars for full nibbles
-  return ipHex.slice(0, prefixBytes) === baseHex.slice(0, prefixBytes);
+  // ::/96 — unspecified (::), loopback (::1) and IPv4-compatible (::a.b.c.d).
+  if (isZero(0, 12)) return true;
+  // ::ffff:0:0/96 — IPv4-mapped: classify the embedded IPv4 address.
+  if (isZero(0, 10) && bytes[10] === 0xff && bytes[11] === 0xff) {
+    return isBlockedIpv4(bytes.slice(12, 16));
+  }
+  // 64:ff9b::/96 NAT64 — classify the embedded IPv4 address.
+  if (bytes[0] === 0x00 && bytes[1] === 0x64 && bytes[2] === 0xff && bytes[3] === 0x9b) {
+    if (isZero(4, 12)) return isBlockedIpv4(bytes.slice(12, 16));
+    return true; // 64:ff9b:1::/48 local-use NAT64
+  }
+  // 2002::/16 6to4 — classify the embedded IPv4 address.
+  if (bytes[0] === 0x20 && bytes[1] === 0x02) {
+    return isBlockedIpv4(bytes.slice(2, 6));
+  }
+  // 2001::/32 Teredo, 2001:db8::/32 documentation.
+  if (bytes[0] === 0x20 && bytes[1] === 0x01) {
+    if (bytes[2] === 0x00 && bytes[3] === 0x00) return true;
+    if (bytes[2] === 0x0d && bytes[3] === 0xb8) return true;
+  }
+  // 100::/64 discard-only.
+  if (bytes[0] === 0x01 && bytes[1] === 0x00 && isZero(2, 8)) return true;
+  if ((bytes[0] & 0xfe) === 0xfc) return true; // fc00::/7 unique local
+  if (bytes[0] === 0xfe && (bytes[1] & 0xc0) === 0x80) return true; // fe80::/10
+  if (bytes[0] === 0xfe && (bytes[1] & 0xc0) === 0xc0) return true; // fec0::/10
+  if (bytes[0] === 0xff) return true; // multicast
+  return false;
 }
 
 export function isBlockedAddress(ip: string): boolean {
-  const lower = ip.toLowerCase().trim();
-
-  if (lower === "localhost") return true;
-  if (lower === "0.0.0.0") return true;
-  if (lower === "::1") return true;
-
-  // IPv4 ranges
-  if (ip.includes(".")) {
-    return (
-      inCidrV4(ip, "127.0.0.0/8") ||
-      inCidrV4(ip, "10.0.0.0/8") ||
-      inCidrV4(ip, "172.16.0.0/12") ||
-      inCidrV4(ip, "192.168.0.0/16") ||
-      inCidrV4(ip, "169.254.0.0/16") ||
-      inCidrV4(ip, "100.64.0.0/10")
-    );
-  }
-
-  // IPv6 ranges
-  return inCidrV6(lower, "fe80::/10") || inCidrV6(lower, "fc00::/7");
+  const trimmed = ip.trim().toLowerCase();
+  const v4 = parseIpv4(trimmed);
+  if (v4) return isBlockedIpv4(v4);
+  const v6 = parseIpv6(trimmed);
+  if (v6) return isBlockedIpv6(v6);
+  return true;
 }
 
 export const BLOCKED_ADDRESS_ERROR = "URL resolves to a blocked address";
 
 /**
- * Resolves `hostname` and throws if it is a literal `localhost`, fails to
- * resolve, or resolves to any blocked address. Exported so the HTML proxy can
- * re-run the check on the *final* URL after `redirect: "follow"`.
+ * Resolves `hostname` and throws if it is `localhost`, fails to resolve, or
+ * resolves to any blocked address. `safeFetch` (./safe-fetch.ts) runs this on
+ * every redirect hop and repeats the check at connect time.
  */
-export async function assertResolvableAndPublic(hostname: string): Promise<void> {
-  if (hostname.toLowerCase() === "localhost") {
+export async function assertResolvableAndPublic(
+  hostname: string,
+): Promise<dns.LookupAddress[]> {
+  let host = hostname.toLowerCase();
+  if (host.startsWith("[") && host.endsWith("]")) host = host.slice(1, -1);
+  if (host.endsWith(".")) host = host.slice(0, -1);
+  if (!host || host === "localhost" || host.endsWith(".localhost")) {
     throw new Error(BLOCKED_ADDRESS_ERROR);
+  }
+
+  const literalFamily = isIP(host);
+  if (literalFamily !== 0) {
+    if (isBlockedAddress(host)) throw new Error(BLOCKED_ADDRESS_ERROR);
+    return [{ address: host, family: literalFamily }];
   }
 
   let addresses: dns.LookupAddress[];
   try {
-    addresses = await dns.promises.lookup(hostname, { all: true });
+    addresses = await dns.promises.lookup(host, { all: true });
   } catch {
     throw new Error(BLOCKED_ADDRESS_ERROR);
   }
 
+  if (addresses.length === 0) throw new Error(BLOCKED_ADDRESS_ERROR);
   for (const { address } of addresses) {
     if (isBlockedAddress(address)) {
       throw new Error(BLOCKED_ADDRESS_ERROR);
     }
   }
+  return addresses;
 }
 
 // ---------------------------------------------------------------------------

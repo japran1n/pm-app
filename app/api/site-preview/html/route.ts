@@ -62,22 +62,51 @@
 // `components/shared/site-preview-frame.tsx` — if that attribute pair ever
 // changes, this route becomes a full same-origin XSS vector.
 
+// -------------------------------------------------------------------------
+// Why the response is text/plain, not text/html
+// -------------------------------------------------------------------------
+// The component reads this route with `fetch()` + `res.text()` and hands the
+// string to `srcdoc`; it never navigates to it. Served as `text/html` on our
+// origin, the same URL opened as a top-level page (one click on a crafted
+// link) would run the foreign script with our origin's cookies and storage.
+// So: `text/plain` + `nosniff` (the browser will not render it as HTML), a
+// `sandbox` CSP (an opaque origin even if something did render it), and any
+// request whose Sec-Fetch-Dest is not "empty" (a navigation, frame, embed or
+// object load rather than a fetch) is refused outright.
+
 export const dynamic = "force-dynamic";
 
 import { NextResponse, type NextRequest } from "next/server";
 import {
   BLOCKED_ADDRESS_ERROR,
   BodyTooLargeError,
-  assertResolvableAndPublic,
   cappedBodyReader,
   runPreviewGuards,
 } from "@/lib/site-preview/guards";
+import { SafeFetchError, safeFetch } from "@/lib/site-preview/safe-fetch";
 import { injectBaseTag, injectNavInterceptor } from "@/lib/site-preview/inject";
 import { logger } from "@/lib/observability/logger";
 
 const MAX_BYTES = 2 * 1024 * 1024;
 
+const SECURITY_HEADERS = {
+  "cache-control": "no-store",
+  "x-content-type-options": "nosniff",
+  "content-security-policy": "sandbox; default-src 'none'",
+  "cross-origin-resource-policy": "same-origin",
+} as const;
+
+function jsonError(error: string, status: number): NextResponse {
+  return NextResponse.json({ error }, { status, headers: SECURITY_HEADERS });
+}
+
 export async function GET(request: NextRequest) {
+  const dest = request.headers.get("sec-fetch-dest");
+  const mode = request.headers.get("sec-fetch-mode");
+  if ((dest && dest !== "empty") || mode === "navigate") {
+    return jsonError("Not a document", 403);
+  }
+
   const { searchParams } = request.nextUrl;
   const rawUrl = searchParams.get("url") ?? "";
   const projectId = searchParams.get("projectId") ?? "";
@@ -85,57 +114,48 @@ export async function GET(request: NextRequest) {
   // auth → https → SSRF → origin allowlist
   const guard = await runPreviewGuards({ rawUrl, projectId, mode: "origin" });
   if (!guard.ok) {
-    return NextResponse.json({ error: guard.error }, { status: guard.status });
+    return jsonError(guard.error, guard.status);
   }
 
+  // Every redirect hop is re-validated before it is followed, and the
+  // connection itself is pinned to a checked address (see safe-fetch.ts).
+  // No cookies, no Authorization — the fetch is anonymous by construction
+  // (SP-067).
   let res: Response;
   try {
-    res = await fetch(guard.url.toString(), {
-      redirect: "follow",
-      signal: AbortSignal.timeout(10_000),
-      // No cookies, no Authorization — the fetch is anonymous by construction
-      // (SP-067). `fetch` sends no credentials unless asked; we never ask.
+    ({ response: res } = await safeFetch(guard.url, {
+      timeoutMs: 10_000,
       headers: { "user-agent": "pm-app staging preview" },
-    });
+    }));
   } catch (err) {
+    if (err instanceof SafeFetchError) {
+      return err.code === "too_many_redirects"
+        ? jsonError("Too many redirects", 502)
+        : jsonError(BLOCKED_ADDRESS_ERROR, 400);
+    }
     logger.warn("site-preview html fetch failed", { error: err });
-    return NextResponse.json({ error: "Upstream timed out" }, { status: 504 });
-  }
-
-  // `redirect: "follow"` can land somewhere the pre-flight SSRF check never saw
-  // (a 302 to 169.254.169.254, say), so re-validate the *final* host.
-  try {
-    await assertResolvableAndPublic(new URL(res.url).hostname);
-  } catch {
-    return NextResponse.json({ error: BLOCKED_ADDRESS_ERROR }, { status: 400 });
+    return jsonError("Upstream timed out", 504);
   }
 
   if (!res.ok) {
-    return NextResponse.json(
-      { error: `Upstream returned ${res.status}` },
-      { status: res.status },
-    );
+    return jsonError(`Upstream returned ${res.status}`, res.status);
   }
 
   if (!res.body) {
-    return NextResponse.json({ error: "Upstream returned no body" }, { status: 502 });
+    return jsonError("Upstream returned no body", 502);
   }
 
   // SP-063 — streamed 2 MB cap: count bytes as they arrive and cancel the
   // stream the moment the limit is crossed, so we never buffer a huge body.
-  // Shared with every other site-preview caller via `cappedBodyReader`.
   let html: string;
   try {
     html = await cappedBodyReader(res, MAX_BYTES);
   } catch (err) {
     if (err instanceof BodyTooLargeError) {
-      return NextResponse.json(
-        { error: "Response too large" },
-        { status: 502 },
-      );
+      return jsonError("Response too large", 502);
     }
     logger.warn("site-preview html stream failed", { error: err });
-    return NextResponse.json({ error: "Upstream timed out" }, { status: 504 });
+    return jsonError("Upstream timed out", 504);
   }
 
   // Relative URLs must resolve against the staging origin, not the srcdoc base.
@@ -143,15 +163,13 @@ export async function GET(request: NextRequest) {
   // Link clicks are handed back to the host page instead of navigating.
   html = injectNavInterceptor(html);
 
-  // The response is built from scratch — deliberately. Nothing from the upstream
-  // response headers is copied across, so no upstream `set-cookie` can ever be
-  // forwarded to our client (SP-068). `no-store` keeps staging HTML out of every
-  // cache (SP-069).
+  // Built from scratch — nothing from the upstream response headers is copied
+  // across, so no upstream `set-cookie` can ever be forwarded (SP-068).
   return new NextResponse(html, {
     status: 200,
     headers: {
-      "content-type": "text/html; charset=utf-8",
-      "cache-control": "no-store",
+      ...SECURITY_HEADERS,
+      "content-type": "text/plain; charset=utf-8",
     },
   });
 }

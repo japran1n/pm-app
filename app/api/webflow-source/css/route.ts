@@ -17,20 +17,22 @@
 // tied to a specific project's staging links — any authenticated workspace
 // member may fetch any `*.webflow.io` stylesheet, matching F023's contract.
 //
-// FU-1 (scrutiny B1 fix) — the host allowlist is re-checked on `res.url`
-// after `redirect: "follow"` runs, mirroring F024's fix for the HTML proxy
-// (TH-060/TH-061). Without this, an initial `*.webflow.io` URL that 30x
-// redirects to an internal/arbitrary host would be fetched and its body
-// returned, an SSRF hole.
+// FU-1 (scrutiny B1 fix) — redirects are followed by `safeFetch`, which
+// re-checks the host allowlist AND the resolved address on every hop before
+// requesting it, and pins the connection to a checked address. Without this,
+// a `*.webflow.io` host resolving (or redirecting) to an internal address
+// would be fetched and its body returned, an SSRF hole.
 
 export const dynamic = "force-dynamic";
 
 import { NextResponse, type NextRequest } from "next/server";
 import {
+  BLOCKED_ADDRESS_ERROR,
   BodyTooLargeError,
   cappedBodyReader,
   isWebflowHost,
 } from "@/lib/site-preview/guards";
+import { SafeFetchError, safeFetch } from "@/lib/site-preview/safe-fetch";
 import { createClient } from "@/lib/supabase/server";
 import { logger } from "@/lib/observability/logger";
 
@@ -77,26 +79,24 @@ export async function GET(request: NextRequest) {
 
   let res: Response;
   try {
-    res = await fetch(url.toString(), {
-      redirect: "follow",
-      signal: AbortSignal.timeout(10_000),
+    ({ response: res } = await safeFetch(url, {
+      timeoutMs: 10_000,
+      allowUrl: (hop) => isAllowedCssHost(hop.toString()),
       // Anonymous fetch — no cookies, no Authorization header.
       headers: { "user-agent": "pm-app webflow source proxy" },
-    });
+    }));
   } catch (err) {
+    if (err instanceof SafeFetchError) {
+      if (err.code === "not_allowed") {
+        return NextResponse.json(
+          { error: "redirect left the allowed CSS host set" },
+          { status: 403 },
+        );
+      }
+      return NextResponse.json({ error: BLOCKED_ADDRESS_ERROR }, { status: 400 });
+    }
     logger.warn("webflow-source css fetch failed", { error: err });
     return NextResponse.json({ error: "Upstream request failed" }, { status: 502 });
-  }
-
-  // SSRF fix (FU-1) — redirects can land somewhere the pre-flight host check
-  // never saw. Re-validate the *final* URL is still a webflow.io host,
-  // matching the HTML proxy route (F024, TH-060/TH-061).
-  const finalUrl = res.url || url.toString();
-  if (!isAllowedCssHost(finalUrl)) {
-    return NextResponse.json(
-      { error: "redirect left the allowed CSS host set" },
-      { status: 403 },
-    );
   }
 
   if (!res.ok) {
@@ -129,6 +129,7 @@ export async function GET(request: NextRequest) {
     headers: {
       "content-type": "text/css",
       "cache-control": "private, max-age=300",
+      "x-content-type-options": "nosniff",
     },
   });
 }

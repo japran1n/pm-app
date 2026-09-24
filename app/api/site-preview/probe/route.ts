@@ -10,6 +10,7 @@ export const dynamic = "force-dynamic";
 
 import { NextResponse, type NextRequest } from "next/server";
 import { readFramingPolicy, runPreviewGuards } from "@/lib/site-preview/guards";
+import { safeFetch } from "@/lib/site-preview/safe-fetch";
 import { logger } from "@/lib/observability/logger";
 
 export async function GET(request: NextRequest) {
@@ -26,10 +27,10 @@ export async function GET(request: NextRequest) {
   const selfOrigin = new URL(request.url).origin;
 
   try {
-    const response = await fetch(guard.url.toString(), {
+    const { response } = await safeFetch(guard.url, {
       method: "HEAD",
       redirect: "manual",
-      signal: AbortSignal.timeout(5000),
+      timeoutMs: 5000,
     });
 
     const policy = readFramingPolicy(response.headers, selfOrigin);

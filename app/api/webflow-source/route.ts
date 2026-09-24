@@ -41,6 +41,7 @@ import {
   isWebflowHost,
   isWebflowPasswordGate,
 } from "@/lib/site-preview/guards";
+import { SafeFetchError, safeFetch } from "@/lib/site-preview/safe-fetch";
 import { createClient } from "@/lib/supabase/server";
 import { logger } from "@/lib/observability/logger";
 
@@ -86,36 +87,32 @@ export async function GET(request: NextRequest) {
     return jsonNoStore({ error: "URL must be a webflow.io host" }, 403);
   }
 
+  // F024 (TH-060, TH-061) — every redirect hop is re-validated (public
+  // address, still a webflow.io host) before it is requested, and the
+  // connection is pinned to a checked address.
   let res: Response;
+  let finalUrl: string;
   try {
-    res = await fetch(parsed.toString(), {
-      redirect: "follow",
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    const result = await safeFetch(parsed, {
+      timeoutMs: FETCH_TIMEOUT_MS,
+      allowUrl: (hop) => isWebflowHost(hop.toString()),
       // No cookies, no Authorization — anonymous by construction (TH-066).
       headers: { "user-agent": "pm-app webflow source fetch" },
     });
+    res = result.response;
+    finalUrl = result.url.toString();
   } catch (err) {
+    if (err instanceof SafeFetchError) {
+      if (err.code === "not_allowed") {
+        return jsonNoStore({ error: "redirect left .webflow.io domain" }, 502);
+      }
+      return jsonNoStore({ error: BLOCKED_ADDRESS_ERROR }, 400);
+    }
     if (err instanceof Error && err.name === "TimeoutError") {
       return jsonNoStore({ error: "Upstream timed out" }, 504);
     }
     logger.warn("webflow-source fetch failed", { error: err });
     return jsonNoStore({ error: "Upstream request failed" }, 502);
-  }
-
-  // F024 (TH-060, TH-061) — redirects can land somewhere the pre-flight
-  // checks never saw. Re-validate the *final* URL: still resolvable/public,
-  // and still on a webflow.io host.
-  const finalUrl = res.url || parsed.toString();
-  try {
-    await assertResolvableAndPublic(new URL(finalUrl).hostname);
-  } catch {
-    return jsonNoStore({ error: BLOCKED_ADDRESS_ERROR }, 400);
-  }
-  if (!isWebflowHost(finalUrl)) {
-    return jsonNoStore(
-      { error: "redirect left .webflow.io domain" },
-      502,
-    );
   }
 
   if (!res.ok) {
