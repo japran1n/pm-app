@@ -38,7 +38,12 @@ import {
 import { getWorkspaceProjectTemplateOptions } from "@/lib/queries/templates";
 import type { TaskTemplatePickerOption } from "@/lib/queries/templates";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
-import { canCreateProject, canWrite } from "@/lib/auth/permissions";
+import { canCreateProject, canTeamWrite } from "@/lib/auth/permissions";
+import {
+  isProjectVisibleToCaller,
+  type ProjectVisibility,
+} from "@/lib/actions/project-visibility";
+import { writeAudit } from "@/lib/activity/audit";
 import { calculatePosition } from "@/lib/board/position";
 import { cloneTaskFields } from "@/lib/recurrence/clone-fields";
 import {
@@ -76,7 +81,7 @@ export async function saveTaskAsTemplate(
     };
   }
 
-  const { user } = await getCurrentUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to save a template." };
@@ -88,7 +93,7 @@ export async function saveTaskAsTemplate(
   const { data: sourceRow, error: sourceError } = await admin
     .from("tasks")
     .select(
-      "id, project_id, title, description, description_json, priority, tags, estimate_minutes, deleted_at, projects(workspace_id)",
+      "id, project_id, title, description, description_json, priority, tags, estimate_minutes, deleted_at, projects(workspace_id, visibility)",
     )
     .eq("id", parsed.data.taskId)
     .is("deleted_at", null)
@@ -99,8 +104,8 @@ export async function saveTaskAsTemplate(
   }
 
   const project = sourceRow.projects as
-    | { workspace_id: string }
-    | { workspace_id: string }[]
+    | { workspace_id: string; visibility: string | null }
+    | { workspace_id: string; visibility: string | null }[]
     | null;
   const projectRow = Array.isArray(project) ? project[0] : project;
   const workspaceId = projectRow?.workspace_id;
@@ -122,13 +127,27 @@ export async function saveTaskAsTemplate(
     };
   }
 
-  // Saving a template is a write (it creates a new row) — gated the same
-  // way createTask/duplicateTask gate their own writes (AS-216/AS-217:
-  // viewers are read-only).
-  if (!canWrite({ role: membership.role })) {
+  // The template is readable by every non-guest member of the workspace,
+  // so the caller must be able to see the source project, and saving one
+  // takes a team write role (guests, viewers and clients are refused).
+  const sourceVisible = await isProjectVisibleToCaller(
+    admin,
+    {
+      projectId: sourceRow.project_id,
+      visibility: (projectRow?.visibility ?? "workspace") as ProjectVisibility,
+    },
+    user.id,
+    membership.role,
+  );
+
+  if (!sourceVisible) {
+    return { ok: false, error: "Task not found." };
+  }
+
+  if (!canTeamWrite({ role: membership.role })) {
     return {
       ok: false,
-      error: "Viewers don't have permission to save templates.",
+      error: "You don't have permission to save templates.",
     };
   }
 
@@ -190,6 +209,14 @@ export async function saveTaskAsTemplate(
       error: "Something went wrong. Please try again in a moment.",
     };
   }
+
+  await writeAudit(supabase, {
+    workspaceId,
+    action: "task_template.created",
+    targetType: "task_template",
+    targetId: inserted.id,
+    metadata: { kind: "task", sourceTaskId: parsed.data.taskId },
+  });
 
   const { data: workspaceRow } = await admin
     .from("workspaces")
@@ -267,7 +294,7 @@ export async function createTaskFromTemplate(
     };
   }
 
-  const { user } = await getCurrentUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return {
@@ -303,10 +330,24 @@ export async function createTaskFromTemplate(
     };
   }
 
-  if (!canWrite({ role: membership.role })) {
+  const targetVisible = await isProjectVisibleToCaller(
+    admin,
+    {
+      projectId: projectRow.id,
+      visibility: (projectRow.visibility ?? "workspace") as ProjectVisibility,
+    },
+    user.id,
+    membership.role,
+  );
+
+  if (!targetVisible) {
+    return { ok: false, error: "Project not found." };
+  }
+
+  if (!canTeamWrite({ role: membership.role })) {
     return {
       ok: false,
-      error: "Viewers don't have permission to create tasks.",
+      error: "You don't have permission to create tasks from a template.",
     };
   }
 
@@ -523,6 +564,14 @@ export async function createTaskFromTemplate(
     }
   }
 
+  await writeAudit(supabase, {
+    workspaceId: projectRow.workspace_id,
+    action: "task_template.applied",
+    targetType: "task_template",
+    targetId: parsed.data.templateId,
+    metadata: { kind: "task", projectId: projectRow.id, taskId: inserted.id },
+  });
+
   const { data: workspaceRow } = await admin
     .from("workspaces")
     .select("slug")
@@ -679,7 +728,7 @@ export async function deleteTemplate(
     };
   }
 
-  const { user } = await getCurrentUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to delete a template." };
@@ -690,7 +739,7 @@ export async function deleteTemplate(
 
   const { data: templateRow, error: templateError } = await admin
     .from("task_templates")
-    .select("id, workspace_id, created_by")
+    .select("id, workspace_id, created_by, kind, name")
     .eq("id", parsed.data.templateId)
     .maybeSingle();
 
@@ -734,6 +783,14 @@ export async function deleteTemplate(
       error: "Something went wrong. Please try again in a moment.",
     };
   }
+
+  await writeAudit(supabase, {
+    workspaceId: templateRow.workspace_id,
+    action: "task_template.deleted",
+    targetType: "task_template",
+    targetId: parsed.data.templateId,
+    metadata: { kind: templateRow.kind, name: templateRow.name },
+  });
 
   const { data: workspaceRow } = await admin
     .from("workspaces")
@@ -812,14 +869,13 @@ export async function setDefaultTemplate(
   // Clearing the default: unset whichever `kind='project'` template in
   // this workspace currently holds it (at most one, per the partial
   // unique index), no target template row to authorize against — any
-  // active non-guest member with write access may clear it, mirroring
-  // canWrite's own bar for the other template-management controls, since
+  // team member with write access (canTeamWrite) may clear it, since
   // there's no single "creator" to defer to once nothing is selected.
   if (parsed.data.templateId === null) {
-    if (!canWrite({ role: membership.role })) {
+    if (!canTeamWrite({ role: membership.role })) {
       return {
         ok: false,
-        error: "Viewers don't have permission to change templates.",
+        error: "You don't have permission to change templates.",
       };
     }
 
@@ -989,7 +1045,7 @@ export async function saveProjectAsTemplate(
     };
   }
 
-  const { user } = await getCurrentUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to save a template." };
@@ -1000,7 +1056,7 @@ export async function saveProjectAsTemplate(
 
   const { data: projectRow, error: projectError } = await admin
     .from("projects")
-    .select("id, workspace_id, deleted_at")
+    .select("id, workspace_id, visibility, deleted_at")
     .eq("id", parsed.data.projectId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -1024,12 +1080,27 @@ export async function saveProjectAsTemplate(
     };
   }
 
-  // Same write gate as saveTaskAsTemplate: saving a template creates a
-  // new row, so viewers (read-only, AS-216/AS-217) are excluded.
-  if (!canWrite({ role: membership.role })) {
+  // Same gate as saveTaskAsTemplate: the snapshot below copies the whole
+  // project into a row every non-guest member can read, so the caller must
+  // be able to see the project and hold a team write role.
+  const projectVisible = await isProjectVisibleToCaller(
+    admin,
+    {
+      projectId: projectRow.id,
+      visibility: (projectRow.visibility ?? "workspace") as ProjectVisibility,
+    },
+    user.id,
+    membership.role,
+  );
+
+  if (!projectVisible) {
+    return { ok: false, error: "Project not found." };
+  }
+
+  if (!canTeamWrite({ role: membership.role })) {
     return {
       ok: false,
-      error: "Viewers don't have permission to save templates.",
+      error: "You don't have permission to save templates.",
     };
   }
 
@@ -1266,6 +1337,19 @@ export async function saveProjectAsTemplate(
     };
   }
 
+  await writeAudit(supabase, {
+    workspaceId,
+    action: "task_template.created",
+    targetType: "task_template",
+    targetId: inserted.id,
+    metadata: {
+      kind: "project",
+      sourceProjectId: projectRow.id,
+      sourceProjectVisibility: projectRow.visibility ?? "workspace",
+      taskCount: sortedTasks.length,
+    },
+  });
+
   const { data: workspaceRow } = await admin
     .from("workspaces")
     .select("slug")
@@ -1339,7 +1423,7 @@ export async function createProjectFromTemplate(
     };
   }
 
-  const { user } = await getCurrentUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return {
@@ -1647,6 +1731,14 @@ export async function createProjectFromTemplate(
       }
     }
   }
+
+  await writeAudit(supabase, {
+    workspaceId: parsed.data.workspaceId,
+    action: "task_template.applied",
+    targetType: "task_template",
+    targetId: parsed.data.templateId,
+    metadata: { kind: "project", projectId: created.project_id as string },
+  });
 
   const { data: workspaceRow } = await admin
     .from("workspaces")

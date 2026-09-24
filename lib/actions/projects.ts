@@ -15,9 +15,13 @@ import {
   requireActiveMembership,
   requireWorkspaceAdmin,
 } from "@/lib/auth/require-membership";
-import { canCreateProject, canWrite } from "@/lib/auth/permissions";
+import { canCreateProject, canTeamWrite, canWrite } from "@/lib/auth/permissions";
 import { writeAudit } from "@/lib/activity/audit";
-import { isProjectVisibleToCaller } from "@/lib/actions/project-visibility";
+import {
+  filterProjectsVisibleToCaller,
+  isProjectVisibleToCaller,
+  type ProjectVisibility,
+} from "@/lib/actions/project-visibility";
 import type { Database } from "@/lib/supabase/database.types";
 import type { ActionResult } from "@/lib/actions/authz";
 
@@ -915,7 +919,7 @@ export async function reorderProject(
 
   const { data: target, error: targetError } = await admin
     .from("projects")
-    .select("id, workspace_id")
+    .select("id, workspace_id, visibility")
     .eq("id", projectId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -940,16 +944,30 @@ export async function reorderProject(
     };
   }
 
-  if (!canWrite({ role: membership.role })) {
+  if (!canTeamWrite({ role: membership.role })) {
     return {
       ok: false,
-      error: "Viewers don't have permission to reorder projects.",
+      error: "You don't have permission to reorder projects.",
     };
+  }
+
+  const targetVisible = await isProjectVisibleToCaller(
+    admin,
+    {
+      projectId: target.id,
+      visibility: (target.visibility ?? "workspace") as ProjectVisibility,
+    },
+    user.id,
+    membership.role,
+  );
+
+  if (!targetVisible) {
+    return { ok: false, error: "Project not found." };
   }
 
   const { data: siblingRows, error: siblingsError } = await admin
     .from("projects")
-    .select("id, sidebar_position, created_at")
+    .select("id, sidebar_position, created_at, visibility")
     .eq("workspace_id", target.workspace_id)
     .is("deleted_at", null)
     .order("sidebar_position", { ascending: true, nullsFirst: false })
@@ -967,26 +985,59 @@ export async function reorderProject(
 
   const siblings = siblingRows as unknown as ProjectsRowWithSidebarPosition[];
   const currentOrder = siblings.map((row) => row.id);
-  const currentIndex = currentOrder.indexOf(projectId);
 
-  if (currentIndex === -1) {
+  if (!currentOrder.includes(projectId)) {
     return { ok: false, error: "Project not found." };
   }
 
-  const withoutTarget = currentOrder.filter((id) => id !== projectId);
+  // The caller drags within the projects they can see, so `newPosition`
+  // indexes that visible subset. Projects hidden from the caller keep
+  // their slots in the shared order and are never returned.
+  let visibleIds: Set<string>;
+  try {
+    visibleIds = await filterProjectsVisibleToCaller(
+      admin,
+      user.id,
+      siblings.map((row) => ({
+        projectId: row.id,
+        visibility: (row.visibility ?? "workspace") as ProjectVisibility,
+        role: membership.role,
+      })),
+    );
+  } catch (visibilityError) {
+    logger.error("reorderProject: failed to resolve project visibility", {
+      error: visibilityError,
+    });
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  const visibleOrder = currentOrder.filter((id) => visibleIds.has(id));
+  const withoutTarget = visibleOrder.filter((id) => id !== projectId);
   const clampedPosition = Math.min(
     Math.max(newPosition, 0),
     withoutTarget.length,
   );
-  const nextOrder = [
+  const nextVisibleOrder = [
     ...withoutTarget.slice(0, clampedPosition),
     projectId,
     ...withoutTarget.slice(clampedPosition),
   ];
 
+  let visibleCursor = 0;
+  const nextOrder = currentOrder.map((id) =>
+    visibleIds.has(id) ? nextVisibleOrder[visibleCursor++] : id,
+  );
+
   // Only write rows whose position actually changed, still re-sequenced
   // to plain 0..n-1 integers so there's never a gap/duplicate left behind
-  // from a prior partial state.
+  // from a prior partial state. A hidden project is only written when its
+  // stored position is out of sequence; its slot never moves. Every id
+  // here came from the workspace-scoped sibling read above, and each
+  // update is pinned to that workspace. The writes are sequential, not one
+  // transaction (no reorder RPC exists).
   const updates = nextOrder
     .map((id, index) => ({ id, index }))
     .filter(({ id, index }) => {
@@ -1001,7 +1052,8 @@ export async function reorderProject(
     const { error: updateError } = await admin
       .from("projects")
       .update(payload as never)
-      .eq("id", id);
+      .eq("id", id)
+      .eq("workspace_id", target.workspace_id);
 
     if (updateError) {
       logger.error("reorderProject: update failed", {
@@ -1031,5 +1083,5 @@ export async function reorderProject(
     }
   }
 
-  return { ok: true, data: { order: nextOrder } };
+  return { ok: true, data: { order: nextVisibleOrder } };
 }
