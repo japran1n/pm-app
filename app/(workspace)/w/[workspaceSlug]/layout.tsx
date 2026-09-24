@@ -91,6 +91,7 @@ import { ClientPresentationBanner } from "@/components/calendar/client-presentat
 // file-header comment for why `<main>`'s sizing is decided per-route here
 // instead of being a single fixed class on the element below.
 import { WorkspaceMain } from "@/components/nav/workspace-main";
+import { isPortalPreviewMintEnabled } from "@/lib/env";
 
 // AS-022: force every request under /w/* through a real server round-trip
 // instead of allowing the browser to serve a bfcache-restored copy of a
@@ -367,6 +368,7 @@ export default async function WorkspaceLayout({
     <MembershipProvider
       role={activeWorkspaceRole}
       hasClient={(clientMemberCount ?? 0) > 0}
+      clientPreviewEnabled={isPortalPreviewMintEnabled()}
       projectRoles={projectRoles}
     >
       <WorkspacePresenceProvider

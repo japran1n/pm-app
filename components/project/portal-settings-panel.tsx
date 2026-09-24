@@ -23,6 +23,7 @@ import { CheckCircle2, Circle, ExternalLink, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { setPortalEnabled, updateProjectLaunch } from "@/lib/actions/portal-settings";
+import { useMembership } from "@/components/auth/membership-provider";
 import type { PortalLaunchConfidence } from "@/lib/queries/portal";
 import type { PortalReadiness } from "@/lib/queries/portal-settings";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -80,6 +81,7 @@ export function PortalSettingsPanel({
     warrantyTerms: string | null;
   };
 }) {
+  const clientPreviewEnabled = useMembership()?.clientPreviewEnabled ?? false;
   const [portalEnabled, setPortalEnabledState] = useState(initialPortalEnabled);
   const [isTogglePending, startToggleTransition] = useTransition();
 
@@ -164,14 +166,16 @@ export function PortalSettingsPanel({
             </div>
           </div>
 
-          <Link
-            href={`/w/${workspaceSlug}/preview-as-client?projectId=${projectId}`}
-            className={buttonVariants({ variant: "outline", size: "sm" })}
-            data-testid="portal-preview-as-client-link"
-          >
-            <ExternalLink className="mr-1.5 size-4" aria-hidden="true" />
-            Preview as client
-          </Link>
+          {clientPreviewEnabled && (
+            <Link
+              href={`/w/${workspaceSlug}/preview-as-client?projectId=${projectId}`}
+              className={buttonVariants({ variant: "outline", size: "sm" })}
+              data-testid="portal-preview-as-client-link"
+            >
+              <ExternalLink className="mr-1.5 size-4" aria-hidden="true" />
+              Preview as client
+            </Link>
+          )}
         </div>
 
         <div className="flex flex-col gap-2 rounded-md border border-border p-4">

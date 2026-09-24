@@ -25,6 +25,7 @@
 // what makes the resulting preview subject to the client's own RLS
 // policies rather than a second, hand-rolled copy of them.
 import { createAdminClient } from "@/lib/supabase/admin";
+import { isPortalPreviewMintEnabled } from "@/lib/env";
 
 export type ImpersonationSession = {
   accessToken: string;
@@ -34,6 +35,10 @@ export type ImpersonationSession = {
 export async function mintImpersonationSession(
   email: string,
 ): Promise<ImpersonationSession | null> {
+  if (!isPortalPreviewMintEnabled()) {
+    return null;
+  }
+
   const admin = createAdminClient();
 
   const { data, error } = await admin.auth.admin.generateLink({

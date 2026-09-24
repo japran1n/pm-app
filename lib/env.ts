@@ -39,6 +39,7 @@ const serverEnvSchema = z.object({
   NEXT_PUBLIC_APP_URL: z.string().min(1).optional(),
   ALLOW_USERNAME_LOGIN: z.string().min(1).optional(),
   DEV_LOGIN_ENABLED: z.string().min(1).optional(),
+  PORTAL_PREVIEW_MINT_ENABLED: z.string().min(1).optional(),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;
@@ -66,6 +67,9 @@ export function serverEnv(): ServerEnv {
     NEXT_PUBLIC_APP_URL: emptyToUndefined(process.env.NEXT_PUBLIC_APP_URL),
     ALLOW_USERNAME_LOGIN: emptyToUndefined(process.env.ALLOW_USERNAME_LOGIN),
     DEV_LOGIN_ENABLED: emptyToUndefined(process.env.DEV_LOGIN_ENABLED),
+    PORTAL_PREVIEW_MINT_ENABLED: emptyToUndefined(
+      process.env.PORTAL_PREVIEW_MINT_ENABLED,
+    ),
   });
 
   if (!result.success) {
@@ -80,6 +84,16 @@ export function serverEnv(): ServerEnv {
 
   cachedServerEnv = result.data;
   return cachedServerEnv;
+}
+
+/**
+ * "Preview as client" mints a real Supabase session for the previewed
+ * client, so it is off unless PORTAL_PREVIEW_MINT_ENABLED is exactly
+ * "true". Reads process.env directly (not `serverEnv()`) so checking the
+ * flag can never throw over an unrelated missing variable. Server-only.
+ */
+export function isPortalPreviewMintEnabled(): boolean {
+  return process.env.PORTAL_PREVIEW_MINT_ENABLED === "true";
 }
 
 function emptyToUndefined(value: string | undefined): string | undefined {

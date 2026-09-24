@@ -29,6 +29,7 @@ const accountMenuBase = {
   workspaceSlug: "acme",
   currentUser: { id: "u1", name: "Test User", email: "test@example.com", avatarUrl: null },
   canManageWorkspace: true,
+  clientPreviewEnabled: true,
 };
 
 describe("AccountMenu — Preview as client (SB-019, SB-006)", () => {
@@ -66,6 +67,20 @@ describe("AccountMenu — Preview as client (SB-019, SB-006)", () => {
     expect(within(menu).queryByText("Preview as client")).toBeNull();
   });
 
+  it("hides 'Preview as client' when client preview is disabled server-side", async () => {
+    render(
+      createElement(AccountMenu, {
+        ...accountMenuBase,
+        hasClient: true,
+        canManageWorkspace: true,
+        clientPreviewEnabled: false,
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /account menu/i }));
+    const menu = await screen.findByRole("menu");
+    expect(within(menu).queryByText("Preview as client")).toBeNull();
+  });
+
   it("SB-019: hides 'Preview as client' when both hasClient and canManageWorkspace are false", async () => {
     render(
       createElement(AccountMenu, { ...accountMenuBase, hasClient: false, canManageWorkspace: false }),
@@ -81,7 +96,7 @@ describe("AccountMenu — Preview as client (SB-019, SB-006)", () => {
 // ── AppSidebar integration tests ────────────────────────────────────────────
 
 vi.mock("@/components/auth/membership-provider", () => ({
-  useMembership: () => ({ role: "admin", hasClient: true, projectRoles: {} }),
+  useMembership: () => ({ role: "admin", hasClient: true, clientPreviewEnabled: true, projectRoles: {} }),
 }));
 
 import { AppSidebar } from "@/components/nav/app-sidebar";

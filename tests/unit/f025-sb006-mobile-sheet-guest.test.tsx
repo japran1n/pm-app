@@ -12,7 +12,7 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push() {}, replace() {}, refresh() {}, prefetch() {}, back() {}, forward() {} }),
 }));
 vi.mock("@/components/auth/membership-provider", () => ({
-  useMembership: () => ({ role: "admin", hasClient: true, projectRoles: {} }),
+  useMembership: () => ({ role: "admin", hasClient: true, clientPreviewEnabled: true, projectRoles: {} }),
 }));
 
 import { AppSidebar } from "@/components/nav/app-sidebar";

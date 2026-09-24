@@ -17,7 +17,7 @@ import "@testing-library/jest-dom/vitest";
 
 // SB-006: hasClient true so the guest cases exercise the "Preview as client" gate.
 vi.mock("@/components/auth/membership-provider", () => ({
-  useMembership: () => ({ role: "admin", hasClient: true, projectRoles: {} }),
+  useMembership: () => ({ role: "admin", hasClient: true, clientPreviewEnabled: true, projectRoles: {} }),
 }));
 
 vi.mock("next/navigation", () => ({

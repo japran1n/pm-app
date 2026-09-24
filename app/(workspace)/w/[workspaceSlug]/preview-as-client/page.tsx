@@ -5,7 +5,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireWorkspaceAdmin } from "@/lib/auth/require-membership";
 import { getPreviewableClients } from "@/lib/queries/portal-preview";
 import { getPortalProjects } from "@/lib/queries/portal";
-import { Users } from "lucide-react";
+import { isPortalPreviewMintEnabled } from "@/lib/env";
+import { EyeOff, Users } from "lucide-react";
 
 import { ClientPreviewForm } from "@/components/portal/client-preview-form";
 import { EmptyState } from "@/components/empty-state";
@@ -57,6 +58,18 @@ export default async function PreviewAsClientPage({
 
   if (!membership.ok) {
     redirect(`/w/${workspace.slug}`);
+  }
+
+  if (!isPortalPreviewMintEnabled()) {
+    return (
+      <div className="mx-auto flex max-w-3xl flex-col gap-8 px-6 py-10">
+        <EmptyState
+          icon={EyeOff}
+          title="Client preview is turned off"
+          description="Previewing the portal as a client is disabled in this environment."
+        />
+      </div>
+    );
   }
 
   const [clients, projects] = await Promise.all([

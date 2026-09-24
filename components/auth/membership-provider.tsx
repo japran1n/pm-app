@@ -41,6 +41,9 @@ export type MembershipContextValue = {
    * control. Server-fetched once in the workspace layout alongside the
    * caller's own role, never a per-component query. */
   hasClient: boolean;
+  /** Whether "Preview as client" is enabled server-side
+   * (PORTAL_PREVIEW_MINT_ENABLED). Entry points are hidden when false. */
+  clientPreviewEnabled: boolean;
   /** The caller's workspace role in the ACTIVE workspace (the one the
    * current /w/[workspaceSlug] route is under). */
   role: WorkspaceRole;
@@ -67,16 +70,18 @@ const MembershipContext = createContext<MembershipContextValue | null>(null);
 export function MembershipProvider({
   role,
   hasClient = false,
+  clientPreviewEnabled = false,
   projectRoles,
   children,
 }: {
   role: WorkspaceRole;
   hasClient?: boolean;
+  clientPreviewEnabled?: boolean;
   projectRoles: Record<string, ProjectRole>;
   children: React.ReactNode;
 }) {
   return (
-    <MembershipContext.Provider value={{ role, hasClient, projectRoles }}>
+    <MembershipContext.Provider value={{ role, hasClient, clientPreviewEnabled, projectRoles }}>
       {children}
     </MembershipContext.Provider>
   );

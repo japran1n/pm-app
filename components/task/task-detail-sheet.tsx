@@ -542,7 +542,9 @@ export function TaskDetailSheet({
   const projectRole = useProjectRole(task?.projectId);
   // C2: hide the share-with-client toggle entirely in workspaces that have
   // no client — see MembershipProvider's own `hasClient` doc comment.
-  const workspaceHasClient = useMembership()?.hasClient ?? false;
+  const membershipContext = useMembership();
+  const workspaceHasClient = membershipContext?.hasClient ?? false;
+  const clientPreviewEnabled = membershipContext?.clientPreviewEnabled ?? false;
   const canEdit = currentUserRole
     ? canEditTask({ role: currentUserRole, projectRole })
     : true;
@@ -936,6 +938,7 @@ export function TaskDetailSheet({
                   with project/task already filled in, not a bypass of
                   it. */}
               {workspaceHasClient &&
+                clientPreviewEnabled &&
                 task.clientVisible &&
                 task.projectId &&
                 workspaceSlug &&

@@ -357,7 +357,9 @@ function SidebarContent({
   // C5: the client-request nav item is workspace-dependent, so it reads
   // the same server-fetched `hasClient` flag the task sheet's share toggle
   // uses rather than a prop threaded through two more component layers.
-  const hasClient = useMembership()?.hasClient ?? false;
+  const membership = useMembership();
+  const hasClient = membership?.hasClient ?? false;
+  const clientPreviewEnabled = membership?.clientPreviewEnabled ?? false;
   // F005 (SB-020, SB-021): Tools group collapse state, persisted in
   // localStorage. Default expanded; storage access is try/catch-guarded so a
   // throwing localStorage never breaks render.
@@ -656,6 +658,7 @@ function SidebarContent({
           canManageWorkspace={canManageWorkspace}
           isGuest={isGuest}
           hasClient={hasClient}
+          clientPreviewEnabled={clientPreviewEnabled}
           onNavigate={onNavigate}
         />
       </div>

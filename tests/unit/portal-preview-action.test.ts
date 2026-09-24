@@ -6,7 +6,7 @@
 // round-trip itself (that mechanism is a thin, separately-owned wrapper,
 // lib/auth/mint-impersonation-session.ts).
 
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
@@ -165,6 +165,11 @@ describe("startClientPreview / exitClientPreview (F024)", () => {
     cookieSets = [];
     mintCallCount = 0;
     opts = defaultOpts();
+    vi.stubEnv("PORTAL_PREVIEW_MINT_ENABLED", "true");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it("test_AS_052_owner_can_start_a_preview_and_is_handed_a_portal_redirect", async () => {
@@ -355,4 +360,47 @@ describe("startClientPreview / exitClientPreview (F024)", () => {
     expect(mintCallCount).toBe(0);
     expect(cookieSets).toHaveLength(0);
   });
+});
+
+describe("startClientPreview with PORTAL_PREVIEW_MINT_ENABLED off", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    membershipCallCount = 0;
+    auditCalls = [];
+    cookieSets = [];
+    mintCallCount = 0;
+    opts = defaultOpts();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it.each([
+    ["unset", undefined],
+    ["empty", ""],
+    ["false", "false"],
+    ["1", "1"],
+  ])(
+    "refuses when the flag is %s and never mints, audits or sets cookies",
+    async (_label, value) => {
+      if (value === undefined) {
+        vi.stubEnv("PORTAL_PREVIEW_MINT_ENABLED", undefined);
+      } else {
+        vi.stubEnv("PORTAL_PREVIEW_MINT_ENABLED", value);
+      }
+      const { startClientPreview } = await import(
+        "@/lib/actions/portal-preview"
+      );
+      const result = await startClientPreview(validInput());
+      expect(result).toEqual({
+        ok: false,
+        error: "Previewing the portal as a client is turned off.",
+      });
+      expect(mintCallCount).toBe(0);
+      expect(auditCalls).toHaveLength(0);
+      expect(cookieSets).toHaveLength(0);
+      expect(membershipCallCount).toBe(0);
+    },
+  );
 });

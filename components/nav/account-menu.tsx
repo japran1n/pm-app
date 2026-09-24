@@ -52,6 +52,7 @@ export function AccountMenu({
   canManageWorkspace,
   isGuest = false,
   hasClient = false,
+  clientPreviewEnabled = false,
   onNavigate,
 }: {
   workspaceSlug: string;
@@ -74,6 +75,8 @@ export function AccountMenu({
    * predates this prop rendering the menu without the item instead of
    * crashing. */
   hasClient?: boolean;
+  /** Server-side PORTAL_PREVIEW_MINT_ENABLED; the item is hidden when off. */
+  clientPreviewEnabled?: boolean;
   onNavigate?: () => void;
 }) {
   const { resolvedTheme, setTheme } = useTheme();
@@ -184,7 +187,7 @@ export function AccountMenu({
             (preview-as-client/page.tsx) hard-gates to owner/admin itself, so
             a member/viewer/guest would only bounce; the hasClient guard
             prevents a meaningless link for workspaces that have no portal. */}
-        {!isGuest && hasClient && canManageWorkspace && (
+        {!isGuest && hasClient && clientPreviewEnabled && canManageWorkspace && (
           <DropdownMenuItem
             render={<Link href={`/w/${workspaceSlug}/preview-as-client`} onClick={onNavigate} />}
           >

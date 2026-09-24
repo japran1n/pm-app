@@ -82,6 +82,7 @@ import { toast } from "sonner";
 import { RequestApprovalDialog } from "@/components/approvals/request-approval-dialog";
 import Link from "next/link";
 import { Eye } from "lucide-react";
+import { useMembership } from "@/components/auth/membership-provider";
 
 const AUTOSAVE_DEBOUNCE_MS = 800;
 
@@ -163,6 +164,7 @@ export function MarkdownEditor({
   currentUserRole,
   initialUpdatedAt,
 }: MarkdownEditorProps) {
+  const clientPreviewEnabled = useMembership()?.clientPreviewEnabled ?? false;
   const router = useRouter();
   // P2-2: tracks the last-known updated_at so updateDoc can use optimistic
   // concurrency. Refreshed to the DB-returned value after every successful
@@ -506,6 +508,7 @@ export function MarkdownEditor({
                 doc comment. Requires the doc to already be client-visible
                 for the same reason. */}
             {workspaceSlug &&
+              clientPreviewEnabled &&
               initialClientVisible &&
               (currentUserRole === "owner" || currentUserRole === "admin") && (
                 <Link

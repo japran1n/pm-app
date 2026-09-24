@@ -31,6 +31,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireWorkspaceAdmin } from "@/lib/auth/require-membership";
 import { mintImpersonationSession } from "@/lib/auth/mint-impersonation-session";
 import { logger } from "@/lib/observability/logger";
+import { isPortalPreviewMintEnabled } from "@/lib/env";
 import type { Json } from "@/lib/supabase/database.types";
 import {
   PORTAL_PREVIEW_ACCESS_COOKIE,
@@ -72,6 +73,9 @@ const startSchema = z.object({
 
 export type StartClientPreviewResult = ActionOutcome<{ redirectTo: string }>;
 
+const CLIENT_PREVIEW_DISABLED_MESSAGE =
+  "Previewing the portal as a client is turned off.";
+
 // Returns a redirect target rather than calling `redirect()` itself --
 // the caller (a Client Component form) navigates client-side after a
 // successful result, the same "action returns ok/data, caller navigates"
@@ -80,6 +84,12 @@ export type StartClientPreviewResult = ActionOutcome<{ redirectTo: string }>;
 export async function startClientPreview(
   rawInput: unknown,
 ): Promise<StartClientPreviewResult> {
+  // The mint below yields the client's real, workspace-agnostic session,
+  // so the whole action is refused unless explicitly enabled.
+  if (!isPortalPreviewMintEnabled()) {
+    return { ok: false, error: CLIENT_PREVIEW_DISABLED_MESSAGE };
+  }
+
   const parsed = startSchema.safeParse(rawInput);
   if (!parsed.success) {
     return {
