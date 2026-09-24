@@ -1,19 +1,10 @@
 // @vitest-environment jsdom
 //
-// F012 (TH-008): "A user with the guest role sees the 'Tools' group and both
-// its items." validation-contract.md's own wording for TH-008 is the
-// authoritative assertion text this test derives from -- the "Tools" band
-// (F010/F011) is deliberately NOT run through `filterGuest` in
-// components/nav/app-sidebar.tsx's `navGroups()` (same "no per-workspace
-// data to leak" reasoning as "How this works"), so a guest sees the exact
-// same "Tools" section, with both "HTML → Webflow" and "Webflow Code
-// Editor", as any other role.
-//
-// This is a dedicated, standalone assertion file for TH-008 (as the
-// feature spec's own "Files (approximate)" names it), independent of
-// app-sidebar-webflow-nav.test.tsx's own broader AS-007 guest-rendering
-// coverage -- kept separate so a future change to that file's scope can't
-// silently drop TH-008's own explicit guest coverage.
+// F012 (TH-008) originally asserted that a guest sees the "Tools" group.
+// Superseded by the audit 2026-09-24 authorization decision: the Tools are
+// team tools (the converter action and tools/** route layouts refuse
+// guests, sitemaps are team + viewer), so the sidebar no longer offers a
+// guest any Tools entry. A member still sees every tool.
 
 import { createElement } from "react";
 import { cleanup, render, screen, within } from "@testing-library/react";
@@ -49,35 +40,24 @@ function makeProps(isGuest: boolean) {
   };
 }
 
-describe("TH-008: guest role sees the Tools group and both its items", () => {
-  it("a guest sees the 'Tools' section heading in the rendered nav", () => {
+describe("TH-008 (superseded): a guest sees no Tools group", () => {
+  it("a guest sees no 'Tools' section heading in the rendered nav", () => {
     render(createElement(AppSidebar, makeProps(true)));
 
     const nav = screen.getByRole("navigation");
-    const heading = within(nav)
-      .getAllByText(/^Tools$/)
-      .find((el) => el.tagName === "P" || el.parentElement?.tagName === "P");
-    expect(heading).not.toBeUndefined();
+    expect(within(nav).queryAllByText(/^Tools$/)).toHaveLength(0);
   });
 
-  it("a guest sees both the 'HTML → Webflow' and 'Webflow Code Editor' links, under the Tools heading", () => {
+  it("a guest sees none of the tool links", () => {
     render(createElement(AppSidebar, makeProps(true)));
 
     const nav = screen.getByRole("navigation");
-    const converterLink = within(nav).getByRole("link", { name: /^HTML → Webflow$/ });
-    const editorLink = within(nav).getByRole("link", { name: /^Webflow Code Editor$/ });
-
-    expect(converterLink).toHaveAttribute("href", "/w/acme/tools/webflow");
-    expect(editorLink).toHaveAttribute("href", "/w/acme/tools/code-editor");
-
-    // Both items share the same "Tools" group wrapper as a non-guest would
-    // see -- confirms the band is not filtered/hidden for the guest role.
-    expect(converterLink.parentElement).toBe(editorLink.parentElement);
-    const heading = converterLink.parentElement!.querySelector("p");
-    expect(heading!.textContent).toBe("Tools");
+    expect(within(nav).queryByRole("link", { name: /^HTML → Webflow$/ })).toBeNull();
+    expect(within(nav).queryByRole("link", { name: /^Webflow Code Editor$/ })).toBeNull();
+    expect(within(nav).queryByRole("link", { name: /^Sitemap Builder$/ })).toBeNull();
   });
 
-  it("negative-case control: a non-guest member sees the exact same two Tools items, confirming the guest render is not a coincidental subset", () => {
+  it("control: a non-guest member still sees the Tools items", () => {
     render(createElement(AppSidebar, makeProps(false)));
 
     const nav = screen.getByRole("navigation");

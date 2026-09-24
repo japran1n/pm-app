@@ -2,7 +2,7 @@ import { notFound, redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceContext } from "@/lib/queries/workspaces";
-import { canWrite} from "@/lib/auth/permissions";
+import { canTeamWrite } from "@/lib/auth/permissions";
 import {
   getProjectAssumptions,
   getProjectDecisions,
@@ -61,7 +61,7 @@ export default async function ProjectRecordSettingsPage({
       getProjectAssumptions(project.id),
     ]);
 
-  const canManage = canWrite({ role: workspaceRole });
+  const canManage = canTeamWrite({ role: workspaceRole });
 
   return (
     <div className="flex flex-col gap-8">

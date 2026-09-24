@@ -187,21 +187,19 @@ describe("CommandPalette actions (F243, AS-462)", () => {
     expect(screen.queryByText("Create project")).not.toBeInTheDocument();
   });
 
-  // `canWrite` (lib/auth/permissions.ts, F128) deliberately does NOT
-  // exclude "guest" -- see that predicate's own doc comment: guest write
-  // access is project-scoped and governed separately (F134/AS-223), and
-  // widening this generic gate to exclude guest would regress that. A
-  // guest therefore sees the same create actions a member does; this test
-  // protects against a future regression narrowing that unintentionally.
-  it("test_AS_462_guest_sees_create_task_and_create_project_same_as_a_member", async () => {
+  // Audit 2026-09-24: guests no longer get team-level writes. createTask
+  // re-checks canEditTask and createProject re-checks canCreateProject
+  // (both owner/admin/member), so a guest is offered neither action.
+  it("test_AS_462_guest_does_not_see_create_task_or_create_project", async () => {
     mockRole = "guest";
     await openPalette();
 
     await waitFor(() => {
-      expect(screen.getByText("Create task")).toBeInTheDocument();
+      expect(screen.queryByText("Actions")).not.toBeInTheDocument();
     });
 
-    expect(screen.getByText("Create project")).toBeInTheDocument();
+    expect(screen.queryByText("Create task")).not.toBeInTheDocument();
+    expect(screen.queryByText("Create project")).not.toBeInTheDocument();
   });
 
   it("test_AS_462_typing_a_query_hides_the_actions_group", async () => {

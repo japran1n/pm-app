@@ -14,7 +14,7 @@ import {
 import { NewProjectDialog } from "@/components/new-project-dialog";
 import { listProjectTemplateOptions } from "@/lib/actions/templates";
 import type { TaskTemplatePickerOption } from "@/lib/queries/templates";
-import { canCreateProject, canWrite } from "@/lib/auth/permissions";
+import { canCreateProject, canEditTask } from "@/lib/auth/permissions";
 import {
   SHORTCUT_EVENTS,
   type NewTaskShortcutDetail,
@@ -34,9 +34,9 @@ import { cn } from "@/lib/utils";
 //    there is no staff-side create flow.
 // Each entry is gated by the SAME predicate as its server action, so the UI
 // can never offer something the server rejects (or hide something it allows):
-//  - Task    -> canWrite (createTask). canWrite allows owner/admin/member AND
-//    guest (guests create tasks in the projects they can see); it denies
-//    viewer and client. So a guest sees "Task" but not "Project".
+//  - Task    -> canEditTask (createTask / createTaskForUser). Owner/admin/
+//    member only; viewer, guest and client are denied, so a guest sees no
+//    "+ New" button at all.
 //  - Project -> canCreateProject (createProject + createProjectFromTemplate):
 //    owner/admin/member only.
 // If no entry remains the button is not rendered at all (SB-034).
@@ -86,7 +86,7 @@ export function NewMenu({
   const canCreateProjectEntry =
     !isGuest && membership !== null && canCreateProject({ role: membership.role });
   const canCreateTaskEntry =
-    membership !== null && canWrite({ role: membership.role });
+    membership !== null && canEditTask({ role: membership.role });
 
   if (!canCreateProjectEntry && !canCreateTaskEntry) return null;
 

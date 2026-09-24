@@ -2,7 +2,7 @@ import { notFound, redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceContext } from "@/lib/queries/workspaces";
-import { canWrite} from "@/lib/auth/permissions";
+import { canTeamWrite } from "@/lib/auth/permissions";
 import { getClientDeliverables } from "@/lib/queries/deliverables";
 import { DeliverablesPanel } from "@/components/project/deliverables-panel";
 import { ProjectSettingsNav } from "@/components/project/project-settings-nav";
@@ -66,7 +66,7 @@ export default async function ProjectDeliverablesSettingsPage({
         .order("title", { ascending: true }),
     ]);
 
-  const canManage = canWrite({ role: workspaceRole });
+  const canManage = canTeamWrite({ role: workspaceRole });
 
   const deliverables = deliverablesResult.ok ? deliverablesResult.data : [];
   const taskOptions = (taskRows ?? []).map((row) => ({ id: row.id, title: row.title }));

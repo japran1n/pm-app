@@ -19,7 +19,7 @@ import { Plus, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { updateTaskTags } from "@/lib/actions/tasks";
-import { canWrite, type WorkspaceRole } from "@/lib/auth/permissions";
+import { canTeamWrite, type WorkspaceRole } from "@/lib/auth/permissions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,7 +41,7 @@ export function TagsEditor({
   currentUserRole?: WorkspaceRole;
 }) {
   const canEditTags = currentUserRole
-    ? canWrite({ role: currentUserRole })
+    ? canTeamWrite({ role: currentUserRole })
     : true;
   const disabledTitle = canEditTags
     ? undefined

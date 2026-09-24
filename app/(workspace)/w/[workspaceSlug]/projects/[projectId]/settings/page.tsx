@@ -38,7 +38,7 @@ import {
 } from "@/lib/queries/approvals";
 import { DecisionOwnersSection } from "@/components/approvals/decision-owners";
 import { RequestApprovalDialog } from "@/components/approvals/request-approval-dialog";
-import { canWrite } from "@/lib/auth/permissions";
+import { canTeamWrite } from "@/lib/auth/permissions";
 // F112 (missions/20260903-portal, six-star review Part 0/D): "Team" —
 // project roles (PM, team lead, design lead, Webflow lead, designer,
 // developer) editor, placed beside "Who approves what" per this
@@ -136,10 +136,10 @@ export default async function ProjectSettingsPage({
   });
   const canToggleVisibility = canChangeProjectVisibility({ role: workspaceRole });
   // F008: setDecisionOwner/requestApproval (lib/actions/approvals.ts) both
-  // gate on withAuthz's default `canWrite` — this mirrors that exact
+  // gate on withAuthz's default `canTeamWrite` — this mirrors that exact
   // predicate for the UI, not a new one, per AS-230's "one permission
   // helper backs both" convention.
-  const canManageDecisionOwners = canWrite({ role: workspaceRole });
+  const canManageDecisionOwners = canTeamWrite({ role: workspaceRole });
 
   let members: Awaited<ReturnType<typeof getProjectMembers>> = [];
   let addable: Awaited<ReturnType<typeof getAddableWorkspaceMembers>> = [];

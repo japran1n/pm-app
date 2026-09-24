@@ -2,7 +2,7 @@ import { notFound, redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceContext } from "@/lib/queries/workspaces";
-import { canWrite} from "@/lib/auth/permissions";
+import { canTeamWrite } from "@/lib/auth/permissions";
 import { getProjectPhasesForTeam } from "@/lib/queries/phases";
 import { PhaseList } from "@/components/project/phase-list";
 // F002 (missions/20260903-portal): lets this page link to the sibling
@@ -27,11 +27,11 @@ import { Separator } from "@/components/ui/separator";
 // to hold. A caller who cannot see a private project gets the same
 // not-found response as a nonexistent project.
 //
-// `canManage` uses the DEFAULT `canWrite` predicate (role isn't `viewer`,
-// isn't `client`) rather than `canManageColumns` — this mirrors
+// `canManage` uses `withAuthz`'s DEFAULT write predicate, `canTeamWrite`
+// (owner/admin/member), rather than `canManageColumns` — this mirrors
 // lib/actions/phases.ts's own choice (see that file's header comment):
 // every mutation action here is gated by `withAuthz`'s default
-// `canWrite`, so the UI's enabled/disabled state must agree with what the
+// `canTeamWrite`, so the UI's enabled/disabled state must agree with what the
 // server actually allows, not with a stricter sibling predicate that
 // would silently disable controls the server would have accepted.
 export default async function ProjectPhasesSettingsPage({
@@ -72,7 +72,7 @@ export default async function ProjectPhasesSettingsPage({
 
   const phases = await getProjectPhasesForTeam(project.id);
 
-  const canManage = canWrite({ role: workspaceRole });
+  const canManage = canTeamWrite({ role: workspaceRole });
 
   return (
     <div className="flex flex-col gap-8">

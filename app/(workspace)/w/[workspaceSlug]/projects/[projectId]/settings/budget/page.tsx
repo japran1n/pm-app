@@ -2,7 +2,7 @@ import { notFound, redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceContext } from "@/lib/queries/workspaces";
-import { canWrite} from "@/lib/auth/permissions";
+import { canTeamWrite } from "@/lib/auth/permissions";
 import { getProjectBudgets } from "@/lib/queries/project-budgets";
 import { BudgetPanel } from "@/components/project/budget-panel";
 import { ProjectSettingsNav } from "@/components/project/project-settings-nav";
@@ -51,7 +51,7 @@ export default async function ProjectBudgetSettingsPage({
 
   const budgetsResult = await getProjectBudgets(project.id);
 
-  const canManage = canWrite({ role: workspaceRole });
+  const canManage = canTeamWrite({ role: workspaceRole });
 
   const budgets = budgetsResult.ok ? budgetsResult.data : [];
 

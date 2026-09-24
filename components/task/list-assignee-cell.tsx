@@ -28,7 +28,7 @@ import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { setTaskAssignees } from "@/lib/actions/tasks";
-import { canWrite } from "@/lib/auth/permissions";
+import { canEditTask } from "@/lib/auth/permissions";
 import { useMembership } from "@/components/auth/membership-provider";
 import type { TaskDetailSheetMember } from "@/components/task/task-detail-sheet";
 import { UserAvatar, type UserAvatarPerson } from "@/components/user-avatar";
@@ -57,7 +57,7 @@ export function ListAssigneeCell({
   members: TaskDetailSheetMember[];
 }) {
   const membership = useMembership();
-  const canEdit = membership ? canWrite({ role: membership.role }) : true;
+  const canEdit = membership ? canEditTask({ role: membership.role }) : true;
   const disabledTitle = canEdit
     ? undefined
     : "You don't have permission to change this task's assignees.";

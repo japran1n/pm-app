@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { Network } from "lucide-react";
 
 import { getWorkspaceContext } from "@/lib/queries/workspaces";
+import { canReadSitemaps, canTeamWrite } from "@/lib/auth/permissions";
 import { listSitemaps, listActiveSitemapShareTokens } from "@/lib/queries/sitemaps";
 import { EmptyState } from "@/components/empty-state";
 import { SitemapCard } from "@/components/sitemap-tool/sitemap-card";
@@ -23,15 +24,22 @@ export default async function SitemapListPage({
   const { workspaceSlug } = await params;
   const ctx = await getWorkspaceContext(workspaceSlug);
 
-  if (!ctx.workspace) {
+  // Sitemaps are team-readable incl. viewers (can_read_sitemap RLS);
+  // guests and clients get a 404. Only writers see the create control and
+  // share state (share rows are writer-only).
+  if (!ctx.workspace || !ctx.role || !canReadSitemaps({ role: ctx.role })) {
     notFound();
   }
+  const canEdit = canTeamWrite({ role: ctx.role });
 
   const sitemapsResult = await listSitemaps(ctx.workspace.id);
   const sitemaps = sitemapsResult.ok ? sitemapsResult.data : [];
 
-  const sharesResult = await listActiveSitemapShareTokens(sitemaps.map((s) => s.id));
-  const shareTokenBySitemapId = sharesResult.ok ? sharesResult.data : {};
+  const sharesResult = canEdit
+    ? await listActiveSitemapShareTokens(sitemaps.map((s) => s.id))
+    : null;
+  const shareTokenBySitemapId: Record<string, string> =
+    sharesResult?.ok ? sharesResult.data : {};
 
   return (
     <div className="p-6 pt-4 lg:p-8 lg:pt-8">
@@ -42,7 +50,9 @@ export default async function SitemapListPage({
             Plan website structure and share with clients.
           </p>
         </div>
-        <NewSitemapDialog workspaceId={ctx.workspace.id} workspaceSlug={workspaceSlug} />
+        {canEdit ? (
+          <NewSitemapDialog workspaceId={ctx.workspace.id} workspaceSlug={workspaceSlug} />
+        ) : null}
       </div>
 
       {sitemaps.length === 0 ? (

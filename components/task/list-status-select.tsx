@@ -24,7 +24,7 @@ import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { moveTaskStatus } from "@/lib/actions/tasks";
-import { canWrite } from "@/lib/auth/permissions";
+import { canTeamWrite } from "@/lib/auth/permissions";
 import { useMembership } from "@/components/auth/membership-provider";
 import { useBlockedDoneGuard } from "@/components/task/blocked-done-guard";
 import type { TaskCardTask } from "@/components/task/task-card";
@@ -149,7 +149,7 @@ export function ListStatusSelect({
   // provider, e.g. an existing test) is treated as permissive.
   const membership = useMembership();
   const canChangeStatus = membership
-    ? canWrite({ role: membership.role })
+    ? canTeamWrite({ role: membership.role })
     : true;
 
   if (taskId !== syncedTaskId) {

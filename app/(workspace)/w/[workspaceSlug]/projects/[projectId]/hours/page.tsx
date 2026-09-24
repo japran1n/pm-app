@@ -2,7 +2,7 @@ import { notFound, redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceContext } from "@/lib/queries/workspaces";
-import { canWrite} from "@/lib/auth/permissions";
+import { canTeamWrite } from "@/lib/auth/permissions";
 import { getProjectHoursTeam } from "@/lib/queries/hours";
 import { getProjectBudgets } from "@/lib/queries/project-budgets";
 import { resolvePeople } from "@/lib/queries/people";
@@ -112,7 +112,7 @@ export default async function ProjectHoursPage({
   const userIds = Array.from(new Set(entries.map((entry) => entry.userId)));
   const people = await resolvePeople(userIds);
 
-  const canManage = canWrite({ role: workspaceRole });
+  const canManage = canTeamWrite({ role: workspaceRole });
 
   // F118 (AS-068): the whole project's time-by-type breakdown, not
   // scoped to the `from`/`to` window above — rpc_project_time_totals

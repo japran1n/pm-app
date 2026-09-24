@@ -145,7 +145,7 @@ import {
   reorderChecklistItem,
   toggleChecklistItem,
 } from "@/lib/actions/checklist";
-import { canWrite, type WorkspaceRole } from "@/lib/auth/permissions";
+import { canEditTask, type WorkspaceRole } from "@/lib/auth/permissions";
 import { calculatePosition } from "@/lib/board/position";
 import { countChecklistProgress } from "@/lib/tasks/checklist-progress";
 import { cn } from "@/lib/utils";
@@ -296,7 +296,7 @@ export function Checklist({
   currentUserRole?: WorkspaceRole;
 }) {
   const canEditChecklist = currentUserRole
-    ? canWrite({ role: currentUserRole })
+    ? canEditTask({ role: currentUserRole })
     : true;
   const checklistDisabledTitle = canEditChecklist
     ? undefined

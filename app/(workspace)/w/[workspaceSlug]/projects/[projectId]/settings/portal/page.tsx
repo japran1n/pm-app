@@ -2,7 +2,7 @@ import { notFound, redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceContext } from "@/lib/queries/workspaces";
-import { canManagePortalSettings, canWrite} from "@/lib/auth/permissions";
+import { canManagePortalSettings, canTeamWrite } from "@/lib/auth/permissions";
 import { getPortalReadiness } from "@/lib/queries/portal-settings";
 import { PortalSettingsPanel } from "@/components/project/portal-settings-panel";
 import { ProjectSettingsNav } from "@/components/project/project-settings-nav";
@@ -62,7 +62,7 @@ export default async function ProjectPortalSettingsPage({
   ]);
 
   const canManagePortal = canManagePortalSettings({ role: workspaceRole });
-  const canEditLaunch = canWrite({ role: workspaceRole });
+  const canEditLaunch = canTeamWrite({ role: workspaceRole });
 
   return (
     <div className="flex flex-col gap-8">

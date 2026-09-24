@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { getWorkspaceContext } from "@/lib/queries/workspaces";
+import { canReadSitemaps, canTeamWrite } from "@/lib/auth/permissions";
 import { getSitemapById, getSitemapBoard, getActiveSitemapShareToken } from "@/lib/queries/sitemaps";
 import { SitemapEditor } from "@/components/sitemap-tool/sitemap-editor";
 
@@ -23,9 +24,12 @@ export default async function SitemapEditorPage({
   const { workspaceSlug, sitemapId } = await params;
   const ctx = await getWorkspaceContext(workspaceSlug);
 
-  if (!ctx.workspace) {
+  // Same role gate as the list page: viewers may read, guests and clients
+  // get a 404; share tokens are only read for writers.
+  if (!ctx.workspace || !ctx.role || !canReadSitemaps({ role: ctx.role })) {
     notFound();
   }
+  const canEdit = canTeamWrite({ role: ctx.role });
 
   const sitemapResult = await getSitemapById(sitemapId);
   if (
@@ -42,8 +46,8 @@ export default async function SitemapEditorPage({
   const boardResult = await getSitemapBoard(sitemapId);
   const board = boardResult.ok ? boardResult.data : { pages: [], components: [] };
 
-  const shareTokenResult = await getActiveSitemapShareToken(sitemapId);
-  const shareToken = shareTokenResult.ok ? shareTokenResult.data : null;
+  const shareTokenResult = canEdit ? await getActiveSitemapShareToken(sitemapId) : null;
+  const shareToken = shareTokenResult?.ok ? shareTokenResult.data : null;
 
   return (
     <SitemapEditor

@@ -36,7 +36,7 @@
 // F007: the useOptimistic + useTransition + toast-on-error triplet above
 // is now the shared lib/hooks/use-optimistic-action.ts hook — same
 // behaviour, no longer hand-rolled per component.
-import { canWrite } from "@/lib/auth/permissions";
+import { canEditTask } from "@/lib/auth/permissions";
 import { useMembership } from "@/components/auth/membership-provider";
 import { editTask } from "@/lib/actions/tasks";
 import { useOptimisticAction } from "@/lib/hooks/use-optimistic-action";
@@ -75,7 +75,7 @@ export function ListPrioritySelect({
   // initial Server Component fetch, so membership context is the source
   // of truth for whether this control is interactive.
   const membership = useMembership();
-  const canEdit = membership ? canWrite({ role: membership.role }) : true;
+  const canEdit = membership ? canEditTask({ role: membership.role }) : true;
 
   const [localValue, isSaving, runChange] = useOptimisticAction<
     TaskCardTask["priority"]

@@ -2,7 +2,7 @@ import { notFound, redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceContext } from "@/lib/queries/workspaces";
-import { canWrite} from "@/lib/auth/permissions";
+import { canTeamWrite } from "@/lib/auth/permissions";
 import { getProjectMetricsWithLatestSnapshot, getProjectImprovements } from "@/lib/queries/metrics";
 import { MeasurementPanel } from "@/components/project/measurement-panel";
 import { ProjectSettingsNav } from "@/components/project/project-settings-nav";
@@ -58,7 +58,7 @@ export default async function ProjectMeasurementSettingsPage({
     getProjectImprovements(project.id),
   ]);
 
-  const canManage = canWrite({ role: workspaceRole });
+  const canManage = canTeamWrite({ role: workspaceRole });
 
   const metrics = metricsResult.ok ? metricsResult.data : [];
   const improvements = improvementsResult.ok ? improvementsResult.data : [];

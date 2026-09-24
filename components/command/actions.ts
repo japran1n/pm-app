@@ -8,10 +8,10 @@
 // Permission model (per this feature's Correctness points: "must respect
 // per-item permission, enforced in the ACTION and not by hiding UI"):
 // each action below carries an `isVisible` predicate built from
-// lib/auth/permissions.ts's existing `canWrite` (the SAME predicate
+// lib/auth/permissions.ts's `canCreateProject`/`canEditTask` (the SAME predicates
 // `createProject`/`createTask` already re-verify server-side — see
 // lib/actions/projects.ts's and lib/actions/tasks.ts's own
-// `canWrite`/viewer-is-read-only checks). Hiding "Create task"/"Create
+// role checks). Hiding "Create task"/"Create
 // project" from a viewer here is a UX nicety, never the enforcement
 // boundary: every action below performs its effect either (a) by
 // navigating to the existing page whose own create dialog already calls
@@ -28,7 +28,7 @@
 // touching this file's action list shape.
 
 import type { WorkspaceRole } from "@/lib/auth/permissions";
-import { canWrite } from "@/lib/auth/permissions";
+import { canCreateProject, canEditTask } from "@/lib/auth/permissions";
 
 export type PaletteActionContext = {
   role: WorkspaceRole | null;
@@ -52,15 +52,22 @@ export type PaletteAction = {
 // `role: null` (no MembershipProvider in the tree, e.g. an isolated unit
 // test) is treated as permissive — same fallback convention
 // components/task/new-task-dialog.tsx's own `canCreate` already uses.
-function writeAllowed(ctx: PaletteActionContext): boolean {
-  return ctx.role === null ? true : canWrite({ role: ctx.role });
+// Each entry uses the same predicate its Server Action re-checks:
+// createProject -> canCreateProject, createTask -> canEditTask (both
+// owner/admin/member only).
+function projectCreateAllowed(ctx: PaletteActionContext): boolean {
+  return ctx.role === null ? true : canCreateProject({ role: ctx.role });
+}
+
+function taskCreateAllowed(ctx: PaletteActionContext): boolean {
+  return ctx.role === null ? true : canEditTask({ role: ctx.role });
 }
 
 export const PALETTE_ACTIONS: PaletteAction[] = [
   {
     id: "create-project",
     label: "Create project",
-    isVisible: writeAllowed,
+    isVisible: projectCreateAllowed,
     // No dedicated "new project" route exists — the create UI is a
     // dialog mounted on the projects list page (components/new-project-
     // dialog.tsx), which is out of this feature's Files scope to modify.
@@ -73,7 +80,7 @@ export const PALETTE_ACTIONS: PaletteAction[] = [
   {
     id: "create-task",
     label: "Create task",
-    isVisible: writeAllowed,
+    isVisible: taskCreateAllowed,
     // Same reasoning as "create-project": task creation is project-
     // scoped (components/task/new-task-dialog.tsx requires a
     // `projectId`), and the palette has no project context of its own

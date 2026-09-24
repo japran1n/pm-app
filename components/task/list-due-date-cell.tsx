@@ -28,7 +28,7 @@
 // F007: retrofitted onto the shared lib/hooks/use-optimistic-action.ts
 // hook — same useOptimistic + useTransition + toast-on-error behaviour
 // this file's own F002 comment above describes, no longer hand-rolled.
-import { canWrite } from "@/lib/auth/permissions";
+import { canEditTask } from "@/lib/auth/permissions";
 import { useMembership } from "@/components/auth/membership-provider";
 import { editTask } from "@/lib/actions/tasks";
 import { useOptimisticAction } from "@/lib/hooks/use-optimistic-action";
@@ -42,7 +42,7 @@ export function ListDueDateCell({
   dueDate: string | null;
 }) {
   const membership = useMembership();
-  const canEdit = membership ? canWrite({ role: membership.role }) : true;
+  const canEdit = membership ? canEditTask({ role: membership.role }) : true;
 
   const [localValue, isSaving, runChange] = useOptimisticAction<
     string | null

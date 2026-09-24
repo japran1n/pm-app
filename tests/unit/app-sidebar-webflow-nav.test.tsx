@@ -225,21 +225,21 @@ describe.each(SLUGS)("AppSidebar Webflow nav item (F003/F044) [slug=%s]", (slug)
     });
   });
 
-  describe("AS-007: no per-workspace/role gating -- renders identically for a guest", () => {
-    it("desktop: still renders the Webflow link for a guest", () => {
+  describe("AS-007: no per-workspace gating; team-only by role (audit 2026-09-24)", () => {
+    // The converter is a team tool (tools/webflow/layout.tsx and
+    // convertHtmlToWebflow refuse guests), so a guest is not shown the link.
+    it("desktop: does not render the Webflow link for a guest", () => {
       render(createElement(AppSidebar, { ...baseProps, isGuest: true }));
 
-      const link = screen.getByRole("link", { name: /^HTML → Webflow$/ });
-      expect(link).toHaveAttribute("href", expectedHref);
+      expect(screen.queryByRole("link", { name: /^HTML → Webflow$/ })).toBeNull();
     });
 
-    it("mobile: still renders the Webflow link for a guest once the sheet is opened", async () => {
+    it("mobile: does not render the Webflow link for a guest once the sheet is opened", async () => {
       render(createElement(AppSidebar, { ...baseProps, isGuest: true }));
       await openMobileSheet();
 
       const dialog = screen.getByRole("dialog");
-      const link = within(dialog).getByRole("link", { name: /^HTML → Webflow$/ });
-      expect(link).toHaveAttribute("href", expectedHref);
+      expect(within(dialog).queryByRole("link", { name: /^HTML → Webflow$/ })).toBeNull();
     });
 
     it("desktop: still renders the Webflow link for a standard (non-guest) member with no Webflow-specific flag on the membership", () => {

@@ -46,7 +46,7 @@ import { useMemo, useTransition } from "react";
 import { toast } from "sonner";
 
 import { bulkUpdateTasks } from "@/lib/actions/tasks";
-import { canWrite } from "@/lib/auth/permissions";
+import { canEditTask } from "@/lib/auth/permissions";
 import { useMembership } from "@/components/auth/membership-provider";
 import { useBlockedDoneGuard } from "@/components/task/blocked-done-guard";
 import { DEFAULT_STATUS_OPTIONS } from "@/components/task/list-status-select";
@@ -94,7 +94,7 @@ export function BulkStatusAction({
     useBlockedDoneGuard();
   const membership = useMembership();
   const canChangeStatus = membership
-    ? canWrite({ role: membership.role })
+    ? canEditTask({ role: membership.role })
     : true;
 
   // AS-1: the union of every involved project's real statuses,

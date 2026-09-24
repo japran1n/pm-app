@@ -13,9 +13,12 @@
 //
 // Card content is defined in one place (the `tools` array below) so a
 // third tool is a one-line addition, per this feature's own Draft scope.
+// Access is enforced by tools/layout.tsx (and the per-tool layouts); each
+// card is additionally hidden from a role that can't use it (ToolGate).
 import { Code2, FileCode2, Network } from "lucide-react";
 
 import { ToolCard } from "@/components/tools/tool-card";
+import { ToolGate } from "@/components/tools/tool-gate";
 
 export default async function ToolsIndexPage({
   params,
@@ -28,18 +31,21 @@ export default async function ToolsIndexPage({
   // (app-sidebar.tsx), same routes/labels, listed as cards here.
   const tools = [
     {
+      access: "team" as const,
       href: `/w/${workspaceSlug}/tools/webflow`,
       icon: Code2,
       name: "HTML → Webflow",
       description: "Convert exported HTML into Webflow-ready markup.",
     },
     {
+      access: "team" as const,
       href: `/w/${workspaceSlug}/tools/code-editor`,
       icon: FileCode2,
       name: "Webflow Code Editor",
       description: "Edit and preview Webflow custom code snippets.",
     },
     {
+      access: "sitemaps" as const,
       href: `/w/${workspaceSlug}/tools/sitemap`,
       icon: Network,
       name: "Sitemap Builder",
@@ -56,13 +62,14 @@ export default async function ToolsIndexPage({
 
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {tools.map((tool) => (
-          <ToolCard
-            key={tool.href}
-            href={tool.href}
-            icon={tool.icon}
-            name={tool.name}
-            description={tool.description}
-          />
+          <ToolGate key={tool.href} access={tool.access}>
+            <ToolCard
+              href={tool.href}
+              icon={tool.icon}
+              name={tool.name}
+              description={tool.description}
+            />
+          </ToolGate>
         ))}
       </div>
     </div>

@@ -24,6 +24,11 @@ import {
 } from "lucide-react";
 
 import { useMembership } from "@/components/auth/membership-provider";
+import {
+  canReadSitemaps,
+  canUseTeamTools,
+  type WorkspaceRole,
+} from "@/lib/auth/permissions";
 import { cn } from "@/lib/utils";
 import {
   COMMAND_PALETTE_OPEN_EVENT,
@@ -127,6 +132,9 @@ function navGroups(
   approvalsBadge?: React.ReactNode,
   requestsBadge?: React.ReactNode,
   chatUnreadBadge?: React.ReactNode,
+  // The caller's workspace role from MembershipProvider; `null` when there
+  // is no provider (isolated tests), in which case `isGuest` decides.
+  role: WorkspaceRole | null = null,
 ): { label: string | null; items: NavItem[] }[] {
   const countBadge = (count: number) =>
     typeof count === "number" && count > 0 ? (
@@ -165,20 +173,29 @@ function navGroups(
   // band, positioned between "Team" and "Other" below. The HTML→Webflow
   // converter (formerly "Webflow" in the top-level `work` band, F003/F002)
   // now lives here under its clearer "HTML → Webflow" label -- same route
-  // (`/w/<slug>/tools/webflow`), not gated on role/guest/hasClient (TH-012:
-  // always renders for every workspace regardless of whether it has a
-  // client, same "no per-workspace conditional" convention this item
-  // already followed in its old home).
-  const tools: NavItem[] = [
+  // (`/w/<slug>/tools/webflow`). Not gated on hasClient (TH-012: renders
+  // for every workspace regardless of whether it has a client); gated on
+  // role below.
+  // Tools are gated per role with the same predicates the tool routes and
+  // their Server Actions use: the converter and code editor are team-only
+  // (canUseTeamTools), the Sitemap Builder is also readable by viewers
+  // (canReadSitemaps). Guests and clients see no Tools band at all.
+  const toolRole: WorkspaceRole | null = role ?? (isGuest ? "guest" : null);
+  const showTeamTools = toolRole === null || canUseTeamTools({ role: toolRole });
+  const showSitemaps = toolRole === null || canReadSitemaps({ role: toolRole });
+  const allTools: NavItem[] = [
     { href: `/w/${workspaceSlug}/tools/webflow`, label: "HTML → Webflow", icon: Code2 },
     // F011 (TH-004, TH-006, TH-009, TH-010, TH-011): a second Tools-band
     // item, below "HTML → Webflow" per this feature's own clarified
-    // implementation -- same no-gate, prefix-matched active-state
+    // implementation -- same prefix-matched active-state
     // convention as its sibling above (no `exact: true`), same route shape
     // (`/w/<slug>/tools/code-editor`).
     { href: `/w/${workspaceSlug}/tools/code-editor`, label: "Webflow Code Editor", icon: FileCode2 },
     { href: `/w/${workspaceSlug}/tools/sitemap`, label: "Sitemap Builder", icon: Network },
   ];
+  const tools = allTools.filter((item) =>
+    item.label === "Sitemap Builder" ? showSitemaps : showTeamTools,
+  );
 
   // F241: Calendar is a workspace-wide, RLS-scoped view with no guest gate
   // of its own, same as Work above -- visible to everyone.
@@ -250,10 +267,10 @@ function navGroups(
     { label: "Plan", items: filterGuest(plan) },
     { label: "Team", items: filterGuest(team) },
     // F010 (TH-002, TH-012): "Tools" sits between "Team" and (formerly)
-    // "Other" per this feature's own Draft scope, and is NOT run through
-    // `filterGuest` -- it always renders for every role/workspace
-    // (TH-012). F003 (SB-016): "Other" itself is gone -- see the doc
-    // comment above `guestExcluded`.
+    // "Other" per this feature's own Draft scope. Its items are role-gated
+    // above (`tools`); an empty band is dropped by the filter below.
+    // F003 (SB-016): "Other" itself is gone -- see the doc comment above
+    // `guestExcluded`.
     { label: "Tools", items: tools },
   ].filter((group) => group.items.length > 0);
 }
@@ -395,6 +412,7 @@ function SidebarContent({
     approvalsBadge,
     requestsBadge,
     chatUnreadBadge,
+    membership?.role ?? null,
   );
 
   // F060 (SB-056): every `?tab=` value a sibling item on the same path

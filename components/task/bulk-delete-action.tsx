@@ -31,7 +31,7 @@ import { Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { bulkDeleteTasks, bulkRestoreTasks } from "@/lib/actions/tasks";
-import { canWrite } from "@/lib/auth/permissions";
+import { canTeamWrite } from "@/lib/auth/permissions";
 import { showUndoToast } from "@/lib/toast/undo-toast";
 import { useMembership } from "@/components/auth/membership-provider";
 import { formatTaskKey } from "@/lib/tasks/task-key";
@@ -65,10 +65,10 @@ export function BulkDeleteAction({
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const membership = useMembership();
-  // AS-055/F128: deliberately `canWrite`, not `canEditTask` — matches
+  // AS-055: `canTeamWrite`, not `canDeleteTask` — matches
   // deleteTask/bulkDeleteTasks's own permission gate exactly (delete has
-  // no per-task ownership restriction, only "not a viewer").
-  const canDelete = membership ? canWrite({ role: membership.role }) : true;
+  // no per-task ownership restriction; owner/admin/member only).
+  const canDelete = membership ? canTeamWrite({ role: membership.role }) : true;
   const selectedIds = selectedTasks.map((task) => task.id);
   const count = selectedIds.length;
 

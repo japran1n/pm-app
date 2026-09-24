@@ -45,7 +45,7 @@ import type { ProjectPhaseOption } from "@/lib/queries/phases";
 import { getProjectTaskTypeOptions } from "@/lib/actions/task-types";
 import type { TaskType } from "@/lib/queries/task-types";
 import { TASK_TYPE_DEFINITIONS } from "@/lib/task-types/definitions";
-import { canWrite } from "@/lib/auth/permissions";
+import { canEditTask } from "@/lib/auth/permissions";
 import { useMembership } from "@/components/auth/membership-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -143,7 +143,7 @@ export function NewTaskDialog({
   // tree, e.g. an existing test) is treated as permissive, matching the
   // rest of this codebase's optional-role convention.
   const membership = useMembership();
-  const canCreate = membership ? canWrite({ role: membership.role }) : true;
+  const canCreate = membership ? canEditTask({ role: membership.role }) : true;
   const createDisabledTitle = canCreate
     ? undefined
     : "You don't have permission to create tasks.";
