@@ -8,9 +8,18 @@
 // matching the existing db:apply script's invocation style) and checks every
 // entry's `remote` field.
 //
+// It also compares NAMES, not just versions: a local migration whose
+// version is already recorded on the remote under a different name (e.g. a
+// file renumbered after its original version was applied) is "shadowed" —
+// the version check passes and `db:apply` skips it, so it never runs. That
+// is how 20261127010000 / 20261127020000 silently never reached production.
+// The remote names come from supabase_migrations.schema_migrations via the
+// Management API query endpoint (same call style as scripts/apply-migration.mjs).
+//
 // Run:  npm run migrations:check
 
 import { spawnSync } from "node:child_process";
+import { readdirSync } from "node:fs";
 
 import { redactSecrets } from "./lib/redact-secrets.mjs";
 
@@ -141,14 +150,124 @@ export function checkDrift({ accessToken = ACCESS_TOKEN, projectRef = PROJECT_RE
   };
 }
 
-async function main() {
-  const { code, message, isError } = checkDrift();
-  if (isError) {
-    console.error(message);
-  } else {
-    console.log(message);
+/**
+ * Shadowed versions whose statements were re-applied under a new version.
+ * Each entry must name the migration that supersedes it. The old files stay
+ * byte-identical as history. Add an entry ONLY after the superseding
+ * migration has been applied.
+ */
+export const SUPERSEDED_SHADOWED = {
+  "20261127010000": "20261129010000_security_reapply_shadowed_hardening",
+  "20261127020000": "20261129010000_security_reapply_shadowed_hardening",
+};
+
+/**
+ * Pure name-mismatch logic, testable without network access. Returns every
+ * local migration whose 14-digit version is recorded on the remote under a
+ * different name, except versions listed in `superseded`.
+ *
+ * @param {string[]} localFiles  migration basenames, with or without ".sql"
+ * @param {Array<{ version: string, name?: string | null }>} remoteRows
+ * @param {Record<string, string>} [superseded]
+ * @returns {Array<{ version: string, localName: string, remoteName: string }>}
+ */
+export function findNameMismatches(localFiles, remoteRows, superseded = SUPERSEDED_SHADOWED) {
+  const remote = new Map((remoteRows ?? []).map((row) => [row.version, row.name ?? ""]));
+  const mismatches = [];
+  for (const file of localFiles ?? []) {
+    const base = file.replace(/\.sql$/, "");
+    const version = base.slice(0, 14);
+    const localName = base.slice(15);
+    if (!remote.has(version) || superseded[version]) continue;
+    const remoteName = remote.get(version);
+    if (remoteName !== localName) mismatches.push({ version, localName, remoteName });
   }
-  process.exit(code);
+  return mismatches;
+}
+
+/**
+ * Fetches (version, name) from the remote ledger and compares it against
+ * the local migration filenames. Never includes credential values in its
+ * message.
+ *
+ * @param {{ accessToken?: string, projectRef?: string, env?: object, migrationsDir?: string, fetchImpl?: typeof fetch }} options
+ * @returns {Promise<{ code: number, message: string, isError: boolean }>}
+ */
+export async function checkNameDrift({
+  accessToken = ACCESS_TOKEN,
+  projectRef = PROJECT_REF,
+  env = process.env,
+  migrationsDir = "supabase/migrations",
+  fetchImpl = fetch,
+} = {}) {
+  if (!accessToken || !projectRef) {
+    return {
+      code: 1,
+      isError: true,
+      message: "Missing SUPABASE_ACCESS_TOKEN / SUPABASE_PROJECT_REF in .env",
+    };
+  }
+
+  const secrets = { SUPABASE_ACCESS_TOKEN: accessToken, SUPABASE_PROJECT_REF: projectRef };
+  let rows;
+  try {
+    const response = await fetchImpl(
+      `https://api.supabase.com/v1/projects/${projectRef}/database/query`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          query: "select version, name from supabase_migrations.schema_migrations;",
+        }),
+      },
+    );
+    const body = await response.text();
+    if (!response.ok) throw new Error(body);
+    rows = JSON.parse(body);
+  } catch (error) {
+    const safe = redactSecrets(redactSecrets(String(error?.message ?? error), env), secrets);
+    return {
+      code: 1,
+      isError: true,
+      message: `Failed to read migration names from the linked Supabase project. ${safe}`,
+    };
+  }
+
+  const localFiles = readdirSync(migrationsDir).filter((file) => file.endsWith(".sql"));
+  const mismatches = findNameMismatches(localFiles, rows);
+
+  if (mismatches.length > 0) {
+    const list = mismatches
+      .map((m) => `${m.version}_${m.localName} (remote: ${m.remoteName || "(no name)"})`)
+      .join(", ");
+    return {
+      code: 1,
+      isError: true,
+      message: `Migration drift detected — local migrations shadowed by a different remote migration with the same version (never applied): ${list}`,
+    };
+  }
+
+  return {
+    code: 0,
+    isError: false,
+    message: "✓ No migration name drift — every local version matches its remote name.",
+  };
+}
+
+async function main() {
+  let exitCode = 0;
+  for (const result of [checkDrift(), await checkNameDrift()]) {
+    if (result.isError) {
+      console.error(result.message);
+    } else {
+      console.log(result.message);
+    }
+    exitCode = Math.max(exitCode, result.code);
+  }
+  process.exit(exitCode);
 }
 
 // Only run when invoked directly (not when imported by a test).

@@ -51,10 +51,24 @@ async function query(sql) {
   return body;
 }
 
-const already = await query(
-  `select 1 from supabase_migrations.schema_migrations where version = '${version}';`,
+// Compare version AND name: a version recorded under a different name means
+// another migration already took this version, and skipping here would
+// silently never apply this file (how 20261127010000 / 20261127020000 were
+// lost). Refuse instead, so the file gets a fresh, unused version.
+const already = JSON.parse(
+  await query(
+    `select name from supabase_migrations.schema_migrations where version = '${version}';`,
+  ),
 );
-if (already !== "[]") {
+if (already.length > 0) {
+  const recorded = already[0].name ?? "";
+  if (recorded !== label) {
+    console.error(
+      `✗ Version ${version} is already recorded on the remote as "${recorded || "(no name)"}", not "${label}".\n` +
+        `  This file would be skipped and never applied. Rename it to a new, unused version and re-run.`,
+    );
+    process.exit(1);
+  }
   console.log(`• ${name} already applied — nothing to do.`);
   process.exit(0);
 }
