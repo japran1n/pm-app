@@ -63,6 +63,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { updateDoc, setDocKind, setDocRelevantFrom } from "@/lib/actions/docs";
+import { useAutosave } from "@/lib/hooks/use-autosave";
 import { DocClientVisibilityToggle } from "@/components/docs/doc-client-visibility-toggle";
 import { DocLinksEditor } from "@/components/docs/doc-links-editor";
 import {
@@ -246,56 +247,47 @@ export function MarkdownEditor({
 
   const isHowWeWorkKind = (howWeWorkDocKinds as readonly string[]).includes(docKind);
 
-  // Debounced auto-save (plan: 800ms after the user stops typing, no manual
-  // Save button). A plain setTimeout ref is used rather than pulling in a
-  // debounce library — this codebase has no `use-debounce`/lodash debounce
-  // dependency anywhere else, and a single timer ref is the simplest thing
-  // that satisfies "only fire 800ms after the last change".
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const titleRef = useRef(title);
-  useEffect(() => {
-    titleRef.current = title;
-  }, [title]);
-
-  const scheduleSave = useCallback(
-    (nextTitle: string, nextContent: string) => {
-      if (timerRef.current) {
-        clearTimeout(timerRef.current);
+  // Debounced auto-save (800ms after the user stops typing, no manual Save
+  // button) via the shared useAutosave hook (lib/hooks/use-autosave.ts),
+  // which also FLUSHES a pending edit on unmount — the previous hand-rolled
+  // setTimeout here cleared its timer on unmount, silently dropping the last
+  // edit when the user navigated away within the debounce window. Writes are
+  // chained by the hook, so the updated_at guard below never races itself.
+  const [draft, setDraft] = useState<{ title: string; content: string }>(() => ({
+    title: initialTitle,
+    content: initialContent,
+  }));
+  const saveDraft = useCallback(
+    async (next: { title: string; content: string }) => {
+      setStatus("saving");
+      // P2-2: pass the current guard value; updateDoc returns conflict:true
+      // if another session saved in the meantime, or newUpdatedAt on success.
+      const result = await updateDoc(
+        docId,
+        next.title,
+        next.content,
+        lastKnownUpdatedAtRef.current,
+      );
+      if (result.conflict) {
+        // Not retried: the banner asks the user to reload.
+        setStatus("idle");
+        setShowConflictBanner(true);
+        return { success: true };
       }
-      timerRef.current = setTimeout(async () => {
-        setStatus("saving");
-        // P2-2: pass the current guard value; updateDoc returns conflict:true
-        // if another session saved in the meantime, or newUpdatedAt on success.
-        const result = await updateDoc(
-          docId,
-          nextTitle,
-          nextContent,
-          lastKnownUpdatedAtRef.current,
-        );
-        if (result.conflict) {
-          setStatus("idle");
-          setShowConflictBanner(true);
-        } else if (result.error) {
-          setStatus("error");
-        } else {
-          setStatus("saved");
-          // Refresh the guard value so the next autosave matches the new row.
-          if (result.newUpdatedAt) {
-            lastKnownUpdatedAtRef.current = result.newUpdatedAt;
-          }
-        }
-      }, AUTOSAVE_DEBOUNCE_MS);
+      if (result.error) {
+        setStatus("error");
+        return { success: false, error: result.error };
+      }
+      setStatus("saved");
+      // Refresh the guard value so the next autosave matches the new row.
+      if (result.newUpdatedAt) {
+        lastKnownUpdatedAtRef.current = result.newUpdatedAt;
+      }
+      return { success: true };
     },
     [docId],
   );
-
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) {
-        clearTimeout(timerRef.current);
-      }
-    };
-  }, []);
+  useAutosave(draft, saveDraft, AUTOSAVE_DEBOUNCE_MS);
 
   const editor = useEditor({
     extensions: [
@@ -318,18 +310,14 @@ export function MarkdownEditor({
       const markdown = (
         updatedEditor.storage as unknown as { markdown: { getMarkdown(): string } }
       ).markdown.getMarkdown();
-      scheduleSave(titleRef.current, markdown);
+      setDraft((previous) => ({ ...previous, content: markdown }));
     },
   });
 
   function handleTitleChange(event: React.ChangeEvent<HTMLTextAreaElement>) {
     const nextTitle = event.target.value;
     setTitle(nextTitle);
-    if (!editor) return;
-    const markdown = (
-      editor.storage as unknown as { markdown: { getMarkdown(): string } }
-    ).markdown.getMarkdown();
-    scheduleSave(nextTitle, markdown);
+    setDraft((previous) => ({ ...previous, title: nextTitle }));
   }
 
   // Auto-grow the title textarea to fit its (possibly multi-line) content
@@ -387,7 +375,7 @@ export function MarkdownEditor({
       const text = await file.text();
       editor.commands.setContent(text);
       const markdown = currentMarkdown();
-      scheduleSave(titleRef.current, markdown);
+      setDraft((previous) => ({ ...previous, content: markdown }));
       toast.success("Imported document content.");
     } catch {
       toast.error("Couldn't read that file. Please try again.");

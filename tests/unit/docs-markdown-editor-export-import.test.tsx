@@ -126,3 +126,27 @@ describe("MarkdownEditor export/import as Markdown", () => {
     expect(screen.getByText("Original content")).toBeInTheDocument();
   });
 });
+
+// REUSE-UI-02: the editor uses the shared useAutosave hook, so an edit still
+// inside the debounce window is written when the editor unmounts
+// (navigating away) instead of being dropped.
+describe("MarkdownEditor autosave on unmount", () => {
+  it("flushes a pending title edit when unmounted before the debounce fires", async () => {
+    updateDoc.mockResolvedValue({});
+    const { unmount } = render(
+      <MarkdownEditor docId={DOC_ID} initialTitle="Before" initialContent="Body" />,
+    );
+
+    const titleField = (await screen.findAllByRole("textbox")).find(
+      (el) => el.tagName === "TEXTAREA",
+    ) as HTMLTextAreaElement;
+    fireEvent.change(titleField, { target: { value: "After" } });
+    expect(updateDoc).not.toHaveBeenCalled();
+
+    unmount();
+
+    await waitFor(() => expect(updateDoc).toHaveBeenCalledTimes(1));
+    expect(updateDoc.mock.calls[0]![0]).toBe(DOC_ID);
+    expect(updateDoc.mock.calls[0]![1]).toBe("After");
+  });
+});
