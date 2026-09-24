@@ -177,6 +177,17 @@ export function canWrite(ctx: PermissionContext): boolean {
   return ctx.role !== "viewer" && !isClient(ctx);
 }
 
+// The default write gate for project- and task-scoped Server Actions that
+// run through `withAuthz({ requireWrite: true })` without their own
+// `writeCheck`: an explicit allow-list of the team roles. Guest write access
+// is limited to commenting on and being assigned to tasks in projects they
+// were added to (AS-223), which go through their own gates, so guest,
+// viewer and client are denied here by default. An action a guest must be
+// able to run passes a `writeCheck` that says so.
+export function canTeamWrite(ctx: PermissionContext): boolean {
+  return ctx.role === "owner" || ctx.role === "admin" || ctx.role === "member";
+}
+
 // F031 (SB-034): creating a workspace-level project (and, by the sidebar's
 // "+ New" menu, the create entry points that hang off it). This is the
 // guest-aware predicate `canWrite`'s doc comment above calls for: an

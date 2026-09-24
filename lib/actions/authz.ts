@@ -8,7 +8,7 @@
 // invariant is checkable in one place instead of forty.
 //
 // Deliberately NOT a rewrite of the underlying access model: this wraps
-// the exact same helpers (`requireActiveMembership`, `canWrite`,
+// the exact same helpers (`requireActiveMembership`, `canTeamWrite`,
 // `isProjectVisibleToCaller`) every hand-written preamble already called,
 // in the exact same order, with the exact same "who resolves the
 // workspace/project" responsibility left to the caller (via
@@ -25,7 +25,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import {
-  canWrite,
+  canTeamWrite,
   type PermissionContext,
   type WorkspaceRole,
 } from "@/lib/auth/permissions";
@@ -69,12 +69,13 @@ export type ResolveWorkspaceResult<TExtra extends AuthzExtra = AuthzExtra> =
   | { ok: false; error: string };
 
 export type AuthzOptions<TInput, TExtra extends AuthzExtra = AuthzExtra> = {
-  // Default false. When true, gates the caller with `canWrite({ role })`
-  // (or `writeCheck`, if supplied) after membership is confirmed but
-  // before the handler runs.
+  // Default false. When true, gates the caller with `canTeamWrite({ role })`
+  // (owner/admin/member; or `writeCheck`, if supplied) after membership is
+  // confirmed but before the handler runs.
   requireWrite?: boolean;
-  // Overrides the default `canWrite` predicate (e.g. `canEditTask` for
-  // actions that gate write access more narrowly than a plain write).
+  // Overrides the default `canTeamWrite` predicate (e.g. `canEditTask` for
+  // actions that gate write access more narrowly, or a guest-aware check
+  // for an action guests may run).
   writeCheck?: (ctx: PermissionContext) => boolean;
   // Default false. When true, `resolveWorkspace` must return `projectId`
   // and `visibility`, and the caller must additionally pass
@@ -237,7 +238,7 @@ export function withAuthz<
     }
 
     if (options.requireWrite) {
-      const writeCheck = options.writeCheck ?? canWrite;
+      const writeCheck = options.writeCheck ?? canTeamWrite;
       if (!writeCheck({ role: membership.role })) {
         return {
           ok: false,
