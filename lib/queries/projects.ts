@@ -30,6 +30,7 @@ import { resolvePeople } from "@/lib/queries/people";
 import { getCurrentUser, getRequestClient } from "@/lib/auth/current-user";
 import { buildStatusBucketMaps } from "@/lib/portal/status-bucket";
 import type { StatusRowWithBucket } from "@/lib/queries/portal/shared";
+import { countProjectHealthTasks, type ProjectHealthTask } from "@/lib/projects/compute-health";
 
 export type ProjectListItem = {
   id: string;
@@ -441,13 +442,9 @@ export async function getArchivedWorkspaceProjects(
 export type ProjectHealthQueryInput = {
   overdueTaskCount: number;
   totalTaskCount: number;
-  // Ad-hoc "Projects page card redesign": derived from this SAME
-  // `taskRows` fetch (its own `status` column), never a second query and
-  // never mixed with `getWorkspaceProjects`'s RPC-based `openTaskCount` --
-  // that RPC's category-based "open" and this literal `status === "done"`
-  // are different definitions and must not be subtracted from one
-  // another. `doneTaskCount` here is always consistent with
-  // `totalTaskCount` above because both come from the same rows.
+  // Derived from the same `taskRows` fetch as `totalTaskCount`, so the two
+  // are always consistent. "Done" is the column category, the same
+  // definition `get_open_task_counts` uses.
   doneTaskCount: number;
   currentPhase: {
     name: string | null;
@@ -466,13 +463,11 @@ export async function getProjectHealthInputs(
   const supabase = await createClient();
   const todayIso = new Date().toISOString().slice(0, 10);
 
-  // One query for every project's non-deleted, non-"done" tasks' id +
-  // due_date -- counted in JS below into overdue/total per project,
-  // mirroring getArchivedWorkspaceProjects's own "one batched select,
-  // reduce in JS" convention rather than a second RPC just for this.
+  // One batched select of every project's non-deleted tasks with their
+  // column category, reduced per project in JS.
   const { data: taskRows, error: taskError } = await supabase
     .from("tasks")
-    .select("project_id, due_date, status")
+    .select("project_id, due_date, status, project_statuses(category)")
     .in("project_id", projectIds)
     .is("deleted_at", null);
 
@@ -480,21 +475,16 @@ export async function getProjectHealthInputs(
     logger.error("getProjectHealthInputs: task query failed", { error: taskError });
   }
 
-  const totalByProject = new Map<string, number>();
-  const overdueByProject = new Map<string, number>();
-  const doneByProject = new Map<string, number>();
+  const tasksByProject = new Map<string, ProjectHealthTask[]>();
   for (const task of taskRows ?? []) {
-    totalByProject.set(task.project_id, (totalByProject.get(task.project_id) ?? 0) + 1);
-    if (task.status === "done") {
-      doneByProject.set(task.project_id, (doneByProject.get(task.project_id) ?? 0) + 1);
-    }
-    const isOverdue =
-      task.status !== "done" &&
-      typeof task.due_date === "string" &&
-      task.due_date < todayIso;
-    if (isOverdue) {
-      overdueByProject.set(task.project_id, (overdueByProject.get(task.project_id) ?? 0) + 1);
-    }
+    const joined = task.project_statuses as
+      | { category: string | null }
+      | { category: string | null }[]
+      | null;
+    const category = Array.isArray(joined) ? (joined[0]?.category ?? null) : (joined?.category ?? null);
+    const list = tasksByProject.get(task.project_id) ?? [];
+    list.push({ status: task.status, category, dueDate: task.due_date });
+    tasksByProject.set(task.project_id, list);
   }
 
   // One query for every project's phases -- the "current" phase is the
@@ -528,10 +518,11 @@ export async function getProjectHealthInputs(
   }
 
   for (const projectId of projectIds) {
+    const counts = countProjectHealthTasks(tasksByProject.get(projectId) ?? [], todayIso);
     result.set(projectId, {
-      overdueTaskCount: overdueByProject.get(projectId) ?? 0,
-      totalTaskCount: totalByProject.get(projectId) ?? 0,
-      doneTaskCount: doneByProject.get(projectId) ?? 0,
+      overdueTaskCount: counts.overdueTaskCount,
+      totalTaskCount: counts.totalTaskCount,
+      doneTaskCount: counts.doneTaskCount,
       currentPhase: currentPhaseByProject.get(projectId) ?? null,
     });
   }

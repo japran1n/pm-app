@@ -23,6 +23,8 @@
 //     planned_end (i.e. "about to miss it").
 //   - `on_track` otherwise, including a project with no tasks and no
 //     active phase at all (nothing to be at risk of yet).
+import { isDoneStatus } from "@/lib/tasks/status-category";
+
 export type ProjectHealthPhase = {
   /** F001's project_phases.state vocabulary. A `done` phase never
    * contributes to health — a completed phase running "over" is no
@@ -51,6 +53,40 @@ export type ProjectHealthInput = {
 };
 
 export type ProjectHealth = "on_track" | "at_risk" | "overdue";
+
+export type ProjectHealthTask = {
+  status: string | null;
+  /** The task's column category (`project_statuses.category` via
+   * `status_id`); null only when the task has no resolvable column. */
+  category: string | null;
+  dueDate: string | null;
+};
+
+export type ProjectHealthTaskCounts = {
+  totalTaskCount: number;
+  doneTaskCount: number;
+  overdueTaskCount: number;
+};
+
+/** Counts a project's tasks for `computeProjectHealth`. "Done" comes from
+ * the column category (lib/tasks/status-category.ts), so every v2 done
+ * column (Approved, Completed, or a custom one) counts. `todayIso` is a
+ * `YYYY-MM-DD` date; a task is overdue when open and due before it. */
+export function countProjectHealthTasks(
+  tasks: readonly ProjectHealthTask[],
+  todayIso: string,
+): ProjectHealthTaskCounts {
+  let doneTaskCount = 0;
+  let overdueTaskCount = 0;
+  for (const task of tasks) {
+    if (isDoneStatus(task.status, task.category)) {
+      doneTaskCount += 1;
+    } else if (task.dueDate && task.dueDate.slice(0, 10) < todayIso) {
+      overdueTaskCount += 1;
+    }
+  }
+  return { totalTaskCount: tasks.length, doneTaskCount, overdueTaskCount };
+}
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 /** Assumed phase duration when a phase has a `planned_end` but no

@@ -89,6 +89,7 @@ import { NewFromTemplateButton } from "@/components/task/new-from-template-butto
 import type { TaskTemplatePickerOption } from "@/lib/queries/templates";
 import { useTaskDetailSheet } from "@/components/task/use-task-detail-sheet";
 import { useBlockedDoneGuard } from "@/components/task/blocked-done-guard";
+import { resolveStatusCategory } from "@/lib/tasks/status-category";
 import {
   TaskDetailSheet,
   type TaskDetailSheetMember,
@@ -118,12 +119,7 @@ const DEFAULT_COLUMNS: BoardColumnDef[] = FIXED_COLUMN_ORDER.map(
     id: status,
     name: status,
     color: STATUS_COLORS[status],
-    category:
-      status === "done"
-        ? "done"
-        : status === "todo"
-          ? "not_started"
-          : "in_progress",
+    category: resolveStatusCategory(status) ?? "not_started",
     position: (index + 1) * 1000,
   }),
 );

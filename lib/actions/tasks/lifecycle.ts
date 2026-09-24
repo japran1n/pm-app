@@ -216,17 +216,11 @@ export type RestoreTaskResult = ActionResult<{
 //
 // Status fallback (per this feature's Files/Clarified implementation,
 // "if the task's original status no longer exists, fall back to the
-// project's first not-started column and say so"): `status` is a fixed,
-// DB CHECK-constrained enum today (tasks_status_check,
-// supabase/migrations/20260818013434_create_tasks.sql) — every row's
-// `status` is therefore ALWAYS one of the four known values, so this
-// fallback branch can never actually trigger yet (caller-defined board
-// columns are a later feature, F218, not built). The fallback is still
-// implemented per the spec's explicit instruction (defensive, and ready
-// the day F218 lands): any status value that isn't one of the four known
-// columns falls back to "todo" (the fixed set's first not-started
-// column), and `statusWasReset: true` is returned so the caller can show
-// a toast.
+// project's first not-started column and say so"): restore_task_atomic
+// resolves the task's status against the project's own columns
+// (resolve_project_status_id); when it no longer resolves, the task lands
+// in the project's default "To Do" column and `statusWasReset: true` is
+// returned so the caller can show a toast.
 //
 // AS-351: restoring into an ARCHIVED project (an archived project is
 // simply a project with `deleted_at` set — F142/AS-249 reuses the same

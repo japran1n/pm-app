@@ -23,7 +23,13 @@ import { getProjectPhasesForTeam } from "@/lib/queries/phases";
 import { getProjectListTasks } from "@/lib/queries/tasks";
 import { getProjectMembers } from "@/lib/queries/project-members";
 import { resolvePeople } from "@/lib/queries/people";
-import { computeProjectHealth, type ProjectHealth } from "@/lib/projects/compute-health";
+import { getProjectColumns } from "@/lib/queries/statuses";
+import { isOpenStatus } from "@/lib/tasks/status-category";
+import {
+  computeProjectHealth,
+  countProjectHealthTasks,
+  type ProjectHealth,
+} from "@/lib/projects/compute-health";
 import {
   PrintSummary,
   type PrintSummaryMember,
@@ -67,10 +73,11 @@ export default async function ProjectPrintSummaryPage({
     notFound();
   }
 
-  const [phases, tasksResult, members] = await Promise.all([
+  const [phases, tasksResult, members, columns] = await Promise.all([
     getProjectPhasesForTeam(project.id),
     getProjectListTasks(project.id),
     getProjectMembers(project.id),
+    getProjectColumns(project.id),
   ]);
   // P2-33: print view uses the task list as-is; hasMore is not surfaced here
   // since this is a static export and adding rows would require pagination.
@@ -78,17 +85,22 @@ export default async function ProjectPrintSummaryPage({
 
   const currentPhase = phases.find((phase) => phase.state === "active") ?? null;
 
-  const openTasks = tasks.filter((task) => task.status !== "done");
+  const openTasks = tasks.filter((task) => isOpenStatus(task.status, task.statusCategory));
 
   const now = new Date();
-  const overdueTaskCount = openTasks.filter(
-    (task) => task.dueDate && new Date(task.dueDate).getTime() < now.getTime(),
-  ).length;
+  const { overdueTaskCount, totalTaskCount } = countProjectHealthTasks(
+    tasks.map((task) => ({
+      status: task.status,
+      category: task.statusCategory ?? null,
+      dueDate: task.dueDate,
+    })),
+    now.toISOString().slice(0, 10),
+  );
 
   const health: ProjectHealth = computeProjectHealth({
     now,
     overdueTaskCount,
-    totalTaskCount: tasks.length,
+    totalTaskCount,
     currentPhase: currentPhase
       ? {
           state: currentPhase.state,
@@ -139,6 +151,7 @@ export default async function ProjectPrintSummaryPage({
         }
         health={health}
         tasks={printTasks}
+        statusOrder={columns.map((column) => column.name)}
         members={printMembers}
         generatedAt={now.toISOString()}
       />

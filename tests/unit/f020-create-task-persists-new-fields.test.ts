@@ -106,8 +106,9 @@ const adminFromMock = vi.fn((table: string) => {
     return {
       select: () => ({
         eq: () => ({
-          eq: () => ({
-            maybeSingle: async () => ({ data: { name: "todo" }, error: null }),
+          order: async () => ({
+            data: [{ name: "todo", category: "not_started", position: 1000 }],
+            error: null,
           }),
         }),
       }),

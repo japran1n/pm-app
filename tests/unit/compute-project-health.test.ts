@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { computeProjectHealth } from "@/lib/projects/compute-health";
+import {
+  computeProjectHealth,
+  countProjectHealthTasks,
+} from "@/lib/projects/compute-health";
 
 const NOW = new Date("2026-06-15T00:00:00.000Z");
 
@@ -191,6 +194,73 @@ describe("computeProjectHealth", () => {
           plannedEnd: "2026-07-01",
         },
       }),
+    ).toBe("overdue");
+  });
+});
+
+describe("countProjectHealthTasks with the v2 status set", () => {
+  const TODAY = "2026-06-15";
+
+  it("counts done from the column category, never the name", () => {
+    const counts = countProjectHealthTasks(
+      [
+        { status: "Completed", category: "done", dueDate: "2026-06-01" },
+        { status: "Approved", category: "done", dueDate: "2026-06-01" },
+        { status: "Live", category: "done", dueDate: null },
+        { status: "done", category: "in_progress", dueDate: "2026-06-01" },
+      ],
+      TODAY,
+    );
+    expect(counts).toEqual({ totalTaskCount: 4, doneTaskCount: 3, overdueTaskCount: 1 });
+  });
+
+  it("counts open v2 columns past their due date as overdue", () => {
+    const counts = countProjectHealthTasks(
+      [
+        { status: "To Do", category: "not_started", dueDate: "2026-06-10" },
+        { status: "In Dev", category: "in_progress", dueDate: "2026-06-14T12:00:00Z" },
+        { status: "QA by Design", category: "in_progress", dueDate: "2026-06-15" },
+        { status: "Awaiting Client", category: "in_progress", dueDate: "2026-07-01" },
+        { status: "Backlog", category: "not_started", dueDate: null },
+      ],
+      TODAY,
+    );
+    expect(counts).toEqual({ totalTaskCount: 5, doneTaskCount: 0, overdueTaskCount: 2 });
+  });
+
+  it("falls back to default names when a task has no resolvable column", () => {
+    const counts = countProjectHealthTasks(
+      [
+        { status: "Completed", category: null, dueDate: "2026-06-01" },
+        { status: "done", category: null, dueDate: "2026-06-01" },
+        { status: "todo", category: null, dueDate: "2026-06-01" },
+      ],
+      TODAY,
+    );
+    expect(counts).toEqual({ totalTaskCount: 3, doneTaskCount: 2, overdueTaskCount: 1 });
+  });
+
+  it("feeds computeProjectHealth: completed v2 tasks never make a project overdue", () => {
+    const tasks = Array.from({ length: 5 }, () => ({
+      status: "Completed",
+      category: "done",
+      dueDate: "2026-06-01",
+    }));
+    const counts = countProjectHealthTasks(tasks, TODAY);
+    expect(
+      computeProjectHealth({ now: NOW, ...counts, currentPhase: null }),
+    ).toBe("on_track");
+  });
+
+  it("feeds computeProjectHealth: three overdue open v2 tasks mark the project overdue", () => {
+    const tasks = ["To Do", "In Dev", "QA by Dev"].map((status) => ({
+      status,
+      category: status === "To Do" ? "not_started" : "in_progress",
+      dueDate: "2026-06-01",
+    }));
+    const counts = countProjectHealthTasks(tasks, TODAY);
+    expect(
+      computeProjectHealth({ now: NOW, ...counts, currentPhase: null }),
     ).toBe("overdue");
   });
 });

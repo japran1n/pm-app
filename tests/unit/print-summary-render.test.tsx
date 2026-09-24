@@ -92,4 +92,22 @@ describe("PrintSummary", () => {
     expect(screen.getByText("Not tracked")).toBeInTheDocument();
     expect(screen.getByText("No active phase")).toBeInTheDocument();
   });
+
+  it("groups v2 statuses in the project's column order", () => {
+    render(
+      <PrintSummary
+        {...baseProps({
+          statusOrder: ["To Do", "In Dev", "QA by Dev"],
+          tasks: [
+            { id: "a", title: "Build nav", status: "In Dev", assigneeName: null, dueDate: null },
+            { id: "b", title: "Plan sprint", status: "To Do", assigneeName: null, dueDate: null },
+            { id: "c", title: "Measure CTR", status: "Measuring", assigneeName: null, dueDate: null },
+          ],
+        })}
+      />,
+    );
+
+    const headings = screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent);
+    expect(headings).toEqual(["To Do (1)", "In Dev (1)", "Measuring (1)"]);
+  });
 });

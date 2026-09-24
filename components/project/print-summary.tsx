@@ -12,15 +12,14 @@
 // buttons) since the whole point of this view is "what prints", and
 // nothing here should show up in the printed/PDF output except content.
 
-import { STATUS_LABELS } from "@/lib/task-colors";
-import type { TaskCardTask } from "@/components/task/task-card";
+import { statusLabelFor } from "@/lib/task-colors";
 import type { ProjectHealth } from "@/lib/projects/compute-health";
 import { PROJECT_HEALTH_LABELS } from "@/lib/projects/compute-health";
 
 export type PrintSummaryTask = {
   id: string;
   title: string;
-  status: TaskCardTask["status"];
+  status: string;
   assigneeName: string | null;
   dueDate: string | null;
 };
@@ -47,19 +46,25 @@ export type PrintSummaryProps = {
    * of a status badge in that case, rather than guessing. */
   health: ProjectHealth | null;
   tasks: PrintSummaryTask[];
+  /** The project's column names in board order (by position). Statuses
+   * not listed follow in first-seen order. */
+  statusOrder?: string[];
   members: PrintSummaryMember[];
   generatedAt: string;
 };
 
-// Fixed, deterministic ordering for the grouped task sections — matches
-// the board's own left-to-right column order (lib/task-colors.ts) rather
-// than whatever order tasks happen to come back from the query in.
-const STATUS_ORDER: TaskCardTask["status"][] = [
-  "todo",
-  "in_progress",
-  "in_review",
-  "done",
-];
+function groupTasksByStatus(
+  tasks: PrintSummaryTask[],
+  statusOrder: readonly string[],
+): { status: string; tasks: PrintSummaryTask[] }[] {
+  const order = [...statusOrder];
+  for (const task of tasks) {
+    if (!order.includes(task.status)) order.push(task.status);
+  }
+  return order
+    .map((status) => ({ status, tasks: tasks.filter((task) => task.status === status) }))
+    .filter((group) => group.tasks.length > 0);
+}
 
 function formatDueDate(dueDate: string | null): string {
   if (!dueDate) return "No due date";
@@ -86,13 +91,11 @@ export function PrintSummary({
   currentPhase,
   health,
   tasks,
+  statusOrder = [],
   members,
   generatedAt,
 }: PrintSummaryProps) {
-  const grouped = STATUS_ORDER.map((status) => ({
-    status,
-    tasks: tasks.filter((task) => task.status === status),
-  })).filter((group) => group.tasks.length > 0);
+  const grouped = groupTasksByStatus(tasks, statusOrder);
 
   const generatedLabel = new Date(generatedAt).toLocaleString();
 
@@ -131,7 +134,7 @@ export function PrintSummary({
           grouped.map((group) => (
             <div className="print-summary-task-group" key={group.status}>
               <h3>
-                {STATUS_LABELS[group.status]} ({group.tasks.length})
+                {statusLabelFor(group.status)} ({group.tasks.length})
               </h3>
               <table className="print-summary-task-table">
                 <thead>
