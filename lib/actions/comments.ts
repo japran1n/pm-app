@@ -8,6 +8,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import {
   addCommentSchema,
   commentBodyJsonSchema,
+  COMMENT_MAX_CHARS,
   deleteCommentSchema,
   editCommentSchema,
   restoreCommentSchema,
@@ -35,6 +36,16 @@ import { writeTaskCommentEvent } from "@/lib/activity/task-activity";
 import { isProjectVisibleToCaller } from "@/lib/actions/project-visibility";
 import { assertNotPreview } from "@/lib/auth/assert-not-preview";
 import type { ActionResult } from "@/lib/actions/authz";
+
+// GAP3-03: a bodyJson that failed only its limits (custom issues from
+// boundedRichTextDocSchema) is an error, not a silent fallback.
+function richTextLimitError(
+  parsed: { success: boolean; error?: { issues: Array<{ code: string; message: string }> } } | null,
+): string | null {
+  if (!parsed || parsed.success || !parsed.error) return null;
+  const issue = parsed.error.issues.find((i) => i.code === "custom");
+  return issue ? issue.message : null;
+}
 
 export type AddCommentResult = ActionResult<{
         id: string;
@@ -119,6 +130,11 @@ export async function addComment(
   const bodyJsonParsed = bodyJson
     ? commentBodyJsonSchema.safeParse(bodyJson)
     : null;
+  // GAP3-03: an over-limit document (size/depth/plain-text length) is
+  // rejected outright — only a structurally malformed one still falls back
+  // to the validated plain text below.
+  const bodyLimitError = richTextLimitError(bodyJsonParsed);
+  if (bodyLimitError) return { ok: false, error: bodyLimitError };
   const validatedBodyJson: JSONContent = bodyJsonParsed?.success
     ? (bodyJsonParsed.data as JSONContent)
     : docFromPlainText(parsed.data.text);
@@ -273,6 +289,12 @@ export async function addComment(
   }
   const finalProjectedText =
     extractPlainText(mentionSafeBodyJson) || projectedText;
+  if (finalProjectedText.length > COMMENT_MAX_CHARS) {
+    return {
+      ok: false,
+      error: `Comment must be ${COMMENT_MAX_CHARS} characters or fewer.`,
+    };
+  }
 
   // user_id is set here from the server-verified caller id, never trusted
   // from client input. created_at is left to the column default
@@ -950,24 +972,17 @@ export async function restoreComment(
   // postgres_changes UPDATE (which would also resurrect the exact delete
   // bug for every OTHER still-deleted UPDATE variant, since Realtime
   // cannot distinguish "this specific UPDATE" from "some UPDATE" at the
-  // subscription-filter level). The full comment row is sent (not just an
-  // id) so the client's INSERT-shaped reconciliation
-  // (lib/tasks/reconcile-realtime-comment.ts's `reconcileComment`, which
-  // appends when the id isn't already present in local state) can
-  // reconstruct the comment without a second round trip.
+  // subscription-filter level). Only the id is sent (SEC-ACT2-04); the
+  // subscriber re-reads the row through RLS before reconciling it.
   try {
     const broadcastChannel = supabase.channel(`comments:${commentTaskId}`);
     await broadcastChannel.send({
       type: "broadcast",
       event: "comment_restored",
-      payload: {
-        id: restored.id,
-        task_id: restored.task_id,
-        user_id: restored.user_id,
-        text: restored.text,
-        body_json: restoredBodyJson,
-        created_at: restored.created_at,
-      },
+      // SEC-ACT2-04: id only. The channel is a public broadcast topic;
+      // subscribers re-read the row through RLS (internal comments stay
+      // hidden from clients). See lib/tasks/subscribe-comments-realtime.ts.
+      payload: { id: restored.id },
     });
     await supabase.removeChannel(broadcastChannel);
   } catch (broadcastError) {
@@ -1058,6 +1073,11 @@ export async function editComment(
   const bodyJsonParsed = bodyJson
     ? commentBodyJsonSchema.safeParse(bodyJson)
     : null;
+  // GAP3-03: an over-limit document (size/depth/plain-text length) is
+  // rejected outright — only a structurally malformed one still falls back
+  // to the validated plain text below.
+  const bodyLimitError = richTextLimitError(bodyJsonParsed);
+  if (bodyLimitError) return { ok: false, error: bodyLimitError };
   const validatedBodyJson: JSONContent = bodyJsonParsed?.success
     ? (bodyJsonParsed.data as JSONContent)
     : docFromPlainText(parsed.data.text);
@@ -1199,6 +1219,12 @@ export async function editComment(
   }
   const finalProjectedText =
     extractPlainText(mentionSafeBodyJson) || projectedText;
+  if (finalProjectedText.length > COMMENT_MAX_CHARS) {
+    return {
+      ok: false,
+      error: `Comment must be ${COMMENT_MAX_CHARS} characters or fewer.`,
+    };
+  }
 
   const editedAt = new Date().toISOString();
 
@@ -1312,22 +1338,16 @@ export async function editComment(
   // F104-style realtime delivery: postgres_changes UPDATE subscriptions
   // are not relied on for this table (see deleteComment/restoreComment's
   // doc comments for the confirmed AS-101 class of bug), so an edit is
-  // broadcast the same way a restore is — the full updated row, so
-  // reconcileComment's UPDATE branch (lib/tasks/reconcile-realtime-comment.ts)
-  // can replace the local copy without a second round trip.
+  // broadcast the same way a restore is — id only (SEC-ACT2-04); the
+  // subscriber re-reads the row through RLS before replacing its copy.
   try {
     const broadcastChannel = supabase.channel(`comments:${commentTaskId}`);
     await broadcastChannel.send({
       type: "broadcast",
       event: "comment_edited",
-      payload: {
-        id: updated.id,
-        task_id: updated.task_id,
-        user_id: updated.user_id,
-        text: updated.text,
-        body_json: mentionSafeBodyJson,
-        edited_at: updated.edited_at,
-      },
+      // SEC-ACT2-04: id only — never the (possibly internal) body on a
+      // public broadcast topic. Subscribers re-read through RLS.
+      payload: { id: updated.id },
     });
     await supabase.removeChannel(broadcastChannel);
   } catch (broadcastError) {

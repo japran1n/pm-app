@@ -145,14 +145,111 @@ export function toPlainJson<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
+// GAP3-03 (audit 2026-09-24): hard bounds on any client-supplied rich-text
+// document (comments, chat messages). Before these existed, the 10k-char
+// plain-text limit was bypassed by sending the real content in `bodyJson`
+// (server recomputes the plain text from it), and a deeply nested document
+// (depth ~3,000) overflowed the recursive `collect` below.
+//   - MAX_DEPTH: a real Tiptap doc is doc > list > item > paragraph > text,
+//     +2 per nested list level; 32 leaves room for ~13 nested list levels.
+//   - MAX_BYTES: UTF-8 size of the serialised document; 10k chars of text
+//     with heavy marks/links stays far below this.
+//   - MAX_NODES: caps total node count independently of size.
+export const RICH_TEXT_MAX_DEPTH = 32;
+export const RICH_TEXT_MAX_BYTES = 200_000;
+export const RICH_TEXT_MAX_NODES = 20_000;
+
+export type RichTextLimitResult =
+  | { ok: true; bytes: number; depth: number; nodes: number }
+  | { ok: false; reason: "depth" | "nodes" | "bytes" | "shape" };
+
+/** Iteratively measures a document's depth/node count (never recursing, so
+ * a hostile depth cannot overflow the stack), then its serialised byte
+ * size. Aborts as soon as any bound is exceeded. */
+export function checkRichTextLimits(
+  doc: unknown,
+  limits: { maxDepth?: number; maxBytes?: number; maxNodes?: number } = {},
+): RichTextLimitResult {
+  const maxDepth = limits.maxDepth ?? RICH_TEXT_MAX_DEPTH;
+  const maxBytes = limits.maxBytes ?? RICH_TEXT_MAX_BYTES;
+  const maxNodes = limits.maxNodes ?? RICH_TEXT_MAX_NODES;
+
+  if (!doc || typeof doc !== "object" || Array.isArray(doc)) {
+    return { ok: false, reason: "shape" };
+  }
+
+  // Walks every object/array value (not just `.content`), because marks and
+  // attrs are nested objects too and all of them get persisted.
+  const stack: Array<{ value: unknown; depth: number }> = [
+    { value: doc, depth: 1 },
+  ];
+  let nodes = 0;
+  let deepest = 0;
+  while (stack.length > 0) {
+    const { value, depth } = stack.pop()!;
+    if (!value || typeof value !== "object") continue;
+    nodes += 1;
+    if (nodes > maxNodes) return { ok: false, reason: "nodes" };
+    if (depth > deepest) deepest = depth;
+    // Depth counts document nesting (objects inside `content` arrays); an
+    // array itself does not add a level, its elements inherit its depth.
+    if (deepest > maxDepth * 3) return { ok: false, reason: "depth" };
+    const children = Array.isArray(value) ? value : Object.values(value);
+    for (const child of children) {
+      if (child && typeof child === "object") {
+        stack.push({
+          value: child,
+          depth: Array.isArray(value) ? depth : depth + 1,
+        });
+      }
+    }
+  }
+
+  // Document depth in Tiptap terms (content nesting only).
+  const contentDepth = measureContentDepth(doc as JSONContent);
+  if (contentDepth > maxDepth) return { ok: false, reason: "depth" };
+
+  let bytes: number;
+  try {
+    bytes = new TextEncoder().encode(JSON.stringify(doc)).length;
+  } catch {
+    return { ok: false, reason: "shape" };
+  }
+  if (bytes > maxBytes) return { ok: false, reason: "bytes" };
+
+  return { ok: true, bytes, depth: contentDepth, nodes };
+}
+
+function measureContentDepth(doc: JSONContent): number {
+  const stack: Array<{ node: JSONContent; depth: number }> = [
+    { node: doc, depth: 1 },
+  ];
+  let deepest = 0;
+  while (stack.length > 0) {
+    const { node, depth } = stack.pop()!;
+    if (depth > deepest) deepest = depth;
+    if (Array.isArray(node.content)) {
+      for (const child of node.content) {
+        if (child && typeof child === "object") {
+          stack.push({ node: child, depth: depth + 1 });
+        }
+      }
+    }
+  }
+  return deepest;
+}
+
+// GAP3-03: iterative (explicit stack, pre-order) so a hostile nesting depth
+// cannot overflow the call stack; nodes deeper than RICH_TEXT_MAX_DEPTH are
+// ignored rather than walked. Output is identical to the previous recursive
+// implementation for every document within that bound.
 export function extractPlainText(
   content: JSONContent | null | undefined,
   resolveLabel?: (userId: string) => string | null,
 ): string {
   if (!content || typeof content !== "object") return "";
 
-  function collect(node: JSONContent): string {
-    if (!node || typeof node !== "object") return "";
+  function leafText(node: JSONContent): string | null {
     if (node.type === "text") {
       return typeof node.text === "string" ? node.text : "";
     }
@@ -164,16 +261,35 @@ export function extractPlainText(
       return `@${label}`;
     }
     // F015 (portal-simplify, AS-012): a Shift+Enter hard break inside a
-    // paragraph is a leaf node (no `.content`) -- it used to fall through
-    // to the final `return ""`, silently collapsing a soft line break
-    // into nothing rather than the newline the author actually typed.
+    // paragraph is a leaf node -- it projects to the newline the author
+    // actually typed.
     if (node.type === "hardBreak") {
       return "\n";
     }
-    if (Array.isArray(node.content)) {
-      return node.content.map(collect).join("");
+    return null;
+  }
+
+  function collect(root: JSONContent): string {
+    const parts: string[] = [];
+    const stack: Array<{ node: JSONContent; depth: number }> = [
+      { node: root, depth: 2 },
+    ];
+    while (stack.length > 0) {
+      const { node, depth } = stack.pop()!;
+      if (!node || typeof node !== "object") continue;
+      const leaf = leafText(node);
+      if (leaf !== null) {
+        parts.push(leaf);
+        continue;
+      }
+      if (depth >= RICH_TEXT_MAX_DEPTH) continue;
+      if (Array.isArray(node.content)) {
+        for (let i = node.content.length - 1; i >= 0; i -= 1) {
+          stack.push({ node: node.content[i], depth: depth + 1 });
+        }
+      }
     }
-    return "";
+    return parts.join("");
   }
 
   const topLevel = Array.isArray(content.content) ? content.content : [];

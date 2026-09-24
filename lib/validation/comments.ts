@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { boundedRichTextDocSchema } from "@/lib/validation/rich-text";
+
 // F174 (AS-312): loose structural validation for a comment's rich-text
 // body. Deliberately NOT a full allow-list re-implementation — that
 // allow-list is owned once by components/editor/rich-text-editor.tsx's
@@ -8,12 +10,16 @@ import { z } from "zod";
 // schema only guards against obviously-malformed payloads (wrong shape,
 // wrong top-level type) reaching the database at all; it is not the
 // security boundary.
-export const commentBodyJsonSchema = z
-  .object({
-    type: z.literal("doc"),
-    content: z.array(z.unknown()).optional(),
-  })
-  .passthrough();
+// GAP3-03: bounded — the document itself (bytes/depth/nodes) AND its
+// plain-text projection (the same 10,000-char cap `text` has), so the
+// length limit can no longer be bypassed by putting the content in
+// `bodyJson` instead of `text`.
+export const COMMENT_MAX_CHARS = 10000;
+
+export const commentBodyJsonSchema = boundedRichTextDocSchema(
+  COMMENT_MAX_CHARS,
+  "Comment",
+);
 
 // Validates addComment input (AS-094, AS-095). Mirrors the file-layout
 // convention established by lib/validation/tasks.ts.

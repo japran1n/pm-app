@@ -174,7 +174,7 @@ describe("F329: StrictMode mount -> cleanup -> mount does not crash", () => {
     expect(removeChannelCalls).toHaveLength(1);
   });
 
-  it("test_F329_comments_broadcast_listen_pairing_still_works_after_a_remount", () => {
+  it("test_F329_comments_broadcast_listen_pairing_still_works_after_a_remount", async () => {
     // Regression guard for the spec's explicit warning: if topics were
     // made unique per subscription instance to dodge the collision, the
     // broadcaster (lib/actions/comments.ts, which sends on the fixed
@@ -184,6 +184,15 @@ describe("F329: StrictMode mount -> cleanup -> mount does not crash", () => {
     // `supabase.channel(`comments:${taskId}`)` call reuses the exact same
     // channel object the listener is attached to.
     const { supabase, channels } = createFaithfulSupabaseClient();
+    // SEC-ACT2-04: the subscriber re-reads the comment through RLS before
+    // dispatching a delete; an empty read means "no longer visible".
+    const query = {
+      select: () => query,
+      eq: () => query,
+      is: () => query,
+      maybeSingle: async () => ({ data: null, error: null }),
+    };
+    (supabase as unknown as { from: () => typeof query }).from = () => query;
     const onChange = vi.fn();
 
     const unsubscribe1 = subscribeToCommentsRealtime(
@@ -205,6 +214,7 @@ describe("F329: StrictMode mount -> cleanup -> mount does not crash", () => {
       (c) => c.type === "broadcast",
     )!;
     deletedHandler.callback({ payload: { id: "c1" } });
+    await flushDeferredTeardown();
 
     expect(onChange).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({

@@ -41,7 +41,25 @@ import { reconcileComment } from "@/lib/tasks/reconcile-realtime-comment";
 import type { TaskComment } from "@/components/task/comment-list";
 import type { CommentRealtimeEvent } from "@/lib/tasks/subscribe-comments-realtime";
 
-function createMockSupabaseClient() {
+function createMockSupabaseClient(
+  readResult: { data: unknown; error: unknown } = { data: null, error: null },
+) {
+  const queryCalls: Array<[string, ...unknown[]]> = [];
+  const query = {
+    select: vi.fn((...args: unknown[]) => {
+      queryCalls.push(["select", ...args]);
+      return query;
+    }),
+    eq: vi.fn((...args: unknown[]) => {
+      queryCalls.push(["eq", ...args]);
+      return query;
+    }),
+    is: vi.fn((...args: unknown[]) => {
+      queryCalls.push(["is", ...args]);
+      return query;
+    }),
+    maybeSingle: vi.fn(async () => readResult),
+  };
   const onCalls: Array<{
     event: string;
     filter: Record<string, unknown>;
@@ -72,10 +90,16 @@ function createMockSupabaseClient() {
     removeChannel: vi.fn((ch: unknown) => {
       removedChannels.push(ch);
     }),
+    from: vi.fn((table: string) => {
+      queryCalls.push(["from", table]);
+      return query;
+    }),
   };
 
-  return { supabase, onCalls, channelCalls, removedChannels, channelObject };
+  return { supabase, onCalls, channelCalls, removedChannels, channelObject, queryCalls };
 }
+
+const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 describe("subscribeToCommentsRealtime (AS-101, F104)", () => {
   it("subscribes on a per-task channel with postgres_changes restricted to INSERT only (F104: UPDATE/DELETE no longer relied on, since UPDATE fails its own SELECT RLS on soft-delete)", () => {
@@ -145,8 +169,8 @@ describe("subscribeToCommentsRealtime (AS-101, F104)", () => {
   // to handle, so a soft-delete removes the comment from local state via
   // the broadcast path instead of the now-restricted-to-INSERT
   // postgres_changes path.
-  it("F104: translates a comment_deleted broadcast message into a DELETE-shaped event carrying the comment id", () => {
-    const { supabase, onCalls } = createMockSupabaseClient();
+  it("F104: translates a comment_deleted broadcast message into a DELETE-shaped event carrying the comment id (once an RLS re-read confirms it is gone)", async () => {
+    const { supabase, onCalls, queryCalls } = createMockSupabaseClient();
     const onChange = vi.fn();
 
     subscribeToCommentsRealtime(supabase as never, "task-123", onChange);
@@ -158,7 +182,11 @@ describe("subscribeToCommentsRealtime (AS-101, F104)", () => {
       event: "comment_deleted",
       payload: { id: "c1" },
     });
+    await flush();
 
+    expect(queryCalls).toContainEqual(["from", "comments"]);
+    expect(queryCalls).toContainEqual(["eq", "id", "c1"]);
+    expect(queryCalls).toContainEqual(["eq", "task_id", "task-123"]);
     expect(onChange).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
         eventType: "DELETE",
@@ -201,16 +229,7 @@ describe("subscribeToCommentsRealtime (AS-101, F104)", () => {
     expect(restoredCall).toBeDefined();
   });
 
-  it("F191: translates a comment_restored broadcast message into an INSERT-shaped event carrying the full comment row", () => {
-    const { supabase, onCalls } = createMockSupabaseClient();
-    const onChange = vi.fn();
-
-    subscribeToCommentsRealtime(supabase as never, "task-123", onChange);
-
-    const restoredCall = onCalls.find(
-      (c) => c.event === "broadcast" && (c.filter as { event?: string }).event === "comment_restored",
-    )!;
-
+  it("F191: translates a comment_restored broadcast id into an INSERT-shaped event carrying the RLS-read comment row", async () => {
     const row = {
       id: "c1",
       task_id: "task-123",
@@ -219,12 +238,21 @@ describe("subscribeToCommentsRealtime (AS-101, F104)", () => {
       created_at: "2026-08-18T00:00:00Z",
       deleted_at: null,
     };
+    const { supabase, onCalls } = createMockSupabaseClient({ data: row, error: null });
+    const onChange = vi.fn();
+
+    subscribeToCommentsRealtime(supabase as never, "task-123", onChange);
+
+    const restoredCall = onCalls.find(
+      (c) => c.event === "broadcast" && (c.filter as { event?: string }).event === "comment_restored",
+    )!;
 
     restoredCall.callback({
       type: "broadcast",
       event: "comment_restored",
-      payload: row,
+      payload: { id: "c1" },
     });
+    await flush();
 
     expect(onChange).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
@@ -249,6 +277,75 @@ describe("subscribeToCommentsRealtime (AS-101, F104)", () => {
       event: "comment_restored",
       payload: {},
     });
+
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  // SEC-ACT2-04: broadcast payloads are untrusted (public topic, forgeable).
+  function broadcastCallFor(onCalls: Array<{ event: string; filter: Record<string, unknown>; callback: (p: unknown) => void }>, name: string) {
+    return onCalls.find((c) => c.event === "broadcast" && c.filter.event === name)!;
+  }
+
+  it("SEC-ACT2-04: a comment_edited broadcast carrying forged body text dispatches only the RLS-read row", async () => {
+    const row = {
+      id: "c1",
+      task_id: "task-123",
+      user_id: "u1",
+      text: "real text",
+      created_at: "2026-08-18T00:00:00Z",
+      deleted_at: null,
+      edited_at: "2026-08-18T00:05:00Z",
+    };
+    const { supabase, onCalls } = createMockSupabaseClient({ data: row, error: null });
+    const onChange = vi.fn();
+    subscribeToCommentsRealtime(supabase as never, "task-123", onChange);
+
+    broadcastCallFor(onCalls, "comment_edited").callback({
+      type: "broadcast",
+      event: "comment_edited",
+      payload: { id: "c1", text: "FORGED phishing text" },
+    });
+    await flush();
+
+    expect(onChange).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ eventType: "UPDATE", new: row }),
+    );
+  });
+
+  it("SEC-ACT2-04: an edit/restore for a comment the caller cannot read (e.g. internal, for a client) dispatches nothing", async () => {
+    const { supabase, onCalls } = createMockSupabaseClient({ data: null, error: null });
+    const onChange = vi.fn();
+    subscribeToCommentsRealtime(supabase as never, "task-123", onChange);
+
+    broadcastCallFor(onCalls, "comment_edited").callback({ payload: { id: "internal-1" } });
+    broadcastCallFor(onCalls, "comment_restored").callback({ payload: { id: "internal-1" } });
+    await flush();
+
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("SEC-ACT2-04: a forged comment_deleted for a still-visible comment is ignored", async () => {
+    const { supabase, onCalls } = createMockSupabaseClient({
+      data: { id: "c1", task_id: "task-123", deleted_at: null },
+      error: null,
+    });
+    const onChange = vi.fn();
+    subscribeToCommentsRealtime(supabase as never, "task-123", onChange);
+
+    broadcastCallFor(onCalls, "comment_deleted").callback({ payload: { id: "c1" } });
+    await flush();
+
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("SEC-ACT2-04: a failed re-read dispatches nothing", async () => {
+    const { supabase, onCalls } = createMockSupabaseClient({ data: null, error: { message: "boom" } });
+    const onChange = vi.fn();
+    subscribeToCommentsRealtime(supabase as never, "task-123", onChange);
+
+    broadcastCallFor(onCalls, "comment_deleted").callback({ payload: { id: "c1" } });
+    broadcastCallFor(onCalls, "comment_edited").callback({ payload: { id: "c1" } });
+    await flush();
 
     expect(onChange).not.toHaveBeenCalled();
   });

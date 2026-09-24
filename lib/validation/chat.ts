@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { boundedRichTextDocSchema } from "@/lib/validation/rich-text";
 import { REACTION_EMOJI_ALLOWLIST } from "@/lib/validation/comment-reactions";
 
 // F2 (docs/advanced-chat-plan.md): Zod schemas backing lib/actions/chat-channels.ts
@@ -53,12 +54,14 @@ export const findOrCreateDmSchema = z.object({
 // Mirrors lib/validation/comments.ts's commentBodyJsonSchema -- not a full
 // allow-list re-implementation, just enough to reject an obviously
 // malformed payload before it reaches the database.
-export const messageBodyJsonSchema = z
-  .object({
-    type: z.literal("doc"),
-    content: z.array(z.unknown()).optional(),
-  })
-  .passthrough();
+// GAP3-03: bounded by document size/depth/node count and by the
+// plain-text projection's length (MESSAGE_MAX_CHARS).
+export const MESSAGE_MAX_CHARS = 10000;
+
+export const messageBodyJsonSchema = boundedRichTextDocSchema(
+  MESSAGE_MAX_CHARS,
+  "Message",
+);
 
 // Used by F3's sendMessage — schema lives here (not chat-messages.ts's own
 // file) per the plan's F2 item list, which names all three schemas

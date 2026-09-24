@@ -63,11 +63,9 @@
 // worked around for delete — so a restore would never reach subscribers
 // via postgres_changes regardless of whether the NEW row now passes
 // comments_select_active_members. Broadcast is therefore the only
-// delivery path here too. The payload carries the full comment row (not
-// just an id) and is translated into an INSERT-shaped
-// `CommentRealtimeEvent`, so `reconcileComment`'s existing "append if not
-// already present" branch reconstructs the comment without a second code
-// path or a second round trip.
+// delivery path here too. Since SEC-ACT2-04 the payload is a bare id and
+// the subscriber re-reads the row through RLS (see resolveCommentBroadcast
+// below) before dispatching an INSERT-shaped event.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -220,6 +218,89 @@ export function subscribeToReactionsRealtime(
   );
 }
 
+// SEC-ACT2-04 (audit 2026-09-24): every `comments:<taskId>` broadcast now
+// carries ONLY `{ id }`. The channel is a public Realtime broadcast topic:
+// anyone with the anon key who knows (or guesses) a task id can both
+// listen to it and send forged events on it. Before this fix, edit and
+// restore broadcasts carried the full comment row — including INTERNAL
+// comments' text/body — so a client-role subscriber (or anyone outside the
+// workspace) could read internal discussion, and a forger could inject
+// arbitrary comment text into other viewers' open task views.
+//
+// Now the payload is treated as an untrusted hint: on every broadcast the
+// subscriber re-reads the comment through its own session-bound client
+// (RLS: `comments_select_active_members` + internal/client visibility) and
+// dispatches only what that read returns.
+//   - comment_edited / comment_restored: dispatch the RLS-read row, or
+//     nothing if the caller cannot see it (internal comment for a client,
+//     forged id, foreign task).
+//   - comment_deleted: dispatch the removal only when the re-read confirms
+//     the comment is no longer visible (soft-deleted rows fail the SELECT
+//     policy). A forged delete for a live comment is ignored.
+// The `task_id` filter pins the read to this channel's task, so a forged
+// event naming another task's comment id never crosses channels.
+export const COMMENT_REALTIME_SELECT =
+  "id, task_id, user_id, text, body_json, created_at, deleted_at, edited_at";
+
+type BroadcastKind = "comment_deleted" | "comment_restored" | "comment_edited";
+
+async function fetchVisibleComment(
+  supabase: SupabaseClient,
+  taskId: string,
+  commentId: string,
+): Promise<{ ok: true; row: CommentRealtimeRow | null } | { ok: false }> {
+  try {
+    const { data, error } = await supabase
+      .from("comments")
+      .select(COMMENT_REALTIME_SELECT)
+      .eq("id", commentId)
+      .eq("task_id", taskId)
+      .is("deleted_at", null)
+      .maybeSingle();
+    if (error) return { ok: false };
+    return { ok: true, row: (data as CommentRealtimeRow | null) ?? null };
+  } catch {
+    return { ok: false };
+  }
+}
+
+export async function resolveCommentBroadcast(
+  supabase: SupabaseClient,
+  taskId: string,
+  kind: BroadcastKind,
+  payload: unknown,
+): Promise<CommentRealtimeEvent | null> {
+  const id =
+    payload && typeof payload === "object"
+      ? (payload as { id?: unknown }).id
+      : undefined;
+  if (typeof id !== "string" || id.length === 0 || id.length > 64) return null;
+
+  const result = await fetchVisibleComment(supabase, taskId, id);
+  if (!result.ok) return null;
+
+  if (kind === "comment_deleted") {
+    // Still readable -> not actually deleted (forged or stale event).
+    if (result.row) return null;
+    return {
+      eventType: "DELETE",
+      schema: "public",
+      table: "comments",
+      old: { id },
+      new: {},
+    } as unknown as CommentRealtimeEvent;
+  }
+
+  if (!result.row) return null;
+  return {
+    eventType: kind === "comment_restored" ? "INSERT" : "UPDATE",
+    schema: "public",
+    table: "comments",
+    new: result.row,
+    old: {},
+  } as unknown as CommentRealtimeEvent;
+}
+
 export function subscribeToCommentsRealtime(
   supabase: SupabaseClient,
   taskId: string,
@@ -228,75 +309,43 @@ export function subscribeToCommentsRealtime(
   return acquireSharedTopicChannel<CommentRealtimeEvent>(
     supabase,
     `comments:${taskId}`,
-    (dispatch) =>
-      supabase
-        .channel(`comments:${taskId}`)
-        .on(
-          "postgres_changes",
-          {
-            event: "INSERT",
-            schema: "public",
-            table: "comments",
-            filter: `task_id=eq.${taskId}`,
-          },
-          (payload: CommentRealtimeEvent) => {
-            dispatch(payload);
-          },
-        )
-        .on<{ id: string }>(
-          "broadcast",
-          { event: "comment_deleted" },
-          (message) => {
-            const deletedId = message?.payload?.id;
-            if (!deletedId) return;
-            dispatch({
-              eventType: "DELETE",
+    (dispatch) => {
+      const onBroadcast =
+        (kind: BroadcastKind) => (message: { payload?: unknown }) => {
+          void resolveCommentBroadcast(
+            supabase,
+            taskId,
+            kind,
+            message?.payload,
+          ).then((event) => {
+            if (event) dispatch(event);
+          });
+        };
+
+      return (
+        supabase
+          .channel(`comments:${taskId}`)
+          .on(
+            "postgres_changes",
+            {
+              event: "INSERT",
               schema: "public",
               table: "comments",
-              old: { id: deletedId },
-              new: {},
-            } as unknown as CommentRealtimeEvent);
-          },
-        )
-        .on<CommentRealtimeRow>(
-          "broadcast",
-          { event: "comment_restored" },
-          (message) => {
-            const row = message?.payload;
-            if (!row || !row.id) return;
-            dispatch({
-              eventType: "INSERT",
-              schema: "public",
-              table: "comments",
-              new: row,
-              old: {},
-            } as unknown as CommentRealtimeEvent);
-          },
-        )
-        // F197 (AS-362): a symmetrical `comment_edited` broadcast, sent by
-        // lib/actions/comments.ts's editComment right after its content
-        // UPDATE succeeds. Same rationale as comment_restored above —
-        // postgres_changes is only subscribed to `event: "INSERT"`, so an
-        // edit (also an UPDATE under the hood) would never reach other
-        // subscribers via postgres_changes at all. Translated into an
-        // UPDATE-shaped event so reconcileComment's existing "replace by
-        // id" branch handles it without a new reducer path.
-        .on<CommentRealtimeRow>(
-          "broadcast",
-          { event: "comment_edited" },
-          (message) => {
-            const row = message?.payload;
-            if (!row || !row.id) return;
-            dispatch({
-              eventType: "UPDATE",
-              schema: "public",
-              table: "comments",
-              new: row,
-              old: {},
-            } as unknown as CommentRealtimeEvent);
-          },
-        )
-        .subscribe(),
+              filter: `task_id=eq.${taskId}`,
+            },
+            (payload: CommentRealtimeEvent) => {
+              dispatch(payload);
+            },
+          )
+          .on("broadcast", { event: "comment_deleted" }, onBroadcast("comment_deleted"))
+          .on("broadcast", { event: "comment_restored" }, onBroadcast("comment_restored"))
+          // F197 (AS-362): edits are UPDATEs, which postgres_changes is not
+          // subscribed to (see F104 above) — delivered by broadcast, then
+          // re-read through RLS like the other two events.
+          .on("broadcast", { event: "comment_edited" }, onBroadcast("comment_edited"))
+          .subscribe()
+      );
+    },
     onChange,
   );
 }
