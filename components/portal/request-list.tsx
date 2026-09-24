@@ -17,6 +17,13 @@
 // other portal surface reading `client_requests` -- can receive an
 // update from a request a DIFFERENT client user on the same project
 // filed, not only ones this session's own user authored.
+//
+// DB-RLS-04: the `*` subscription is safe for quote prices because
+// Realtime also honours COLUMN privileges -- `realtime.apply_rls` drops
+// every column the subscriber's role cannot SELECT, and `authenticated`
+// holds no SELECT on `client_requests`' quote columns (20261130300000).
+// A payload here never carries quoted_* / quote_note / quote_valid_until;
+// the list reads none of them anyway.
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";

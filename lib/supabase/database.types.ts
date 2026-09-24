@@ -4242,6 +4242,16 @@ export type Database = {
         }
         Returns: boolean
       }
+      client_request_quote_for_caller: {
+        Args: { p_request_id: string }
+        Returns: {
+          quote_currency: string
+          quote_note: string
+          quote_valid_until: string
+          quoted_amount: number
+          quoted_hours: number
+        }[]
+      }
       create_channel_atomic: {
         Args: {
           p_created_by: string

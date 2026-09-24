@@ -107,8 +107,16 @@ export async function getWorkspaceClientRequests(
   );
   if (projectNames.size === 0) return { list: [] };
 
+  // DB-RLS-04: reads through `client_requests_client_read`, not the base
+  // table. `authenticated` holds no SELECT on the base table's quote
+  // columns (20261130300000) — that is what keeps an unsent price out of a
+  // client's reach, over PostgREST and Realtime alike — so the view, which
+  // returns the quote unmasked to a team caller, is the only way this
+  // session can read it. Row visibility is unchanged: the view is
+  // security_invoker, so `client_requests_select_author_or_team` still
+  // decides which requests come back.
   const { data, error } = await supabase
-    .from("client_requests")
+    .from("client_requests_client_read")
     .select(
       "id, project_id, title, body, desired_by, status, decline_reason, converted_task_id, created_at, created_by, scope_verdict, severity, quoted_hours, quoted_amount, quote_currency, quote_note, quote_valid_until, client_decision, track, track_overridden",
     )
