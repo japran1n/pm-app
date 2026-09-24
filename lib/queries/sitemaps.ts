@@ -338,7 +338,8 @@ export type SitemapShareData = {
 // Resolves a share token to a sitemap board, entirely via the admin
 // client (bypasses RLS by design -- see this file's header and the
 // migration's header note). Returns `{ ok: true, data: null }` for an
-// unknown or revoked token -- not found is not a query failure.
+// unknown or revoked token, or a token whose sitemap is archived -- not
+// found is not a query failure.
 export async function resolveSitemapShareToken(
   token: string,
 ): Promise<PortalQueryResult<SitemapShareData | null>> {
@@ -347,6 +348,13 @@ export async function resolveSitemapShareToken(
   // (see eslint.config.mjs) -- this is a query module. Token itself is
   // the sole credential, validated below before any data is returned.
   const admin = createAdminClient();
+
+  // Every token lib/sitemaps/share-token.ts mints is 43 base64url chars
+  // (DB constraint sitemap_shares_token_shape); anything else can't match,
+  // so skip the round trip.
+  if (!/^[A-Za-z0-9_-]{43,}$/.test(token)) {
+    return { ok: true, data: null };
+  }
 
   const { data: shareRow, error: shareError } = await admin
     .from("sitemap_shares")
@@ -365,10 +373,15 @@ export async function resolveSitemapShareToken(
     return { ok: true, data: null };
   }
 
-  const [sitemapResult, boardResult] = await Promise.all([
-    admin.from("sitemaps").select("name").eq("id", shareRow.sitemap_id).maybeSingle(),
-    loadBoard(admin, shareRow.sitemap_id),
-  ]);
+  // Archived sitemaps stop being public: the link resolves exactly like a
+  // revoked one. Checked before the board is loaded so an archived
+  // sitemap's content is never even read on this unauthenticated path.
+  const sitemapResult = await admin
+    .from("sitemaps")
+    .select("name")
+    .eq("id", shareRow.sitemap_id)
+    .is("archived_at", null)
+    .maybeSingle();
 
   if (sitemapResult.error) {
     logger.error("resolveSitemapShareToken: failed to load sitemap name", {
@@ -378,11 +391,13 @@ export async function resolveSitemapShareToken(
   }
 
   if (!sitemapResult.data) {
-    // Sitemap row itself is gone even though the share row still exists
-    // (should not happen given the FK, but treat it the same as an
-    // unknown/revoked token rather than surfacing a query error).
+    // Sitemap archived (or the row is gone even though the share row still
+    // exists, which the FK should prevent): same answer as an
+    // unknown/revoked token rather than surfacing a query error.
     return { ok: true, data: null };
   }
+
+  const boardResult = await loadBoard(admin, shareRow.sitemap_id);
 
   if (!boardResult.ok) {
     return boardResult;

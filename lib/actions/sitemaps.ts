@@ -26,7 +26,7 @@ import { logger } from "@/lib/observability/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
-import { canWrite } from "@/lib/auth/permissions";
+import { canTeamWrite } from "@/lib/auth/permissions";
 import type { ActionResult } from "@/lib/actions/authz";
 import {
   createSitemapSchema,
@@ -51,6 +51,10 @@ type AdminClient = ReturnType<typeof createAdminClient>;
 const GENERIC_ERROR = "Something went wrong. Please try again in a moment.";
 
 
+// The sitemap tool is a team tool: owner/admin/member write, everyone
+// else (viewer, guest, client) is refused -- the same allow-list the RLS
+// policies in supabase/migrations/20261130100000_sitemaps_role_aware_rls.sql
+// enforce. `canWrite` would have admitted guests.
 async function requireWriteAccess(
   admin: AdminClient,
   workspaceId: string,
@@ -60,8 +64,8 @@ async function requireWriteAccess(
   if (!membership.ok) {
     return { ok: false, error: "You don't have permission to do that." };
   }
-  if (!canWrite({ role: membership.role })) {
-    return { ok: false, error: "Viewers don't have permission to make changes." };
+  if (!canTeamWrite({ role: membership.role })) {
+    return { ok: false, error: "You don't have permission to make changes." };
   }
   return { ok: true };
 }
@@ -81,22 +85,114 @@ async function resolveSitemapWorkspace(
   return data;
 }
 
+type SitemapRel = { id: string; workspace_id: string; archived_at: string | null };
+
+function firstRel<T>(rel: T | T[] | null | undefined): T | null {
+  if (Array.isArray(rel)) return rel[0] ?? null;
+  return rel ?? null;
+}
+
 async function resolvePageSitemapWorkspace(
   admin: AdminClient,
   pageId: string,
 ): Promise<{ pageId: string; sitemapId: string; workspaceId: string } | null> {
   const { data, error } = await admin
     .from("sitemap_pages")
-    .select("id, sitemap_id, sitemaps(id, workspace_id)")
+    .select("id, sitemap_id, sitemaps(id, workspace_id, archived_at)")
     .eq("id", pageId)
     .maybeSingle();
 
   if (error || !data) return null;
-  const sitemap = data.sitemaps as { id: string; workspace_id: string } | { id: string; workspace_id: string }[] | null;
-  const sitemapRow = Array.isArray(sitemap) ? sitemap[0] : sitemap;
-  if (!sitemapRow) return null;
+  const sitemapRow = firstRel(data.sitemaps as SitemapRel | SitemapRel[] | null);
+  if (!sitemapRow || sitemapRow.archived_at !== null) return null;
 
   return { pageId: data.id, sitemapId: data.sitemap_id, workspaceId: sitemapRow.workspace_id };
+}
+
+// Batch scope resolution for the flat board actions below. Every id the
+// caller names must exist, and all of them must belong to ONE live
+// (non-archived) sitemap -- otherwise the whole batch is refused. The
+// write access check then runs against that sitemap's workspace, so no id
+// in the batch can reach a row the caller was never authorized for.
+// Returns null (fail closed) on any lookup error, missing id, archived
+// sitemap or mixed sitemaps.
+function uniqueIds(ids: string[]): string[] {
+  return [...new Set(ids)];
+}
+
+async function resolvePagesSitemapScope(
+  admin: AdminClient,
+  pageIds: string[],
+): Promise<{ sitemapId: string; workspaceId: string } | null> {
+  const ids = uniqueIds(pageIds);
+  if (ids.length === 0) return null;
+
+  const { data, error } = await admin
+    .from("sitemap_pages")
+    .select("id, sitemap_id, sitemaps(id, workspace_id, archived_at)")
+    .in("id", ids);
+
+  if (error || !data || data.length !== ids.length) return null;
+
+  const sitemapIds = new Set(data.map((row) => row.sitemap_id));
+  if (sitemapIds.size !== 1) return null;
+
+  const sitemapRow = firstRel(data[0].sitemaps as SitemapRel | SitemapRel[] | null);
+  if (!sitemapRow || sitemapRow.archived_at !== null) return null;
+
+  return { sitemapId: data[0].sitemap_id, workspaceId: sitemapRow.workspace_id };
+}
+
+type SectionPageRel = {
+  id: string;
+  sitemap_id: string;
+  sitemaps: SitemapRel | SitemapRel[] | null;
+};
+
+async function resolveSectionsSitemapScope(
+  admin: AdminClient,
+  sectionIds: string[],
+): Promise<{ sitemapId: string; workspaceId: string } | null> {
+  const ids = uniqueIds(sectionIds);
+  if (ids.length === 0) return null;
+
+  const { data, error } = await admin
+    .from("sitemap_sections")
+    .select("id, page_id, sitemap_pages(id, sitemap_id, sitemaps(id, workspace_id, archived_at))")
+    .in("id", ids);
+
+  if (error || !data || data.length !== ids.length) return null;
+
+  const pages = data.map((row) =>
+    firstRel(row.sitemap_pages as SectionPageRel | SectionPageRel[] | null),
+  );
+  if (pages.some((page) => !page)) return null;
+
+  const sitemapIds = new Set(pages.map((page) => page!.sitemap_id));
+  if (sitemapIds.size !== 1) return null;
+
+  const sitemapRow = firstRel(pages[0]!.sitemaps);
+  if (!sitemapRow || sitemapRow.archived_at !== null) return null;
+
+  return { sitemapId: pages[0]!.sitemap_id, workspaceId: sitemapRow.workspace_id };
+}
+
+function isValidPositionUpdates(
+  updates: unknown,
+): updates is { id: string; position: number }[] {
+  return (
+    Array.isArray(updates) &&
+    updates.length > 0 &&
+    updates.length <= 1000 &&
+    updates.every(
+      (update) =>
+        typeof update === "object" &&
+        update !== null &&
+        typeof (update as { id?: unknown }).id === "string" &&
+        Number.isInteger((update as { position?: unknown }).position) &&
+        (update as { position: number }).position >= 0,
+    )
+  );
 }
 
 function revalidateSitemaps() {
@@ -635,25 +731,21 @@ export async function createSitemapSection(
 async function resolveSectionPageSitemapWorkspace(admin: AdminClient, sectionId: string) {
   const { data, error } = await admin
     .from("sitemap_sections")
-    .select("id, page_id, sitemap_pages(id, sitemap_id, sitemaps(id, workspace_id))")
+    .select("id, page_id, sitemap_pages(id, sitemap_id, sitemaps(id, workspace_id, archived_at))")
     .eq("id", sectionId)
     .maybeSingle();
 
   if (error || !data) return null;
 
-  const pageRel = data.sitemap_pages as
-    | { id: string; sitemap_id: string; sitemaps: { id: string; workspace_id: string } | { id: string; workspace_id: string }[] | null }
-    | { id: string; sitemap_id: string; sitemaps: { id: string; workspace_id: string } | { id: string; workspace_id: string }[] | null }[]
-    | null;
-  const pageRow = Array.isArray(pageRel) ? pageRel[0] : pageRel;
+  const pageRow = firstRel(data.sitemap_pages as SectionPageRel | SectionPageRel[] | null);
   if (!pageRow) return null;
-  const sitemapRel = pageRow.sitemaps;
-  const sitemapRow = Array.isArray(sitemapRel) ? sitemapRel[0] : sitemapRel;
-  if (!sitemapRow) return null;
+  const sitemapRow = firstRel(pageRow.sitemaps);
+  if (!sitemapRow || sitemapRow.archived_at !== null) return null;
 
   return {
     sectionId: data.id,
     pageId: data.page_id,
+    sitemapId: pageRow.sitemap_id,
     workspaceId: sitemapRow.workspace_id,
   };
 }
@@ -809,17 +901,13 @@ export async function createSitemapComponent(
 async function resolveComponentSitemapWorkspace(admin: AdminClient, componentId: string) {
   const { data, error } = await admin
     .from("sitemap_components")
-    .select("id, sitemap_id, sitemaps(id, workspace_id)")
+    .select("id, sitemap_id, sitemaps(id, workspace_id, archived_at)")
     .eq("id", componentId)
     .maybeSingle();
 
   if (error || !data) return null;
-  const sitemapRel = data.sitemaps as
-    | { id: string; workspace_id: string }
-    | { id: string; workspace_id: string }[]
-    | null;
-  const sitemapRow = Array.isArray(sitemapRel) ? sitemapRel[0] : sitemapRel;
-  if (!sitemapRow) return null;
+  const sitemapRow = firstRel(data.sitemaps as SitemapRel | SitemapRel[] | null);
+  if (!sitemapRow || sitemapRow.archived_at !== null) return null;
 
   return { componentId: data.id, sitemapId: data.sitemap_id, workspaceId: sitemapRow.workspace_id };
 }
@@ -886,6 +974,24 @@ export async function deleteSitemapComponent(
 // Share links
 // ---------------------------------------------------------------------
 
+async function findActiveShareToken(
+  admin: AdminClient,
+  sitemapId: string,
+): Promise<{ ok: true; token: string | null } | { ok: false }> {
+  const { data, error } = await admin
+    .from("sitemap_shares")
+    .select("token")
+    .eq("sitemap_id", sitemapId)
+    .is("revoked_at", null)
+    .maybeSingle();
+
+  if (error) {
+    logger.error("createSitemapShare: active share lookup failed", { error });
+    return { ok: false };
+  }
+  return { ok: true, token: data?.token ?? null };
+}
+
 export async function createSitemapShare(
   sitemapId: string,
 ): Promise<ActionResult<{ token: string }>> {
@@ -898,6 +1004,13 @@ export async function createSitemapShare(
   const access = await requireWriteAccess(ctx.admin, sitemap.workspace_id, ctx.userId);
   if (!access.ok) return access;
 
+  // At most one active share per sitemap (enforced by the partial unique
+  // index sitemap_shares_one_active_per_sitemap_idx): a second "create"
+  // returns the link that is already live instead of minting another.
+  const existing = await findActiveShareToken(ctx.admin, sitemap.id);
+  if (!existing.ok) return { ok: false, error: GENERIC_ERROR };
+  if (existing.token) return { ok: true, data: { token: existing.token } };
+
   const token = generateShareToken();
 
   const { error } = await ctx.admin.from("sitemap_shares").insert({
@@ -906,6 +1019,11 @@ export async function createSitemapShare(
   });
 
   if (error) {
+    if (error.code === "23505") {
+      // Lost a race with a concurrent create -- hand back the winner's link.
+      const winner = await findActiveShareToken(ctx.admin, sitemap.id);
+      if (winner.ok && winner.token) return { ok: true, data: { token: winner.token } };
+    }
     logger.error("createSitemapShare: insert failed", { error });
     return { ok: false, error: GENERIC_ERROR };
   }
@@ -929,17 +1047,22 @@ export async function createSitemapShare(
 export async function reorderSitemapSectionsFlat(
   updates: { id: string; position: number }[],
 ): Promise<MutationResult> {
-  if (!Array.isArray(updates) || updates.length === 0) {
+  if (!isValidPositionUpdates(updates)) {
     return { success: false, error: "No sections to reorder." };
   }
 
   const ctx = await guardedAdmin();
   if (!ctx.ok) return { success: false, error: ctx.error };
 
-  const firstSection = await resolveSectionPageSitemapWorkspace(ctx.admin, updates[0].id);
-  if (!firstSection) return { success: false, error: "Section not found." };
+  // Every id in the batch, not just the first: all sections must belong to
+  // one live sitemap the caller may write, or nothing is written.
+  const scope = await resolveSectionsSitemapScope(
+    ctx.admin,
+    updates.map((update) => update.id),
+  );
+  if (!scope) return { success: false, error: "Section not found." };
 
-  const access = await requireWriteAccess(ctx.admin, firstSection.workspaceId, ctx.userId);
+  const access = await requireWriteAccess(ctx.admin, scope.workspaceId, ctx.userId);
   if (!access.ok) return { success: false, error: access.error };
 
   const results = await Promise.all(
@@ -979,7 +1102,7 @@ export async function changeSectionKindSitemap(
   const { error } = await ctx.admin
     .from("sitemap_sections")
     .update({ kind: kindCheck.data })
-    .eq("id", sectionId);
+    .eq("id", section.sectionId);
 
   if (error) {
     logger.error("changeSectionKindSitemap: update failed", { error });
@@ -995,14 +1118,20 @@ export async function moveSitemapSectionToPage(
   newPageId: string,
   position: number,
 ): Promise<MutationResult> {
+  if (!Number.isInteger(position) || position < 0) {
+    return { success: false, error: "Invalid position." };
+  }
+
   const ctx = await guardedAdmin();
   if (!ctx.ok) return { success: false, error: ctx.error };
 
   const section = await resolveSectionPageSitemapWorkspace(ctx.admin, sectionId);
   if (!section) return { success: false, error: "Section not found." };
 
+  // Same sitemap, not merely same workspace: a section never hops between
+  // sitemaps (its component link would dangle into the other sitemap).
   const newPage = await resolvePageSitemapWorkspace(ctx.admin, newPageId);
-  if (!newPage || newPage.workspaceId !== section.workspaceId) {
+  if (!newPage || newPage.sitemapId !== section.sitemapId) {
     return { success: false, error: "Page not found." };
   }
 
@@ -1011,8 +1140,8 @@ export async function moveSitemapSectionToPage(
 
   const { error } = await ctx.admin
     .from("sitemap_sections")
-    .update({ page_id: newPageId, position })
-    .eq("id", sectionId);
+    .update({ page_id: newPage.pageId, position })
+    .eq("id", section.sectionId);
 
   if (error) {
     logger.error("moveSitemapSectionToPage: update failed", { error });
@@ -1058,22 +1187,31 @@ export async function changeSitemapPageKind(
 export async function reorderSitemapPagesFlat(
   updates: { id: string; position: number }[],
 ): Promise<MutationResult> {
-  if (!Array.isArray(updates) || updates.length === 0) {
+  if (!isValidPositionUpdates(updates)) {
     return { success: false, error: "No pages to reorder." };
   }
 
   const ctx = await guardedAdmin();
   if (!ctx.ok) return { success: false, error: ctx.error };
 
-  const firstPage = await resolvePageSitemapWorkspace(ctx.admin, updates[0].id);
-  if (!firstPage) return { success: false, error: "Page not found." };
+  // Every id in the batch, not just the first: all pages must belong to
+  // one live sitemap the caller may write, or nothing is written.
+  const scope = await resolvePagesSitemapScope(
+    ctx.admin,
+    updates.map((update) => update.id),
+  );
+  if (!scope) return { success: false, error: "Page not found." };
 
-  const access = await requireWriteAccess(ctx.admin, firstPage.workspaceId, ctx.userId);
+  const access = await requireWriteAccess(ctx.admin, scope.workspaceId, ctx.userId);
   if (!access.ok) return { success: false, error: access.error };
 
   const results = await Promise.all(
     updates.map((update) =>
-      ctx.admin.from("sitemap_pages").update({ position: update.position }).eq("id", update.id),
+      ctx.admin
+        .from("sitemap_pages")
+        .update({ position: update.position })
+        .eq("id", update.id)
+        .eq("sitemap_id", scope.sitemapId),
     ),
   );
 
@@ -1177,7 +1315,10 @@ export async function createSitemapComponentFromSection(
   if (!ctx.ok) return { success: false, error: ctx.error };
 
   const section = await resolveSectionPageSitemapWorkspace(ctx.admin, sectionId);
-  if (!section) {
+  // The caller-supplied sitemapId is only a consistency check: the
+  // component is always created in the section's OWN sitemap, which is the
+  // one write access was verified against.
+  if (!section || section.sitemapId !== sitemapId) {
     return { success: false, error: "Section not found." };
   }
 
@@ -1186,8 +1327,8 @@ export async function createSitemapComponentFromSection(
 
   const { data: sectionRow, error: sectionError } = await ctx.admin
     .from("sitemap_sections")
-    .select("id, title, component_id, sitemap_pages(sitemap_id)")
-    .eq("id", sectionId)
+    .select("id, title, component_id")
+    .eq("id", section.sectionId)
     .maybeSingle();
 
   if (sectionError || !sectionRow) {
@@ -1206,7 +1347,7 @@ export async function createSitemapComponentFromSection(
   const { count: existingCount, error: countError } = await ctx.admin
     .from("sitemap_components")
     .select("id", { count: "exact", head: true })
-    .eq("sitemap_id", sitemapId);
+    .eq("sitemap_id", section.sitemapId);
 
   if (countError) {
     logger.error("createSitemapComponentFromSection: count failed", { error: countError });
@@ -1215,7 +1356,7 @@ export async function createSitemapComponentFromSection(
 
   const { data: insertedComponent, error: insertError } = await ctx.admin
     .from("sitemap_components")
-    .insert({ sitemap_id: sitemapId, name: nameCheck.data, position: existingCount ?? 0 })
+    .insert({ sitemap_id: section.sitemapId, name: nameCheck.data, position: existingCount ?? 0 })
     .select("id")
     .single();
 
@@ -1230,7 +1371,7 @@ export async function createSitemapComponentFromSection(
   const { error: linkError } = await ctx.admin
     .from("sitemap_sections")
     .update({ component_id: insertedComponent.id })
-    .eq("id", sectionId);
+    .eq("id", section.sectionId);
 
   if (linkError) {
     logger.error("createSitemapComponentFromSection: link failed", { error: linkError });
@@ -1251,13 +1392,20 @@ export async function linkSitemapComponentToSection(
   const section = await resolveSectionPageSitemapWorkspace(ctx.admin, sectionId);
   if (!section) return { success: false, error: "Section not found." };
 
+  // The component must live in the section's own sitemap -- never another
+  // sitemap's (or another workspace's) component id.
+  const component = await resolveComponentSitemapWorkspace(ctx.admin, componentId);
+  if (!component || component.sitemapId !== section.sitemapId) {
+    return { success: false, error: "Component not found." };
+  }
+
   const access = await requireWriteAccess(ctx.admin, section.workspaceId, ctx.userId);
   if (!access.ok) return { success: false, error: access.error };
 
   const { error } = await ctx.admin
     .from("sitemap_sections")
-    .update({ component_id: componentId })
-    .eq("id", sectionId);
+    .update({ component_id: component.componentId })
+    .eq("id", section.sectionId);
 
   if (error) {
     logger.error("linkSitemapComponentToSection: update failed", { error });
@@ -1283,7 +1431,7 @@ export async function unlinkSitemapComponentFromSection(
   const { error } = await ctx.admin
     .from("sitemap_sections")
     .update({ component_id: null })
-    .eq("id", sectionId);
+    .eq("id", section.sectionId);
 
   if (error) {
     logger.error("unlinkSitemapComponentFromSection: update failed", { error });
@@ -1318,7 +1466,7 @@ export async function reorderSitemapComponents(
   }
 
   const validIds = new Set((components ?? []).map((c) => c.id));
-  if (componentIds.some((id) => !validIds.has(id))) {
+  if (!Array.isArray(componentIds) || componentIds.some((id) => !validIds.has(id))) {
     return { success: false, error: "One or more components do not belong to this sitemap." };
   }
 
