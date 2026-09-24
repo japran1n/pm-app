@@ -24,6 +24,7 @@ import {
 import type { TaskCardTask } from "@/components/task/task-card";
 import { logger } from "@/lib/observability/logger";
 import { createClient } from "@/lib/supabase/server";
+import { fetchAllRows } from "@/lib/supabase/fetch-all-rows";
 
 export type PriorityCountDatum = {
   priority: NonNullable<TaskCardTask["priority"]> | "none";
@@ -290,19 +291,24 @@ export async function getUnassignedCount(workspaceId: string): Promise<number> {
   if (projectIds === null) return 0;
   if (projectIds.length === 0) return 0;
 
-  const { data, error } = await supabase
-    .from("tasks")
-    .select("id, project_statuses(category)")
-    .in("project_id", projectIds)
-    .is("assignee_id", null)
-    .is("deleted_at", null);
+  // DB-ACCESS-04: paged — a plain select stops at PostgREST's 1000-row cap.
+  const { data, error } = await fetchAllRows<TaskStatusCategoryRow>((from, to) =>
+    supabase
+      .from("tasks")
+      .select("id, project_statuses(category)")
+      .in("project_id", projectIds)
+      .is("assignee_id", null)
+      .is("deleted_at", null)
+      .order("id")
+      .range(from, to),
+  );
 
   if (error) {
     logger.error("getUnassignedCount: query failed", { error, workspaceId });
     return 0;
   }
 
-  const rows = (data ?? []) as TaskStatusCategoryRow[];
+  const rows = data;
   return rows.filter((row) => !isDoneOrCancelledCategory(taskStatusCategory(row))).length;
 }
 
@@ -325,19 +331,23 @@ export async function getKpiDelta(
   if (kind === "overdue") {
     const cutoffDate = cutoff.toISOString().slice(0, 10);
 
-    const { data, error } = await supabase
-      .from("tasks")
-      .select("id, project_statuses(category)")
-      .in("project_id", projectIds)
-      .is("deleted_at", null)
-      .lt("due_date", cutoffDate);
+    const { data, error } = await fetchAllRows<TaskStatusCategoryRow>((from, to) =>
+      supabase
+        .from("tasks")
+        .select("id, project_statuses(category)")
+        .in("project_id", projectIds)
+        .is("deleted_at", null)
+        .lt("due_date", cutoffDate)
+        .order("id")
+        .range(from, to),
+    );
 
     if (error) {
       logger.error("getKpiDelta: overdue query failed", { error, workspaceId });
       return 0;
     }
 
-    const rows = (data ?? []) as TaskStatusCategoryRow[];
+    const rows = data;
     return rows.filter((row) => !isDoneOrCancelledCategory(taskStatusCategory(row))).length;
   }
 
@@ -350,18 +360,23 @@ export async function getKpiDelta(
   // approximation that RPC's own comment calls out.
   const cutoffIso = cutoff.toISOString();
 
-  const { data, error } = await supabase
-    .from("tasks")
-    .select("id, updated_at, project_statuses(category)")
-    .in("project_id", projectIds)
-    .is("deleted_at", null)
-    .gte("updated_at", cutoffIso);
+  const { data, error } = await fetchAllRows<TaskStatusCategoryRow & { updated_at: string }>(
+    (from, to) =>
+      supabase
+        .from("tasks")
+        .select("id, updated_at, project_statuses(category)")
+        .in("project_id", projectIds)
+        .is("deleted_at", null)
+        .gte("updated_at", cutoffIso)
+        .order("id")
+        .range(from, to),
+  );
 
   if (error) {
     logger.error("getKpiDelta: completed query failed", { error, workspaceId });
     return 0;
   }
 
-  const rows = (data ?? []) as (TaskStatusCategoryRow & { updated_at: string })[];
+  const rows = data;
   return rows.filter((row) => taskStatusCategory(row) === "done").length;
 }

@@ -1,3 +1,4 @@
+import { fetchAllRows } from "@/lib/supabase/fetch-all-rows";
 import { logger } from "@/lib/observability/logger";
 import { getRequestClient } from "@/lib/auth/current-user";
 import { buildStatusBucketMaps } from "@/lib/portal/status-bucket";
@@ -102,12 +103,18 @@ export async function getPortalProjects(
 
   const [{ data: tasks, error: tasksError }, { data: statuses, error: statusesError }] =
     await Promise.all([
-      supabase
-        .from("tasks")
-        .select("id, title, status, status_id, due_date, project_id")
-        .in("project_id", projectIds)
-        .is("deleted_at", null)
-        .order("position"),
+      // DB-ACCESS-04: paged — progress/overdue counts below are computed
+      // from these rows, and a plain select stops at PostgREST's 1000 rows.
+      fetchAllRows((from, to) =>
+        supabase
+          .from("tasks")
+          .select("id, title, status, status_id, due_date, project_id")
+          .in("project_id", projectIds)
+          .is("deleted_at", null)
+          .order("position")
+          .order("id")
+          .range(from, to),
+      ),
       supabase
         .from("project_statuses")
         .select("id, project_id, name, category, client_bucket")

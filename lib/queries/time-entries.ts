@@ -1,3 +1,4 @@
+import { fetchAllRows } from "@/lib/supabase/fetch-all-rows";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { logger } from "@/lib/observability/logger";
@@ -266,14 +267,20 @@ export async function getPersonTimeEntriesInRange(
 ): Promise<PersonTimeEntry[]> {
   const supabase = await createClient();
 
-  const { data, error } = await supabase
-    .from("time_entries")
-    .select("id, task_id, minutes, billable, entry_date, note, tasks(id, title, project_id)")
-    .eq("user_id", userId)
-    .gte("entry_date", startDate)
-    .lte("entry_date", endDate)
-    .order("entry_date", { ascending: false })
-    .order("created_at", { ascending: false });
+  // DB-ACCESS-04: paged — callers total these entries; a plain select
+  // stops at PostgREST's 1000-row cap.
+  const { data, error } = await fetchAllRows((from, to) =>
+    supabase
+      .from("time_entries")
+      .select("id, task_id, minutes, billable, entry_date, note, tasks(id, title, project_id)")
+      .eq("user_id", userId)
+      .gte("entry_date", startDate)
+      .lte("entry_date", endDate)
+      .order("entry_date", { ascending: false })
+      .order("created_at", { ascending: false })
+      .order("id")
+      .range(from, to),
+  );
 
   if (error) {
     logger.error("getPersonTimeEntriesInRange: query failed", { error: error });
@@ -428,13 +435,17 @@ export async function getMyRecentTimeEntries(
   since.setDate(since.getDate() - days);
   const sinceDate = since.toISOString().slice(0, 10);
 
-  const { data, error } = await supabase
-    .from("time_entries")
-    .select("id, task_id, minutes, billable, entry_date, note, tasks(id, title)")
-    .eq("user_id", userId)
-    .gte("entry_date", sinceDate)
-    .order("entry_date", { ascending: false })
-    .order("created_at", { ascending: false });
+  const { data, error } = await fetchAllRows((from, to) =>
+    supabase
+      .from("time_entries")
+      .select("id, task_id, minutes, billable, entry_date, note, tasks(id, title)")
+      .eq("user_id", userId)
+      .gte("entry_date", sinceDate)
+      .order("entry_date", { ascending: false })
+      .order("created_at", { ascending: false })
+      .order("id")
+      .range(from, to),
+  );
 
   if (error) {
     logger.error("getMyRecentTimeEntries: query failed", { error: error });
@@ -492,16 +503,20 @@ export async function getMyTimeEntriesInRange(
 ): Promise<MyTimeEntryInRange[]> {
   const supabase = await createClient();
 
-  const { data, error } = await supabase
-    .from("time_entries")
-    .select(
-      "id, task_id, minutes, billable, entry_date, note, tasks(id, title, project_id, projects(id, name))",
-    )
-    .eq("user_id", userId)
-    .gte("entry_date", startDate)
-    .lte("entry_date", endDate)
-    .order("entry_date", { ascending: true })
-    .order("created_at", { ascending: true });
+  const { data, error } = await fetchAllRows((from, to) =>
+    supabase
+      .from("time_entries")
+      .select(
+        "id, task_id, minutes, billable, entry_date, note, tasks(id, title, project_id, projects(id, name))",
+      )
+      .eq("user_id", userId)
+      .gte("entry_date", startDate)
+      .lte("entry_date", endDate)
+      .order("entry_date", { ascending: true })
+      .order("created_at", { ascending: true })
+      .order("id")
+      .range(from, to),
+  );
 
   if (error) {
     logger.error("getMyTimeEntriesInRange: query failed", { error: error });

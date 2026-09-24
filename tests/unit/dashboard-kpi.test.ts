@@ -68,21 +68,21 @@ vi.mock("@/lib/supabase/server", () => ({
                 }
                 return builder;
               }),
-              lt: vi.fn(async (col: string, val: unknown) => {
+              lt: vi.fn((col: string, val: unknown) => {
                 filters.push(ltFilter(col, val));
-                return { data: applyFilters(taskRows, filters), error: null };
+                return builder;
               }),
-              gte: vi.fn(async (col: string, val: unknown) => {
+              gte: vi.fn((col: string, val: unknown) => {
                 filters.push(gteFilter(col, val));
-                return { data: applyFilters(taskRows, filters), error: null };
+                return builder;
               }),
-              // getUnassignedCount's builder ends its chain on `.is()`,
-              // so `.is()` must itself be able to resolve the promise
-              // when it's the final call — implemented by returning a
-              // thenable builder.
-              then: (resolve: (v: { data: Row[]; error: null }) => void) => {
-                resolve({ data: applyFilters(taskRows, filters), error: null });
-              },
+              order: vi.fn(() => builder),
+              // DB-ACCESS-04: the queries page with `.range()`; the mock
+              // enforces PostgREST's 1000-row cap per response.
+              range: vi.fn(async (from: number, to: number) => ({
+                data: applyFilters(taskRows, filters).slice(from, Math.min(to + 1, from + 1000)),
+                error: null,
+              })),
             };
             return builder;
           }),
@@ -262,5 +262,19 @@ describe("AS-075: getKpiDelta", () => {
 
     const result = await getKpiDelta(WORKSPACE_ID, "overdue", 7);
     expect(result).toBe(0);
+  });
+});
+
+describe("DB-ACCESS-04: counts are not truncated at PostgREST max_rows", () => {
+  it("counts every unassigned open task beyond 1000 rows", async () => {
+    projectRows = [{ id: PROJECT_ID, workspace_id: WORKSPACE_ID, archived_at: null, deleted_at: null }];
+    taskRows = Array.from({ length: 2345 }, (_, i) => ({
+      id: `task-${String(i).padStart(5, "0")}`,
+      project_id: PROJECT_ID,
+      assignee_id: null,
+      deleted_at: null,
+      project_statuses: { category: "not_started" },
+    }));
+    expect(await getUnassignedCount(WORKSPACE_ID)).toBe(2345);
   });
 });
