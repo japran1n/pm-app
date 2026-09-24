@@ -13,6 +13,7 @@ import {
 } from "@/lib/validation/checklist";
 import { logger } from "@/lib/observability/logger";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
+import { canEditTask } from "@/lib/auth/permissions";
 import { calculatePosition } from "@/lib/board/position";
 import type { ActionResult } from "@/lib/actions/authz";
 
@@ -232,6 +233,16 @@ export async function addChecklistItem(
     };
   }
 
+  // Editing a checklist is editing the task: owner/admin/member only
+  // (`canEditTask`). The checklist_items RLS policies enforce the same
+  // team-writer rule for the session-bound writes below.
+  if (!canEditTask({ role: membership.role })) {
+    return {
+      ok: false,
+      error: "You don't have permission to add a checklist item to this task.",
+    };
+  }
+
   // Append to the end of this task's checklist, same "look up the current
   // last position and hand it to calculatePosition as prevPosition with no
   // nextPosition" convention createTask uses for board columns
@@ -353,6 +364,16 @@ export async function toggleChecklistItem(
     };
   }
 
+  // Editing a checklist is editing the task: owner/admin/member only
+  // (`canEditTask`). The checklist_items RLS policies enforce the same
+  // team-writer rule for the session-bound writes below.
+  if (!canEditTask({ role: membership.role })) {
+    return {
+      ok: false,
+      error: "You don't have permission to update this checklist item.",
+    };
+  }
+
   // No-op input (Clarified implementation's empty/zero-state answer): the
   // requested state already matches the current state — return ok without
   // writing, so the UI shows no error toast for an intentional no-op.
@@ -447,6 +468,16 @@ export async function renameChecklistItem(
     };
   }
 
+  // Editing a checklist is editing the task: owner/admin/member only
+  // (`canEditTask`). The checklist_items RLS policies enforce the same
+  // team-writer rule for the session-bound writes below.
+  if (!canEditTask({ role: membership.role })) {
+    return {
+      ok: false,
+      error: "You don't have permission to rename this checklist item.",
+    };
+  }
+
   // No-op input: renaming to the exact same (already-trimmed) text is a
   // safe no-write no-op, same convention as toggleChecklistItem.
   if (context.content === parsed.data.content) {
@@ -530,6 +561,16 @@ export async function reorderChecklistItem(
     };
   }
 
+  // Editing a checklist is editing the task: owner/admin/member only
+  // (`canEditTask`). The checklist_items RLS policies enforce the same
+  // team-writer rule for the session-bound writes below.
+  if (!canEditTask({ role: membership.role })) {
+    return {
+      ok: false,
+      error: "You don't have permission to reorder this checklist item.",
+    };
+  }
+
   if (context.position === parsed.data.position) {
     return { ok: true, data: { id: context.id, position: context.position } };
   }
@@ -603,6 +644,16 @@ export async function deleteChecklistItem(
   );
 
   if (!membership.ok) {
+    return {
+      ok: false,
+      error: "You don't have permission to delete this checklist item.",
+    };
+  }
+
+  // Editing a checklist is editing the task: owner/admin/member only
+  // (`canEditTask`). The checklist_items RLS policies enforce the same
+  // team-writer rule for the session-bound writes below.
+  if (!canEditTask({ role: membership.role })) {
     return {
       ok: false,
       error: "You don't have permission to delete this checklist item.",

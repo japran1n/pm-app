@@ -30,7 +30,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createTaskSchema } from "@/lib/validation/tasks";
 import { resolveProjectStatusName } from "@/lib/tasks/resolve-status";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
-import { canWrite } from "@/lib/auth/permissions";
+import { canEditTask } from "@/lib/auth/permissions";
 import {
   isProjectVisibleToCaller,
   type ProjectVisibility,
@@ -160,15 +160,15 @@ export async function createTaskForUser(
     };
   }
 
-  // F128 (AS-216, AS-217): viewers are read-only (canWrite deliberately
-  // does not exclude guest — see its doc comment in lib/auth/
-  // permissions.ts) — the server independently rejects this call even if a
-  // viewer somehow reaches it directly, regardless of whether the UI hid
-  // the create-task control.
-  if (!canWrite({ role: membership.role })) {
+  // Creating a task is gated exactly like editing one (`canEditTask`:
+  // owner/admin/member). Viewer, guest and client are refused server-side
+  // regardless of whether the UI hid the create-task control; a guest's
+  // task-level writes are comments, reactions, attachments and time
+  // entries (AS-223), which go through their own gates.
+  if (!canEditTask({ role: membership.role })) {
     return {
       ok: false,
-      error: "Viewers don't have permission to create tasks.",
+      error: "You don't have permission to create tasks.",
     };
   }
 

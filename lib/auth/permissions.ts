@@ -188,6 +188,18 @@ export function canTeamWrite(ctx: PermissionContext): boolean {
   return ctx.role === "owner" || ctx.role === "admin" || ctx.role === "member";
 }
 
+// The workspace Tools (/w/[slug]/tools/*). The HTML -> Webflow converter
+// and the Webflow code editor are team tools (`canTeamWrite`). Sitemaps are
+// team-readable including viewers (can_read_sitemap, migration
+// 20261130100000) and team-writable. Guests and clients get no Tools.
+export function canUseTeamTools(ctx: PermissionContext): boolean {
+  return canTeamWrite(ctx);
+}
+
+export function canReadSitemaps(ctx: PermissionContext): boolean {
+  return canTeamWrite(ctx) || ctx.role === "viewer";
+}
+
 // F031 (SB-034): creating a workspace-level project (and, by the sidebar's
 // "+ New" menu, the create entry points that hang off it). This is the
 // guest-aware predicate `canWrite`'s doc comment above calls for: an

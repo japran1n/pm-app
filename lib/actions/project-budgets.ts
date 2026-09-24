@@ -14,7 +14,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { logger } from "@/lib/observability/logger";
-import { canWrite } from "@/lib/auth/permissions";
+import { canTeamWrite } from "@/lib/auth/permissions";
 import { type ActionResult, withAuthz } from "@/lib/actions/authz";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { writeAudit } from "@/lib/activity/audit";
@@ -468,9 +468,9 @@ const previewProjectBudgetSpentImpl = withAuthz(
     // isProjectVisibleToCaller/requireActiveMembership only ruling on
     // membership+visibility, not role — so the same explicit "team, not
     // client" re-check project_hours_team's own RPC body uses is applied
-    // here too, via a plain role check (canWrite already denies client,
-    // reused instead of a redundant is_project_client roundtrip).
-    if (!canWrite({ role: ctx.role })) {
+    // here too, via a plain role check (canTeamWrite: owner/admin/member,
+    // the same audience as the budget settings controls that call this).
+    if (!canTeamWrite({ role: ctx.role })) {
       return {
         ok: false,
         error: "You don't have permission to view this project's hours.",

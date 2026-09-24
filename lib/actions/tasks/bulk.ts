@@ -9,7 +9,7 @@ import {
 } from "@/lib/validation/tasks";
 import { logger } from "@/lib/observability/logger";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
-import { canWrite, canEditTask, type WorkspaceRole } from "@/lib/auth/permissions";
+import { canEditTask, canTeamWrite, type WorkspaceRole } from "@/lib/auth/permissions";
 import {
   filterProjectsVisibleToCaller,
   type ProjectVisibility,
@@ -749,11 +749,10 @@ export async function bulkDeleteTasks(
       failedIds.push({ id, reason: "You are not a member of this workspace." });
       continue;
     }
-    // AS-055/F128 (AS-216, AS-217): viewers are read-only — deliberately
-    // `canWrite`, not `canEditTask`, matching deleteTask's own permission
-    // gate above exactly (delete has no per-task ownership restriction,
-    // only "not a viewer").
-    if (!canWrite({ role })) {
+    // AS-055: same gate as deleteTask (withAuthz's default `canTeamWrite`):
+    // owner/admin/member, no per-task ownership restriction. Viewer, guest
+    // and client are refused.
+    if (!canTeamWrite({ role })) {
       failedIds.push({
         id,
         reason: "You don't have permission to delete this task.",

@@ -1295,9 +1295,9 @@ export async function uploadImprovementImage(formData: FormData): Promise<Upload
   if (!membership.ok) {
     return { ok: false, error: "You don't have permission to manage this project's improvements." };
   }
-  const { canWrite } = await import("@/lib/auth/permissions");
-  if (!canWrite({ role: membership.role })) {
-    return { ok: false, error: "Viewers don't have permission to manage improvements." };
+  const { canTeamWrite } = await import("@/lib/auth/permissions");
+  if (!canTeamWrite({ role: membership.role })) {
+    return { ok: false, error: "You don't have permission to manage improvements." };
   }
 
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");

@@ -19,7 +19,7 @@ import { revalidatePath } from "next/cache";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
-import { canWrite, isClient } from "@/lib/auth/permissions";
+import { canTeamWrite } from "@/lib/auth/permissions";
 import { assertNotPreview } from "@/lib/auth/assert-not-preview";
 import { createNotification } from "@/lib/notifications/create-notification";
 import { getPortalEventRecipients } from "@/lib/notifications/portal-recipients";
@@ -304,8 +304,9 @@ export async function withdrawClientRequest(
 // --- Team side --------------------------------------------------------------
 
 function teamCanTriage(role: string): boolean {
-  const ctx = { role: role as never };
-  return canWrite(ctx) && !isClient(ctx);
+  // Triage is a team write: owner/admin/member only (not viewer, guest or
+  // client).
+  return canTeamWrite({ role: role as never });
 }
 
 export async function declineClientRequest(

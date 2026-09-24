@@ -39,7 +39,7 @@ import {
 import { logger } from "@/lib/observability/logger";
 import { type ActionOutcome, type ActionResult, withAuthz } from "@/lib/actions/authz";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
-import { canWrite, isClient } from "@/lib/auth/permissions";
+import { canTeamWrite, isClient } from "@/lib/auth/permissions";
 import { isProjectVisibleToCaller } from "@/lib/actions/project-visibility";
 import type { ProjectVisibility } from "@/lib/actions/project-visibility";
 import {
@@ -253,7 +253,7 @@ export async function uploadScopeDocument(
     return { ok: false, error: AUTHZ_ERRORS.membershipError };
   }
 
-  if (!canWrite({ role: membership.role })) {
+  if (!canTeamWrite({ role: membership.role })) {
     return { ok: false, error: AUTHZ_ERRORS.writeError };
   }
 
