@@ -236,7 +236,16 @@ function expandFont(rawValue: string): ExpandResult | null {
     return { decls: {}, warning: `font: system-font keyword '${rawValue.trim()}' not supported` };
   }
   // Normalize "size / line-height" (with spaces around the slash) to "size/line-height".
-  const value = rawValue.replace(/\s*\/\s*/g, '/');
+  // Split/trim rather than /\s*\/\s*/g, which is quadratic on long whitespace runs.
+  const value = rawValue
+    .split('/')
+    .map((part, i, all) => {
+      let p = part;
+      if (i > 0) p = p.trimStart();
+      if (i < all.length - 1) p = p.trimEnd();
+      return p;
+    })
+    .join('/');
   const parts = splitTop(value);
   const out: Record<string, string> = {};
   let i = 0;

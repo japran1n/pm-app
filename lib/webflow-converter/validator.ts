@@ -37,8 +37,32 @@ const CLASS_NAME_RE = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
  * starts with a letter — this still rejects genuinely malformed names like
  * `1-bad-class` (no colon, starts with a digit), which must stay a hard
  * error.
+ *
+ * Grammar: `(variant:)* letter utility* ([arbitrary])? utility*`. Checked
+ * with string splitting plus single-quantifier anchored regexes so it runs
+ * in linear time on any input.
  */
-const TAILWIND_VARIANT_RE = /^(?:[a-zA-Z0-9_-]+:)*[a-zA-Z][a-zA-Z0-9_.%/#-]*(?:\[[^\]]*\])?[a-zA-Z0-9_.%/#-]*$/;
+const VARIANT_SEGMENT_RE = /^[a-zA-Z0-9_-]+$/;
+const UTILITY_HEAD_RE = /^[a-zA-Z][a-zA-Z0-9_.%/#-]*$/;
+const UTILITY_TAIL_RE = /^[a-zA-Z0-9_.%/#-]*$/;
+
+export function isTailwindClassName(name: string): boolean {
+  // Variant segments never contain `[`, and the base never contains a colon
+  // outside its bracket, so the prefix ends at the last colon before the
+  // first `[`.
+  const bracketOpen = name.indexOf("[");
+  const splitAt = name.lastIndexOf(":", bracketOpen === -1 ? name.length : bracketOpen);
+  if (splitAt !== -1) {
+    const segments = name.slice(0, splitAt).split(":");
+    if (!segments.every((seg) => VARIANT_SEGMENT_RE.test(seg))) return false;
+  }
+  const base = name.slice(splitAt + 1);
+  const open = base.indexOf("[");
+  if (open === -1) return UTILITY_HEAD_RE.test(base);
+  const close = base.indexOf("]", open + 1);
+  if (close === -1) return false;
+  return UTILITY_HEAD_RE.test(base.slice(0, open)) && UTILITY_TAIL_RE.test(base.slice(close + 1));
+}
 
 /**
  * Required `type` discriminator on a valid Webflow clipboard payload
@@ -188,29 +212,31 @@ function detectCycles(nodes: WebflowChild[], errors: string[]): void {
     if (Array.isArray(el.children)) childrenOf.set(el._id, el.children);
   }
 
+  // Iterative DFS (explicit stack) so a deep tree cannot overflow the call stack.
   const state = new Map<string, "visiting" | "done">();
-  let reported = false;
-
-  const visit = (id: string): void => {
-    if (reported) return;
-    const st = state.get(id);
-    if (st === "done") return;
-    if (st === "visiting") {
-      errors.push("Node tree contains a circular reference");
-      reported = true;
-      return;
+  for (const rootId of childrenOf.keys()) {
+    if (state.has(rootId)) continue;
+    state.set(rootId, "visiting");
+    const stack: { id: string; next: number }[] = [{ id: rootId, next: 0 }];
+    while (stack.length > 0) {
+      const frame = stack[stack.length - 1];
+      const children = childrenOf.get(frame.id) ?? [];
+      if (frame.next >= children.length) {
+        state.set(frame.id, "done");
+        stack.pop();
+        continue;
+      }
+      const childId = children[frame.next++];
+      if (typeof childId !== "string" || !childrenOf.has(childId)) continue;
+      const st = state.get(childId);
+      if (st === "visiting") {
+        errors.push("Node tree contains a circular reference");
+        return;
+      }
+      if (st === "done") continue;
+      state.set(childId, "visiting");
+      stack.push({ id: childId, next: 0 });
     }
-    state.set(id, "visiting");
-    for (const childId of childrenOf.get(id) ?? []) {
-      if (typeof childId === "string" && childrenOf.has(childId)) visit(childId);
-      if (reported) break;
-    }
-    state.set(id, "done");
-  };
-
-  for (const id of childrenOf.keys()) {
-    if (reported) break;
-    visit(id);
   }
 }
 
@@ -243,6 +269,15 @@ function validateStyles(
     styleIds.add(style._id);
   }
 
+  // How many base styles list each style _id in their children array.
+  const ownerCount = new Map<string, number>();
+  for (const style of styles) {
+    if (!style || typeof style !== "object" || !Array.isArray(style.children)) continue;
+    for (const childId of new Set(style.children)) {
+      ownerCount.set(childId, (ownerCount.get(childId) ?? 0) + 1);
+    }
+  }
+
   for (const style of styles) {
     if (!style || typeof style !== "object") {
       errors.push("Style entry is missing or not an object");
@@ -256,7 +291,7 @@ function validateStyles(
     if (typeof style.name !== "string" || style.name.trim() === "") {
       errors.push(`Style ${style._id ?? "(no id)"} has an empty class name`);
     } else if (!CLASS_NAME_RE.test(style.name)) {
-      if (TAILWIND_VARIANT_RE.test(style.name)) {
+      if (isTailwindClassName(style.name)) {
         // AS-132: Tailwind variant/arbitrary-value class names (e.g.
         // `md:w-1/2`, `hover:text-blue-500`, `w-[32px]`) are valid, common
         // Tailwind classes that Webflow's own naming rules don't support.
@@ -282,14 +317,12 @@ function validateStyles(
       // Combo styles no longer carry their base's id in `comb` — the base is
       // identified solely by having this style's _id in its `children`
       // array. A combo must be registered in exactly one base's children.
-      const owners = styles.filter(
-        (s) => s && typeof s === "object" && Array.isArray(s.children) && s.children.includes(style._id)
-      );
-      if (owners.length === 0) {
+      const owners = ownerCount.get(style._id) ?? 0;
+      if (owners === 0) {
         errors.push(
           `Combo style "${style._id ?? "(no id)"}" is not registered in any base style's children array`
         );
-      } else if (owners.length > 1) {
+      } else if (owners > 1) {
         errors.push(
           `Combo style "${style._id ?? "(no id)"}" is registered in more than one base style's children array`
         );

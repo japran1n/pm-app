@@ -16,6 +16,7 @@
 import { HTMLElement, NodeType, parse } from "node-html-parser";
 import { getWebflowType } from "./typemap";
 import { parseCss, type ParseCssResult, type ParsedClass } from "./css";
+import { MAX_CLASSES, MAX_OUTPUT_CHARS, OUTPUT_TOO_LARGE_ERROR, TOO_MANY_CLASSES_ERROR } from "./limits";
 
 /** A text node in Webflow's flat node array. No `type`, no nested `text` object — `v` is the string itself. */
 export interface WebflowTextNode {
@@ -125,6 +126,8 @@ export interface XscpData {
 export interface EmitResult {
   payload: XscpData;
   warnings: string[];
+  /** Set when a hard size limit was hit; `payload` is then empty and must not be used. */
+  error?: string;
 }
 
 // Elements that never produce a node of their own.
@@ -373,10 +376,11 @@ export function buildStyles(cssResult: ParseCssResult, warnings: string[] = []):
   // using the combo->base relationships recorded above (comb now carries the
   // literal "&" marker, not the base's id, so it can no longer be used to
   // find the base).
+  const styleById = new Map(styles.map((s) => [s._id, s]));
   for (const style of styles) {
     const baseId = comboBaseById.get(style._id);
     if (baseId) {
-      const base = styles.find((s) => s._id === baseId);
+      const base = styleById.get(baseId);
       if (base) {
         base.children = base.children ?? [];
         if (!base.children.includes(style._id)) base.children.push(style._id);
@@ -495,6 +499,8 @@ interface TreeElement {
   classNames: string[];
   data: Record<string, unknown>;
   children: (TreeElement | WebflowTextNode)[];
+  /** Memo: indices into the embed-rule list whose full class chain this element carries. */
+  embedMatches?: number[];
 }
 
 function isTreeText(node: TreeElement | WebflowTextNode): node is WebflowTextNode {
@@ -523,14 +529,16 @@ function walkElement(el: HTMLElement, ctx: WalkContext): TreeElement | null {
     (n) => n.nodeType === NodeType.ELEMENT_NODE
   ) as HTMLElement[];
 
+  // outerHTML is only consumed for <svg>; serializing every element's
+  // subtree would make the walk quadratic in nesting depth.
   const typeInfo = getWebflowType(tag, {
     hasElementChildren: elementChildren.length > 0,
     attrs,
-    outerHTML: el.outerHTML,
+    outerHTML: tag === "svg" ? el.outerHTML : "",
   });
   if (typeInfo.warning) ctx.warnings.push(typeInfo.warning);
 
-  const classNames = (attrs.class ?? "").split(/\s+/).filter(Boolean);
+  const classNames = [...new Set((attrs.class ?? "").split(/\s+/).filter(Boolean))];
 
   const typeData: Record<string, unknown> = { ...(typeInfo.data ?? {}) };
   if (tag === "img" && attrs.src !== undefined) typeData.src = attrs.src;
@@ -595,23 +603,6 @@ function selectorFor(rec: ParsedClass): string {
   return "." + chain.join(".");
 }
 
-/** True when every class in `chain` is present together on at least one of `classLists`. */
-function chainIsUsed(chain: string[], classLists: string[][]): boolean {
-  if (chain.length === 1) {
-    return classLists.some((classes) => classes.includes(chain[0]));
-  }
-  return classLists.some((classes) => chain.every((c) => classes.includes(c)));
-}
-
-/** Recursively collects the class-name list of every element node in a subtree (each node's own list, not flattened). */
-function collectClassLists(nodes: (TreeElement | WebflowTextNode)[], out: string[][]): void {
-  for (const node of nodes) {
-    if (isTreeText(node)) continue;
-    out.push(node.classNames);
-    if (node.children.length > 0) collectClassLists(node.children, out);
-  }
-}
-
 /** Serializes a class's unsupported property/value pairs as one CSS rule body, sorted for determinism. */
 function ruleBody(decls: Record<string, string>): string {
   return Object.keys(decls)
@@ -620,21 +611,30 @@ function ruleBody(decls: Record<string, string>): string {
     .join(" ");
 }
 
-/**
- * Builds the CSS embed `<style>` block text for one section's subtree: one
- * rule per class (in cssMap.order) that has unsupported declarations and is
- * actually used somewhere in the subtree. Returns "" when nothing applies.
- */
-function buildCssEmbedHtml(cssMap: ParseCssResult, classLists: string[][]): string {
-  const rules: string[] = [];
-  // @media block bodies, keyed by the reconstructed media query text, so
-  // multiple classes/states sharing a breakpoint land in one @media block.
-  const mediaBlocks = new Map<string, string[]>();
+/** One class (in cssMap.order) with declarations that must go into a CSS embed. */
+interface EmbedRuleEntry {
+  chain: string[];
+  /** Plain rules, in emission order. */
+  rules: string[];
+  /** Rules that belong inside a reconstructed @media block. */
+  mediaRules: { media: string; rule: string }[];
+}
+
+/** Precomputed embed rules plus a terminal-class-name -> entry index for per-element matching. */
+interface EmbedRuleIndex {
+  entries: EmbedRuleEntry[];
+  byName: Map<string, number[]>;
+}
+
+/** Builds the section-independent embed rules once, in cssMap.order. */
+function buildEmbedRuleIndex(cssMap: ParseCssResult): EmbedRuleIndex {
+  const entries: EmbedRuleEntry[] = [];
+  const byName = new Map<string, number[]>();
 
   for (const key of cssMap.order) {
     const rec = cssMap.classes.get(key)!;
-    const chain = rec.comboOf && rec.comboOf.length > 0 ? [...rec.comboOf, rec.name] : [rec.name];
-    if (!chainIsUsed(chain, classLists)) continue;
+    const rules: string[] = [];
+    const mediaRules: { media: string; rule: string }[] = [];
 
     if (rec.unsupported && Object.keys(rec.unsupported).length > 0) {
       rules.push(`${selectorFor(rec)} { ${ruleBody(rec.unsupported)} }`);
@@ -646,16 +646,72 @@ function buildCssEmbedHtml(cssMap: ParseCssResult, classLists: string[][]): stri
       const pseudo = state ? (REVERSE_STATE_ALIAS[state] ?? "") : "";
       const rule = `${selectorFor(rec)}${pseudo} { ${ruleBody(decls)} }`;
       if (breakpoint && MEDIA_QUERIES[breakpoint]) {
-        const media = MEDIA_QUERIES[breakpoint];
-        const block = mediaBlocks.get(media) ?? [];
-        block.push(rule);
-        mediaBlocks.set(media, block);
+        mediaRules.push({ media: MEDIA_QUERIES[breakpoint], rule });
       } else {
         // No reconstructable @media (e.g. a bare pseudo-state variant, or a
         // min-width breakpoint not covered by MEDIA_QUERIES) — emit as a
         // plain rule.
         rules.push(rule);
       }
+    }
+
+    if (rules.length === 0 && mediaRules.length === 0) continue;
+    const chain = rec.comboOf && rec.comboOf.length > 0 ? [...rec.comboOf, rec.name] : [rec.name];
+    const idx = entries.length;
+    entries.push({ chain, rules, mediaRules });
+    const list = byName.get(rec.name) ?? [];
+    list.push(idx);
+    byName.set(rec.name, list);
+  }
+
+  return { entries, byName };
+}
+
+/** Embed-rule entries whose full class chain is carried by this one element (memoized). */
+function embedMatchesFor(node: TreeElement, index: EmbedRuleIndex): number[] {
+  if (node.embedMatches) return node.embedMatches;
+  const own = new Set(node.classNames);
+  const matches: number[] = [];
+  for (const name of node.classNames) {
+    for (const idx of index.byName.get(name) ?? []) {
+      if (index.entries[idx].chain.every((c) => own.has(c))) matches.push(idx);
+    }
+  }
+  node.embedMatches = matches;
+  return matches;
+}
+
+/**
+ * Builds the CSS embed `<style>` block text for one section's subtree: one
+ * rule per class (in cssMap.order) that has unsupported declarations and
+ * whose full class chain is carried together by at least one element in the
+ * subtree. Returns "" when nothing applies.
+ */
+function buildCssEmbedHtml(section: TreeElement, index: EmbedRuleIndex): string {
+  if (index.entries.length === 0) return "";
+
+  const used = new Set<number>();
+  const stack: TreeElement[] = [section];
+  while (stack.length > 0) {
+    const node = stack.pop()!;
+    for (const idx of embedMatchesFor(node, index)) used.add(idx);
+    for (const child of node.children) {
+      if (!isTreeText(child)) stack.push(child);
+    }
+  }
+  if (used.size === 0) return "";
+
+  const rules: string[] = [];
+  // @media block bodies, keyed by the reconstructed media query text, so
+  // multiple classes/states sharing a breakpoint land in one @media block.
+  const mediaBlocks = new Map<string, string[]>();
+  for (const idx of [...used].sort((a, b) => a - b)) {
+    const entry = index.entries[idx];
+    for (const rule of entry.rules) rules.push(rule);
+    for (const { media, rule } of entry.mediaRules) {
+      const block = mediaBlocks.get(media) ?? [];
+      block.push(rule);
+      mediaBlocks.set(media, block);
     }
   }
 
@@ -690,19 +746,26 @@ function buildEmbedNode(html: string): TreeElement {
  */
 function injectSectionEmbeds(
   nodes: (TreeElement | WebflowTextNode)[],
-  cssMap: ParseCssResult,
-  scriptHtml: string
+  ruleIndex: EmbedRuleIndex,
+  scriptHtml: string,
+  budget: EmbedBudget
 ): boolean {
   let injected = false;
   for (const node of nodes) {
+    if (budget.exceeded) return injected;
     if (isTreeText(node)) continue;
     if (node.children.length > 0) {
-      injected = injectSectionEmbeds(node.children, cssMap, scriptHtml) || injected;
+      injected = injectSectionEmbeds(node.children, ruleIndex, scriptHtml, budget) || injected;
     }
     if (node.tag === "section") {
-      const classLists: string[][] = [];
-      collectClassLists([node], classLists);
-      const cssHtml = buildCssEmbedHtml(cssMap, classLists);
+      const cssHtml = buildCssEmbedHtml(node, ruleIndex);
+      // Every section repeats its embeds, so a large script or rule set
+      // multiplies across sections; stop once the total would be too big.
+      budget.remaining -= cssHtml.length + scriptHtml.length;
+      if (budget.remaining < 0) {
+        budget.exceeded = true;
+        return injected;
+      }
       if (cssHtml) {
         node.children.unshift(buildEmbedNode(cssHtml));
         injected = true;
@@ -714,6 +777,12 @@ function injectSectionEmbeds(
     }
   }
   return injected;
+}
+
+/** Shared character budget for all injected embed HTML in one conversion. */
+interface EmbedBudget {
+  remaining: number;
+  exceeded: boolean;
 }
 
 /** Per class-name candidate style entry, derived from a buildStyles() idByKey map. */
@@ -777,6 +846,26 @@ function flattenTree(
   }
 }
 
+/** An empty payload carrying a hard-limit error. */
+function limitResult(warnings: string[], error: string): EmitResult {
+  return {
+    payload: {
+      type: "@webflow/XscpData",
+      payload: {
+        nodes: [],
+        styles: [],
+        assets: [],
+        ix1: [],
+        ix2: { interactions: [], events: [], actionLists: [] },
+        expandUserComponents: true,
+      },
+      meta: { ...DEFAULT_XSCP_META },
+    },
+    warnings,
+    error,
+  };
+}
+
 /**
  * Converts an HTML fragment plus a css.ts parseCss() result into Webflow's
  * XscpData clipboard payload. Never throws for expected-bad input — parse
@@ -786,10 +875,16 @@ function flattenTree(
  * js-extract.ts's extractScripts()) that get wrapped in a `<script>` tag and
  * injected as a JS embed into every `<section>` element, in addition to
  * being available via the caller's own customCode surface.
+ *
+ * The tree walks here recurse once per nesting level: callers must bound
+ * the HTML's depth first (convert() does, via limits.ts's checkHtmlShape).
+ * Class count and total embed size are bounded here; exceeding either
+ * returns an empty payload with `error` set.
  */
 export function emitWebflow(html: string, cssMap: ParseCssResult, scripts: string[] = []): EmitResult {
   const warnings: string[] = [...cssMap.warnings];
   const ctx: WalkContext = { warnings };
+  if (cssMap.order.length > MAX_CLASSES) return limitResult(warnings, TOO_MANY_CLASSES_ERROR);
 
   const root = parse(html ?? "");
   const topLevel = root.childNodes.filter(
@@ -811,7 +906,9 @@ export function emitWebflow(html: string, cssMap: ParseCssResult, scripts: strin
   const inlineScripts = scripts.filter((s) => s.trim() !== "" && !s.trim().startsWith("<"));
   const scriptHtml = inlineScripts.length > 0 ? `<script>${inlineScripts.join("\n")}</script>` : "";
 
-  const embedsInjected = injectSectionEmbeds(treeRoots, cssMap, scriptHtml);
+  const budget: EmbedBudget = { remaining: MAX_OUTPUT_CHARS, exceeded: false };
+  const embedsInjected = injectSectionEmbeds(treeRoots, buildEmbedRuleIndex(cssMap), scriptHtml, budget);
+  if (budget.exceeded) return limitResult(warnings, OUTPUT_TOO_LARGE_ERROR);
   if (embedsInjected && !styles.some((s) => s.name === "is-hidden")) {
     const id = makeId();
     pushStyle(styles, { _id: id, name: "is-hidden", comb: "", styleLess: "display: none;", variants: {}, children: [] });
@@ -830,6 +927,7 @@ export function emitWebflow(html: string, cssMap: ParseCssResult, scripts: strin
   }
   for (const className of nodeClasses) {
     if (!knownNames.has(className)) {
+      if (styles.length >= MAX_CLASSES) return limitResult(warnings, TOO_MANY_CLASSES_ERROR);
       const id = makeId();
       pushStyle(styles, { _id: id, name: className, comb: "", styleLess: "", variants: {}, children: [] });
       idByKey.set(className, id);

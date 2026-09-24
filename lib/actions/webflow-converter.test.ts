@@ -12,6 +12,31 @@ vi.mock("@/lib/auth/current-user", () => ({
   getCurrentUser: () => mockGetCurrentUser(),
 }));
 
+// Admin client stub: resolves the workspace slug and the caller's role.
+const adminState = vi.hoisted(() => ({
+  workspace: { id: "ws-1" } as { id: string } | null,
+  role: "member" as string | null,
+}));
+
+vi.mock("@/lib/supabase/admin", () => ({
+  createAdminClient: () => ({
+    from: (table: string) => {
+      const chain = {
+        select: () => chain,
+        eq: () => chain,
+        maybeSingle: async () => {
+          if (table === "workspaces") return { data: adminState.workspace, error: null };
+          if (table === "workspace_members") {
+            return { data: adminState.role ? { role: adminState.role } : null, error: null };
+          }
+          return { data: null, error: null };
+        },
+      };
+      return chain;
+    },
+  }),
+}));
+
 const { mockConvert, getActualConvert, setActualConvert } = vi.hoisted(
   () => {
     let actualConvert: ((html: string, css: string) => unknown) | null =
@@ -41,6 +66,11 @@ vi.mock("@/lib/webflow-converter/convert", async () => {
 });
 
 import { convertHtmlToWebflow } from "@/lib/actions/webflow-converter";
+import {
+  HTML_TOO_DEEP_ERROR,
+  INPUT_TOO_LARGE_ERROR,
+  MAX_SOURCE_CHARS,
+} from "@/lib/webflow-converter/limits";
 
 describe("convertHtmlToWebflow (M4)", () => {
   beforeEach(() => {
@@ -51,16 +81,19 @@ describe("convertHtmlToWebflow (M4)", () => {
       return actualConvert(html, css);
     });
     mockGetCurrentUser.mockResolvedValue({ user: { id: "user-1" } });
+    adminState.workspace = { id: "ws-1" };
+    adminState.role = "member";
   });
 
   it("test_AS_004_unauthenticated_caller_is_rejected", async () => {
     mockGetCurrentUser.mockResolvedValue({ user: null });
-    const result = await convertHtmlToWebflow({ html: "<div>hi</div>", css: "" });
+    const result = await convertHtmlToWebflow({ workspaceSlug: "acme", html: "<div>hi</div>", css: "" });
     expect(result).toEqual({ ok: false, message: "Unauthorized" });
   });
 
   it("test_AS_012_authenticated_caller_reaches_the_conversion_engine", async () => {
     const result = await convertHtmlToWebflow({
+      workspaceSlug: "acme",
       html: '<div class="a">hello</div>',
       css: ".a { color: red; }",
     });
@@ -70,6 +103,7 @@ describe("convertHtmlToWebflow (M4)", () => {
 
   it("test_AS_009_happy_path_returns_json_with_no_warnings_or_errors", async () => {
     const result = await convertHtmlToWebflow({
+      workspaceSlug: "acme",
       html: '<div class="a">hello</div>',
       css: ".a { color: red; }",
     });
@@ -81,7 +115,7 @@ describe("convertHtmlToWebflow (M4)", () => {
   });
 
   it("test_AS_029_empty_html_returns_a_typed_error_shape", async () => {
-    const result = await convertHtmlToWebflow({ html: "   ", css: "" });
+    const result = await convertHtmlToWebflow({ workspaceSlug: "acme", html: "   ", css: "" });
     expect(result).toEqual({
       ok: false,
       message: "Paste some HTML to convert.",
@@ -92,6 +126,7 @@ describe("convertHtmlToWebflow (M4)", () => {
 
   it("test_AS_016_js_tab_content_is_injected_as_a_script_block_before_convert", async () => {
     const result = await convertHtmlToWebflow({
+      workspaceSlug: "acme",
       html: "<div>hi</div>",
       css: "",
       js: 'console.log("test")',
@@ -103,6 +138,7 @@ describe("convertHtmlToWebflow (M4)", () => {
 
   it("test_AS_016_empty_js_leaves_html_unchanged", async () => {
     const result = await convertHtmlToWebflow({
+      workspaceSlug: "acme",
       html: "<div>hi</div>",
       css: "",
       js: "",
@@ -113,6 +149,7 @@ describe("convertHtmlToWebflow (M4)", () => {
 
   it("test_script_closing_tag_in_js_escaped", async () => {
     const result = await convertHtmlToWebflow({
+      workspaceSlug: "acme",
       html: "<div>x</div>",
       css: "",
       js: "alert('</script><script>evil()')",
@@ -139,6 +176,7 @@ describe("convertHtmlToWebflow (M4)", () => {
     // A single root <div> containing three nested children: the flat
     // (root-only) count would be 1, but the real element count is 4.
     const result = await convertHtmlToWebflow({
+      workspaceSlug: "acme",
       html: '<div class="a"><span>one</span><span>two</span><span>three</span></div>',
       css: ".a { color: red; }",
     });
@@ -147,10 +185,67 @@ describe("convertHtmlToWebflow (M4)", () => {
   });
 
   it("test_AS_118_conversion_error_from_the_engine_is_surfaced_with_ok_false", async () => {
-    const result = await convertHtmlToWebflow({ html: "<!-- just a comment -->", css: "" });
+    const result = await convertHtmlToWebflow({ workspaceSlug: "acme", html: "<!-- just a comment -->", css: "" });
     expect(result.ok).toBe(false);
     expect(result.errors).toBeDefined();
     expect(result.errors!.length).toBeGreaterThan(0);
     expect(result.message).toBe(result.errors![0]);
+  });
+
+  it.each(["client", "guest", "viewer"])("refuses the %s role (team tool)", async (role) => {
+    adminState.role = role;
+    const result = await convertHtmlToWebflow({ workspaceSlug: "acme", html: "<div>hi</div>", css: "" });
+    expect(result).toEqual({ ok: false, message: "Unauthorized" });
+    expect(mockConvert).not.toHaveBeenCalled();
+  });
+
+  it.each(["owner", "admin", "member"])("allows the %s role", async (role) => {
+    adminState.role = role;
+    const result = await convertHtmlToWebflow({ workspaceSlug: "acme", html: "<div>hi</div>", css: "" });
+    expect(result.ok).toBe(true);
+  });
+
+  it("refuses a non-member and an unknown workspace", async () => {
+    adminState.role = null;
+    expect(await convertHtmlToWebflow({ workspaceSlug: "acme", html: "<div>hi</div>", css: "" })).toEqual({
+      ok: false,
+      message: "Unauthorized",
+    });
+    adminState.role = "member";
+    adminState.workspace = null;
+    expect(await convertHtmlToWebflow({ workspaceSlug: "nope", html: "<div>hi</div>", css: "" })).toEqual({
+      ok: false,
+      message: "Unauthorized",
+    });
+    expect(mockConvert).not.toHaveBeenCalled();
+  });
+
+  it("rejects oversized input before the engine runs", async () => {
+    const big = "x".repeat(MAX_SOURCE_CHARS + 1);
+    for (const input of [
+      { html: big, css: "" },
+      { html: "<div>hi</div>", css: big },
+      { html: "<div>hi</div>", css: "", js: big },
+    ]) {
+      const result = await convertHtmlToWebflow({ workspaceSlug: "acme", ...input });
+      expect(result).toEqual({ ok: false, message: INPUT_TOO_LARGE_ERROR });
+    }
+    expect(mockConvert).not.toHaveBeenCalled();
+  });
+
+  it("returns a clean error, not a throw, when the engine throws", async () => {
+    mockConvert.mockImplementation(() => {
+      throw new RangeError("Maximum call stack size exceeded");
+    });
+    const result = await convertHtmlToWebflow({ workspaceSlug: "acme", html: "<div>hi</div>", css: "" });
+    expect(result.ok).toBe(false);
+    expect(result.message).toBe("Conversion failed unexpectedly.");
+  });
+
+  it("returns a clean error for pathologically deep HTML", async () => {
+    const html = "<div>".repeat(10_000) + "x" + "</div>".repeat(10_000);
+    const result = await convertHtmlToWebflow({ workspaceSlug: "acme", html, css: "" });
+    expect(result.ok).toBe(false);
+    expect(result.message).toBe(HTML_TOO_DEEP_ERROR);
   });
 });

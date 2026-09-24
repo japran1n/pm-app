@@ -70,6 +70,7 @@ import postcss from "postcss";
 import { expandDeclaration } from "./longhand";
 import { mapBreakpoint, variantKey as computeVariantKey } from "./breakpoints";
 import { partitionByWebflowSupport, isWebflowSupportedValue } from "./webflow-properties";
+import { CSS_TOO_DEEP_ERROR, cssTooDeep } from "./limits";
 
 /** One parsed CSS class's declarations, keyed by variant. */
 export interface ParsedClass {
@@ -107,6 +108,8 @@ export interface ParseCssResult {
   classes: Map<string, ParsedClass>;
   order: string[];
   warnings: string[];
+  /** Set when the stylesheet exceeds a hard size/shape limit; the conversion must not proceed. */
+  error?: string;
 }
 
 /**
@@ -125,6 +128,9 @@ export function parseCss(cssText: string): ParseCssResult {
       return { classes: new Map(), order: [], warnings: [`CSS parse error: ${reason}`] };
     }
     throw e;
+  }
+  if (cssTooDeep(root)) {
+    return { classes: new Map(), order: [], warnings: [], error: CSS_TOO_DEEP_ERROR };
   }
   const classes = new Map<string, ParsedClass>();
   const order: string[] = [];
@@ -296,7 +302,8 @@ export function mergeCssResults(results: ParseCssResult[]): ParseCssResult {
     warnings: [],
   };
   for (const r of results) {
-    merged.warnings.push(...r.warnings);
+    if (r.error && !merged.error) merged.error = r.error;
+    for (const w of r.warnings) merged.warnings.push(w);
     for (const key of r.order) {
       const incoming = r.classes.get(key)!;
       if (!merged.classes.has(key)) {

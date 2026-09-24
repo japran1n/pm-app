@@ -15,6 +15,10 @@ vi.mock("@/lib/actions/webflow-converter", () => ({
   convertHtmlToWebflow: (...args: unknown[]) => mockConvert(...args),
 }))
 
+vi.mock("next/navigation", () => ({
+  useParams: () => ({ workspaceSlug: "acme" }),
+}))
+
 vi.mock("../../lib/webflow-converter-client/clipboard", () => ({
   writeToClipboard: (...args: unknown[]) => mockWriteToClipboard(...args),
 }))
@@ -97,7 +101,7 @@ describe("ConverterPage (F029)", () => {
     expect(button).not.toBeDisabled()
     fireEvent.click(button)
 
-    await waitFor(() => expect(mockConvert).toHaveBeenCalledWith({ html: "<p>hi</p>", css: "", js: "" }))
+    await waitFor(() => expect(mockConvert).toHaveBeenCalledWith({ workspaceSlug: "acme", html: "<p>hi</p>", css: "", js: "" }))
   })
 
   it("test_AS_025_shows_loading_state_while_in_flight", async () => {

@@ -12,6 +12,7 @@
 // marked placeholder section is left below for that work to slot into.
 
 import * as React from "react"
+import { useParams } from "next/navigation"
 
 import { Maximize2, Minimize2 } from "lucide-react"
 
@@ -28,6 +29,8 @@ import { ConverterPreview } from "./converter-preview"
 import { ConverterResults } from "./converter-results"
 
 export function ConverterPage() {
+  const params = useParams<{ workspaceSlug?: string }>()
+  const workspaceSlug = params?.workspaceSlug ?? ""
   const [html, setHtml] = React.useState("")
   const [css, setCss] = React.useState("")
   const [js, setJs] = React.useState("")
@@ -77,7 +80,7 @@ export function ConverterPage() {
     setCopyStatus("idle")
     setLoading(true)
     try {
-      const next = await convertHtmlToWebflow({ html, css, js })
+      const next = await convertHtmlToWebflow({ workspaceSlug, html, css, js })
       if (seqRef.current !== seq) return
       setResult(next)
     } catch {
@@ -93,7 +96,7 @@ export function ConverterPage() {
       inFlight.current = false
       setLoading(false)
     }
-  }, [html, css, js])
+  }, [workspaceSlug, html, css, js])
 
   function handleCopyWebflow() {
     if (!result?.ok || !result.json) return
