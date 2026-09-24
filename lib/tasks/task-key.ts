@@ -65,20 +65,23 @@ export function formatTaskKey(
 // parse the same way) — per this feature's explicit instruction to
 // "tolerate the dash being absent".
 //
-// Scope/known limitation (Decisions Made, per the clarification's Round B
-// Q2 "take the simpler option that adds no new dependency and no second
-// source of truth"): the letters-only prefix pattern below matches every
-// project key actually produced by F145's `derive_project_key_base` for a
-// FRESH key (an ASCII-letters-only run of initials or truncated name),
-// but not a key that itself ends in a digit after F145's collision-suffix
-// step (e.g. a second "Marketing" project keyed "MARKET2"). A search for
-// "MARKET2142" is genuinely ambiguous without knowing which keys exist in
-// the target workspace (is it key "MARKET2" task 142, or key "MARKET"
-// task 2142?) — resolving that would need the caller's own DB lookup, not
-// this pure function, and is out of scope for this feature; the caller
-// (lib/queries/search.ts) still finds such a task via ordinary full-text
-// search on its title/description, and via the FTS-indexed key using the
-// dash form ("MARKET2-142"), just not via this parser's no-dash form.
+// Key format (REUSE-LOGIC-11): matches the DB's `projects_key_format`
+// CHECK exactly — a letter followed by 1-5 letters/digits. Keys ending in a
+// digit are real: `generate_unique_project_key` resolves collisions by
+// appending an integer suffix ("MARKET" -> "MARKE2", "PM" -> "PM2"). The old
+// letters-only pattern rejected every such key, so deep links (/t/PM2-14),
+// search and dependency pickers could never resolve those tasks.
+//
+// With a separator ("PM2-14", "pm2 14") the split is unambiguous and any
+// valid key is accepted. Without one ("pm214") the boundary between a
+// digit-suffixed key and the task number is unknowable without a DB lookup,
+// so the no-separator form only accepts a letters-only key (the common
+// case), as before.
+export const PROJECT_KEY_PATTERN = "[A-Za-z][A-Za-z0-9]{1,5}";
+
+const WITH_SEPARATOR = new RegExp(`^(${PROJECT_KEY_PATTERN})[-\\s](\\d{1,9})$`);
+const WITHOUT_SEPARATOR = /^([A-Za-z]{2,6})(\d{1,9})$/;
+
 export interface ParsedTaskKeyQuery {
   projectKey: string;
   taskNumber: number;
@@ -94,7 +97,7 @@ export function parseTaskKeyQuery(query: string): ParsedTaskKeyQuery | null {
     return null;
   }
 
-  const match = /^([A-Za-z]{1,6})[-\s]?(\d{1,9})$/.exec(trimmed);
+  const match = WITH_SEPARATOR.exec(trimmed) ?? WITHOUT_SEPARATOR.exec(trimmed);
   if (!match) {
     return null;
   }

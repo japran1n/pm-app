@@ -13,7 +13,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { parseTaskKeyQuery } from "@/lib/tasks/task-key";
+import { formatTaskKey, parseTaskKeyQuery } from "@/lib/tasks/task-key";
 
 describe("parseTaskKeyQuery (F147, AS-262)", () => {
   it("test_AS_262_parses_the_canonical_dashed_form", () => {
@@ -85,5 +85,27 @@ describe("parseTaskKeyQuery (F147, AS-262)", () => {
     // CHECK (^[A-Z][A-Z0-9]{1,5}$) — a 7+ letter prefix can never be a real
     // key, so this parser doesn't treat it as a key-shaped query.
     expect(parseTaskKeyQuery("TOOLONGKEY142")).toBeNull();
+  });
+});
+
+// REUSE-LOGIC-11: keys the DB actually generates for collisions end in a
+// digit (generate_unique_project_key: base || suffix, `^[A-Z][A-Z0-9]{1,5}$`).
+describe("parseTaskKeyQuery — DB key format", () => {
+  it("accepts digit-suffixed keys with a separator", () => {
+    expect(parseTaskKeyQuery("PM2-14")).toEqual({ projectKey: "PM2", taskNumber: 14 });
+    expect(parseTaskKeyQuery("marke2 7")).toEqual({ projectKey: "MARKE2", taskNumber: 7 });
+  });
+
+  it("round-trips every formatTaskKey output for valid DB keys", () => {
+    for (const key of ["PM", "PM2", "MARKE2", "A9", "ABCD12", "PRJ"]) {
+      const formatted = formatTaskKey(key, 42)!;
+      expect(parseTaskKeyQuery(formatted)).toEqual({ projectKey: key, taskNumber: 42 });
+    }
+  });
+
+  it("rejects keys the DB CHECK would reject", () => {
+    expect(parseTaskKeyQuery("2PM-1")).toBeNull();
+    expect(parseTaskKeyQuery("ABCDEFG-1")).toBeNull();
+    expect(parseTaskKeyQuery("P-1")).toBeNull();
   });
 });
