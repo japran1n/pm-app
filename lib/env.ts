@@ -40,6 +40,17 @@ const serverEnvSchema = z.object({
   ALLOW_USERNAME_LOGIN: z.string().min(1).optional(),
   DEV_LOGIN_ENABLED: z.string().min(1).optional(),
   PORTAL_PREVIEW_MINT_ENABLED: z.string().min(1).optional(),
+  // SEC-HTTP-13: both default ON when unset (unchanged behaviour). Parsed
+  // explicitly by `parseBooleanFlag` below; see isWorkspaceCreationAllowed /
+  // isPasswordLoginEnabled for the call-site helpers.
+  ALLOW_WORKSPACE_CREATION: z
+    .string()
+    .optional()
+    .transform((value) => parseBooleanFlag(value, true)),
+  PASSWORD_LOGIN_ENABLED: z
+    .string()
+    .optional()
+    .transform((value) => parseBooleanFlag(value, true)),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;
@@ -70,6 +81,10 @@ export function serverEnv(): ServerEnv {
     PORTAL_PREVIEW_MINT_ENABLED: emptyToUndefined(
       process.env.PORTAL_PREVIEW_MINT_ENABLED,
     ),
+    ALLOW_WORKSPACE_CREATION: emptyToUndefined(
+      process.env.ALLOW_WORKSPACE_CREATION,
+    ),
+    PASSWORD_LOGIN_ENABLED: emptyToUndefined(process.env.PASSWORD_LOGIN_ENABLED),
   });
 
   if (!result.success) {
@@ -94,6 +109,88 @@ export function serverEnv(): ServerEnv {
  */
 export function isPortalPreviewMintEnabled(): boolean {
   return process.env.PORTAL_PREVIEW_MINT_ENABLED === "true";
+}
+
+/**
+ * Explicit on/off parsing for boolean feature flags (SEC-HTTP-13).
+ * "true"/"1"/"yes"/"on" -> true, "false"/"0"/"no"/"off" -> false (trimmed,
+ * case-insensitive). Unset or empty -> `defaultValue`. An unrecognised value
+ * also falls back to `defaultValue` rather than throwing, so a typo can never
+ * take the whole server down — but it is never silently read as the
+ * opposite of what the default says.
+ */
+export function parseBooleanFlag(
+  value: string | undefined,
+  defaultValue: boolean,
+): boolean {
+  if (value === undefined) return defaultValue;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "") return defaultValue;
+  if (["true", "1", "yes", "on"].includes(normalized)) return true;
+  if (["false", "0", "no", "off"].includes(normalized)) return false;
+  return defaultValue;
+}
+
+/**
+ * Whether any signed-in user may create a new workspace. Default ON when
+ * ALLOW_WORKSPACE_CREATION is unset. Reads process.env directly (not
+ * `serverEnv()`) so the check can never throw over an unrelated missing
+ * variable. Server-only.
+ */
+export function isWorkspaceCreationAllowed(): boolean {
+  return parseBooleanFlag(process.env.ALLOW_WORKSPACE_CREATION, true);
+}
+
+/**
+ * Whether the email/username + password sign-in path is open. Default ON
+ * when PASSWORD_LOGIN_ENABLED is unset. Server-only.
+ */
+export function isPasswordLoginEnabled(): boolean {
+  return parseBooleanFlag(process.env.PASSWORD_LOGIN_ENABLED, true);
+}
+
+/**
+ * GAP5-09: the absolute origin (no trailing slash) used to build every URL
+ * that leaves the server — magic-link and invite `redirectTo` values in
+ * particular. Never derived from the request's `Origin`/`Host` headers,
+ * which a caller controls.
+ *
+ * Resolution order: NEXT_PUBLIC_APP_URL; then the platform-provided Vercel
+ * URL (set by the host, not the request); then http://localhost:3000 in
+ * development/test. Throws in any other environment when nothing is
+ * configured, so a missing setting fails loudly instead of emailing links
+ * that point somewhere unexpected. Server-only.
+ */
+export function appUrl(): string {
+  const candidates = [
+    process.env.NEXT_PUBLIC_APP_URL,
+    process.env.VERCEL_ENV === "production" &&
+    process.env.VERCEL_PROJECT_PRODUCTION_URL
+      ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+      : undefined,
+    process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined,
+  ];
+
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    try {
+      const url = new URL(candidate);
+      if (url.protocol === "https:" || url.protocol === "http:") {
+        return url.origin;
+      }
+    } catch {
+      // fall through to the next candidate
+    }
+  }
+
+  if (process.env.NODE_ENV !== "production") {
+    return "http://localhost:3000";
+  }
+
+  throw new Error(
+    "Missing or invalid environment variable: NEXT_PUBLIC_APP_URL. " +
+      "Set it to the app's absolute origin (see .env.example).",
+  );
 }
 
 function emptyToUndefined(value: string | undefined): string | undefined {

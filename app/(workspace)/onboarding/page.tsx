@@ -3,6 +3,10 @@ import { redirect } from "next/navigation";
 import { CreateWorkspaceForm } from "@/components/onboarding/create-workspace-form";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { getDefaultWorkspaceSlug } from "@/lib/queries/workspaces";
+import {
+  listPendingInvites,
+  verifiedInviteIdentity,
+} from "@/lib/actions/invites";
 import { Logo } from "@/components/brand/logo";
 
 // Server Component shell (primary content server-rendered, AS-155); the
@@ -26,6 +30,15 @@ export default async function OnboardingPage() {
   // form.
   if (!user) {
     redirect("/sign-in");
+  }
+
+  // Pending invites for this verified email are answered on /invites first
+  // (explicit Accept/Decline — nothing activates on sign-in any more).
+  // /invites links straight to the workspace for "Not now", never back
+  // here, so this cannot loop.
+  const pendingInvites = await listPendingInvites(verifiedInviteIdentity(user));
+  if (pendingInvites.length > 0) {
+    redirect("/invites");
   }
 
   const defaultWorkspace = await getDefaultWorkspaceSlug(supabase, user.id);

@@ -2,7 +2,6 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { headers } from "next/headers";
 
 import type { User } from "@supabase/supabase-js";
 
@@ -23,6 +22,7 @@ import {
   findAvailableSlug,
 } from "@/lib/validation/workspaces";
 import { logger } from "@/lib/observability/logger";
+import { appUrl, isWorkspaceCreationAllowed } from "@/lib/env";
 import {
   requireWorkspaceAdmin,
   requireWorkspaceOwner,
@@ -83,7 +83,8 @@ export async function createWorkspace(
   _prevState: CreateWorkspaceResult | null,
   formData: FormData,
 ): Promise<CreateWorkspaceResult> {
-  const allowCreation = process.env.ALLOW_WORKSPACE_CREATION !== "false";
+  // SEC-HTTP-13: parsed via lib/env.ts (default ON when unset).
+  const allowCreation = isWorkspaceCreationAllowed();
   if (!allowCreation) {
     return { ok: false, error: "Workspace creation is disabled." };
   }
@@ -407,11 +408,11 @@ export async function inviteMember(
 
   // AS-238: the row is created with the role the inviter chose (default
   // "member" when the caller doesn't specify one), and that same `role`
-  // column is what the accept path (activateInvitedMemberships) grants
+  // column is what the accept path (acceptInviteForUser) grants
   // unchanged when it later flips status/user_id — see the F126 migration
   // comment for why no separate invited_role column exists.
   // F134 (AS-220): invited_project_id is read once, on acceptance, by
-  // activateInvitedMemberships to also create the guest's project_members
+  // acceptInviteForUser to also create the guest's project_members
   // row — see lib/actions/invites.ts.
   const { data: insertedInvite, error: insertError } = await admin
     .from("workspace_members")
@@ -479,14 +480,14 @@ export async function inviteMember(
   // the link manually via the `emailSent` flag below.
   let emailSent = false;
   try {
-    const headerList = await headers();
-    const origin =
-      headerList.get("origin") ??
-      process.env.NEXT_PUBLIC_APP_URL ??
-      "";
+    // GAP5-09: link base from configuration, never the request's
+    // Origin/Host. GAP5-06: the invite email must link to
+    // /auth/confirm?token_hash=...&type=invite (server-side verifyOtp) —
+    // set in the Supabase "Invite user" email template; this redirectTo is
+    // only where Supabase sends the user after that.
     const { error: inviteEmailError } = await admin.auth.admin.inviteUserByEmail(
       parsed.data.email,
-      { redirectTo: `${origin}/auth/callback` },
+      { redirectTo: `${appUrl()}/invites` },
     );
     if (!inviteEmailError) {
       emailSent = true;

@@ -48,6 +48,18 @@ function loadDotEnv() {
 
 loadDotEnv();
 
+// SEC audit 2026-09-24: invites are no longer auto-activated at sign-in;
+// the invitee explicitly accepts each one. This helper performs that
+// explicit accept for every invite pending on `email` (what clicking
+// Accept on each row of /invites does).
+async function acceptPendingInvites(userId: string, email: string) {
+  const { listPendingInvites, acceptInviteForUser } = await import("@/lib/actions/invites");
+  const identity = { userId, email: email.toLowerCase() };
+  const pending = await listPendingInvites(identity);
+  const results = await Promise.all(pending.map((invite) => acceptInviteForUser(invite.id, identity)));
+  return results.flatMap((result) => (result.ok ? [{ workspaceId: result.workspaceId }] : []));
+}
+
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
 const haveAdminCreds = Boolean(SUPABASE_URL && SECRET_KEY);
@@ -235,9 +247,6 @@ describe.skipIf(!haveAdminCreds)("workspace role expansion (F126)", () => {
 
     it("AS-238: the granted role survives acceptance — activation only flips status/user_id", async () => {
       const { inviteMember } = await import("@/lib/actions/workspaces");
-      const { activateInvitedMemberships } = await import(
-        "@/lib/actions/invites"
-      );
       const { workspaceId, ownerId } = await createWorkspaceWithOwner();
       currentTestUserId = ownerId;
 
@@ -246,7 +255,7 @@ describe.skipIf(!haveAdminCreds)("workspace role expansion (F126)", () => {
       expect(invited).toMatchObject({ ok: true, invitedEmail: inviteEmail });
 
       const acceptingUserId = await createThrowawayUser("accepting");
-      const activated = await activateInvitedMemberships(
+      const activated = await acceptPendingInvites(
         acceptingUserId,
         inviteEmail,
       );

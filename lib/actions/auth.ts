@@ -1,6 +1,5 @@
 "use server";
 
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { cookies } from "next/headers";
@@ -9,6 +8,7 @@ import { createClient, isPortalPreview } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { passwordSignInSchema, signInSchema } from "@/lib/validation/auth";
 import { logger } from "@/lib/observability/logger";
+import { appUrl, isPasswordLoginEnabled } from "@/lib/env";
 import {
   PORTAL_PREVIEW_ACCESS_COOKIE,
   PORTAL_PREVIEW_REFRESH_COOKIE,
@@ -43,11 +43,6 @@ export async function signInWithMagicLink(
     };
   }
 
-  const headerList = await headers();
-  const origin =
-    headerList.get("origin") ??
-    `https://${headerList.get("host") ?? "localhost:3000"}`;
-
   const supabase = await createClient();
 
   // P2-1: open self-registration guard. `shouldCreateUser: true`
@@ -56,35 +51,58 @@ export async function signInWithMagicLink(
   // email (admin client, bypassing RLS since `workspace_members` has no
   // SELECT policy for an anonymous/unrelated caller). Existing accounts
   // still get their magic link either way — this only blocks *new*
-  // signups for emails with no invite. Never branch the response on the
-  // lookup result: both "pending invite found" and "no invite" return the
-  // same `{ ok: true }`, so this can't be used to enumerate which emails
-  // have an account or a pending invite.
+  // signups for emails with no invite.
+  //
+  // SEC-ACT1-13 / GAP5-12: an email may have pending invites to several
+  // workspaces; `.limit(1)` + a length check (not `maybeSingle`, which
+  // errors on 2+ rows and silently blocked signup) answers "any invite?".
   // eslint-disable-next-line no-restricted-syntax -- ARCH-003: pre-authentication invite lookup for an anonymous sign-in caller; workspace_members has no SELECT policy for an unauthenticated caller, so RLS cannot be used here and there is no signed-in user yet to check
   const admin = createAdminClient();
-  const { data: pendingInvite } = await admin
+  const { data: pendingInvites, error: inviteLookupError } = await admin
     .from("workspace_members")
     .select("id")
     .eq("invited_email", parsed.data.email)
     .eq("status", "invited")
-    .maybeSingle();
+    .is("user_id", null)
+    .limit(1);
 
-  const { error } = await supabase.auth.signInWithOtp({
-    email: parsed.data.email,
-    options: {
-      shouldCreateUser: pendingInvite !== null,
-      emailRedirectTo: `${origin}/auth/callback`,
-    },
-  });
+  if (inviteLookupError) {
+    logger.error("signInWithMagicLink: invite lookup failed", { error: inviteLookupError });
+  }
+  const hasPendingInvite = (pendingInvites?.length ?? 0) > 0;
 
-  if (error) {
-    // Log detail server-side only; never surface raw Supabase error text
-    // to the client (AS-146/AS-148 pattern: generic message on failure).
-    logger.error("signInWithMagicLink failed", { error: error });
+  // GAP5-09: the link target comes from configuration, never from the
+  // request's Origin/Host headers.
+  let emailRedirectTo: string;
+  try {
+    emailRedirectTo = `${appUrl()}/auth/callback`;
+  } catch (configError) {
+    logger.error("signInWithMagicLink: app URL not configured", { error: configError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
     };
+  }
+
+  const { error } = await supabase.auth.signInWithOtp({
+    email: parsed.data.email,
+    options: {
+      shouldCreateUser: hasPendingInvite,
+      emailRedirectTo,
+    },
+  });
+
+  if (error) {
+    // SEC-HTTP-10: never branch the response on the outcome. For an email
+    // with no account (and no invite) Supabase rejects the request
+    // ("Signups not allowed for otp"); for an existing account it can fail
+    // on send/rate limits. Surfacing either would reveal whether the
+    // address has an account, so every outcome after input validation
+    // returns the same `{ ok: true }`. Detail is logged server-side only.
+    logger.warn("signInWithMagicLink: OTP request not sent", {
+      code: error.code,
+      status: error.status,
+    });
   }
 
   return { ok: true };
@@ -180,7 +198,8 @@ function usernameLoginEnabled(): boolean {
 // set PASSWORD_LOGIN_ENABLED=false in production when this path should be
 // fully closed off.
 function passwordLoginEnabled(): boolean {
-  return process.env.PASSWORD_LOGIN_ENABLED !== "false";
+  // SEC-HTTP-13: parsed via lib/env.ts (default ON when unset).
+  return isPasswordLoginEnabled();
 }
 
 // Maps a bare username onto the email of the account that claims it.

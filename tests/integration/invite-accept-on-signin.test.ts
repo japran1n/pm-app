@@ -1,8 +1,8 @@
 // Integration test for F016 (AS-008, AS-009) — mirrors the loadDotEnv/skipIf
 // admin-client pattern established by tests/integration/invite-member.test.ts.
 //
-// Exercises activateInvitedMemberships directly (the function the auth
-// callback route calls right after establishing a session), since driving
+// Exercises explicit invite acceptance (listPendingInvites +
+// acceptInviteForUser, what the /invites Accept button runs), since driving
 // the real magic-link/OAuth callback route end-to-end would require a live
 // browser session Supabase won't issue in a test environment.
 
@@ -35,6 +35,18 @@ function loadDotEnv() {
 }
 
 loadDotEnv();
+
+// SEC audit 2026-09-24: invites are no longer auto-activated at sign-in;
+// the invitee explicitly accepts each one. This helper performs that
+// explicit accept for every invite pending on `email` (what clicking
+// Accept on each row of /invites does).
+async function acceptPendingInvites(userId: string, email: string) {
+  const { listPendingInvites, acceptInviteForUser } = await import("@/lib/actions/invites");
+  const identity = { userId, email: email.toLowerCase() };
+  const pending = await listPendingInvites(identity);
+  const results = await Promise.all(pending.map((invite) => acceptInviteForUser(invite.id, identity)));
+  return results.flatMap((result) => (result.ok ? [{ workspaceId: result.workspaceId }] : []));
+}
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
@@ -108,14 +120,13 @@ describe.skipIf(!haveAdminCreds)("activateInvitedMemberships (F016: AS-008, AS-0
   }
 
   it("AS-008: an invited email that signs in is granted active membership, no separate signup token", async () => {
-    const { activateInvitedMemberships } = await import("@/lib/actions/invites");
     const workspaceId = await createWorkspace("as008");
     const invitedEmail = `f016-invitee-${Date.now()}@example.com`;
     await seedInvite(workspaceId, invitedEmail);
 
     const { userId } = await createThrowawayUser("signer");
 
-    const activated = await activateInvitedMemberships(userId, invitedEmail);
+    const activated = await acceptPendingInvites(userId, invitedEmail);
 
     expect(activated).toEqual([{ workspaceId }]);
 
@@ -134,7 +145,6 @@ describe.skipIf(!haveAdminCreds)("activateInvitedMemberships (F016: AS-008, AS-0
   });
 
   it("AS-008: a user invited to multiple workspaces gets all matching rows activated", async () => {
-    const { activateInvitedMemberships } = await import("@/lib/actions/invites");
     const workspaceA = await createWorkspace("multi-a");
     const workspaceB = await createWorkspace("multi-b");
     const invitedEmail = `f016-multi-invitee-${Date.now()}@example.com`;
@@ -143,7 +153,7 @@ describe.skipIf(!haveAdminCreds)("activateInvitedMemberships (F016: AS-008, AS-0
 
     const { userId } = await createThrowawayUser("multi-signer");
 
-    const activated = await activateInvitedMemberships(userId, invitedEmail);
+    const activated = await acceptPendingInvites(userId, invitedEmail);
 
     expect(activated).toHaveLength(2);
     const activatedIds = activated.map((a) => a.workspaceId).sort();
@@ -162,7 +172,6 @@ describe.skipIf(!haveAdminCreds)("activateInvitedMemberships (F016: AS-008, AS-0
   });
 
   it("AS-009 (failure case): a not-yet-invited user's sign-in does not activate anything", async () => {
-    const { activateInvitedMemberships } = await import("@/lib/actions/invites");
     const workspaceId = await createWorkspace("as009-unrelated");
     const invitedEmail = `f016-real-invitee-${Date.now()}@example.com`;
     await seedInvite(workspaceId, invitedEmail);
@@ -170,7 +179,7 @@ describe.skipIf(!haveAdminCreds)("activateInvitedMemberships (F016: AS-008, AS-0
     const { userId } = await createThrowawayUser("stranger");
     const strangerEmail = `f016-stranger-${Date.now()}@example.com`;
 
-    const activated = await activateInvitedMemberships(userId, strangerEmail);
+    const activated = await acceptPendingInvites(userId, strangerEmail);
 
     expect(activated).toEqual([]);
 
@@ -189,7 +198,6 @@ describe.skipIf(!haveAdminCreds)("activateInvitedMemberships (F016: AS-008, AS-0
   });
 
   it("AS-009: calling activation twice (simulated concurrent duplicate) only claims the row once", async () => {
-    const { activateInvitedMemberships } = await import("@/lib/actions/invites");
     const workspaceId = await createWorkspace("as009-race");
     const invitedEmail = `f016-race-invitee-${Date.now()}@example.com`;
     await seedInvite(workspaceId, invitedEmail);
@@ -197,8 +205,8 @@ describe.skipIf(!haveAdminCreds)("activateInvitedMemberships (F016: AS-008, AS-0
     const { userId: firstUserId } = await createThrowawayUser("race-first");
 
     const [firstResult, secondResult] = await Promise.all([
-      activateInvitedMemberships(firstUserId, invitedEmail),
-      activateInvitedMemberships(firstUserId, invitedEmail),
+      acceptPendingInvites(firstUserId, invitedEmail),
+      acceptPendingInvites(firstUserId, invitedEmail),
     ]);
 
     // Exactly one of the two concurrent calls should have claimed the row;
