@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useId, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import {
   LayoutDashboard,
   KanbanSquare,
@@ -19,8 +19,8 @@ import {
   Code2,
   Network,
   FileCode2,
-  ChevronDown,
   Search,
+  Wrench,
 } from "lucide-react";
 
 import { useMembership } from "@/components/auth/membership-provider";
@@ -183,19 +183,6 @@ function navGroups(
   const toolRole: WorkspaceRole | null = role ?? (isGuest ? "guest" : null);
   const showTeamTools = toolRole === null || canUseTeamTools({ role: toolRole });
   const showSitemaps = toolRole === null || canReadSitemaps({ role: toolRole });
-  const allTools: NavItem[] = [
-    { href: `/w/${workspaceSlug}/tools/webflow`, label: "HTML → Webflow", icon: Code2 },
-    // F011 (TH-004, TH-006, TH-009, TH-010, TH-011): a second Tools-band
-    // item, below "HTML → Webflow" per this feature's own clarified
-    // implementation -- same prefix-matched active-state
-    // convention as its sibling above (no `exact: true`), same route shape
-    // (`/w/<slug>/tools/code-editor`).
-    { href: `/w/${workspaceSlug}/tools/code-editor`, label: "Webflow Code Editor", icon: FileCode2 },
-    { href: `/w/${workspaceSlug}/tools/sitemap`, label: "Sitemap Builder", icon: Network },
-  ];
-  const tools = allTools.filter((item) =>
-    item.label === "Sitemap Builder" ? showSitemaps : showTeamTools,
-  );
 
   // F241: Calendar is a workspace-wide, RLS-scoped view with no guest gate
   // of its own, same as Work above -- visible to everyone.
@@ -266,12 +253,13 @@ function navGroups(
     { label: null, items: work },
     { label: "Plan", items: filterGuest(plan) },
     { label: "Team", items: filterGuest(team) },
-    // F010 (TH-002, TH-012): "Tools" sits between "Team" and (formerly)
-    // "Other" per this feature's own Draft scope. Its items are role-gated
-    // above (`tools`); an empty band is dropped by the filter below.
-    // F003 (SB-016): "Other" itself is gone -- see the doc comment above
-    // `guestExcluded`.
-    { label: "Tools", items: tools },
+    // F001 (TS-*): the Tools band is now a single unlabelled item
+    // (Wrench icon, links to `/tools`) rather than a labelled 3-item
+    // collapsible group -- still gated on the same role predicates as
+    // before (team-only tools vs. sitemap-readable viewers).
+    ...(showTeamTools || showSitemaps
+      ? [{ label: null, items: [{ href: `/w/${workspaceSlug}/tools`, label: "Tools", icon: Wrench }] }]
+      : []),
   ].filter((group) => group.items.length > 0);
 }
 
@@ -377,30 +365,6 @@ function SidebarContent({
   const membership = useMembership();
   const hasClient = membership?.hasClient ?? false;
   const clientPreviewEnabled = membership?.clientPreviewEnabled ?? false;
-  // F005 (SB-020, SB-021): Tools group collapse state, persisted in
-  // localStorage. Default expanded; storage access is try/catch-guarded so a
-  // throwing localStorage never breaks render.
-  const [toolsOpen, setToolsOpen] = useState(true);
-  const toolsPanelId = useId();
-  useEffect(() => {
-    try {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- post-hydration read of persisted UI state
-      if (window.localStorage.getItem("sidebar:tools-open") === "false") setToolsOpen(false);
-    } catch {
-      // ignore: stay expanded
-    }
-  }, []);
-  const toggleTools = () => {
-    setToolsOpen((prev) => {
-      const next = !prev;
-      try {
-        window.localStorage.setItem("sidebar:tools-open", String(next));
-      } catch {
-        // ignore
-      }
-      return next;
-    });
-  };
   const groups = navGroups(
     workspaceSlug,
     isGuest,
@@ -518,30 +482,12 @@ function SidebarContent({
         >
           {groups.map((group, groupIndex) => (
             <div key={group.label ?? `group-${groupIndex}`} className="flex flex-col gap-0.5">
-              {group.label === "Tools" ? (
-                <p className="mb-1 mt-2 px-2 text-xs text-muted-foreground uppercase tracking-wide">
-                  <button
-                    type="button"
-                    onClick={toggleTools}
-                    aria-expanded={toolsOpen}
-                    aria-controls={group.items.map((_, i) => `${toolsPanelId}-${i}`).join(" ")}
-                    className="flex w-full items-center gap-1 text-left uppercase tracking-wide hover:text-foreground"
-                  >
-                    <ChevronDown
-                      className={cn("size-3 shrink-0 transition-transform", toolsOpen ? "rotate-0" : "-rotate-90")}
-                      aria-hidden="true"
-                    />
-                    {group.label}
-                  </button>
+              {group.label && (
+                <p className="px-2 mb-1 mt-2 text-xs text-muted-foreground uppercase tracking-wide">
+                  {group.label}
                 </p>
-              ) : (
-                group.label && (
-                  <p className="px-2 mb-1 mt-2 text-xs text-muted-foreground uppercase tracking-wide">
-                    {group.label}
-                  </p>
-                )
               )}
-              {group.items.map(({ href, label, icon: Icon, exact, badge }, itemIndex) => {
+              {group.items.map(({ href, label, icon: Icon, exact, badge }) => {
                 // FU-M4-5 (M4 scrutiny): some nav items now carry a
                 // `?tab=` search param in their href (e.g. "Approvals" ->
                 // `/w/<slug>/inbox?tab=approvals`, "Client requests" ->
@@ -585,8 +531,6 @@ function SidebarContent({
                   <Link
                     key={href}
                     href={href}
-                    id={group.label === "Tools" ? `${toolsPanelId}-${itemIndex}` : undefined}
-                    hidden={group.label === "Tools" && !toolsOpen}
                     aria-current={isActive ? "page" : undefined}
                     onClick={onNavigate}
                     className={cn(
