@@ -102,9 +102,9 @@ describe("isDoneStatus / isOpenStatus with the v2 status set", () => {
     expect(isOpenStatus("Completed")).toBe(false);
   });
 
-  it("treats every non-done v2 column as open", () => {
+  it("treats every non-done v2 column except Canceled as open", () => {
     for (const column of V2_COLUMNS.filter((c) => c.category !== "done")) {
-      expect(isOpenStatus(column.name, column.category)).toBe(true);
+      expect(isOpenStatus(column.name, column.category)).toBe(column.name !== "Canceled");
     }
   });
 });

@@ -73,11 +73,37 @@ export function isDoneStatus(
   return resolveStatusCategory(status, category) === "done";
 }
 
+// A column that is finished WITHOUT being done. The v2 "Canceled" column
+// sits in category `not_started` (so it is not counted as completed work),
+// but a canceled task is not open work either: it must never count as
+// open, overdue or due soon. Recognised by `display_group = 'closed'` when
+// the caller has it, otherwise by the default name. Mirrors
+// `public.is_closed_status` (migration 20261131020000).
+const CLOSED_STATUS_NAMES: ReadonlySet<string> = new Set(["canceled", "cancelled"]);
+
+export function isCanceledStatusName(status: string | null | undefined): boolean {
+  return !!status && CLOSED_STATUS_NAMES.has(normalizeStatusName(status));
+}
+
+/** Done, or closed without being done (Canceled). */
+export function isClosedStatus(
+  status: string | null | undefined,
+  category?: StatusCategory | string | null,
+  displayGroup?: string | null,
+): boolean {
+  return (
+    isDoneStatus(status, category) ||
+    displayGroup === "closed" ||
+    isCanceledStatusName(status)
+  );
+}
+
 export function isOpenStatus(
   status: string | null | undefined,
   category?: StatusCategory | string | null,
+  displayGroup?: string | null,
 ): boolean {
-  return !isDoneStatus(status, category);
+  return !isClosedStatus(status, category, displayGroup);
 }
 
 export function normalizeStatusName(name: string): string {

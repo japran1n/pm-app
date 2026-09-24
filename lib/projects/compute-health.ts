@@ -23,7 +23,7 @@
 //     planned_end (i.e. "about to miss it").
 //   - `on_track` otherwise, including a project with no tasks and no
 //     active phase at all (nothing to be at risk of yet).
-import { isDoneStatus } from "@/lib/tasks/status-category";
+import { isClosedStatus, isDoneStatus } from "@/lib/tasks/status-category";
 
 export type ProjectHealthPhase = {
   /** F001's project_phases.state vocabulary. A `done` phase never
@@ -81,7 +81,11 @@ export function countProjectHealthTasks(
   for (const task of tasks) {
     if (isDoneStatus(task.status, task.category)) {
       doneTaskCount += 1;
-    } else if (task.dueDate && task.dueDate.slice(0, 10) < todayIso) {
+    } else if (
+      !isClosedStatus(task.status, task.category) &&
+      task.dueDate &&
+      task.dueDate.slice(0, 10) < todayIso
+    ) {
       overdueTaskCount += 1;
     }
   }

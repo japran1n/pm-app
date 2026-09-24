@@ -35,7 +35,7 @@
 
 import { addDays, isBefore, parseISO } from "date-fns";
 
-import { isDoneStatus } from "@/lib/tasks/status-category";
+import { isClosedStatus } from "@/lib/tasks/status-category";
 
 export type DateOnly = string; // "YYYY-MM-DD"
 
@@ -279,7 +279,8 @@ export function isOverdueInTimeZone(
   // literal string "done" — see lib/tasks/status-category.ts's
   // isDoneStatus for the shared rule (and its status_id-null fallback,
   // which this call preserves when `statusCategory` isn't passed).
-  if (isDoneStatus(status, statusCategory)) return false;
+  // Done or Canceled tasks are never overdue (isClosedStatus).
+  if (isClosedStatus(status, statusCategory)) return false;
   if (!DATE_ONLY_PATTERN.test(dueDate)) return false;
 
   const today = todayInTimeZone(timeZone, instant);

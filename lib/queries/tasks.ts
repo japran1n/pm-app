@@ -34,7 +34,7 @@ import { computeTaskCompletion } from "@/lib/tasks/completion";
 import { getTaskLoggedMinutes } from "@/lib/queries/time-entries";
 import type { RecurrenceRule } from "@/lib/recurrence/next-date";
 import { isOverdue } from "@/lib/tasks/is-overdue";
-import { isDoneStatus } from "@/lib/tasks/status-category";
+import { isClosedStatus, isDoneStatus } from "@/lib/tasks/status-category";
 import { todayInTimeZone } from "@/lib/time/user-timezone";
 
 // F146 (AS-258): every embedded `projects` relation below can come back
@@ -712,7 +712,7 @@ export async function getWorkspaceListTasks(
         task.dueDate !== null &&
         task.dueDate >= today &&
         task.dueDate < horizonIso &&
-        !isDoneStatus(task.status, task.statusCategory),
+        !isClosedStatus(task.status, task.statusCategory),
     );
   }
   if (filters?.flag === "completed") {
