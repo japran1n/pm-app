@@ -28,6 +28,11 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolvePeople } from "@/lib/queries/people";
 import { getCurrentUser, getRequestClient } from "@/lib/auth/current-user";
+import { requireActiveMembership } from "@/lib/auth/require-membership";
+import {
+  isProjectVisibleToCaller,
+  type ProjectVisibility,
+} from "@/lib/actions/project-visibility";
 import { buildStatusBucketMaps } from "@/lib/portal/status-bucket";
 import type { StatusRowWithBucket } from "@/lib/queries/portal/shared";
 import { countProjectHealthTasks, type ProjectHealthTask } from "@/lib/projects/compute-health";
@@ -253,28 +258,51 @@ export type ProjectDetail = {
 // active and archived projects per F029" in this feature's own spec means
 // this query cannot rely on the RLS SELECT policy alone.
 //
-// Callers MUST independently verify the caller is an active member of
-// `workspaceId` before calling this (the admin client bypasses RLS
-// entirely) — the workspace layout guard (F010/F023) already does this for
-// every route under /w/[workspaceSlug], and the `.eq("workspace_id", ...)`
-// filter below additionally prevents a projectId from one workspace being
-// read while impersonating a different workspaceId.
+// SEC-READ-01 / DB-ACCESS-03 (audit 2026-09-24): because the admin client
+// bypasses RLS, this function itself now re-applies the read rule instead
+// of trusting callers: the signed-in caller must be an active member of
+// `workspaceId`, and the project must pass `isProjectVisibleToCaller`
+// (the TS mirror of `is_project_visible_to`). Before this, a guest or a
+// non-member of a private project (including an ARCHIVED private project)
+// got its name/description rendered by the project layout. Any failure
+// returns `null`, which every caller maps to `notFound()`, so existence is
+// not leaked either. The `.eq("workspace_id", ...)` filter still prevents
+// a projectId from one workspace being read through another.
 export const getProjectById = cache(async function getProjectById(
   workspaceId: string,
   projectId: string,
 ): Promise<ProjectDetail | null> {
+  const { user } = await getCurrentUser();
+  if (!user) return null;
+
   const admin = createAdminClient();
 
-  const { data, error } = await admin
-    .from("projects")
-    .select(
-      "id, workspace_id, name, description, start_date, end_date, created_at, deleted_at, key, billing_model",
-    )
-    .eq("id", projectId)
-    .eq("workspace_id", workspaceId)
-    .maybeSingle();
+  const [{ data, error }, membership] = await Promise.all([
+    admin
+      .from("projects")
+      .select(
+        "id, workspace_id, name, description, start_date, end_date, created_at, deleted_at, key, billing_model, visibility",
+      )
+      .eq("id", projectId)
+      .eq("workspace_id", workspaceId)
+      .maybeSingle(),
+    requireActiveMembership(admin, workspaceId, user.id),
+  ]);
 
-  if (error || !data) {
+  if (error || !data || !membership.ok) {
+    return null;
+  }
+
+  const visible = await isProjectVisibleToCaller(
+    admin,
+    {
+      projectId: data.id,
+      visibility: (data.visibility as ProjectVisibility | null) ?? "workspace",
+    },
+    user.id,
+    membership.role,
+  );
+  if (!visible) {
     return null;
   }
 

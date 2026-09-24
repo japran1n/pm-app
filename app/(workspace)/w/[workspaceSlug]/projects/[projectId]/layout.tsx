@@ -31,11 +31,11 @@ import { formatHours } from "@/lib/format";
 // navigation. Header content is server-rendered in the initial HTML
 // (AS-155).
 //
-// Access: relies on the workspace-membership layout guard above this route
-// (app/(workspace)/w/[workspaceSlug]/layout.tsx, F010/F023) — reaching
-// this layout at all already means the caller is an active member of this
-// workspace. No duplicate page-level gate, per the clarified spec, since
-// AS-038 doesn't call for role-gating beyond membership.
+// Access: the workspace-membership layout guard above this route
+// (app/(workspace)/w/[workspaceSlug]/layout.tsx, F010/F023) proves active
+// membership; project-level visibility (private projects, guests — see
+// SEC-READ-01) is enforced inside `getProjectById`, which returns `null`
+// (-> notFound) for a project the caller cannot see, archived or not.
 //
 // Works for both active and archived projects (per F029/AS-032, and this
 // feature's own spec): `getProjectById` (lib/queries/projects.ts)
@@ -65,6 +65,9 @@ export default async function ProjectDetailLayout({
 
   const project = await getProjectById(workspace.id, projectId);
 
+  // SEC-READ-01: also `null` when the caller cannot see the project
+  // (private project without a project_members row, guest/client not on
+  // the project) — same notFound() so existence is not leaked.
   // F031 (AS-039, AS-040): a projectId that doesn't exist / was purged
   // (AS-039), or that is real but belongs to a DIFFERENT workspace than
   // `workspaceSlug` (AS-040), both collapse to `getProjectById` returning

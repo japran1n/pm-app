@@ -66,7 +66,8 @@ describe("F013 (TT-030): project header badges", () => {
     // Still one .select() call in getProjectById's body, extended with the
     // two new columns rather than a second round trip.
     expect(queriesSource).toMatch(
-      /"id, workspace_id, name, description, start_date, end_date, created_at, deleted_at, key, billing_model"/,
+      // SEC-READ-01 appended `visibility` for the project-visibility check.
+      /"id, workspace_id, name, description, start_date, end_date, created_at, deleted_at, key, billing_model, visibility"/,
     );
   });
 });
