@@ -30,6 +30,12 @@ import { revalidatePath } from "next/cache";
 
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  isOwnedObjectPath,
+  removeOwnedObject,
+  signOwnedObject,
+  storageOwnerPrefix,
+} from "@/lib/storage/sign-owned-object";
 import { logger } from "@/lib/observability/logger";
 import { type ActionOutcome, type ActionResult, withAuthz } from "@/lib/actions/authz";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
@@ -56,20 +62,11 @@ type AdminClient = ReturnType<typeof createAdminClient>;
 const DOCUMENT_COLUMNS =
   "id, project_id, title, kind, file_path, url, uploaded_by, created_at";
 
-// Every upload is stored under `{project_id}/...`. A row whose file_path
-// points elsewhere (e.g. inserted directly through PostgREST by a writer of
-// another project) must never be signed or removed on that row's behalf.
 function isScopeDocumentPathInProject(
   filePath: string | null | undefined,
   projectId: string,
 ): filePath is string {
-  if (!filePath) return false;
-  const segments = filePath.split("/");
-  return (
-    segments.length >= 2 &&
-    segments[0] === projectId &&
-    segments.slice(1).every((segment) => segment !== "" && segment !== "." && segment !== "..")
-  );
+  return isOwnedObjectPath(filePath, storageOwnerPrefix.scopeDocument(projectId));
 }
 
 function toScopeDocument(row: {
@@ -426,12 +423,17 @@ const deleteScopeDocumentImpl = withAuthz(
     // 'link' document has no Storage object at all, so this step is
     // skipped entirely for that kind.
     if (ctx.documentKind === "upload" && ctx.documentFilePath) {
-      const { error: storageError } = await ctx.admin.storage
-        .from(BUCKET)
-        .remove([ctx.documentFilePath]);
+      const removed = await removeOwnedObject(ctx.admin, {
+        bucket: BUCKET,
+        path: ctx.documentFilePath,
+        ownerPrefix: storageOwnerPrefix.scopeDocument(ctx.projectId),
+      });
 
-      if (storageError) {
-        logger.error("deleteScopeDocument: storage removal failed", { error: storageError });
+      if (!removed.ok) {
+        logger.error("deleteScopeDocument: storage removal failed", {
+          reason: removed.reason,
+          error: removed.error,
+        });
         return { ok: false, error: GENERIC_ERROR };
       }
     }
@@ -532,16 +534,25 @@ export async function getScopeDocumentSignedUrl(
     return { ok: false, error: "Document not found." };
   }
 
-  const { data: signedUrlData, error: signedUrlError } = await admin.storage
-    .from(BUCKET)
-    .createSignedUrl(filePath, SIGNED_URL_TTL_SECONDS);
+  const signed = await signOwnedObject(
+    admin,
+    {
+      bucket: BUCKET,
+      path: filePath,
+      ownerPrefix: storageOwnerPrefix.scopeDocument(documentRow.project_id),
+    },
+    SIGNED_URL_TTL_SECONDS,
+  );
 
-  if (signedUrlError || !signedUrlData?.signedUrl) {
+  if (!signed.ok) {
+    if (signed.reason === "not_owned") {
+      return { ok: false, error: "Document not found." };
+    }
     logger.error("getScopeDocumentSignedUrl: signed URL generation failed", {
-      error: signedUrlError,
+      error: signed.error,
     });
     return { ok: false, error: GENERIC_ERROR };
   }
 
-  return { ok: true, signedUrl: signedUrlData.signedUrl };
+  return { ok: true, signedUrl: signed.signedUrl };
 }

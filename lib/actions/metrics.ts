@@ -28,6 +28,7 @@ import { z } from "zod";
 import { logger } from "@/lib/observability/logger";
 import { type ActionOutcome, type ActionResult, withAuthz } from "@/lib/actions/authz";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { isOwnedObjectPath, signOwnedObject, storageOwnerPrefix } from "@/lib/storage/sign-owned-object";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { writeAudit } from "@/lib/activity/audit";
 import {
@@ -1090,7 +1091,8 @@ export async function deleteImprovement(improvementId: string): Promise<DeleteIm
 // before/after Storage objects themselves are never removed by
 // deleteImprovementImpl (only the DB row), so re-inserting the row with
 // the same `before_path`/`after_path` is safe -- the files are still
-// there.
+// there. The paths arrive from the client, so each one must sit under this
+// project's own improvements folder; anything else is refused outright.
 const restoreImprovementSchema = z.object({
   projectId: z.string().uuid("Invalid project."),
   id: z.string().uuid("Invalid improvement."),
@@ -1113,6 +1115,14 @@ const restoreImprovementImpl = withAuthz(
     resolveWorkspace: (input, admin) => loadProjectExtra(admin, input.projectId),
   },
   async (input, ctx): Promise<ImprovementActionResult> => {
+    const ownerPrefix = storageOwnerPrefix.improvementImage(ctx.projectId);
+    const pathsOwned = [input.beforePath, input.afterPath].every(
+      (path) => path === null || isOwnedObjectPath(path, ownerPrefix),
+    );
+    if (!pathsOwned) {
+      return { ok: false, error: "Improvement not found." };
+    }
+
     const { data, error } = await ctx.admin
       .from("project_improvements")
       .insert({
@@ -1290,7 +1300,8 @@ export async function uploadImprovementImage(formData: FormData): Promise<Upload
     return { ok: false, error: "Viewers don't have permission to manage improvements." };
   }
 
-  const objectPath = `improvements/${extra.projectId}/${crypto.randomUUID()}-${file.name}`;
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const objectPath = `${storageOwnerPrefix.improvementImage(extra.projectId)}${crypto.randomUUID()}-${safeName}`;
 
   const { error: uploadError } = await admin.storage
     .from(IMPROVEMENTS_BUCKET)
@@ -1421,16 +1432,25 @@ export async function getImprovementImageSignedUrl(
     return { ok: false, error: "Image not found." };
   }
 
-  const { data: signedUrlData, error: signedUrlError } = await admin.storage
-    .from(IMPROVEMENTS_BUCKET)
-    .createSignedUrl(objectPath, SIGNED_URL_TTL_SECONDS);
+  const signed = await signOwnedObject(
+    admin,
+    {
+      bucket: IMPROVEMENTS_BUCKET,
+      path: objectPath,
+      ownerPrefix: storageOwnerPrefix.improvementImage(improvementRow.project_id),
+    },
+    SIGNED_URL_TTL_SECONDS,
+  );
 
-  if (signedUrlError || !signedUrlData?.signedUrl) {
+  if (!signed.ok) {
+    if (signed.reason === "not_owned") {
+      return { ok: false, error: "Image not found." };
+    }
     logger.error("getImprovementImageSignedUrl: signed URL generation failed", {
-      error: signedUrlError,
+      error: signed.error,
     });
     return { ok: false, error: GENERIC_ERROR };
   }
 
-  return { ok: true, signedUrl: signedUrlData.signedUrl };
+  return { ok: true, signedUrl: signed.signedUrl };
 }

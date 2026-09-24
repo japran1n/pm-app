@@ -12,6 +12,7 @@ import { logger } from "@/lib/observability/logger";
 // argument (same BLOCKER-3 defense as the task-attachment action file).
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { signOwnedObject, storageOwnerPrefix } from "@/lib/storage/sign-owned-object";
 import { getChatAttachmentSignedUrlSchema } from "@/lib/validation/chat-attachments";
 import {
   uploadChatAttachmentForUser,
@@ -116,17 +117,26 @@ export async function getChatAttachmentSignedUrl(
     return { ok: false, error: "Attachment not found." };
   }
 
-  const { data: signedUrlData, error: signedUrlError } = await admin.storage
-    .from(CHAT_ATTACHMENTS_BUCKET)
-    .createSignedUrl(attachmentRow.storage_path, SIGNED_URL_TTL_SECONDS);
+  const signed = await signOwnedObject(
+    admin,
+    {
+      bucket: CHAT_ATTACHMENTS_BUCKET,
+      path: attachmentRow.storage_path,
+      ownerPrefix: storageOwnerPrefix.chatAttachment(attachmentRow.channel_id),
+    },
+    SIGNED_URL_TTL_SECONDS,
+  );
 
-  if (signedUrlError || !signedUrlData?.signedUrl) {
-    logger.error("getChatAttachmentSignedUrl: signed URL generation failed", { error: signedUrlError });
+  if (!signed.ok) {
+    if (signed.reason === "not_owned") {
+      return { ok: false, error: "Attachment not found." };
+    }
+    logger.error("getChatAttachmentSignedUrl: signed URL generation failed", { error: signed.error });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
     };
   }
 
-  return { ok: true, signedUrl: signedUrlData.signedUrl };
+  return { ok: true, signedUrl: signed.signedUrl };
 }

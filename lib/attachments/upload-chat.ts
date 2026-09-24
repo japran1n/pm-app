@@ -9,6 +9,7 @@ import { logger } from "@/lib/observability/logger";
 // by the caller from a real authenticated session/JWT before this function
 // runs -- it performs no identity verification of its own.
 import { createAdminClient } from "@/lib/supabase/admin";
+import { removeOwnedObject, storageOwnerPrefix } from "@/lib/storage/sign-owned-object";
 import { uploadChatAttachmentSchema } from "@/lib/validation/chat-attachments";
 
 // Path convention fixed by supabase/migrations/20260904070000_chat_attachments.sql:
@@ -208,7 +209,7 @@ export async function deletePendingChatAttachmentForUser(
 
   const { data: existing, error: existingError } = await admin
     .from("message_attachments")
-    .select("id, storage_path, uploaded_by, message_id")
+    .select("id, storage_path, channel_id, uploaded_by, message_id")
     .eq("id", attachmentId)
     .maybeSingle();
 
@@ -222,12 +223,17 @@ export async function deletePendingChatAttachmentForUser(
 
   // Storage-first (same AS-114-equivalent ordering rationale as
   // deleteAttachment in lib/actions/attachments.ts).
-  const { error: storageError } = await admin.storage
-    .from(CHAT_ATTACHMENTS_BUCKET)
-    .remove([existing.storage_path]);
+  const removed = await removeOwnedObject(admin, {
+    bucket: CHAT_ATTACHMENTS_BUCKET,
+    path: existing.storage_path,
+    ownerPrefix: storageOwnerPrefix.chatAttachment(existing.channel_id),
+  });
 
-  if (storageError) {
-    logger.error("deletePendingChatAttachment: storage removal failed", { error: storageError });
+  if (!removed.ok) {
+    if (removed.reason === "not_owned") {
+      return { ok: false, error: "Attachment not found." };
+    }
+    logger.error("deletePendingChatAttachment: storage removal failed", { error: removed.error });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",

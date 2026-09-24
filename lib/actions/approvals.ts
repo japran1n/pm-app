@@ -56,6 +56,7 @@ import { logger } from "@/lib/observability/logger";
 import { type ActionOutcome, type ActionResult, withAuthz, type AuthzExtra } from "@/lib/actions/authz";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { signOwnedObject, storageOwnerPrefix } from "@/lib/storage/sign-owned-object";
 import type { ProjectVisibility } from "@/lib/actions/project-visibility";
 import { writeAudit } from "@/lib/activity/audit";
 import {
@@ -176,7 +177,7 @@ async function uploadDocSnapshot(
   requestId: string,
   content: string,
 ): Promise<{ ok: true; path: string } | { ok: false; error: string }> {
-  const path = `approval-requests/${requestId}/doc-snapshot.md`;
+  const path = `${storageOwnerPrefix.approvalSnapshot(requestId)}doc-snapshot.md`;
   const { error } = await admin.storage.from(SNAPSHOT_BUCKET).upload(path, content, {
     contentType: "text/markdown",
     upsert: true,
@@ -641,16 +642,25 @@ export async function getApprovalDocSnapshotUrl(
 
   // eslint-disable-next-line no-restricted-syntax -- ARCH-003: workspace-scoped lookup bypasses RLS to resolve authorization/scoping data; caller identity already verified via getCurrentUser()/!user check immediately above
   const admin = createAdminClient();
-  const { data: signedUrlData, error: signedUrlError } = await admin.storage
-    .from(SNAPSHOT_BUCKET)
-    .createSignedUrl(approvalRow.artifact_snapshot_path, SNAPSHOT_SIGNED_URL_TTL_SECONDS);
+  const signed = await signOwnedObject(
+    admin,
+    {
+      bucket: SNAPSHOT_BUCKET,
+      path: approvalRow.artifact_snapshot_path,
+      ownerPrefix: storageOwnerPrefix.approvalSnapshot(approvalRow.id),
+    },
+    SNAPSHOT_SIGNED_URL_TTL_SECONDS,
+  );
 
-  if (signedUrlError || !signedUrlData?.signedUrl) {
-    logger.error("getApprovalDocSnapshotUrl: signed URL generation failed", { error: signedUrlError });
+  if (!signed.ok) {
+    if (signed.reason === "not_owned") {
+      return { ok: false, error: "This approval has no document to open." };
+    }
+    logger.error("getApprovalDocSnapshotUrl: signed URL generation failed", { error: signed.error });
     return { ok: false, error: GENERIC_ERROR };
   }
 
-  return { ok: true, signedUrl: signedUrlData.signedUrl };
+  return { ok: true, signedUrl: signed.signedUrl };
 }
 
 export async function setDecisionOwner(

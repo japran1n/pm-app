@@ -25,6 +25,7 @@ import type { JSONContent } from "@tiptap/react";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { signOwnedObject, storageOwnerPrefix } from "@/lib/storage/sign-owned-object";
 import { getThreadMessages, getChannelMessages, getMessageAttachments } from "@/lib/queries/chat";
 import {
   deleteMessageSchema,
@@ -391,12 +392,21 @@ async function linkAndLoadAttachments(
 
   const attachments: ChatMessageAttachment[] = [];
   for (const row of linked) {
-    const { data: signedUrlData, error: signedUrlError } = await admin.storage
-      .from(CHAT_ATTACHMENTS_BUCKET)
-      .createSignedUrl(row.storage_path, CHAT_ATTACHMENT_SIGNED_URL_TTL_SECONDS);
+    const signed = await signOwnedObject(
+      admin,
+      {
+        bucket: CHAT_ATTACHMENTS_BUCKET,
+        path: row.storage_path,
+        ownerPrefix: storageOwnerPrefix.chatAttachment(channelId),
+      },
+      CHAT_ATTACHMENT_SIGNED_URL_TTL_SECONDS,
+    );
 
-    if (signedUrlError) {
-      logger.error("sendMessage: signed URL generation failed for attachment", { error: signedUrlError });
+    if (!signed.ok) {
+      logger.error("sendMessage: signed URL generation failed for attachment", {
+        reason: signed.reason,
+        error: signed.error,
+      });
     }
 
     attachments.push({
@@ -404,7 +414,7 @@ async function linkAndLoadAttachments(
       fileName: row.file_name,
       mimeType: row.mime_type,
       fileSize: row.file_size,
-      signedUrl: signedUrlData?.signedUrl ?? null,
+      signedUrl: signed.ok ? signed.signedUrl : null,
     });
   }
 

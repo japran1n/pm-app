@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { removeOwnedObject, signOwnedObject, storageOwnerPrefix } from "@/lib/storage/sign-owned-object";
 import {
   deleteAttachmentSchema,
   getAttachmentSignedUrlSchema,
@@ -131,7 +132,7 @@ export async function getAttachmentSignedUrl(
   const { data: attachmentRow, error: attachmentError } = await admin
     .from("attachments")
     .select(
-      "id, file_url, tasks(project_id, deleted_at, client_visible, projects(workspace_id, visibility, portal_enabled))",
+      "id, file_url, task_id, tasks(project_id, deleted_at, client_visible, projects(workspace_id, visibility, portal_enabled))",
     )
     .eq("id", attachmentId)
     .maybeSingle();
@@ -226,19 +227,28 @@ export async function getAttachmentSignedUrl(
     return { ok: false, error: "Attachment not found." };
   }
 
-  const { data: signedUrlData, error: signedUrlError } = await admin.storage
-    .from(ATTACHMENTS_BUCKET)
-    .createSignedUrl(attachmentRow.file_url, SIGNED_URL_TTL_SECONDS);
+  const signed = await signOwnedObject(
+    admin,
+    {
+      bucket: ATTACHMENTS_BUCKET,
+      path: attachmentRow.file_url,
+      ownerPrefix: storageOwnerPrefix.taskAttachment(attachmentRow.task_id),
+    },
+    SIGNED_URL_TTL_SECONDS,
+  );
 
-  if (signedUrlError || !signedUrlData?.signedUrl) {
-    logger.error("getAttachmentSignedUrl: signed URL generation failed", { error: signedUrlError });
+  if (!signed.ok) {
+    if (signed.reason === "not_owned") {
+      return { ok: false, error: "Attachment not found." };
+    }
+    logger.error("getAttachmentSignedUrl: signed URL generation failed", { error: signed.error });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
     };
   }
 
-  return { ok: true, signedUrl: signedUrlData.signedUrl };
+  return { ok: true, signedUrl: signed.signedUrl };
 }
 
 export type DeleteAttachmentResult = ActionResult<{ id: string }>;
@@ -312,7 +322,7 @@ export async function deleteAttachment(
   const { data: attachmentRow, error: attachmentError } = await admin
     .from("attachments")
     .select(
-      "id, file_url, uploaded_by, tasks(project_id, deleted_at, client_visible, projects(workspace_id, visibility, workspaces(slug)))",
+      "id, file_url, task_id, uploaded_by, tasks(project_id, deleted_at, client_visible, projects(workspace_id, visibility, workspaces(slug)))",
     )
     .eq("id", parsed.data.attachmentId)
     .maybeSingle();
@@ -420,12 +430,17 @@ export async function deleteAttachment(
   // Storage-first (see the AS-114 rationale in this function's doc
   // comment above). A failure here aborts before the row is touched, so
   // at worst the row still points at a file that still exists.
-  const { error: storageError } = await admin.storage
-    .from(ATTACHMENTS_BUCKET)
-    .remove([attachmentRow.file_url]);
+  const removed = await removeOwnedObject(admin, {
+    bucket: ATTACHMENTS_BUCKET,
+    path: attachmentRow.file_url,
+    ownerPrefix: storageOwnerPrefix.taskAttachment(attachmentRow.task_id),
+  });
 
-  if (storageError) {
-    logger.error("deleteAttachment: storage removal failed", { error: storageError });
+  if (!removed.ok) {
+    if (removed.reason === "not_owned") {
+      return { ok: false, error: "You don't have permission to delete this attachment." };
+    }
+    logger.error("deleteAttachment: storage removal failed", { error: removed.error });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",

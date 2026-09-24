@@ -219,6 +219,7 @@ describe("F004c / AS-006: attachments.ts's deleteAttachment revalidates the port
                   data: {
                     id: "00000000-0000-4000-8000-0000000000a1",
                     file_url: "task-1/file.png",
+                    task_id: "task-1",
                     uploaded_by: USER_ID,
                     tasks: {
                       project_id: PROJECT_ID,
