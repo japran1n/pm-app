@@ -108,7 +108,11 @@ export function SortableTaskCard({
 
   const style = {
     transform: CSS.Transform.toString(transform),
-    transition,
+    // dnd-kit sets `transition` only while actively sorting; for cards that
+    // are merely shifting to make room (transform applied but transition=null),
+    // the Tailwind `transition-transform` class below acts as the fallback so
+    // the translateY still animates instead of jumping instantly.
+    transition: transition ?? undefined,
   };
 
   const showMoveMenu =
@@ -119,14 +123,14 @@ export function SortableTaskCard({
       <div
         ref={setNodeRef}
         style={{ ...style, minHeight: "60px" }}
-        className="rounded-lg border-2 border-dashed border-border/50 bg-muted/30"
+        className="rounded-lg border-2 border-dashed border-border/50 bg-muted/30 transition-transform duration-200 ease-out will-change-transform"
         aria-hidden="true"
       />
     );
   }
 
   return (
-    <div ref={setNodeRef} style={style} className="relative">
+    <div ref={setNodeRef} style={style} className="relative transition-transform duration-200 ease-out will-change-transform">
       <div {...attributes} {...listeners} className={canDrag ? "cursor-grab active:cursor-grabbing" : undefined}>
         <TaskCard
           task={task}
