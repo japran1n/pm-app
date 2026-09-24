@@ -29,6 +29,7 @@ import {
   updateProjectAccountSchema,
   deleteProjectAccountSchema,
   reorderProjectAccountSchema,
+  docLinkUrlSchema,
 } from "@/lib/validation/project-site";
 import type { ProjectVisibility } from "@/lib/actions/project-visibility";
 import type {
@@ -336,8 +337,9 @@ const restoreProjectLinkSchema = z.object({
   projectId: z.string().uuid("Invalid project."),
   id: z.string().uuid("Invalid link."),
   kind: z.string(),
-  label: z.string().min(1),
-  url: z.string().min(1),
+  label: z.string().min(1).max(200),
+  // Same URL rules as create/update (scheme + no-secret-shape guard).
+  url: docLinkUrlSchema,
   clientVisible: z.boolean(),
   position: z.number(),
 });

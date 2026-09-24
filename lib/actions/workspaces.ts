@@ -771,20 +771,7 @@ export async function changeMemberRole(
   // 20261131010000) locks every active owner row (id order) and the
   // target row before counting, re-checks the actor's role, and updates in
   // the same transaction. Replaces the old count-then-update TOCTOU.
-  const { data: rpcRows, error: rpcError } = await (
-    admin.rpc as unknown as (
-      fn: "change_workspace_member_role",
-      args: {
-        p_membership_id: string;
-        p_workspace_id: string;
-        p_new_role: string;
-        p_actor_id: string;
-      },
-    ) => Promise<{
-      data: Array<{ changed: boolean; reason: string | null; old_role: string | null }> | null;
-      error: unknown;
-    }>
-  )("change_workspace_member_role", {
+  const { data: rpcRows, error: rpcError } = await admin.rpc("change_workspace_member_role", {
     p_membership_id: parsed.data.targetMembershipId,
     p_workspace_id: parsed.data.workspaceId,
     p_new_role: parsed.data.newRole,

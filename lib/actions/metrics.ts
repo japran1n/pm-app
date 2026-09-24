@@ -767,8 +767,8 @@ const restoreSnapshotImpl = withAuthz(
         value: input.value,
         measured_at: input.measuredAt,
         note: input.note,
-        created_by: input.createdBy,
-        created_at: input.createdAt,
+        // Actor/timestamp columns are server-forced (created_at defaults to now).
+        created_by: ctx.user.id,
       })
       .select("id, metric_id, value, measured_at, note, created_by, created_at")
       .single();

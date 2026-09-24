@@ -4226,6 +4226,19 @@ export type Database = {
           id: string
         }[]
       }
+      change_workspace_member_role: {
+        Args: {
+          p_actor_id: string
+          p_membership_id: string
+          p_new_role: string
+          p_workspace_id: string
+        }
+        Returns: {
+          changed: boolean
+          old_role: string | null
+          reason: string | null
+        }[]
+      }
       change_workspace_slug_atomic: {
         Args: { p_new_slug: string; p_old_slug: string; p_workspace_id: string }
         Returns: {

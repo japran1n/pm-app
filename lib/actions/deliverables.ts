@@ -494,6 +494,27 @@ const restoreDeliverableImpl = withAuthz(
     resolveWorkspace: (input, admin) => loadProjectExtra(admin, input.projectId),
   },
   async (input, ctx): Promise<DeliverableActionResult> => {
+    // Phase/task links must belong to this project (a client-held snapshot
+    // must not point a row at another project's phase or task).
+    if (input.phaseId) {
+      const { data: phase } = await ctx.admin
+        .from("project_phases")
+        .select("id")
+        .eq("id", input.phaseId)
+        .eq("project_id", ctx.projectId)
+        .maybeSingle();
+      if (!phase) return { ok: false, error: GENERIC_ERROR };
+    }
+    if (input.taskId) {
+      const { data: task } = await ctx.admin
+        .from("tasks")
+        .select("id")
+        .eq("id", input.taskId)
+        .eq("project_id", ctx.projectId)
+        .maybeSingle();
+      if (!task) return { ok: false, error: GENERIC_ERROR };
+    }
+
     const { data, error } = await ctx.admin
       .from("client_deliverables")
       .insert({
@@ -507,10 +528,13 @@ const restoreDeliverableImpl = withAuthz(
         owner_name: input.ownerName,
         due_at: input.dueAt,
         blocking: input.blocking,
-        state: input.state,
+        // Acceptance is a client decision recorded by the review RPC, never by
+        // an Undo: acceptance actor/timestamp are dropped and an accepted
+        // deliverable comes back as delivered (awaiting acceptance again).
+        state: input.state === "accepted" ? "delivered" : input.state,
         delivered_at: input.deliveredAt,
-        accepted_at: input.acceptedAt,
-        accepted_by: input.acceptedBy,
+        accepted_at: null,
+        accepted_by: null,
         review_note: input.reviewNote,
         position: input.position,
       })

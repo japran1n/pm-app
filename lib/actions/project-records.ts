@@ -721,7 +721,8 @@ const restoreDecisionImpl = withAuthz(
         decided_on: input.decidedOn,
         decided_by_name: input.decidedByName,
         client_visible: input.clientVisible,
-        created_by: input.createdBy,
+        // Actor column is server-forced: an Undo never carries authorship.
+        created_by: ctx.user.id,
       })
       .select(DECISION_COLUMNS)
       .single();
@@ -1157,8 +1158,10 @@ const restoreAssumptionImpl = withAuthz(
         confirmed_on: input.confirmedOn,
         confirmed_by_name: input.confirmedByName,
         client_visible: input.clientVisible,
-        flagged_by_client_at: input.flaggedByClientAt,
-        flagged_note: input.flaggedNote,
+        // Client-flag fields are only ever set by the portal flag action; an
+        // Undo must never carry them (a flag later becomes a billable quote).
+        flagged_by_client_at: null,
+        flagged_note: null,
       })
       .select(ASSUMPTION_COLUMNS)
       .single();
