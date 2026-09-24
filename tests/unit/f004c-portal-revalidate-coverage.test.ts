@@ -419,10 +419,31 @@ describe("F004c / AS-006: comments.ts's deleteComment revalidates the portal", (
 // lib/actions/docs.ts — setDocClientVisibility
 // ---------------------------------------------------------------------
 describe("F004c / AS-006: docs.ts's setDocClientVisibility revalidates the portal", () => {
+  // SEC-ACT3-07: docs.ts now resolves the doc's scope with the admin
+  // client before authorizing (membership/visibility are mocked above).
   function buildDocsAdminMock() {
-    return null; // docs.ts never uses the admin client
+    return {
+      from: vi.fn((table: string) => {
+        const row =
+          table === "docs"
+            ? { workspace_id: WORKSPACE_ID, project_id: PROJECT_ID }
+            : { workspace_id: WORKSPACE_ID, visibility: "workspace" };
+        const chain = {
+          select: vi.fn(() => chain),
+          eq: vi.fn(() => chain),
+          is: vi.fn(() => chain),
+          maybeSingle: vi.fn(async () => ({ data: row, error: null })),
+        };
+        return chain;
+      }),
+    };
   }
-  void buildDocsAdminMock;
+  function mockDocsAdmin() {
+    vi.doMock("@/lib/supabase/admin", () => ({
+      createAdminClient: vi.fn(() => buildDocsAdminMock()),
+    }));
+    vi.doMock("@/lib/activity/audit", () => ({ writeAudit: vi.fn(async () => {}) }));
+  }
 
   function mockDocsSupabase(newClientVisible: boolean) {
     return {
@@ -431,7 +452,9 @@ describe("F004c / AS-006: docs.ts's setDocClientVisibility revalidates the porta
         if (table === "docs") {
           return {
             update: vi.fn(() => ({
-              eq: vi.fn(async () => ({ error: null })),
+              eq: vi.fn(() => ({
+                select: vi.fn(async () => ({ data: [{ id: "d1" }], error: null })),
+              })),
             })),
             select: vi.fn(() => ({
               eq: vi.fn(() => ({
@@ -457,6 +480,7 @@ describe("F004c / AS-006: docs.ts's setDocClientVisibility revalidates the porta
     vi.doMock("@/lib/supabase/server", () => ({
       createClient: vi.fn(async () => mockDocsSupabase(true)),
     }));
+    mockDocsAdmin();
     const { setDocClientVisibility } = await import("@/lib/actions/docs");
 
     const result = await setDocClientVisibility("00000000-0000-4000-8000-0000000000d1", true);
@@ -472,6 +496,7 @@ describe("F004c / AS-006: docs.ts's setDocClientVisibility revalidates the porta
     vi.doMock("@/lib/supabase/server", () => ({
       createClient: vi.fn(async () => mockDocsSupabase(false)),
     }));
+    mockDocsAdmin();
     const { setDocClientVisibility } = await import("@/lib/actions/docs");
 
     const result = await setDocClientVisibility("00000000-0000-4000-8000-0000000000d1", false);
@@ -493,7 +518,9 @@ describe("F004c / AS-006: docs.ts's setDocClientVisibility revalidates the porta
         if (table === "docs") {
           return {
             update: vi.fn(() => ({
-              eq: vi.fn(async () => ({ error: null })),
+              eq: vi.fn(() => ({
+                select: vi.fn(async () => ({ data: [{ id: "d1" }], error: null })),
+              })),
             })),
             select: vi.fn(() => ({
               eq: vi.fn(() => ({
@@ -523,6 +550,7 @@ describe("F004c / AS-006: docs.ts's setDocClientVisibility revalidates the porta
     vi.doMock("@/lib/supabase/server", () => ({
       createClient: vi.fn(async () => mockDocsSupabaseTransition(true, false)),
     }));
+    mockDocsAdmin();
     const { setDocClientVisibility } = await import("@/lib/actions/docs");
 
     const result = await setDocClientVisibility("00000000-0000-4000-8000-0000000000d1", false);
