@@ -4548,6 +4548,10 @@ export type Database = {
         Args: { target_channel_id: string }
         Returns: boolean
       }
+      is_channel_member_eligible: {
+        Args: { target_channel_id: string; target_user_id: string }
+        Returns: boolean
+      }
       is_done_status: {
         Args: { p_status: string; p_status_id: string }
         Returns: boolean
@@ -4682,25 +4686,17 @@ export type Database = {
         Args: { p_from_date: string; p_rule: Json }
         Returns: string
       }
-      remove_workspace_member:
-        | {
-            Args: { p_membership_id: string; p_workspace_id: string }
-            Returns: {
-              deleted: boolean
-              reason: string
-            }[]
-          }
-        | {
-            Args: {
-              p_membership_id: string
-              p_reassign_to?: string
-              p_workspace_id: string
-            }
-            Returns: {
-              deleted: boolean
-              reason: string
-            }[]
-          }
+      remove_workspace_member: {
+        Args: {
+          p_membership_id: string
+          p_reassign_to?: string
+          p_workspace_id: string
+        }
+        Returns: {
+          deleted: boolean
+          reason: string
+        }[]
+      }
       request_portal_task_changes_atomic: {
         Args: { p_task_id: string }
         Returns: {

@@ -722,7 +722,7 @@ export async function changeMemberRole(
 
   const { data: targetRow, error: lookupError } = await admin
     .from("workspace_members")
-    .select("id, status, role")
+    .select("id, status, role, user_id")
     .eq("id", parsed.data.targetMembershipId)
     .eq("workspace_id", parsed.data.workspaceId)
     .maybeSingle();
@@ -807,6 +807,37 @@ export async function changeMemberRole(
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
     };
+  }
+
+  // A `client` has no access to internal workspace-wide channels (the
+  // channels_select_members_or_workspace RLS policy hides them and
+  // addChannelMember refuses to enrol a client), so a demotion to client
+  // also drops any existing membership of those channels. Project channels
+  // (gated by project_members) and DMs are left as they are.
+  if (parsed.data.newRole === "client" && targetRow.user_id) {
+    const { data: internalChannels, error: channelsError } = await admin
+      .from("channels")
+      .select("id")
+      .eq("workspace_id", parsed.data.workspaceId)
+      .eq("kind", "channel")
+      .is("project_id", null);
+
+    const channelIds = (internalChannels ?? []).map((c) => c.id);
+    const { error: channelCleanupError } = channelsError
+      ? { error: channelsError }
+      : channelIds.length > 0
+        ? await admin
+            .from("channel_members")
+            .delete()
+            .eq("user_id", targetRow.user_id)
+            .in("channel_id", channelIds)
+        : { error: null };
+
+    if (channelCleanupError) {
+      logger.error("changeMemberRole: internal channel cleanup failed", {
+        error: channelCleanupError,
+      });
+    }
   }
 
   await writeAudit(supabase, {
@@ -957,7 +988,7 @@ export async function removeMember(
     {
       p_membership_id: parsed.data.targetMembershipId,
       p_workspace_id: parsed.data.workspaceId,
-      p_reassign_to: parsed.data.reassignTo ?? null,
+      p_reassign_to: parsed.data.reassignTo ?? undefined,
     },
   );
 
@@ -982,6 +1013,12 @@ export async function removeMember(
       return {
         ok: false,
         error: "Only active members can be removed.",
+      };
+    }
+    if (rpcResult?.reason === "invalid_reassignee") {
+      return {
+        ok: false,
+        error: "Tasks can only be reassigned to another active member of this workspace.",
       };
     }
     // "not_found" here would mean the row vanished between the earlier
