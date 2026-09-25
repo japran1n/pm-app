@@ -120,10 +120,7 @@ export default async function PortalConversationPage({
   // itself" pattern `ChannelView`'s message list already uses, so the
   // conversation above always stays visible.
   const requestsSection = (
-    <div className="flex max-h-64 flex-col gap-3 overflow-y-auto p-4">
-      <h2 className="sticky top-0 bg-background text-sm font-medium text-muted-foreground">
-        Your requests
-      </h2>
+    <div className="max-h-72 overflow-y-auto border-t border-border p-4">
       <RequestList requests={requests} projectId={project.id} />
     </div>
   );
@@ -171,7 +168,7 @@ export default async function PortalConversationPage({
         <ChannelView
           workspaceSlug={workspaceSlug}
           channelId={channel.id}
-          channelName={channel.name ?? project.name}
+          channelName={project.name}
           initialMessages={messages}
           members={members}
           currentUserId={user.id}

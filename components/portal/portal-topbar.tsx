@@ -169,10 +169,12 @@ export function PortalTopbar({
         <div className="flex flex-wrap items-center gap-2">
           {!isOverviewRoute && (
             <div className="flex flex-wrap items-center gap-2" data-testid="topbar-launch-chips">
-              <Badge variant="outline">Launch {formatLaunchDate(targetLaunchDate)}</Badge>
-              <Badge variant="outline">
-                {launchConfidence ? CONFIDENCE_LABEL[launchConfidence] : "Confidence —"}
-              </Badge>
+              {targetLaunchDate && (
+                <Badge variant="outline">Launch {formatLaunchDate(targetLaunchDate)}</Badge>
+              )}
+              {launchConfidence && (
+                <Badge variant="outline">{CONFIDENCE_LABEL[launchConfidence]}</Badge>
+              )}
             </div>
           )}
           <ThemeToggle />

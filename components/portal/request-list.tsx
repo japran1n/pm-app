@@ -239,7 +239,7 @@ export function RequestList({
 
   return (
     <div className="flex flex-col gap-4">
-      <h2 className="text-xl font-medium tracking-tight">Sent</h2>
+      <h2 className="text-sm font-medium text-muted-foreground">Your requests</h2>
 
       <ul className="flex flex-col gap-3">
         {liveRequests.map((request) => (
