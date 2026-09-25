@@ -6,7 +6,7 @@ import { getChannelMessages, getChannelMembers, getReplyCounts } from "@/lib/que
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { createClientRequest } from "@/lib/actions/client-requests";
 import { ChannelView } from "@/components/chat/channel-view";
-import { RequestList } from "@/components/portal/request-list";
+import { RequestsDrawer } from "@/components/portal/requests-drawer";
 import { EmptyState } from "@/components/empty-state";
 
 // F116 (docs/client-portal-phase-2-plan.md item A): the portal's
@@ -120,9 +120,7 @@ export default async function PortalConversationPage({
   // itself" pattern `ChannelView`'s message list already uses, so the
   // conversation above always stays visible.
   const requestsSection = (
-    <div className="max-h-72 overflow-y-auto border-t border-border p-4">
-      <RequestList requests={requests} projectId={project.id} />
-    </div>
+    <RequestsDrawer requests={requests} projectId={project.id} />
   );
 
   if (!channel) {
