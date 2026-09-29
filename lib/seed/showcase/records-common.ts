@@ -170,7 +170,7 @@ export async function seedChannelMessages(
 ) {
   const rows: Array<Record<string, unknown>> = [];
   const reactions: Array<Record<string, unknown>> = [];
-  const files: Array<Record<string, unknown>> = [];
+  const files: Array<{ id: string; channel_id: string; message_id: string; file: NonNullable<ChatMessage["file"]>; uploaded_by: string; created_at: string }> = [];
   let latest = "";
 
   const add = (m: ChatMessage, parentId: string | null) => {
